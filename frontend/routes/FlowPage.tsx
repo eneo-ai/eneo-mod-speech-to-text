@@ -44,7 +44,7 @@ import {
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError, reviewPauseEnded } from "@/lib/errors";
-import { RECORDING_QUERY_PARAM } from "@/lib/flow-address";
+import { CONTINUE_QUERY_PARAM, RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
@@ -128,9 +128,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
-  // Opened to send a recording from the flow list: the page holds its loading state until that send has begun, and
-  // shows no screen of the flow on the way (the choice of audio, the finished recording).
-  const [adopting, setAdopting] = useState(() => new URLSearchParams(window.location.search).has(RECORDING_QUERY_PARAM));
+  // Opened to send a recording from the flow list, or to record on in it: the page holds its loading state until that
+  // send or recording has begun, and shows no screen of the flow on the way (the choice of audio, the finished recording).
+  const [adopting, setAdopting] = useState(() => {
+    const search = new URLSearchParams(window.location.search);
+    return search.has(RECORDING_QUERY_PARAM) || search.has(CONTINUE_QUERY_PARAM);
+  });
   useEffect(() => {
     if (run.kind !== "idle") setAdopting(false);
   }, [run.kind]);
@@ -244,16 +247,23 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [holdsAudio, submitting, unstored]);
 
-  // Opened by "Skapa dokument" on an unsent recording in the flow list: the recording is sent once the flow has loaded.
+  // Opened by "Skapa dokument" on an unsent recording in the flow list, or "Fortsätt spela in" on a cut-off one: the
+  // recording is sent, or recorded on in as this page's own "Fortsätt spela in" does it, once the flow has loaded.
   useEffect(() => {
     if (!contract) return;
-    const recordingId = new URLSearchParams(window.location.search).get(RECORDING_QUERY_PARAM);
+    const search = new URLSearchParams(window.location.search);
+    const sending = search.get(RECORDING_QUERY_PARAM);
+    const recordingId = sending ?? search.get(CONTINUE_QUERY_PARAM);
     if (!recordingId) return;
-    writeSearch((search) => search.delete(RECORDING_QUERY_PARAM));
+    writeSearch((search) => {
+      search.delete(RECORDING_QUERY_PARAM);
+      search.delete(CONTINUE_QUERY_PARAM);
+    });
     recordingStore()
       .then((store) => store.get(recordingId))
       .then((recording) => {
         if (recording?.ownerId !== user.id || recording.flowId !== flowId) return;
+        if (!sending) return session.getSnapshot().modes.includes("spela-in") ? session.continueCutOff(recording) : undefined;
         session.adopt(recording);
         return createDocument(session);
       })

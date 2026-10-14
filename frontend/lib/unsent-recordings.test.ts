@@ -106,7 +106,7 @@ test("the actions call back with their recording, and Fortsätt spela in only wh
   await act(async () => button(second, "Skapa dokument")!.click());
   assert.deepEqual([continued, sent], [["a"], ["b"]]);
   const { container: list } = await render({ recordings: [interrupted] });
-  assert.equal(button(list, "Fortsätt spela in"), null, "the flow list has no recorder to continue in");
+  assert.equal(button(list, "Fortsätt spela in"), null, "where nothing can take it over (a flow that cannot run now), it is not offered");
 });
 
 test("without Web Locks, another tab's recording is offered only as a file to save, and says why", async () => {
@@ -133,11 +133,16 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   assert.equal(resumableRecording([recording("c", 60_000, at(23, 9, 0)), cutOff("a"), cutOff("b")])?.id, "a");
   await two.unmount();
 
-  // The flow list has no recorder to continue in: its rows' actions are all quiet, beside the flows.
-  const list = await render({ recordings: [cutOff("a")], withFlowName: true });
-  assert.equal(list.container.querySelector("h2")?.textContent, "En inspelning har inte skickats");
+  // The flow list offers it too, and goes on in the recording's flow; its rows' actions are all quiet, beside the flows.
+  const list = await render({ recordings: [cutOff("a")], withFlowName: true, onContinue: () => {}, filled: false });
+  assert.equal(list.container.querySelector("h2")?.textContent, "Inspelningen avbröts");
+  assert.ok(button(rowsOf(list.container)[0], "Fortsätt spela in"));
   assert.deepEqual(filled(list.container), []);
   await list.unmount();
+  // Where nothing can take it over (a flow that cannot run now), it is one more unsent recording.
+  const blocked = await render({ recordings: [cutOff("a")] });
+  assert.equal(blocked.container.querySelector("h2")?.textContent, "En inspelning har inte skickats");
+  await blocked.unmount();
   const stopped = await render({ recordings: [recording("c", 60_000, at(23, 9, 0))], onContinue: () => {} });
   assert.deepEqual(filled(stopped.container), [], "the setup's own action stays the filled one");
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");

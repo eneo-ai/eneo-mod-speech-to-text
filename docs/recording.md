@@ -10,7 +10,7 @@ Innan en del laddas upp får WebM-filen det en spelare behöver. Chrome skriver 
 
 Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). Varje skrivning ligger på disken innan den räknas som klar (IndexedDB:s `durability: "strict"`; en webbläsare utan det alternativet använder sitt eget standardläge). När lagringen fungerar finns de sparade bitarna kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session; den senaste biten kan gå förlorad.
 
-- Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**.
+- Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**, och för en inspelning som avbröts utan stopp **Fortsätt spela in** (se [Fortsätta en inspelning](#fortsätta-en-inspelning)).
 - Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**. Appen har ingen automatisk tidsgräns för osända inspelningar.
 - Utan IndexedDB (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
 
@@ -24,7 +24,7 @@ Om lagringen slutar fungera av något annat skäl, till exempel när webbplatsda
 
 Om mikrofonens ljud tillfälligt försvinner men dess ljudspår finns kvar, visar inspelaren en varning. Ljudet kommer tillbaka automatiskt när mikrofonen är tillgänglig igen. Om ljudspåret avslutas avbryts inspelningen; **Fortsätt spela in** öppnar då mikrofonen och startar en ny del av samma inspelning.
 
-- Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida, och **Fortsätt spela in** spelar in i en ny del av samma inspelning. Efter **Stoppa** finns knappen också bredvid **Skapa dokument**, tills inspelningen har börjat skickas och så länge flödet tar emot ytterligare en del.
+- Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida, och **Fortsätt spela in** spelar in i en ny del av samma inspelning. I flödeslistan öppnar samma knapp flödets sida och fortsätter inspelningen där. Efter **Stoppa** finns knappen också bredvid **Skapa dokument**, tills inspelningen har börjat skickas och så länge flödet tar emot ytterligare en del.
 - **Stoppa** stoppar direkt, eftersom ett stopp kan ångras med **Fortsätt spela in**. När flödet inte tar emot fler delar av inspelningen, till exempel i ett flöde som tar emot en fil, går stoppet inte att ångra; då frågar **Stoppa** först (**Stoppa inspelningen?**, `frontend/components/flow/FlowInput.tsx`), och **Fortsätt spela in** är det förvalda svaret.
 - **Pausa** och **Stoppa** gör ingenting de första 0,7 sekunderna efter att de visats, i inspelningsfältet och i dialogen för ny inloggning, så att ett tryck som var menat för något annat inte avslutar mötet.
 - En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
