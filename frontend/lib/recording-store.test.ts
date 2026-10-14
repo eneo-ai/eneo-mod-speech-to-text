@@ -323,6 +323,26 @@ test("the local copy stays through every upload state and is deleted once Eneo a
   assert.deepEqual(await reopened.readParts(recording.id), []);
 });
 
+test("a part's upload in parts is kept through a reload until the part's file id is known, and is forgotten with the uploads", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.startPart(recording.id);
+  const upload = { key: '["user-1","flow-1","step-audio","inspelning-del-2.webm"]', id: "upload-2", size: 5 * MB, completionRequested: false };
+  await store.setPartUpload(recording.id, 1, upload);
+  const reopened = await openRecordingStore(env);
+  assert.deepEqual((await reopened.get(recording.id))?.parts.map((p) => p.upload ?? null), [null, upload], "a reload finds it");
+
+  await store.setPartFileId(recording.id, 1, "file-2");
+  const parts = async () => (await store.get(recording.id))?.parts.map((p) => [p.fileId, p.upload ?? null]);
+  assert.deepEqual(await parts(), [[null, null], ["file-2", null]], "the file id ends it");
+
+  await store.setPartUpload(recording.id, 0, { ...upload, id: "upload-1", completionRequested: true });
+  await store.clearFileIds(recording.id);
+  assert.deepEqual(await parts(), [[null, null], [null, null]]);
+});
+
 test("a sent recording whose local copy cannot be deleted is never offered again, and is deleted the next time the store opens", async () => {
   const env = device();
   const store = await openRecordingStore(env);

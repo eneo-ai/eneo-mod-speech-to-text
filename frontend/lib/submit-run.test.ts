@@ -446,8 +446,10 @@ test("a definitive completion rejection releases the handle for a fresh contract
       if (init.method === "POST") return Response.json({ detail: "Contract rejects file" }, { status });
       return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
     });
+    const kept: unknown[] = [];
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), { status });
+      await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm", { onHandle: async (handle) => void kept.push(handle) }), { status });
+      assert.equal(kept.at(-1), null, "the kept handle goes with it");
     }
     assert.deepEqual(methods, ["PUT", "POST", "PUT", "POST"]);
   }
@@ -1182,6 +1184,268 @@ test("a send that died after Eneo made the run gets that run back, not a second 
   assert.equal(run.id, "run-1");
   assert.equal(eneo.runs.size, 1);
   assert.equal(await afterReload.get(recording.id), null);
+});
+
+const PART = 4 * 1024 * 1024;
+
+/** The flow takes files as large as a long recording's part. */
+const roomy: RunContract = {
+  ...contract,
+  steps_requiring_input: [{ ...contract.steps_requiring_input![0], max_file_size_bytes: 100 * PART }],
+};
+
+/**
+ * The module's upload resources (backend/app/resumable.py) behind fetch (PUT, GET, POST …/complete) and the fake
+ * XMLHttpRequest (PATCH), for the pages of a signed-in user whose timers run only when a test moves them. The resources
+ * outlive a page, as the module's do: a part is committed when the test answers it (`commit`); with `diesOnComplete`
+ * Eneo stores the file, but the page is gone before the answer reaches it; with `refuses` Eneo does not take the file,
+ * and answers that status.
+ */
+function moduleUploads(t: TestContext) {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.after(loginState.begin({ id: "user-1", email: "erik.lund@sundsvall.se" }));
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => {
+    globalThis.XMLHttpRequest = browserXhr;
+  });
+  FakeXhr.made = [];
+  type Resource = { offset: number; state: string; file_id: string | null; failure: unknown };
+  const resources = new Map<string, Resource>();
+  const status = (r: Resource) => ({ offset: r.offset, chunk_size: PART, state: r.state, file_id: r.file_id, failure: r.failure });
+  const idOf = (path: string) => path.split("/")[5];
+  const module = {
+    resources,
+    /** The page's requests other than parts, as "METHOD id". */
+    asked: [] as string[],
+    /** The resources whose file Eneo stored. */
+    stored: [] as string[],
+    diesOnComplete: false,
+    refuses: null as number | null,
+    commit(xhr: FakeXhr) {
+      const resource = resources.get(idOf(xhr.path))!;
+      assert.equal(xhr.headers["Upload-Offset"], String(resource.offset));
+      resource.offset += (xhr.body as Blob).size;
+      xhr.answer(200, status(resource));
+    },
+  };
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? "GET";
+    const id = idOf(url);
+    module.asked.push(`${method} ${id}`);
+    let resource = resources.get(id);
+    if (method === "PUT" && !resource) resources.set(id, (resource = { offset: 0, state: "receiving", file_id: null, failure: null }));
+    if (!resource) return Response.json({ detail: "Upload not found or expired" }, { status: 404 });
+    if (method === "POST" && resource.state === "receiving") {
+      if (module.refuses) {
+        Object.assign(resource, { state: "failed", failure: { status: module.refuses, detail: "Eneo did not take the file.", code: null } });
+      } else {
+        module.stored.push(id);
+        Object.assign(resource, { state: "complete", file_id: `file-${module.stored.length}` });
+        if (module.diesOnComplete) return new Promise<Response>(() => {});
+      }
+    }
+    return Response.json(status(resource));
+  });
+  return module;
+}
+
+/** A device whose tabs share its database and locks, with a stopped recording whose one part goes up in two pieces… */
+async function largeRecordingOnDevice() {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const tab = await openRecordingStore(device);
+  const recording = await stoppedRecording(tab, [["x".repeat(PART + 16)]]);
+  return { device, tab, recording };
+}
+
+/** …sent from `tab` until its first piece is committed and the second is on its way. */
+async function firstPartSent(tab: RecordingStore, id: string, module: ReturnType<typeof moduleUploads>) {
+  void submitRecording(tab, id, params({ contract: roomy }), { upload: uploadStepRuntimeFile, startRun: async () => queuedRun });
+  await until(() => FakeXhr.made.length === 1);
+  module.commit(FakeXhr.made[0]);
+  await until(() => FakeXhr.made.length === 2);
+}
+
+test("a part's upload in parts is kept from the moment the module made it, and goes on after a reload where the module has it", async (t) => {
+  const module = moduleUploads(t);
+  const { device, tab, recording } = await largeRecordingOnDevice();
+  void submitRecording(tab, recording.id, params({ contract: roomy }), { upload: uploadStepRuntimeFile, startRun: async () => queuedRun });
+  await until(() => FakeXhr.made.length === 1);
+  const id = module.asked[0].split(" ")[1];
+  const [{ filename }] = await tab.readParts(recording.id);
+  assert.deepEqual(
+    (await tab.get(recording.id))?.parts[0].upload,
+    { key: JSON.stringify(["user-1", "flow-1", "step-audio", filename]), id, size: PART + 16, completionRequested: false },
+    "kept before the first part goes",
+  );
+  module.commit(FakeXhr.made[0]);
+  await until(() => FakeXhr.made.length === 2);
+  tab.release(recording.id); // the tab is reloaded with the second part on its way; the browser ends its lock
+
+  const afterReload = await openRecordingStore(device);
+  const shown: number[] = [];
+  let atStart: unknown;
+  const run = submitRecording(afterReload, recording.id, params({ contract: roomy, onProgress: ({ loaded }) => void shown.push(loaded) }), {
+    upload: uploadStepRuntimeFile,
+    startRun: async (_flowId, body) => {
+      atStart = [body.step_inputs, (await afterReload.get(recording.id))?.parts[0]];
+      return queuedRun;
+    },
+  });
+  await until(() => FakeXhr.made.length === 3);
+  assert.equal(FakeXhr.made[2].path, `/api/uploads/flow-1/step-audio/${id}`);
+  assert.equal((FakeXhr.made[2].body as Blob).size, 16, "only what the module does not have");
+  module.commit(FakeXhr.made[2]);
+  assert.equal((await run).id, "run-1");
+  assert.equal(shown[0], PART, "the progress shown starts where the module has it");
+  assert.deepEqual(module.asked, [`PUT ${id}`, `PUT ${id}`, `POST ${id}`]);
+  const [stepInputs, part] = atStart as [unknown, { fileId: string; upload?: unknown }];
+  assert.deepEqual(stepInputs, { "step-audio": { file_ids: ["file-1"] } });
+  assert.deepEqual([part.fileId, part.upload ?? null], ["file-1", null], "the part's file id ends its upload");
+});
+
+test("a part Eneo stored before the page heard of it is not uploaded again after a reload: the module's receipt names it", async (t) => {
+  const module = moduleUploads(t);
+  const { device, tab, recording } = await largeRecordingOnDevice();
+  module.diesOnComplete = true;
+  await firstPartSent(tab, recording.id, module);
+  module.commit(FakeXhr.made[1]);
+  await until(() => module.stored.length === 1);
+  tab.release(recording.id);
+  assert.equal((await tab.get(recording.id))?.parts[0].upload?.completionRequested, true, "kept before the completion was asked");
+
+  const asked: unknown[] = [];
+  const afterReload = await openRecordingStore(device);
+  const run = await submitRecording(afterReload, recording.id, params({ contract: roomy }), {
+    upload: uploadStepRuntimeFile,
+    startRun: async (_flowId, body) => {
+      asked.push(body.step_inputs);
+      return queuedRun;
+    },
+  });
+  assert.equal(run.id, "run-1");
+  const [id] = module.stored;
+  assert.deepEqual(module.asked, [`PUT ${id}`, `POST ${id}`, `GET ${id}`], "read, never made again");
+  assert.equal(FakeXhr.made.length, 2, "no byte goes twice");
+  assert.deepEqual(asked, [{ "step-audio": { file_ids: ["file-1"] } }]);
+});
+
+test("a part the module no longer has goes up anew from its first byte; once its completion was asked, only on the person's new send", async (t) => {
+  const module = moduleUploads(t);
+  const { device, tab, recording } = await largeRecordingOnDevice();
+  await firstPartSent(tab, recording.id, module);
+  tab.release(recording.id);
+  module.resources.clear(); // the module restarted, or the upload expired
+
+  const afterReload = await openRecordingStore(device);
+  const shown: number[] = [];
+  const run = submitRecording(afterReload, recording.id, params({ contract: roomy, onProgress: ({ loaded }) => void shown.push(loaded) }), {
+    upload: uploadStepRuntimeFile,
+    startRun: async () => queuedRun,
+  });
+  await until(() => FakeXhr.made.length === 3);
+  module.commit(FakeXhr.made[2]); // from the first byte: commit checks the offset
+  await until(() => FakeXhr.made.length === 4);
+  module.commit(FakeXhr.made[3]);
+  assert.equal((await run).id, "run-1");
+  assert.equal(shown[0], 0);
+
+  // Asked to complete, and then the module restarted: Eneo may hold the file, so nothing goes up by itself.
+  const second = await largeRecordingOnDevice();
+  module.diesOnComplete = true;
+  FakeXhr.made = [];
+  await firstPartSent(second.tab, second.recording.id, module);
+  module.commit(FakeXhr.made[1]);
+  await until(() => module.stored.length === 2);
+  second.tab.release(second.recording.id);
+  module.resources.clear();
+  module.diesOnComplete = false;
+
+  const reloaded = await openRecordingStore(second.device);
+  const deps = { upload: uploadStepRuntimeFile, startRun: async () => queuedRun };
+  let refusal: ApiError | undefined;
+  void submitRecording(reloaded, second.recording.id, params({ contract: roomy }), deps).catch((error) => (refusal = error));
+  await until(() => refusal !== undefined || FakeXhr.made.length > 2);
+  assert.equal(FakeXhr.made.length, 2, "nothing went up by itself");
+  assert.equal(refusal?.code, "upload_forward_failed");
+  assert.equal((await reloaded.get(second.recording.id))?.parts[0].upload ?? null, null, "the receipt is gone, and so is the upload kept");
+  const sending = submitRecording(reloaded, second.recording.id, params({ contract: roomy }), deps);
+  await until(() => FakeXhr.made.length === 3);
+  const fresh = module.asked.at(-1)!.split(" ")[1];
+  assert.notEqual(fresh, module.stored[1], "a new upload");
+  module.commit(FakeXhr.made[2]);
+  await until(() => FakeXhr.made.length === 4);
+  module.commit(FakeXhr.made[3]);
+  assert.equal((await sending).id, "run-1");
+});
+
+test("a part Eneo did not take forgets its kept upload: the next send, the person's or the wait's own, makes a new one", async (t) => {
+  const module = moduleUploads(t);
+  const { tab, recording } = await largeRecordingOnDevice();
+  const deps = { upload: uploadStepRuntimeFile, startRun: async () => queuedRun };
+  const ids = () => new Set(module.asked.map((request) => request.split(" ")[1]));
+  /** Sends both pieces of the part as the module asks for them, from piece `first` on. */
+  const sent = async (first: number) => {
+    await until(() => FakeXhr.made.length === first + 1);
+    module.commit(FakeXhr.made[first]);
+    await until(() => FakeXhr.made.length === first + 2);
+    module.commit(FakeXhr.made[first + 1]);
+  };
+  module.refuses = 502;
+  const sending = submitRecording(tab, recording.id, params({ contract: roomy }), deps);
+  await sent(0);
+  await assert.rejects(sending, { code: "upload_forward_failed" });
+  assert.equal((await tab.get(recording.id))?.parts[0].upload ?? null, null);
+
+  module.refuses = null;
+  const again = submitRecording(tab, recording.id, params({ contract: roomy }), deps);
+  await sent(2);
+  assert.equal((await again).id, "run-1");
+  assert.equal(ids().size, 2, "the refused upload is not asked again");
+
+  // After a reload, too many requests for Eneo just then: the send waits, and its next try is a new upload, not the
+  // refused one's receipt again.
+  const later = await largeRecordingOnDevice();
+  FakeXhr.made = [];
+  await firstPartSent(later.tab, later.recording.id, module);
+  later.tab.release(later.recording.id);
+  module.refuses = 429;
+  let waiting = false;
+  const afterReload = await openRecordingStore(later.device);
+  const waits = submitRecording(afterReload, later.recording.id, params({ contract: roomy, onWait: (wait) => (waiting = wait !== null) }), deps);
+  await until(() => FakeXhr.made.length === 3);
+  module.commit(FakeXhr.made[2]);
+  await until(() => waiting);
+  module.refuses = null;
+  t.mock.timers.tick(1_000);
+  await sent(3);
+  assert.equal((await waits).id, "run-1");
+  assert.equal(ids().size, 4);
+});
+
+test("an upload kept for another size or another step is not continued: the part goes up anew, and the other gets no byte", async (t) => {
+  const module = moduleUploads(t);
+  for (const other of [{ size: PART + 17 }, { step: "step-old" }]) {
+    FakeXhr.made = [];
+    module.asked.length = 0;
+    const { tab, recording } = await largeRecordingOnDevice();
+    const [{ filename }] = await tab.readParts(recording.id);
+    module.resources.set("kept", { offset: 0, state: "receiving", file_id: null, failure: null });
+    await tab.setPartUpload(recording.id, 0, {
+      key: JSON.stringify(["user-1", "flow-1", other.step ?? "step-audio", filename]),
+      id: "kept",
+      size: other.size ?? PART + 16,
+      completionRequested: false,
+    });
+    const sending = submitRecording(tab, recording.id, params({ contract: roomy }), { upload: uploadStepRuntimeFile, startRun: async () => queuedRun });
+    await until(() => FakeXhr.made.length === 1);
+    module.commit(FakeXhr.made[0]);
+    await until(() => FakeXhr.made.length === 2);
+    module.commit(FakeXhr.made[1]);
+    assert.equal((await sending).id, "run-1");
+    assert.equal(module.asked.some((request) => request.endsWith(" kept")), false, JSON.stringify(other));
+    assert.equal(module.resources.get("kept")?.offset, 0);
+  }
 });
 
 test("the run body carries speaker_labels only when the page passes the choice", async () => {
