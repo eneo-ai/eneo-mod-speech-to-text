@@ -9,10 +9,11 @@ import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { saveRecordingAsFiles } from "@/components/save-recording";
+import { useSaveRecording } from "@/components/save-recording";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
   continuable,
+  filesIn,
   hasAudio,
   IN_USE_ELSEWHERE,
   recordingStore,
@@ -197,6 +198,7 @@ function UnsentRecordingRow({
   const wasConfirming = useRef(false);
   // No audio reached the device: nothing to send or save, only going on with it and deleting it.
   const audio = hasAudio(recording);
+  const saving = useSaveRecording(recording.id, filesIn(recording));
 
   // Focus follows the question: to "Avbryt" when it opens, back to "Ta bort" when it closes.
   useEffect(() => {
@@ -207,11 +209,7 @@ function UnsentRecordingRow({
 
   async function save() {
     setProblem(null);
-    try {
-      await saveRecordingAsFiles(recording.id);
-    } catch {
-      setProblem("Inspelningen kunde inte sparas som fil. Försök igen.");
-    }
+    if (!(await saving.save())) setProblem("Inspelningen kunde inte sparas som fil. Försök igen.");
   }
 
   async function remove() {
@@ -251,7 +249,7 @@ function UnsentRecordingRow({
                 <Text as="p" color="secondary">
                   I den här webbläsaren kan den bara sparas som fil.
                 </Text>
-                <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
+                <Button label={saving.label} aria-describedby={summaryId} onClick={() => void save()} />
               </VStack>
             )
           ) : confirming ? (
@@ -276,7 +274,7 @@ function UnsentRecordingRow({
                   />
                 )}
                 {onSend && audio && <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />}
-                {audio && <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />}
+                {audio && <Button label={saving.label} aria-describedby={summaryId} onClick={() => void save()} />}
               </HStack>
               <Button
                 ref={deleteRef}

@@ -191,24 +191,24 @@ test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to 
 });
 
 test("a recording that cannot be saved or removed says so in an alert, and a removal that failed closes the question", async (t) => {
-  const saving = await import("../components/save-recording");
   const store = await import("./recording-store");
   const { container, act } = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))] });
   const row = rowsOf(container)[0];
   const alert = () => [...row.querySelectorAll('[role="alert"]')].map((a) => a.textContent?.trim());
   assert.deepEqual(alert(), [], "nothing is said before something fails");
 
-  t.mock.method(saving, "saveRecordingAsFiles", async () => {
-    throw new Error("disk");
-  });
-  await act(async () => button(row, "Spara som fil")!.click());
-  assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
-
+  // The device reads nothing back, and refuses the deletion: another tab holds the recording.
   t.mock.method(store, "recordingStore", async () => ({
+    readParts: async () => {
+      throw new Error("disk");
+    },
     remove: async () => {
       throw new Error(IN_USE_ELSEWHERE);
     },
   }));
+  await act(async () => button(row, "Spara som fil")!.click());
+  assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
+
   await act(async () => button(row, "Ta bort")!.click());
   await act(async () => button(row.querySelector('[role="group"]')!, "Ta bort")!.click());
   assert.deepEqual(alert(), [IN_USE_ELSEWHERE]);

@@ -19,6 +19,7 @@
 import { formatBytes, formatDuration } from "./format";
 import {
   continuable,
+  filesIn,
   IN_USE_ELSEWHERE,
   NOT_ON_DEVICE,
   sealed,
@@ -158,9 +159,6 @@ const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräft
 const PAUSE_UNCONFIRMED = "Det gick inte att bekräfta att inspelningen sparades på enheten.";
 
 const notOnDevice = (error: unknown) => error instanceof Error && error.message === NOT_ON_DEVICE;
-
-// A recording's files: its parts with audio.
-const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
 
 const noMoreFiles = (maxFiles: number) =>
   `Flödet tar emot högst ${maxFiles} ${maxFiles === 1 ? "fil" : "filer"}, och inspelningen har redan så många delar.`;

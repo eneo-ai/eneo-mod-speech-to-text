@@ -13,7 +13,7 @@ import { creatingHeading } from "@/lib/flow-output";
 import { StateCard } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
-import { saveRecordingAsFiles } from "@/components/save-recording";
+import { useSaveRecording } from "@/components/save-recording";
 
 export type SubmissionState =
   | { kind: "idle" }
@@ -83,13 +83,11 @@ export function SubmittingView({
 function Starting({ submission, onCancel }: { submission: Extract<SubmissionState, { kind: "starting" }>; onCancel: () => void }) {
   const [saveProblem, setSaveProblem] = useState(false);
   const { wait, recordingId } = submission;
+  // How many files it has is known once the first is saved.
+  const saving = useSaveRecording(recordingId ?? "", 1);
   async function save() {
     setSaveProblem(false);
-    try {
-      await saveRecordingAsFiles(recordingId!);
-    } catch {
-      setSaveProblem(true);
-    }
+    if (!(await saving.save())) setSaveProblem(true);
   }
   return (
     <VStack gap={3} hAlign="start">
@@ -101,7 +99,7 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
       <RetryNotice wait={wait} />
       <HStack gap={2} wrap="wrap">
         <Button label="Avbryt" variant="secondary" onClick={onCancel} />
-        {recordingId && <Button label="Spara som fil" variant="secondary" onClick={() => void save()} />}
+        {recordingId && <Button label={saving.label} variant="secondary" onClick={() => void save()} />}
       </HStack>
       {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>

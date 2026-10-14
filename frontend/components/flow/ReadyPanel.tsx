@@ -17,13 +17,13 @@ import { StoppedWhileSignedOut } from "@/components/flow/Recorder";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { StateCard } from "@/components/flow/StateCard";
-import { saveRecordingAsFiles } from "@/components/save-recording";
+import { useSaveRecording } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import type { LiveSession, Problem } from "@/lib/flow-session";
 import { createActionLabel } from "@/lib/flow-output";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
-import { hasAudio, recordingStore, type StoredRecording } from "@/lib/recording-store";
+import { filesIn, hasAudio, recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
 
 /** How long a recording's addresses outlive the player that read them. */
@@ -139,6 +139,7 @@ export function ReadyPanel({
   const sent = problem?.sent === true;
   const { sources, unreadable } = usePartSources(recording);
   const playback = usePlayback(sources);
+  const saving = useSaveRecording(recording.id, filesIn(recording));
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   // The question is the page's: it is closed while the login has ended, and back with the same state after the new one.
   const [confirming, setConfirming] = useState(false);
@@ -162,11 +163,7 @@ export function ReadyPanel({
 
   async function save() {
     setSaveProblem(null);
-    try {
-      await saveRecordingAsFiles(recording.id);
-    } catch {
-      setSaveProblem({ title: "Inspelningen kunde inte sparas som fil.", detail: "Försök igen." });
-    }
+    if (!(await saving.save())) setSaveProblem({ title: "Inspelningen kunde inte sparas som fil.", detail: "Försök igen." });
   }
 
   return (
@@ -187,7 +184,7 @@ export function ReadyPanel({
 
       {audio ? (
         <HStack gap={4} wrap="wrap" align="center">
-          <Button label="Spara som fil" variant="secondary" icon={<Icon icon={Download} size="sm" />} onClick={() => void save()} />
+          <Button label={saving.label} variant="secondary" icon={<Icon icon={Download} size="sm" />} onClick={() => void save()} />
           <StackItem size="fill">
             <Text as="p" type="supporting">
               {persistent
