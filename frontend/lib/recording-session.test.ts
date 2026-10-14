@@ -1559,3 +1559,69 @@ test("the recorder says when space runs low or the device stops keeping the reco
   await capture.stop();
   assert.equal(capture.getSnapshot().persistent, false, "the ready state after Stoppa still says so");
 });
+
+/** The device has no room for a chunk until the returned function gives it room again. */
+function fillDevice(): () => void {
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  return () => void (IDBObjectStore.prototype.put = put);
+}
+
+/** A device that fills up during a recording: its store, the store's try of the full device (run by the test), and its database. */
+async function fillingDevice() {
+  const indexedDB = new IDBFactory();
+  const retry = { run: () => {} };
+  const env = { indexedDB, keyRange: IDBKeyRange, locks: fakeWebLocks(), timer: (run: () => void) => void (retry.run = run) };
+  const store = await openRecordingStore(env);
+  const { capture, recorders } = await setup({ store });
+  await capture.start(meeting);
+  const { id } = capture.getSnapshot().recording!;
+  recorders[0].emit("a");
+  const room = fillDevice();
+  try {
+    recorders[0].emit("b");
+    await until(() => capture.getSnapshot().refused === "full", "the full device said");
+  } finally {
+    room(); // the person frees room; the store has not tried the device again yet
+  }
+  return { capture, recorders, store, id, retry: () => retry.run(), otherTab: () => openRecordingStore({ ...env, timer: undefined }) };
+}
+
+test("once the full device has room again the warning goes, a note says the recording is kept on the device again for a moment, and recording goes on there", async (t) => {
+  const { capture, recorders, id, retry, otherTab } = await fillingDevice();
+  assert.deepEqual([capture.getSnapshot().persistent, capture.getSnapshot().backOnDevice], [false, false]);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  retry();
+  await until(() => capture.getSnapshot().refused === null, "back on the device");
+  assert.deepEqual([capture.getSnapshot().persistent, capture.getSnapshot().backOnDevice], [true, true]);
+  t.mock.timers.tick(9_999);
+  assert.equal(capture.getSnapshot().backOnDevice, true);
+  t.mock.timers.tick(1);
+  assert.equal(capture.getSnapshot().backOnDevice, false, "said for ten seconds");
+  recorders[0].emit("c");
+  await until(async () => (await (await otherTab()).get(id))?.parts[0]?.chunks === 3, "the next chunk on the device");
+});
+
+test("Stoppa while the recording goes back onto the device keeps every chunk on the device, in order, and the ready state says it is kept there", async () => {
+  const { capture, recorders, id, retry, otherTab } = await fillingDevice();
+  retry(); // the move is in the store's queue
+  recorders[0].emit("c");
+  const stopped = await capture.stop();
+  assert.equal(stopped?.state, "stopped");
+  assert.equal(capture.getSnapshot().persistent, true);
+  assert.deepEqual(await texts(await (await otherTab()).readPartsToSend(id)), ["abc."], "the device alone has all of it");
+});
+
+test("a full device that has room again after Stoppa takes the recording back, and the ready state follows", async () => {
+  const { capture, retry, id, otherTab } = await fillingDevice();
+  await capture.stop();
+  assert.deepEqual([capture.getSnapshot().persistent, capture.getSnapshot().refused], [false, "full"], "said while only this tab has part of it");
+  retry();
+  await until(() => capture.getSnapshot().persistent, "kept on the device again");
+  assert.equal(capture.getSnapshot().refused, null);
+  assert.equal(capture.getSnapshot().backOnDevice, false, "the note is the recording bar's, which is gone");
+  assert.deepEqual(await texts(await (await otherTab()).readPartsToSend(id)), ["ab."]);
+});

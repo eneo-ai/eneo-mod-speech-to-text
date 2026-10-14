@@ -74,6 +74,8 @@ interface CaptureSnapshot {
   persistent: boolean;
   /** The device stopped keeping this recording partway (full, or a refused write): the rest is in this tab only. */
   refused: DeviceRefusal | null;
+  /** The device was full and keeps the recording again: said for a moment while recording. */
+  backOnDevice: boolean;
   /** Recording time left before the flow's last allowed file is full; null when the flow sets no such limit. */
   remainingMs: number | null;
   /** The recording stopped because the flow takes no more files. */
@@ -145,6 +147,9 @@ const filesIn = (recording: StoredRecording) => recording.parts.filter((part) =>
 const noMoreFiles = (maxFiles: number) =>
   `Flödet tar emot högst ${maxFiles} ${maxFiles === 1 ? "fil" : "filer"}, och inspelningen har redan så många delar.`;
 
+// How long the recorder says the recording is kept on the device again, once the full device has room.
+const BACK_ON_DEVICE_MS = 10_000;
+
 /** A refusal whose sentence the user reads as it is. */
 class Refusal extends Error {}
 
@@ -183,6 +188,7 @@ export class RecordingCapture {
     lowSpace: false,
     persistent: true,
     refused: null,
+    backOnDevice: false,
     remainingMs: null,
     limitReached: false,
     muted: false,
@@ -190,6 +196,9 @@ export class RecordingCapture {
   };
   private listeners = new Set<() => void>();
   private store: RecordingStore | null = null;
+  // Following the store's word on keeping the recording, from the first start until the page goes.
+  private unfollow: (() => void) | null = null;
+  private backOnDeviceTimer: ReturnType<typeof setTimeout> | null = null;
   private microphone: MediaStream | null = null;
   // The part recording now, and a full part still recording its overlap.
   private part: Part | null = null;
@@ -240,7 +249,7 @@ export class RecordingCapture {
     try {
       const stream = await this.openMicrophone();
       if (this.left(generation)) return;
-      const store = (this.store ??= await this.openStore());
+      const store = await this.openedStore();
       const recording = (created = await store.create(init));
       this.release = () => store.release(recording.id);
       void store.requestPersistence();
@@ -374,6 +383,9 @@ export class RecordingCapture {
   /** The page goes away: what was recorded stays, paused, for recovery. */
   dispose(): void {
     this.generation += 1;
+    this.unfollow?.();
+    this.unfollow = null;
+    this.sayBackOnDevice(false);
     const { recording, status } = this.snapshot;
     const store = this.store;
     if (!recording || !store || status === "idle" || status === "stopped") {
@@ -408,7 +420,7 @@ export class RecordingCapture {
     this.set({ error: null, limitReached: false });
     const generation = this.generation;
     try {
-      const store = (this.store ??= await this.openStore());
+      const store = await this.openedStore();
       // Read before the lease, so a send in progress gives its own reason, and
       // again under it, where no other tab changes the recording any more.
       const eligible = async () => {
@@ -506,12 +518,7 @@ export class RecordingCapture {
       const durationMs = this.partElapsed(part);
       void part.index
         .then((index) => store.append(id, index, data, durationMs))
-        .then(() => {
-          const refused = store.refused(id);
-          if (store.persistent !== this.snapshot.persistent || refused !== this.snapshot.refused) {
-            this.set({ persistent: store.persistent, refused });
-          }
-        })
+        .then(this.followStore)
         .catch((error) => {
           // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
           if (notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
@@ -734,6 +741,31 @@ export class RecordingCapture {
     this.set({ status: "interrupted", stream: null, remainingMs: this.remaining(null), ...kept });
   }
 
+  /** The store, opened on the first start; from then on the recorder follows what it says of keeping the recording. */
+  private async openedStore(): Promise<RecordingStore> {
+    const store = (this.store ??= await this.openStore());
+    this.unfollow ??= store.subscribe(this.followStore);
+    return store;
+  }
+
+  /** What the store says of keeping the recording: the device refused part of it, or keeps it again. */
+  private followStore = () => {
+    const store = this.store;
+    const { recording, refused: was, status } = this.snapshot;
+    if (!store || !recording) return;
+    const refused = store.refused(recording.id);
+    if (refused === was && store.persistent === this.snapshot.persistent) return;
+    this.set({ persistent: store.persistent, refused });
+    const capturing = status === "recording" || status === "paused" || status === "interrupted";
+    if (refused !== was) this.sayBackOnDevice(capturing && was === "full" && refused === null);
+  };
+
+  private sayBackOnDevice(on: boolean) {
+    if (this.backOnDeviceTimer !== null) clearTimeout(this.backOnDeviceTimer);
+    this.backOnDeviceTimer = on ? setTimeout(() => this.sayBackOnDevice(false), BACK_ON_DEVICE_MS) : null;
+    if (on !== this.snapshot.backOnDevice) this.set({ backOnDevice: on });
+  }
+
   private onMicrophoneLost = () => void this.endParts("interrupt");
 
   private onMuteChange = () => {
@@ -848,6 +880,7 @@ export class RecordingCapture {
     this.release?.();
     this.release = null;
     this.releaseWakeLock();
+    this.sayBackOnDevice(false);
   }
 
   private set(patch: Partial<CaptureSnapshot>) {

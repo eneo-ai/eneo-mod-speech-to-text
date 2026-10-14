@@ -99,12 +99,23 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
       "Låt skärmen vara tänd under inspelningen.",
     ],
   });
-  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), {
-    warnings: [
-      { title: "Enheten har inte plats för att spara mer.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
-    ],
-    notes: [],
-  });
+  const full = {
+    title: "Enheten är full.",
+    detail:
+      "Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma Hämtade filer och " +
+      "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
+  };
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), { warnings: [full], notes: [] });
+  assert.deepEqual(
+    recordingNotices({ ...base, persistent: false, refused: "full", lowSpace: true }).warnings,
+    [full],
+    "a full device is said once, not also as one with little room",
+  );
+  assert.deepEqual(
+    recordingNotices({ ...base, backOnDevice: true }),
+    { warnings: [], notes: ["Det finns plats igen, och inspelningen sparas på enheten."] },
+    "back on the device: a calm note in the bar's line",
+  );
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
     { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
   ]);

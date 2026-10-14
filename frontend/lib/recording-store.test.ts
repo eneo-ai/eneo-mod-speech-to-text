@@ -531,6 +531,30 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   assert.equal(store.refused(other.id), "failed", "a refusal that is not a full device");
 });
 
+/** The device has no room for a chunk until the returned function gives it room again. */
+function fillDevice(): () => void {
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  return () => void (IDBObjectStore.prototype.put = put);
+}
+
+/** The store's timer, which the test runs: `waits` are the delays asked for, `fire` runs what waits. */
+function testTimer() {
+  const waits: number[] = [];
+  const pending: Array<() => void> = [];
+  return {
+    waits,
+    timer: (run: () => void, ms: number) => {
+      waits.push(ms);
+      pending.push(run);
+    },
+    fire: () => pending.splice(0).forEach((run) => run()),
+  };
+}
+
 test("audio and the recording's state are on the disk before a write counts as done, so a power cut loses at most the chunk being written", async () => {
   const durability = new Set<string>();
   const put = IDBObjectStore.prototype.put;
@@ -548,6 +572,118 @@ test("audio and the recording's state are on the disk before a write counts as d
     IDBObjectStore.prototype.put = put;
   }
   assert.deepEqual([...durability].sort(), ["chunks: strict", "recordings: strict"]);
+});
+
+test("a full device is tried again while it refuses; once it has room, what this tab held goes onto it in order, once, and the tab lets its copy go", async () => {
+  const later = testTimer();
+  const env = device({ timer: later.timer });
+  const store = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+
+  const room = fillDevice();
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+    assert.equal(store.refused(recording.id), "full");
+    assert.deepEqual(later.waits, [20_000], "tried again in 20 seconds, with one timer however many chunks it refuses");
+    later.fire();
+    await store.get(recording.id); // the try is in the store's queue
+    assert.equal(store.refused(recording.id), "full", "still no room: the audio stays in this tab");
+    assert.deepEqual(later.waits, [20_000, 20_000], "and is tried again");
+    await store.append(recording.id, 0, new Blob(["d"]), 4_000);
+  } finally {
+    room();
+  }
+  // Stoppa, and the page lets the recording go (Spela in på nytt): the lease stays for the audio only this tab has.
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  await settle();
+  assert.equal(await otherTab.lease(recording.id), false, "no other tab takes it without what only this tab has");
+
+  later.fire();
+  await store.get(recording.id);
+  assert.equal(store.refused(recording.id), null, "kept on the device again");
+  assert.equal(store.persistent, true);
+  assert.deepEqual(later.waits, [20_000, 20_000], "nothing left to try again");
+  await settle(); // the lease goes with the browser's next turn
+  assert.equal(await otherTab.lease(recording.id), true, "the tab let its copy go, and the lease with it");
+  assert.deepEqual(await texts(await otherTab.readPartsToSend(recording.id)), ["abcd"], "the device alone has all of it, whole, in order");
+  await otherTab.setState(recording.id, "paused");
+  otherTab.release(recording.id);
+  await settle();
+  assert.deepEqual(
+    (await store.listUnsent("user-1")).map((r) => r.state),
+    ["paused"],
+    "this tab reads the recording as the device has it now, not a copy it kept",
+  );
+});
+
+test("while the device is full the recording goes on in order: a chunk after a failed try is never lost or doubled, and a new part goes on too", async () => {
+  const later = testTimer();
+  const store = await openRecordingStore(device({ timer: later.timer }));
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const room = fillDevice();
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+    later.fire(); // a try the device refuses, between two chunks
+    void store.append(recording.id, 0, new Blob(["c"]), 3_000);
+    await store.startPart(recording.id);
+    await store.append(recording.id, 1, new Blob(["X"]), 1_000);
+  } finally {
+    room();
+  }
+  void store.append(recording.id, 1, new Blob(["y"]), 2_000);
+  later.fire(); // the try it takes, between two chunks
+  void store.append(recording.id, 1, new Blob(["z"]), 3_000);
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["abc", "Xyz"]);
+  assert.equal(store.refused(recording.id), null);
+  const saved = await store.get(recording.id);
+  assert.deepEqual(saved?.parts.map((part) => [part.chunks, part.bytes]), [[3, 3], [3, 3]]);
+});
+
+test("a storage estimate that shows room again moves the audio onto the device at once, without waiting for the next try", async () => {
+  let usage = 950 * MB;
+  const store = await openRecordingStore(device({ storage: { persist: async () => true, estimate: async () => ({ usage, quota: 1_000 * MB }) } }));
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const room = fillDevice();
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  } finally {
+    room();
+  }
+  assert.equal(await store.lowOnSpace(), true);
+  await store.get(recording.id);
+  assert.equal(store.refused(recording.id), "full", "an estimate with little room moves nothing");
+  usage = 100 * MB;
+  assert.equal(await store.lowOnSpace(), false);
+  await store.get(recording.id);
+  assert.equal(store.refused(recording.id), null);
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["ab"]);
+});
+
+test("a recording deleted while the device is full leaves nothing to try again", async () => {
+  const later = testTimer();
+  const store = await openRecordingStore(device({ timer: later.timer }));
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  const room = fillDevice();
+  try {
+    await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  } finally {
+    room();
+  }
+  await store.discard(recording.id);
+  later.fire();
+  await store.get(recording.id);
+  assert.deepEqual(later.waits, [20_000], "tried once, for nothing, and not again");
+  assert.equal(store.persistent, true);
 });
 
 /**
@@ -834,7 +970,7 @@ test("the RAM fallback appends a chunk in place, so a long recording is not copi
   } as typeof iterate;
   const N = 2_000; // a 5-hour recording holds 9,000 chunks
   try {
-    for (let seq = 0; seq < N; seq += 1) void backend.put(recording, { recordingId: "r", part: 0, seq, data: new ArrayBuffer(1) });
+    for (let seq = 0; seq < N; seq += 1) void backend.put(recording, [{ recordingId: "r", part: 0, seq, data: new ArrayBuffer(1) }]);
   } finally {
     Array.prototype[Symbol.iterator] = iterate;
   }

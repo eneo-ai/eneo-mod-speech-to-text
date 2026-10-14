@@ -859,7 +859,7 @@ export const STATES: State[] = [
           return put.apply(this, args);
         };
       });
-      await recordingSays(page, /^Enheten har inte plats för att spara mer\./, () =>
+      await recordingSays(page, /^Enheten är full\./, () =>
         page.evaluate(() => ((window as unknown as { diskFull?: boolean }).diskFull = true)),
       );
     },

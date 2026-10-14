@@ -16,7 +16,9 @@ Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`fronten
 
 Utloggning tar inte bort sparade inspelningar. Inloggningssidan förklarar detta efter utloggning (`frontend/routes/LoginPage.tsx`); logga in med samma konto i samma webbläsarprofil för att fortsätta. Använd en egen webbläsarprofil om du delar dator med andra. Ljudet ligger i profilen, och modulens inloggning skyddar inte mot någon som kan läsa profilens lokala lagring.
 
-Om lagringen slutar fungera, till exempel när webbplatsdata rensas under inspelningen, visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
+Om enheten blir full under inspelningen visas varningen **Enheten är full.** Inspelningen fortsätter i flikens minne och finns bara där tills det finns plats, så fliken ska inte stängas. Frigör utrymme, till exempel genom att tömma Hämtade filer och papperskorgen. Appen försöker spara på enheten igen var 20:e sekund, och direkt när webbläsarens uppskattning av lagringen visar att det finns plats igen. Det gäller också efter **Stoppa**. När enheten tar emot det som bara fanns i fliken skrivs allt i en enda skrivning, i ordning, och flikens kopia släpps; en skrivning som inte får plats lämnar enhetens kopia som den var. Inspelningsfältet säger en kort stund att inspelningen sparas på enheten igen.
+
+Om lagringen slutar fungera av något annat skäl, till exempel när webbplatsdata rensas under inspelningen, visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
 
 ## Fortsätta en inspelning
 

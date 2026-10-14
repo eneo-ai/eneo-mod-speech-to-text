@@ -257,6 +257,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     lowSpace: capture.lowSpace,
     persistent: persistent !== false,
     refused: capture.refused,
+    backOnDevice: capture.backOnDevice,
     remainingMs: capture.remainingMs,
     muted: capture.muted,
     wakeLock,
