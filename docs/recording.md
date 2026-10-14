@@ -12,7 +12,7 @@ Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`fronten
 
 - Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**, och för en inspelning som avbröts utan stopp **Fortsätt spela in** (se [Fortsätta en inspelning](#fortsätta-en-inspelning)).
 - En inspelning där inget ljud nådde enheten säger **Inget ljud sparades i den här inspelningen.** Den kan inte skickas eller sparas som fil; den har bara **Fortsätt spela in**, när den går att fortsätta, och **Ta bort**.
-- Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**. Appen har ingen automatisk tidsgräns för osända inspelningar.
+- Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**; efter **Ta bort** på en stoppad inspelning står **Inspelningen togs bort.** där en ny inspelning börjar. Appen har ingen automatisk tidsgräns för osända inspelningar.
 - Utan IndexedDB (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
 
 Utloggning tar inte bort sparade inspelningar. Inloggningssidan förklarar detta efter utloggning (`frontend/routes/LoginPage.tsx`); logga in med samma konto i samma webbläsarprofil för att fortsätta. Använd en egen webbläsarprofil om du delar dator med andra. Ljudet ligger i profilen, och modulens inloggning skyddar inte mot någon som kan läsa profilens lokala lagring.

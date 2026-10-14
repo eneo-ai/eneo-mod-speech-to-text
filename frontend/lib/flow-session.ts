@@ -779,10 +779,10 @@ export class FlowSession {
     this.emit();
   }
 
-  /** "Ta bort": the recording leaves the device for good; the details stay. */
-  async discard(): Promise<void> {
+  /** "Ta bort": the recording leaves the device for good; the details stay. True once it is gone. */
+  async discard(): Promise<boolean> {
     const recording = this.ready;
-    if (!recording || this.snapshot.phase !== "ready") return;
+    if (!recording || this.snapshot.phase !== "ready") return false;
     try {
       await (await this.options.openStore()).remove(recording.id);
     } catch (error) {
@@ -791,13 +791,14 @@ export class FlowSession {
           ? { title: IN_USE_ELSEWHERE }
           : { title: "Inspelningen kunde inte tas bort.", detail: "Försök igen." };
       this.emit();
-      return;
+      return false;
     }
     this.ready = null;
     this.problem = null;
     this.capture.reset();
     this.closeLive();
     this.emit();
+    return true;
   }
 
   /** An unsent recording from the list, made ready to become a document. */

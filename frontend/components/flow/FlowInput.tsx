@@ -74,6 +74,7 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
 /** How long the browser's question about the microphone may be left before the page says where it is. */
 const MICROPHONE_ANSWER_WAIT_MS = 3_000;
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
+const REMOVED = "Inspelningen togs bort.";
 
 // Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
 const PHONE = "(max-width: 767.98px)";
@@ -126,6 +127,9 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // "Ta bort" took the ready recording away: said, and shown in the setup it leaves, until a recording begins.
+  const [removed, setRemoved] = useState(false);
+  if (removed && group !== "setup") setRemoved(false);
   const [dockSlot, dockRef] = useDock();
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
@@ -190,7 +194,7 @@ export function FlowInput({
       >
         {/* Recording state changes are said once here; the timer never is. */}
         <VisuallyHidden as="p" role="status">
-          {recordingAnnouncement(phase)}
+          {removed ? REMOVED : recordingAnnouncement(phase)}
         </VisuallyHidden>
         <VStack
           as="section"
@@ -210,6 +214,7 @@ export function FlowInput({
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
               unsent={unsent}
+              removed={removed}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -224,7 +229,7 @@ export function FlowInput({
               // (the session's problem), saving as a file and deleting.
               onCreate={blocked ? undefined : () => void createDocument(session)}
               onContinue={blocked ? undefined : input.continueStopped}
-              onDiscard={() => void session.discard()}
+              onDiscard={() => void session.discard().then((gone) => gone && setRemoved(true))}
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
@@ -343,6 +348,7 @@ function SetupWorkspace({
   onOpenRun,
   onMoreRuns,
   unsent,
+  removed,
 }: {
   contract: RunContract;
   input: Session;
@@ -352,6 +358,8 @@ function SetupWorkspace({
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   unsent: UnsentList;
+  /** The ready recording was just removed: said above the way to a new one (the page's status said it too). */
+  removed: boolean;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -462,6 +470,8 @@ function SetupWorkspace({
         }}
         onContinue={onContinue}
       />
+
+      {removed && <Text as="p">{REMOVED}</Text>}
 
       {modes.length > 1 ? (
         <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} note={snapshot.modesNote} />
