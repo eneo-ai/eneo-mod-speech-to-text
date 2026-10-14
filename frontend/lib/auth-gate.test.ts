@@ -162,12 +162,12 @@ test("a first status read that fails keeps the address, so a link that resumes a
   assert.deepEqual(visited, [], "the router went nowhere");
   assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1");
   assert.ok(!container.textContent?.includes("Sidan"), "nothing of the page before the session has answered");
-  assert.match(container.textContent ?? "", /Tal till text kan inte nås just nu/);
+  assert.match(container.textContent ?? "", /Tal till text svarar inte just nu/);
   for (const status of [500, 503]) {
     answer = () => Promise.resolve(new Response("{}", { status, headers: { "content-type": "application/json" } }));
     await act(async () => button(container, "Försök igen")!.click());
     for (let i = 0; i < 5; i += 1) await act(settle);
-    assert.match(container.textContent ?? "", /Tal till text kan inte nås just nu/, `still said after a ${status}`);
+    assert.match(container.textContent ?? "", /Tal till text svarar inte just nu/, `still said after a ${status}`);
     assert.deepEqual(visited, []);
   }
 
@@ -176,6 +176,24 @@ test("a first status read that fails keeps the address, so a link that resumes a
   for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
   assert.ok(container.textContent?.includes("Sidan"), "the page is there once the session answers");
   assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1", "at the address it was opened at");
+});
+
+test("a device with no network says so, in the words the page's notice uses, not that the module does not answer", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async () => Promise.reject(new TypeError("Failed to fetch"))) as typeof fetch;
+  window.dispatchEvent(new Event("offline"));
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+    window.dispatchEvent(new Event("online"));
+  });
+  t.mock.method(console, "error", () => undefined);
+  const { container, act } = await mount(withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows", entries: ["/flows"] }).tree);
+  for (let i = 0; i < 10; i += 1) await act(settle);
+
+  assert.deepEqual([...container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent), ["Ingen anslutning."]);
+  assert.ok(button(container, "Försök igen"));
 });
 
 test("a status that says nobody is signed in goes to the sign-in page", async (t) => {

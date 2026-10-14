@@ -58,7 +58,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) |
 | Det man skrivit men inte skickat | `lib/drafts.ts` (`sessionStorage`, per person) |
 | Körningens tillstånd | `run` i `routes/FlowPage.tsx`; uppföljningen i `lib/follow-run.ts` |
-| Om vi är uppkopplade | `lib/online-status.ts` |
+| Om vi är uppkopplade, och vad sidan säger när vi inte är det: "Ingen anslutning." när enheten saknar nät, annars "Tal till text svarar inte just nu." | `lib/online-status.ts` |
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
 | Mikrofonval | `lib/microphone.ts` |
 

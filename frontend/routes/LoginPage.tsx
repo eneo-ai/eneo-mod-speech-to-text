@@ -11,8 +11,8 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
 import { HeaderBrand } from "@/components/HeaderBrand";
-import { UNREACHABLE } from "@/components/ModuleUnreachable";
 import { ModuleShell } from "@/kit/ModuleShell";
+import { connectionLost } from "@/lib/online-status";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
 import { isRecord } from "@/lib/is-record";
@@ -42,7 +42,7 @@ export default function LoginPage() {
         }
       })
       .catch(() => {
-        setAuthError(UNREACHABLE);
+        setAuthError(connectionLost());
         setChecking(false);
       });
   }, [navigate]);

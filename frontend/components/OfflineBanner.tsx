@@ -5,23 +5,23 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { onlineStatus, type Connection, type OnlineStatus } from "@/lib/online-status";
+import { CONNECTION_LOST, onlineStatus, type Connection, type OnlineStatus } from "@/lib/online-status";
 export type OfflineWaiting = "recording" | "upload" | "run" | null;
 
 // A device with no network says so; a module that does not answer says that, and neither blames the other.
 const MESSAGES: Record<"offline" | "unreachable", Record<NonNullable<OfflineWaiting> | "nothing", string>> = {
   offline: {
     // Where the recording is kept is said beside the recorder, only when it is true.
-    recording: "Ingen anslutning. Inspelningen fortsätter.",
-    upload: "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka.",
-    run: "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.",
-    nothing: "Ingen anslutning.",
+    recording: `${CONNECTION_LOST.offline} Inspelningen fortsätter.`,
+    upload: `${CONNECTION_LOST.offline} Uppladdningen fortsätter när anslutningen är tillbaka.`,
+    run: `${CONNECTION_LOST.offline} Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.`,
+    nothing: CONNECTION_LOST.offline,
   },
   unreachable: {
-    recording: "Tal till text svarar inte just nu. Inspelningen fortsätter.",
-    upload: "Tal till text svarar inte just nu. Uppladdningen fortsätter när det svarar igen.",
-    run: "Tal till text svarar inte just nu. Körningen fortsätter i Eneo och visas här när det svarar igen.",
-    nothing: "Tal till text svarar inte just nu.",
+    recording: `${CONNECTION_LOST.unreachable} Inspelningen fortsätter.`,
+    upload: `${CONNECTION_LOST.unreachable} Uppladdningen fortsätter när det svarar igen.`,
+    run: `${CONNECTION_LOST.unreachable} Körningen fortsätter i Eneo och visas här när det svarar igen.`,
+    nothing: CONNECTION_LOST.unreachable,
   },
 };
 
