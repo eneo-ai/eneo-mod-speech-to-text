@@ -116,7 +116,7 @@ export function ResultFiles({
                       href={download}
                       icon={<Icon icon={Download} />}
                       label={`Ladda ner ${file.name}`}
-                      onClick={pressing(access, file, "download")}
+                      onClick={pressing(access, file.fileId, "download")}
                       {...waiting(access, file.fileId, "download")}
                     >
                       Ladda ner
@@ -177,8 +177,8 @@ export function OpenFile({
     wasOpen.current = open;
   }, [open]);
 
-  const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file, "tab"), ...waiting(access, file.fileId, "tab") } as const;
-  const openDialog = () => access.start(file, { open: () => setOpen(true) });
+  const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file.fileId, "tab"), ...waiting(access, file.fileId, "tab") } as const;
+  const openDialog = () => access.start(file.fileId, { open: () => setOpen(true) });
   const opener = !roomy ? (
     name ? (
       <Button ref={trigger} {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
@@ -238,7 +238,7 @@ export function OpenFile({
                     href={download}
                     icon={<Icon icon={Download} />}
                     label="Ladda ner"
-                    onClick={pressing(access, file, "download")}
+                    onClick={pressing(access, file.fileId, "download")}
                     {...waiting(access, file.fileId, "download")}
                   />
                 </>

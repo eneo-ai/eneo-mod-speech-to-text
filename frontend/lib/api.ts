@@ -1194,11 +1194,6 @@ export async function checkRunArtifact(flowId: string, runId: string, fileId: st
     async (response) => { await response.body?.cancel(); });
 }
 
-/** A run's file, read whole, for the page to save: a link to it takes Safari on a phone or a tablet away from the page. */
-export async function readRunArtifact(flowId: string, runId: string, fileId: string): Promise<Blob> {
-  return request<Blob>(runArtifactUrl(flowId, runId, fileId), { headers: { Accept: "*/*" } }, false, (response) => response.blob());
-}
-
 /**
  * Same-origin address of a file the run generated. The module backend streams
  * it from Eneo the same way, under the name Eneo gave it; a PDF can open
