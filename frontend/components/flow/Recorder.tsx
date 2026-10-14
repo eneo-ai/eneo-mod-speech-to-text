@@ -116,6 +116,7 @@ export function RecordingBar({
   warnings,
   notes,
   makesText = false,
+  stopping = false,
   onPause,
   onStop,
 }: {
@@ -128,6 +129,8 @@ export function RecordingBar({
   notes: string[];
   /** The flow ends in text, not a file. */
   makesText?: boolean;
+  /** Stoppa was pressed and the recording is being stored: Stoppa says so, and Pausa waits. */
+  stopping?: boolean;
   onPause: () => void;
   onStop: () => void;
 }) {
@@ -150,9 +153,19 @@ export function RecordingBar({
         variant="secondary"
         width="100%"
         icon={<Icon icon={running ? Pause : Play} size="md" />}
+        isDisabled={stopping}
         onClick={settled(onPause)}
       />
-      <Button label="Stoppa" variant="primary" width="100%" icon={<Icon icon="stop" size="md" />} onClick={settled(onStop)} />
+      {/* Busy, not disabled, so the focus stays on it; a second press stops nothing more. */}
+      <Button
+        label={stopping ? "Sparar…" : "Stoppa"}
+        variant="primary"
+        width="100%"
+        icon={<Icon icon="stop" size="md" />}
+        isLoading={stopping}
+        isInterruptible
+        onClick={settled(onStop)}
+      />
     </Grid>
   );
   return (

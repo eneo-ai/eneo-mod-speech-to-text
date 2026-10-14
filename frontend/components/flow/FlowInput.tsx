@@ -266,7 +266,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     stalled: capture.stalled,
     // The recorder's own word on keeping the recording; what a press was answered (the problem) and what a stop ends with
     // (the ready view) are said there.
-    error: problem ? null : capture.error,
+    error: problem || capture.stopping ? null : capture.error,
     wakeLock: !capture.screenMayDim,
     makesText,
   });
@@ -277,7 +277,12 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
   const [stopAsked, setStopAsked] = useState<{ signedOut: boolean } | null>(null);
   const capturing = phase === "recording" || phase === "paused";
   if (stopAsked && !capturing) setStopAsked(null);
-  const stop = () => (capturing && !session.capture.continuesAfterStop() ? setStopAsked({ signedOut }) : void session.stop());
+  const stop = () => {
+    // Stopping already: a second press asks and stops nothing more.
+    if (capture.stopping) return;
+    if (capturing && !session.capture.continuesAfterStop()) setStopAsked({ signedOut });
+    else void session.stop();
+  };
   return (
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
@@ -303,6 +308,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
         warnings={warnings}
         notes={notes}
         makesText={makesText}
+        stopping={capture.stopping}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
         onStop={stop}
       />

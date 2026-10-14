@@ -845,6 +845,7 @@ test("Stoppa lets the microphone go without waiting for the database, and the la
   await settle();
   await settle();
   assert.equal(streams[0].track.readyState, "ended", "the hardware is released while the storage is still pending");
+  assert.equal(await capture.stop(), null, "a second Stoppa while it is stored does nothing");
   release();
   const stopped = await stopping;
   assert.equal(stopped?.state, "stopped");

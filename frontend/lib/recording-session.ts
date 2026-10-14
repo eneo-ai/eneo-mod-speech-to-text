@@ -384,6 +384,8 @@ export class RecordingCapture {
   }
 
   async stop(): Promise<StoredRecording | null> {
+    // Stopping already: the first stop gives the recording.
+    if (this.snapshot.stopping) return null;
     this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
