@@ -495,11 +495,8 @@
 .word {
   border-radius: var(--radius-inner);
   box-decoration-break: clone;
-  /* The playhead's word fades in as the last fades out, a few times a second: short, and only its colours, so nothing
-     moves and reduced motion keeps it. */
-  transition:
-    background-color var(--module-duration-quick) var(--module-ease-smooth-out),
-    color var(--module-duration-quick) var(--module-ease-smooth-out);
+  /* A word passed settles into the lighter tone of the words already said: short, and only its colour. */
+  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
 }
 
 /* Pressing the text plays from it: under a mouse, the word that would play shows it, or the sentence where words have no
@@ -547,9 +544,20 @@
   text-underline-offset: var(--spacing-0-5);
 }
 
+/* The playhead's sentence fills as it is said, as sung lyrics do: the word being said fills from its start to its end
+   at the speech's own pace (--said, set every frame by useTranscriptPlayhead), and the words before it stay a step
+   lighter. Nothing is switched on and off a few times a second, and the text keeps its own colour. */
+.word[data-said],
 .word[data-lit] {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.word[data-lit] {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--color-accent) 45%, transparent) var(--said, 100%),
+    transparent calc(var(--said, 100%) + 6%)
+  );
 }
 
 @media (forced-colors: active) {

@@ -140,7 +140,7 @@ export function RunTranscriptView({
       {transcript.wordTimingFailed && transcript.fileIds.length > 0 && !unread && (
         <HStack paddingInline={4} paddingBlockEnd={2}>
           <Text as="p" type="supporting">
-            Ordtiderna kunde inte tas fram den här gången. Ett klick i texten spelar från meningens början.
+            Ordtiderna kunde inte tas fram den här gången. Ett klick i texten spelar från början av avsnittet.
           </Text>
         </HStack>
       )}

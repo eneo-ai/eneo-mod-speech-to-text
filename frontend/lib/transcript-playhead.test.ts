@@ -19,11 +19,20 @@ const segments: TranscriptSegment[] = [
 ];
 
 test("the playhead lights the sentence it is in, the word being said and nothing in another part", () => {
-  assert.deepEqual(playheadTargets(segments, 0, 1), { segments: [0], words: [{ segment: 0, word: 1 }], follow: 0 });
-  assert.deepEqual(playheadTargets(segments, 0, 2.2), { segments: [1], words: [{ segment: 1, word: 0 }], follow: 1 });
-  assert.deepEqual(playheadTargets(segments, 1, 1), { segments: [2], words: [{ segment: 2, word: 1 }], follow: 2 });
+  assert.deepEqual(playheadTargets(segments, 0, 0.9), { segments: [0], words: [{ segment: 0, word: 1, said: 0 }], follow: 0 });
+  assert.deepEqual(playheadTargets(segments, 1, 1.2), { segments: [2], words: [{ segment: 2, word: 1, said: 1 }], follow: 2 });
+  assert.deepEqual(playheadTargets(segments, 0, 2.4).follow, 1);
   // Before the sentence's first word nothing in it is said yet.
   assert.deepEqual(playheadTargets(segments, 0, 0.1).words, []);
+});
+
+test("a word fills at its own pace: a long one slowly, a short one at once, and stays full in the pause after it", () => {
+  const said = (time: number) => playheadTargets(segments, 0, time).words[0]?.said;
+  // "punkten." lasts 0.9 s: halfway through, half of it is said.
+  assert.equal(said(1.35)!.toFixed(3), "0.500");
+  assert.equal(said(1.79)! > 0.98, true);
+  // Between "punkten." (ends 1.8) and the next sentence the word stays said.
+  assert.equal(said(1.9), 1);
 });
 
 function list() {
@@ -45,10 +54,13 @@ const active = (root: ParentNode) => [...root.querySelectorAll('[data-active="tr
 
 test("painting lights the passage, its sentence and the word, and clears what was lit before", () => {
   const root = list();
-  paintPlayhead(root, playheadTargets(segments, 0, 1));
+  paintPlayhead(root, playheadTargets(segments, 0, 1.35));
   assert.deepEqual(lit(root), ["punkten."]);
   assert.deepEqual(active(root), ["LI", "SPAN"]);
-  assert.equal(root.querySelector("[data-lit]")?.getAttribute("data-lit"), "true");
+  const word = root.querySelector<HTMLElement>("[data-lit]")!;
+  assert.equal(word.style.getPropertyValue("--said"), "50%", "filled as far as it is said");
+  // The word before it stays lit a step lighter instead of going out.
+  assert.deepEqual([...root.querySelectorAll("[data-said]")].map((element) => element.textContent), ["Första"]);
 
   paintPlayhead(root, playheadTargets(segments, 0, 2.2));
   assert.deepEqual(lit(root), ["Andra"]);
@@ -56,6 +68,7 @@ test("painting lights the passage, its sentence and the word, and clears what wa
 
   paintPlayhead(root, NOTHING_LIT);
   assert.deepEqual([lit(root), active(root), root.querySelectorAll("[data-playhead]").length], [[], [], 0]);
+  assert.equal(word.style.getPropertyValue("--said"), "", "its fill is cleared too");
 });
 
 function media(): MediaLike & { paused: boolean } {

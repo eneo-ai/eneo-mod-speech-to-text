@@ -725,7 +725,7 @@ test("a preview of a longer transcript says so and is neither copied nor downloa
 });
 
 test("words the flow's service could not time are said quietly, only where there is audio to click into", () => {
-  const note = /Ordtiderna kunde inte tas fram den här gången\. Ett klick i texten spelar från meningens början\./;
+  const note = /Ordtiderna kunde inte tas fram den här gången\. Ett klick i texten spelar från början av avsnittet\./;
   assert.match(transcriptView({ wordTimingFailed: true, fileIds: ["file-1"] }), note);
   assert.doesNotMatch(transcriptView({ wordTimingFailed: true, fileIds: [] }), note, "no audio, no click to explain");
   assert.doesNotMatch(transcriptView({ fileIds: ["file-1"] }), note, "a flow without a service chose text only");

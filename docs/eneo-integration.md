@@ -35,7 +35,7 @@ Anropen mot Eneo (alla via [tillåtelselistan](backend.md#tillåtelselistan-för
 
 ### Spelaren och transkriberingen
 
-Vyn spelar upp inspelningen med en transkribering som följer ljudet. Segmenten (talare, start och slut per replik) kommer från `GET …/runs/{runId}/steps/`, ordtiderna från `GET …/steps/{stepId}/transcript-words/` (404 betyder inga ordtider, och då markeras bara repliken). Ordtiderna kommer från flödets tjänst för ordtider och talare (Vemsa), också när flödet inte identifierar talare. Kunde tjänsten inte ta fram dem säger transkriberingens `word_timing` `{"status": "failed"}`, och vyn säger då att ett klick spelar från meningens början. Ordet som sägs markeras bildruta för bildruta medan ljudet spelas, utan att listan ritas om, och ljudet strömmas via modulens backend ([Backend](backend.md#filer-ut-ur-eneo)).
+Vyn spelar upp inspelningen med en transkribering som följer ljudet. Segmenten (talare, start och slut per replik) kommer från `GET …/runs/{runId}/steps/`, ordtiderna från `GET …/steps/{stepId}/transcript-words/` (404 betyder inga ordtider, och då markeras bara repliken). Ordtiderna kommer från flödets tjänst för ordtider och talare (Vemsa), också när flödet inte identifierar talare. Kunde tjänsten inte ta fram dem säger transkriberingens `word_timing` `{"status": "failed"}`, och vyn säger då att ett klick spelar från början av avsnittet, eftersom bara avsnittens tider finns. Ordet som sägs fylls i takt med talet, som i sångtexter, och orden före det i meningen behåller en ljusare ton; det ritas bildruta för bildruta utan att listan ritas om, och ljudet strömmas via modulens backend ([Backend](backend.md#filer-ut-ur-eneo)).
 
 ### Rättningar
 

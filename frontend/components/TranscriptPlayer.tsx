@@ -251,6 +251,18 @@ export function SpeakerMark({ label, name, size = "md" }: { label: string | null
   );
 }
 
+/**
+ * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
+ * so following playback leaves it where it is: the text moves only when the playhead nears an edge, not at every new
+ * sentence.
+ */
+function withinReadingZone(block: HTMLElement, list: HTMLElement): boolean {
+  const scrolls = list.scrollHeight > list.clientHeight;
+  const { top, height } = scrolls ? list.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+  const box = block.getBoundingClientRect();
+  return box.top >= top + height * 0.15 && box.bottom <= top + height * 0.85;
+}
+
 type Piece = {
   text: string;
   word: TranscriptWord | null;
@@ -495,7 +507,7 @@ export function TranscriptPlayer(
     if (!following.current.follow || following.current.editing || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
-    if (!block) return;
+    if (!block || withinReadingZone(block, listRef.current)) return;
     programmaticScrollUntil.current = Date.now() + 800;
     block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, []);
