@@ -146,6 +146,13 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 - Transcript text with per-word spans, the level meter, the docked player, the live text sheet: CSS Modules with
   Astryx tokens.
 
+## Motion
+
+Calm and quick, on the design system's tokens: `--duration-fast` (175 ms) with `--ease-standard`. A view of the flow
+that takes another's place fades in (opacity only: the recording's bar is sticky), and so does what a disclosure
+opens; a dialog opens over `--duration-fast-max`. The step under way shows the spinner, and a paused timer turns to
+the secondary colour. With reduced motion nothing fades and spinners stand still.
+
 ## Do's and Don'ts
 
 - Do take every colour, size and space from a token; fix a shortfall once in the theme.

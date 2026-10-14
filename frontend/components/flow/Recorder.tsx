@@ -61,8 +61,9 @@ function Timer({
   className?: string;
 }) {
   const elapsed = useElapsed(capture, phase === "recording");
+  // Stopped (paused, interrupted), the time stands still and is in the secondary colour, so it does not read as running.
   return (
-    <Text hasTabularNumbers weight={weight} className={className}>
+    <Text hasTabularNumbers weight={weight} color={phase === "recording" ? undefined : "secondary"} className={[styles.clock, className].filter(Boolean).join(" ")}>
       {formatClock(elapsed)}
     </Text>
   );

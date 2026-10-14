@@ -1,13 +1,14 @@
-import { CheckCircle2, Circle, CircleDashed, CircleDot, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import { CheckCircle2, Circle, CircleDashed, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
 import { Icon } from "@astryxdesign/core/Icon";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { Step, Stepper } from "@astryxdesign/core/Stepper";
 import { Text } from "@astryxdesign/core/Text";
 import { stepStateLabel, type StepState, type StepView } from "@/lib/run-progress";
 
-const ICONS: Record<StepState, [LucideIcon, "success" | "accent" | "secondary" | "error"]> = {
+// The step under way has the design system's spinner instead: what shows that Eneo is working, and it stands still with
+// reduced motion (styles/globals.css).
+const ICONS: Record<Exclude<StepState, "running">, [LucideIcon, "success" | "secondary" | "error"]> = {
   done: [CheckCircle2, "success"],
-  // Static: the stage line above already shows that something is moving.
-  running: [CircleDot, "accent"],
   waiting: [Circle, "secondary"],
   failed: [XCircle, "error"],
   cancelled: [MinusCircle, "secondary"],
@@ -25,14 +26,15 @@ export function StepList({ steps }: { steps: readonly StepView[] }) {
     // role="list": a list the reset has stripped of its bullets keeps its list semantics in Safari.
     <Stepper orientation="vertical" activeStep={current === -1 ? steps.length : current} label="Flödets steg" role="list">
       {steps.map((step, index) => {
-        const [glyph, color] = ICONS[step.state];
+        const indicator =
+          step.state === "running" ? <Spinner size="sm" /> : <Icon icon={ICONS[step.state][0]} size="sm" color={ICONS[step.state][1]} />;
         return (
           <Step
             key={step.order}
             step={index}
             label={step.label}
             description={step.note ?? undefined}
-            indicator={<Icon icon={glyph} size="sm" color={color} />}
+            indicator={indicator}
             endContent={
               <Text type="supporting" textWrap="nowrap" aria-hidden={step.state === "done" || undefined}>
                 {stepStateLabel(step.state)}

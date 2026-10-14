@@ -19,6 +19,23 @@
   }
 }
 
+/* A view that takes another's place (the setup, the recording, the recording made, the run, its review, its result)
+   fades in, so the change reads as one and not as a jump. Each view's parts stand a level under the page's columns, so
+   they are what is new when the view changes; the flow's own column beside them stays as it is. Opacity alone: the
+   recording's bar is sticky at the window's edge, where a movement would shift it. A dialog keeps its own entrance, and
+   what loads keeps its pulse. */
+@media (prefers-reduced-motion: no-preference) {
+  .page > :not(.columns > :first-child, dialog) > :not(dialog, [aria-busy="true"] > *) {
+    animation: view-in var(--duration-fast) var(--ease-standard);
+  }
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* One column on a phone or tablet, a flex column so that a sticky child (the setup's docked action) sticks within
    the whole page; from a laptop the flow's column (20rem) and the working card. */
 .columns {
@@ -143,6 +160,11 @@
   .fold > :global(.astryx-collapsible-content) {
     display: block;
     padding-block-start: 0;
+  }
+
+  /* Always shown here, so it is no disclosure that opens: it stays as it is while the view beside it changes. */
+  .fold > :global(.astryx-collapsible-content) > * {
+    animation: none;
   }
 }
 

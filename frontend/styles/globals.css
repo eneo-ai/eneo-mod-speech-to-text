@@ -74,6 +74,20 @@ html:has([data-docked-action], [data-docked-player]) {
   scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 
+/* A disclosure shows what it opens at once: it fades in instead, so the eye follows what appeared. With reduced motion
+   it appears as it is. */
+@media (prefers-reduced-motion: no-preference) {
+  .astryx-collapsible-content > * {
+    animation: module-reveal var(--duration-fast) var(--ease-standard);
+  }
+}
+
+@keyframes module-reveal {
+  from {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* The design system scrolls some of its own regions smoothly; with reduced motion none does. */
   *, *::before, *::after { scroll-behavior: auto !important; }
