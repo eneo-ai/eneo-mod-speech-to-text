@@ -1992,3 +1992,39 @@ test("a stop can be taken back with Fortsätt spela in only while the flow takes
   now = 59 * 60_000;
   assert.equal(timed.capture.continuesAfterStop(), false, "no time left for another part before the longest recording");
 });
+
+test("an unconfirmed recorder keeps its writer lease through disposal and letGo, then permits another tab after its real stop", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  for (const how of ["dispose", "reset"] as const) {
+    const env = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+    const store = await openRecordingStore(env);
+    const tab = await openRecordingStore(env);
+    const { capture, recorders } = await setup({ store });
+    await capture.start(meeting);
+    recorders[0].emit("OLD_PREFIX");
+    recorders[0].stop = () => void (recorders[0].state = "inactive");
+    const id = capture.getSnapshot().recording!.id;
+    if (how === "dispose") {
+      capture.dispose();
+      t.mock.timers.tick(4_000);
+    } else {
+      const stopped = capture.stop();
+      t.mock.timers.tick(4_000);
+      await stopped;
+      capture.reset();
+    }
+    await until(async () => (await store.get(id))?.state === (how === "dispose" ? "paused" : "stopped"));
+    store.letGo(id);
+    assert.equal(await tab.lease(id), false, "the old recorder still owns final audio");
+    recorders[0].emit("OLD_FINAL");
+    await until(async () => (await texts(await store.readParts(id)))[0] === "OLD_PREFIXOLD_FINAL");
+    assert.equal(await tab.lease(id), false, "delayed audio does not release ownership");
+    recorders[0].dispatchEvent(new Event("stop"));
+    await until(() => tab.lease(id), "the next tab acquires only once the writer ends");
+    const part = await tab.startPart(id);
+    await tab.append(id, part, new Blob(["NEW_1"]), 1_000);
+    await tab.append(id, part, new Blob(["NEW_2"]), 2_000);
+    assert.deepEqual(await texts(await tab.readParts(id)), ["OLD_PREFIXOLD_FINAL", "NEW_1NEW_2"]);
+    tab.release(id);
+  }
+});

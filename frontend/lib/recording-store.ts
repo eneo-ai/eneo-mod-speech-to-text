@@ -313,6 +313,8 @@ export class RecordingStore {
   // Stopped recordings this page still shows: their lease stays with this tab between its operations, so no other tab
   // offers or deletes one that is on this tab's screen (`hold`, until `letGo`).
   private held = new Set<string>();
+  // Recorders that can still deliver final audio, including after the page stopped waiting or left the view.
+  private writers = new Map<string, number>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
@@ -677,7 +679,7 @@ export class RecordingStore {
     if (!this.inUse.delete(id)) return;
     // Part of its audio is only in this tab: no other tab may send or delete it without that part. A held recording is
     // on this tab's screen.
-    if (!this.overflowed.has(id) && !this.held.has(id)) this.dropLease(id);
+    this.releaseUnusedLease(id);
     this.notify();
   }
 
@@ -689,8 +691,27 @@ export class RecordingStore {
   /** The page no longer shows the recording: its lease ends, unless an operation is using it or part of it is only here. */
   letGo(id: string): void {
     if (!this.held.delete(id)) return;
-    if (!this.inUse.has(id) && !this.overflowed.has(id)) this.dropLease(id);
+    this.releaseUnusedLease(id);
     this.notify();
+  }
+
+  /** A recorder owns late writes until its real stop event and queued storage writes have ended. */
+  retainWriter(id: string): () => void {
+    this.writers.set(id, (this.writers.get(id) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = (this.writers.get(id) ?? 1) - 1;
+      if (left > 0) this.writers.set(id, left);
+      else this.writers.delete(id);
+      this.releaseUnusedLease(id);
+      this.notify();
+    };
+  }
+
+  private releaseUnusedLease(id: string): void {
+    if (!this.inUse.has(id) && !this.overflowed.has(id) && !this.held.has(id) && !this.writers.has(id)) this.dropLease(id);
   }
 
   private dropLease(id: string): void {
@@ -865,7 +886,7 @@ export class RecordingStore {
     }
     this.overflowed.delete(id);
     await this.overflow.delete(id);
-    if (!this.inUse.has(id) && !this.held.has(id)) this.dropLease(id);
+    this.releaseUnusedLease(id);
   }
 
   private async delete(id: string): Promise<void> {

@@ -570,6 +570,7 @@ export class RecordingCapture {
     });
     let ended = (_confirmed: boolean) => {};
     let finished = false;
+    let releaseWriter: (() => void) | null = null;
     // The wait for its stop event, once its end has begun (and again after each audio that comes then).
     let waiting: ReturnType<typeof setTimeout> | null = null;
     const wait = () => {
@@ -587,7 +588,10 @@ export class RecordingCapture {
       ending: null,
       ended: new Promise<boolean>((resolve) => (ended = resolve)),
       waitForStop: () => {
-        if (!finished && waiting === null) wait();
+        if (!finished && waiting === null) {
+          releaseWriter ??= store.retainWriter(id);
+          wait();
+        }
       },
       counted: false,
     };
@@ -655,7 +659,7 @@ export class RecordingCapture {
       recorder.removeEventListener("dataavailable", onData);
       recorder.removeEventListener("error", onError);
       recorder.removeEventListener("stop", onStop);
-      void part.index.then((index) => store.setPartEndConfirmed(id, index, true)).catch(() => undefined);
+      void part.index.then((index) => store.setPartEndConfirmed(id, index, true)).catch(() => undefined).finally(() => releaseWriter?.());
       void finish(true);
     };
 
@@ -828,12 +832,12 @@ export class RecordingCapture {
     part.ending ??= reason;
     // Its deadline goes as its end begins, not at the stop event after it.
     if (part === this.part) this.clearHandover();
+    part.waitForStop();
     try {
       if (part.recorder.state !== "inactive") part.recorder.stop();
     } catch {
       // Already stopping.
     }
-    part.waitForStop();
     return part.ended;
   }
 
