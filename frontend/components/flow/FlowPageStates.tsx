@@ -7,7 +7,6 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { SlowWait } from "@/components/SlowWait";
-import { BackToFlows } from "@/components/flow/BackToFlows";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
@@ -66,7 +65,10 @@ export function unavailableCopy(error: unknown): { title: string; detail: string
   return { title: ownerMustFix ? "Flödet kan inte användas just nu." : "Flödet kunde inte laddas.", detail: message, retry };
 }
 
-/** The flow could not be loaded: unpublished (404) or another failure, with a way on. */
+/**
+ * The flow could not be loaded: unpublished (404) or another failure. The way on is the bar's Alla flöden, as on every
+ * view of a flow's page; the page adds Försök igen where trying again can help.
+ */
 export function FlowUnavailable({ error }: { error: unknown }) {
   const { title, detail, retry } = unavailableCopy(error);
   useDocumentTitle(documentTitle(title.replace(/\.$/, "")));
@@ -78,10 +80,11 @@ export function FlowUnavailable({ error }: { error: unknown }) {
         <Text as="p" color="secondary">
           {detail}
         </Text>
-        <HStack gap={3} wrap="wrap">
-          <BackToFlows variant="primary" size="md" />
-          {retry && <Button label="Försök igen" variant="secondary" onClick={() => window.location.reload()} />}
-        </HStack>
+        {retry && (
+          <HStack>
+            <Button label="Försök igen" variant="primary" onClick={() => window.location.reload()} />
+          </HStack>
+        )}
       </VStack>
     </FlowFrame>
   );
