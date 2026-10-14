@@ -25,8 +25,11 @@ import {
   type StoredRecording,
 } from "@/lib/recording-store";
 
-/** An unsent recording as listed: `exportOnly` when this tab may only save it as a file. */
-export type UnsentRecording = StoredRecording & { exportOnly?: boolean };
+/**
+ * An unsent recording as listed: `exportOnly` when this tab may only save it as a file, `elsewhere` while another tab
+ * holds it (records, shows or sends it), when this one can do nothing with it.
+ */
+export type UnsentRecording = StoredRecording & { exportOnly?: boolean; elsewhere?: boolean };
 
 /** The user's unsent recordings as read from the device; `unreadable` when the device's store could not be read. */
 export type UnsentList = { recordings: UnsentRecording[]; unreadable: boolean; retry: () => void };
@@ -43,20 +46,29 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentLis
     void recordingStore().then((store) => {
       if (cancelled) return;
       const load = () =>
-        store.listUnsent(ownerId).then(
-          (all) => {
+        Promise.all([store.listUnsent(ownerId), store.listHeldElsewhere(ownerId)]).then(
+          ([offered, elsewhere]) => {
             if (cancelled) return;
             setUnreadable(false);
             setRecordings(
-              (flowId ? all.filter((r) => r.flowId === flowId) : all).map((r) => ({
-                ...r,
-                exportOnly: !store.mayChange(r.id),
-              })),
+              [
+                ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id) })),
+                ...elsewhere.map((r) => ({ ...r, elsewhere: true })),
+              ]
+                .filter((r) => !flowId || r.flowId === flowId)
+                .sort((a, b) => b.startedAt - a.startedAt),
             );
           },
           () => !cancelled && setUnreadable(true),
         );
-      unsubscribe = store.subscribe(() => void load());
+      // Another tab that lets a recording go says nothing to this one: back in view, the list is read again.
+      const shown = () => document.visibilityState === "visible" && void load();
+      const unfollow = store.subscribe(() => void load());
+      document.addEventListener("visibilitychange", shown);
+      unsubscribe = () => {
+        unfollow();
+        document.removeEventListener("visibilitychange", shown);
+      };
       void load();
     });
     return () => {
@@ -96,7 +108,7 @@ export function recordingDetails(
 
 /** The recording a reload cut off that this tab can record on in, the first when there are more. */
 export function resumableRecording(recordings: UnsentRecording[]): UnsentRecording | undefined {
-  return recordings.find((recording) => !recording.exportOnly && continuable(recording));
+  return recordings.find((recording) => !recording.exportOnly && !recording.elsewhere && continuable(recording));
 }
 
 /**
@@ -283,7 +295,11 @@ function UnsentRecordingRow({
               {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
             </VStack>
           </HStack>
-          {recording.exportOnly ? (
+          {recording.elsewhere ? (
+            <Text as="p" color="secondary">
+              {IN_USE_ELSEWHERE}
+            </Text>
+          ) : recording.exportOnly ? (
             // Without Web Locks another tab may still hold it: here it is only read, as a file when it has audio.
             audio && (
               <VStack gap={2} hAlign={stacked ? "stretch" : "start"}>

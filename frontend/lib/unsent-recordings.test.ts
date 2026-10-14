@@ -274,6 +274,42 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
   assert.equal(focused(), "Ta bort", "and the focus is back where it was");
 });
 
+test("a recording another tab holds is listed with why nothing can be done with it here, and the list is read again when the page is back in view", async () => {
+  const { useUnsentRecordings } = await import("../components/UnsentRecordings");
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const { listUnsent, listHeldElsewhere, mayChange } = store;
+  const mine = recording("a", 60_000, at(23, 10, 12));
+  const recordedElsewhere = { ...recording("b", 60_000, at(23, 11, 0)), state: "recording" as const };
+  let elsewhere = [recordedElsewhere];
+  store.listUnsent = async () => [mine];
+  store.listHeldElsewhere = async () => elsewhere;
+  store.mayChange = () => true;
+  function Unsent() {
+    return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, onContinue: () => {}, sendLabel: () => "Skapa dokument" });
+  }
+  try {
+    const { container, act } = await mount(createElement(Unsent));
+    await act(async () => undefined);
+    assert.equal(container.querySelector("h2")?.textContent, "2 inspelningar har inte skickats");
+    const [held, own] = rowsOf(container);
+    assert.match(held.textContent!, /Inspelningen används i en annan flik\./);
+    assert.deepEqual(labels(held), [], "nothing here that the other tab would have to undo");
+    assert.deepEqual(labels(own), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+
+    // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
+    elsewhere = [];
+    store.listUnsent = async () => [recordedElsewhere, mine];
+    await act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    await act(async () => undefined);
+    assert.deepEqual(labels(rowsOf(container)[0]), ["Fortsätt spela in", "Skapa dokument", "Spara som fil", "Ta bort"]);
+  } finally {
+    store.listUnsent = listUnsent;
+    store.listHeldElsewhere = listHeldElsewhere;
+    store.mayChange = mayChange;
+  }
+});
+
 test("recordings the device's store cannot list are not passed over: a notice stands in the list's place, and Försök igen reads again", async () => {
   const { useUnsentRecordings } = await import("../components/UnsentRecordings");
   const { recordingStore } = await import("./recording-store");

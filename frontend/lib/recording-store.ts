@@ -482,6 +482,15 @@ export class RecordingStore {
 
   /** Recordings Eneo has not accepted as a run, newest first, except those being captured. */
   listUnsent(ownerId: string): Promise<StoredRecording[]> {
+    return this.unsent(ownerId, false);
+  }
+
+  /** Unsent recordings another tab holds now (it records, shows, sends or deletes one): told of, never offered here. */
+  listHeldElsewhere(ownerId: string): Promise<StoredRecording[]> {
+    return this.unsent(ownerId, true);
+  }
+
+  private unsent(ownerId: string, elsewhere: boolean): Promise<StoredRecording[]> {
     return this.serial(async () => {
       const locks = await this.env.locks?.query().catch(() => null);
       const held = new Set(locks?.held?.map((lock) => lock.name) ?? []);
@@ -492,7 +501,7 @@ export class RecordingStore {
             r.state !== "submitted" &&
             !this.inUse.has(r.id) &&
             // A lock this tab keeps is its own; any other held lock is another tab's.
-            (this.leases.has(r.id) || !held.has(lockName(r.id))),
+            (!this.leases.has(r.id) && held.has(lockName(r.id))) === elsewhere,
         )
         .sort((a, b) => b.startedAt - a.startedAt);
     });
