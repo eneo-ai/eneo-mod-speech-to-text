@@ -329,6 +329,15 @@ export const eneoTheme = {
         "flexWrap": "wrap"
       }
     },
+    "toggle-button": {
+      "base": {
+        "boxShadow": "inset 0 0 0 var(--border-width) var(--color-border-emphasized)",
+        ":is([aria-pressed=\"true\"])": {
+          "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)",
+          "backgroundColor": "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+        }
+      }
+    },
     "radio-list-item": {
       "base": {
         "boxSizing": "border-box",
@@ -373,6 +382,11 @@ export const eneoTheme = {
     "switch": {
       "base": {
         "--color-background-gray": "var(--color-border-emphasized)"
+      }
+    },
+    "dialog": {
+      "base": {
+        "animationDuration": "var(--duration-fast-max)"
       }
     },
     "collapsible-trigger": {

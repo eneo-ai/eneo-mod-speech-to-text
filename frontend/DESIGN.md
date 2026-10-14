@@ -140,6 +140,7 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Choice
 - Radio lists for one choice of a few; a switch with its label for an option that is on or off.
+- Filter chips (toggle buttons, the transcript's speakers) have a control's edge at rest and the accent's edge and tint when pressed, as a chosen radio row has.
 
 ### Bespoke surfaces
 - Transcript text with per-word spans, the level meter, the docked player, the live text sheet: CSS Modules with

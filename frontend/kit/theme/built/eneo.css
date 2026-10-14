@@ -449,6 +449,15 @@
     flex-wrap: wrap;
   }
 
+  .astryx-toggle-button {
+    box-shadow: inset 0 0 0 var(--border-width) var(--color-border-emphasized);
+  }
+
+  .astryx-toggle-button:is([aria-pressed="true"]) {
+    box-shadow: inset 0 0 0 var(--border-width) var(--color-accent);
+    background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+
   .astryx-radio-list-item {
     box-sizing: border-box;
     padding-block: var(--spacing-2);
@@ -494,6 +503,10 @@
 
   .astryx-switch {
     --color-background-gray: var(--color-border-emphasized);
+  }
+
+  .astryx-dialog {
+    animation-duration: var(--duration-fast-max);
   }
 
   .astryx-collapsible-trigger {
