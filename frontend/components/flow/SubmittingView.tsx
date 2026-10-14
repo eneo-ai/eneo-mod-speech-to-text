@@ -28,8 +28,8 @@ export type SubmissionState =
   | {
       kind: "starting";
       wait: RetryWait | null;
-      /** A recording being sent: it can be kept as a file while Eneo does not answer. */
-      recordingId?: string | null;
+      /** A recording being sent, and how many files it has (filesIn): it can be kept as files while Eneo does not answer. */
+      recording?: { id: string; files: number } | null;
     };
 
 /**
@@ -82,9 +82,8 @@ export function SubmittingView({
  */
 function Starting({ submission, onCancel }: { submission: Extract<SubmissionState, { kind: "starting" }>; onCancel: () => void }) {
   const [saveProblem, setSaveProblem] = useState(false);
-  const { wait, recordingId } = submission;
-  // How many files it has is known once the first is saved.
-  const saving = useSaveRecording(recordingId ?? "", 1);
+  const { wait, recording } = submission;
+  const saving = useSaveRecording(recording?.id ?? "", recording?.files ?? 0);
   async function save() {
     setSaveProblem(false);
     if (!(await saving.save())) setSaveProblem(true);
@@ -93,13 +92,15 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
     <VStack gap={3} hAlign="start">
       {wait && (
         <Text as="p">
-          {recordingId ? "Inspelningen" : "Filen"} är uppladdad. {wait.retryAt === null ? "Flödet startar inte just nu." : "Vi försöker starta flödet igen."}
+          {recording ? "Inspelningen" : "Filen"} är uppladdad. {wait.retryAt === null ? "Flödet startar inte just nu." : "Vi försöker starta flödet igen."}
         </Text>
       )}
       <RetryNotice wait={wait} />
       <HStack gap={2} wrap="wrap">
         <Button label="Avbryt" variant="secondary" onClick={onCancel} />
-        {recordingId && <Button label={saving.label} variant="secondary" onClick={() => void save()} />}
+        {recording && (
+          <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
+        )}
       </HStack>
       {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>

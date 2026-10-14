@@ -212,6 +212,42 @@ test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to 
   assert.equal(focused(), "Ta bort");
 });
 
+test("a removed recording is said gone, and the focus goes to the list's heading, saying what is left, or with none left to the page's", async (t) => {
+  const store = await import("./recording-store");
+  t.mock.method(store, "recordingStore", async () => ({ remove: async () => {} }));
+  // The page around the list, as the flow list has it; the list itself is the device's, read again after a removal.
+  const page = (recordings: UnsentRecording[]) =>
+    createElement(
+      "main",
+      null,
+      createElement("h1", null, "Välj ett flöde"),
+      createElement(UnsentRecordings, { list: { recordings, unreadable: false, retry: () => {} }, onSend: () => {}, sendLabel: () => "Skapa dokument" }),
+    );
+  const first = recording("a", 60_000, at(23, 10, 12));
+  const second = recording("b", 60_000, at(23, 9, 0));
+  const view = await mount(page([first, second]));
+  const remove = async () => {
+    const row = rowsOf(view.container)[0];
+    await view.act(async () => button(row, "Ta bort")!.click());
+    await view.act(async () => button(row.querySelector('[role="group"]')!, "Ta bort")!.click());
+  };
+  const said = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50)); // the announcer speaks in the next frame
+    return document.querySelector('[data-astryx-live-region="polite"]')?.textContent;
+  };
+
+  await remove();
+  await view.act(async () => view.rerender(page([second])));
+  const focused = () => [document.activeElement?.tagName, document.activeElement?.textContent];
+  assert.deepEqual(focused(), ["H2", "En inspelning har inte skickats"], "the list's heading, with what is left");
+  assert.equal(await said(), "Inspelningen togs bort.");
+
+  await remove();
+  await view.act(async () => view.rerender(page([])));
+  assert.deepEqual(focused(), ["H1", "Välj ett flöde"], "with none left, the page's heading");
+  await view.unmount();
+});
+
 test("a recording that cannot be saved or removed says so in an alert, and a removal that failed closes the question", async (t) => {
   const store = await import("./recording-store");
   const { container, act } = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))] });
@@ -221,7 +257,7 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
 
   // The device reads nothing back, and refuses the deletion: another tab holds the recording.
   t.mock.method(store, "recordingStore", async () => ({
-    readParts: async () => {
+    readFile: async () => {
       throw new Error("disk");
     },
     remove: async () => {
@@ -236,6 +272,42 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
   assert.deepEqual(alert(), [IN_USE_ELSEWHERE]);
   assert.equal(row.querySelector('[role="group"]'), null, "the question is closed");
   assert.equal(focused(), "Ta bort", "and the focus is back where it was");
+});
+
+test("a recording another tab holds is listed with why nothing can be done with it here, and the list is read again when the page is back in view", async () => {
+  const { useUnsentRecordings } = await import("../components/UnsentRecordings");
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const { listUnsent, listHeldElsewhere, mayChange } = store;
+  const mine = recording("a", 60_000, at(23, 10, 12));
+  const recordedElsewhere = { ...recording("b", 60_000, at(23, 11, 0)), state: "recording" as const };
+  let elsewhere = [recordedElsewhere];
+  store.listUnsent = async () => [mine];
+  store.listHeldElsewhere = async () => elsewhere;
+  store.mayChange = () => true;
+  function Unsent() {
+    return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, onContinue: () => {}, sendLabel: () => "Skapa dokument" });
+  }
+  try {
+    const { container, act } = await mount(createElement(Unsent));
+    await act(async () => undefined);
+    assert.equal(container.querySelector("h2")?.textContent, "2 inspelningar har inte skickats");
+    const [held, own] = rowsOf(container);
+    assert.match(held.textContent!, /Inspelningen används i en annan flik\./);
+    assert.deepEqual(labels(held), [], "nothing here that the other tab would have to undo");
+    assert.deepEqual(labels(own), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+
+    // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
+    elsewhere = [];
+    store.listUnsent = async () => [recordedElsewhere, mine];
+    await act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    await act(async () => undefined);
+    assert.deepEqual(labels(rowsOf(container)[0]), ["Fortsätt spela in", "Skapa dokument", "Spara som fil", "Ta bort"]);
+  } finally {
+    store.listUnsent = listUnsent;
+    store.listHeldElsewhere = listHeldElsewhere;
+    store.mayChange = mayChange;
+  }
 });
 
 test("recordings the device's store cannot list are not passed over: a notice stands in the list's place, and Försök igen reads again", async () => {

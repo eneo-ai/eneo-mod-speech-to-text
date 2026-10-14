@@ -132,7 +132,7 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // "Ta bort" took the ready recording away: said, and shown in the setup it leaves, until a recording begins.
+  // "Ta bort" took the ready recording away: said in the page's status (nothing shown moves the setup), until a recording begins.
   const [removed, setRemoved] = useState(false);
   if (removed && group !== "setup") setRemoved(false);
   const [dockSlot, dockRef] = useDock();
@@ -248,7 +248,6 @@ export function FlowInput({
               unsent={unsent}
               unsentRecordings={recoveryFirst ? null : unsentRecordings}
               resuming={resuming}
-              removed={removed}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -302,6 +301,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     muted: capture.muted,
     mutedLong: capture.mutedLong,
     mutedGap: capture.mutedGap,
+    hiddenGap: capture.hiddenGap,
     stalled: capture.stalled,
     // The recorder's own word on keeping the recording; what a press was answered (the problem) and what a stop ends with
     // (the ready view) are said there.
@@ -384,7 +384,6 @@ function SetupWorkspace({
   unsent,
   unsentRecordings,
   resuming,
-  removed,
 }: {
   contract: RunContract;
   input: Session;
@@ -398,8 +397,6 @@ function SetupWorkspace({
   unsentRecordings: ReactNode;
   /** A recording a reload cut off is the page's one filled action, "Fortsätt spela in". */
   resuming: boolean;
-  /** The ready recording was just removed: said above the way to a new one (the page's status said it too). */
-  removed: boolean;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -493,8 +490,6 @@ function SetupWorkspace({
   return (
     <VStack gap={6}>
       {unsentRecordings}
-
-      {removed && <Text as="p">{REMOVED}</Text>}
 
       {modes.length > 1 ? (
         <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} note={snapshot.modesNote} />

@@ -184,7 +184,14 @@ export function ReadyPanel({
 
       {audio ? (
         <HStack gap={4} wrap="wrap" align="center">
-          <Button label={saving.label} variant="secondary" icon={<Icon icon={Download} size="sm" />} onClick={() => void save()} />
+          <Button
+            label={saving.label}
+            variant="secondary"
+            icon={<Icon icon={Download} size="sm" />}
+            isLoading={saving.busy}
+            isInterruptible
+            onClick={() => void save()}
+          />
           <StackItem size="fill">
             <Text as="p" type="supporting">
               {persistent

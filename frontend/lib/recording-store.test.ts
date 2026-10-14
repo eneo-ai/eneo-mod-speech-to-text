@@ -167,7 +167,7 @@ test("unsent recordings are listed newest first, without those still leased or a
   assert.equal((await withoutLocks.listUnsent("user-1")).length, 1);
 });
 
-test("an active lease hides a recording from recovery and keeps other tabs from writing it; an ended lease offers it again", async () => {
+test("an active lease keeps a recording from recovery and other tabs from writing it, which are told it is in use there; an ended lease offers it again", async () => {
   const env = device();
   const recordingTab = await openRecordingStore(env);
   const otherTab = await openRecordingStore(env);
@@ -175,7 +175,9 @@ test("an active lease hides a recording from recovery and keeps other tabs from 
   await recordingTab.startPart(recording.id);
   await recordingTab.append(recording.id, 0, new Blob(["audio"]), 2_000);
 
-  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "hidden while it is being recorded");
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "not offered while it is being recorded");
+  assert.deepEqual((await otherTab.listHeldElsewhere("user-1")).map((r) => r.id), [recording.id], "but told of, as in use in another tab");
+  assert.deepEqual(await recordingTab.listHeldElsewhere("user-1"), [], "its own tab's is no other's");
   assert.equal(await otherTab.lease(recording.id), false, "another tab cannot take it");
   await assert.rejects(otherTab.remove(recording.id), {
     message: "Inspelningen används i en annan flik.",
@@ -185,6 +187,7 @@ test("an active lease hides a recording from recovery and keeps other tabs from 
   recordingTab.release(recording.id);
   await settle();
   assert.deepEqual((await otherTab.listUnsent("user-1")).map((r) => r.id), [recording.id]);
+  assert.deepEqual(await otherTab.listHeldElsewhere("user-1"), []);
   assert.equal(await otherTab.lease(recording.id), true);
   assert.equal(await recordingTab.lease(recording.id), false, "now the other tab has it");
   assert.deepEqual(await recordingTab.listUnsent("user-1"), []);

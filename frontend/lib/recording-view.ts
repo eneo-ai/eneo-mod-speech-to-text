@@ -75,6 +75,7 @@ export function recordingNotices({
   muted,
   mutedLong = false,
   mutedGap = null,
+  hiddenGap = null,
   stalled = false,
   error = null,
   wakeLock,
@@ -96,6 +97,8 @@ export function recordingNotices({
   mutedLong?: boolean;
   /** How long the microphone was muted, now that it is back; `away`: the page was in the background meanwhile. */
   mutedGap?: { ms: number; away: boolean } | null;
+  /** How long the page was in the background with no audio from the recorder, now that it is back. */
+  hiddenGap?: number | null;
   /** The recorder hands over no audio: nothing said now is kept. */
   stalled?: boolean;
   /** What went wrong in keeping the recording while it is captured (the recorder's own sentence). */
@@ -168,6 +171,8 @@ export function recordingNotices({
   if (mutedGap) {
     const where = mutedGap.away ? " medan sidan låg i bakgrunden" : "";
     notes.push(`Mikrofonen var avstängd i ${formatDuration(mutedGap.ms)}${where}. Det som sades då kom inte med i inspelningen.`);
+  } else if (hiddenGap !== null) {
+    notes.push(`Sidan låg i bakgrunden i ${formatDuration(hiddenGap)}. Ljud från den tiden kan saknas.`);
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");

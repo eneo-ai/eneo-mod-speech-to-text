@@ -2,8 +2,8 @@ import { Children, type ReactNode } from "react";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Stack } from "@astryxdesign/core/Stack";
 
-// Where the design system's alert dialog stacks its own actions.
-const STACKED = "(max-width: 640px)";
+// Where the design system's alert dialog stacks its own actions, and other rows of actions follow it.
+export const STACKED = "(max-width: 640px)";
 
 /**
  * A step's decision (a review's Avvisa and its approval, a dialog's Avbryt and Spara), laid out as the design system's

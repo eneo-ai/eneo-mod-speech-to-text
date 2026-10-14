@@ -1,7 +1,7 @@
 /**
  * Fortsätt spela in on a recording a closed tab cut off, in the flow list: it stands before the other unsent recordings,
  * which fold away so the flows stay in view, and the flow's page records on in the same recording, as its own Fortsätt
- * spela in does, without showing the choice of audio on the way.
+ * spela in does, without showing the choice of audio on the way. While the tab still records it, the list only says so.
  */
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
@@ -52,4 +52,22 @@ test("with three unsent recordings the flow list keeps its flows in view: the on
   await expect(page.getByRole("button", { name: "2 inspelningar till" })).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: "Fortsätt spela in" }), "the one to go on with, though not the newest").toBeVisible();
   await expect(page.getByRole("link", { name: /^Nämndmöte till rapport/ }).first(), "a flow above the fold").toBeInViewport({ ratio: 1 });
+});
+
+test("a recording another tab is recording is told of in the flow list, with nothing to do there until that tab lets it go", async ({ page, context }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  await page.waitForTimeout(2_500); // a chunk on the device
+  const other = await context.newPage();
+  await other.goto("/flows");
+  const region = other.getByRole("region", { name: "En inspelning har inte skickats" });
+  await expect(region.getByText("Inspelningen används i en annan flik.")).toBeVisible();
+  await expect(region.getByRole("button"), "nothing the recording tab would have to undo").toHaveCount(0);
+
+  await page.close({ runBeforeUnload: false }); // the tab is gone mid-meeting, and its lock soon after
+  // Nothing tells the other tab: it reads the list again when it is back in view.
+  await expect(async () => {
+    await other.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(other.getByRole("button", { name: "Fortsätt spela in" })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
 });

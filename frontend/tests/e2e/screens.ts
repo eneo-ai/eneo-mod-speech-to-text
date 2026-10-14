@@ -873,6 +873,9 @@ export const STATES: State[] = [
       // The recorder hands its audio over in real time, a chunk every 2 s: some audio first, then the lid.
       await page.waitForTimeout(3_000);
       await page.clock.fastForward("02:00");
+      // The new part's first chunk, so the recording has its two files on every machine: a part stopped the moment it
+      // began may have handed over nothing, and be no file.
+      await page.waitForTimeout(2_500);
       await stop(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
       await expect(page.getByText(/Inspelningen är för lång för en fil/)).toBeVisible();

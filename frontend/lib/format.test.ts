@@ -57,12 +57,15 @@ test("durations read as seconds under a minute, then minutes, then hours and min
   assert.equal(formatDuration(3 * 3_600_000), `3${nbsp}h`);
 });
 
-test("a recording's length counts whole seconds and whole minutes, so every view shows the same one as the player", () => {
+test("a recording's length counts whole seconds, and its seconds under ten minutes, so every view says what the player shows", () => {
   // The ready view and the unsent-recordings card both show this recording; the timer stopped at 0:40.
   assert.equal(formatDuration(40_600), `40${nbsp}s`);
   assert.equal(formatDuration(59_600), `59${nbsp}s`);
-  // The player beside it says 1:45: "1 min", never "2 min".
-  assert.equal(formatDuration(105_000), `1${nbsp}min`);
+  // The player beside it says 1:47.
+  assert.equal(formatDuration(107_400), `1${nbsp}min${nbsp}47${nbsp}s`);
+  assert.equal(formatDuration(9 * 60_000 + 59_900), `9${nbsp}min${nbsp}59${nbsp}s`);
+  // From ten minutes the seconds are noise beside the length.
+  assert.equal(formatDuration(10 * 60_000 + 30_000), `10${nbsp}min`);
 });
 
 test("a percentage is whole and has a space before its sign, which keeps it with the number", () => {

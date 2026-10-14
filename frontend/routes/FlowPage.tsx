@@ -47,7 +47,7 @@ import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
-import { recordingStore } from "@/lib/recording-store";
+import { filesIn, recordingStore } from "@/lib/recording-store";
 import { leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import {
@@ -303,7 +303,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
         onStarting: () =>
-          setSubmission({ kind: "starting", wait: null, recordingId: runInput?.kind === "recording" ? runInput.recording.id : null }),
+          setSubmission({
+            kind: "starting",
+            wait: null,
+            recording: runInput?.kind === "recording" ? { id: runInput.recording.id, files: filesIn(runInput.recording) } : null,
+          }),
         onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       };

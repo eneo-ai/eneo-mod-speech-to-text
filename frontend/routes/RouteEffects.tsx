@@ -129,9 +129,10 @@ export function RouteEffects() {
 /**
  * The page's heading takes the focus when it is on no element: a phase's heading (`data-phase-heading`), else a heading
  * made focusable for it, else the first one. Focus that is on an element, the page's own or the person's, stays. It
- * scrolls nothing: the scroll is the navigation's own.
+ * scrolls nothing: the scroll is the navigation's own. Also for what a page removes from under the focus (a deleted
+ * recording that was the last of its list).
  */
-function moveFocusToHeading() {
+export function moveFocusToHeading() {
   const main = document.querySelector<HTMLElement>('main, [role="main"]');
   if (document.activeElement && document.activeElement !== document.body) return;
   const heading = main?.querySelector<HTMLElement>(PHASE_HEADING) ?? main?.querySelector<HTMLElement>("h1");
