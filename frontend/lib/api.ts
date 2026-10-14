@@ -961,23 +961,53 @@ interface UploadStatus {
   file_id: string | null;
   failure: { status: number; detail: string; code: string | null } | null;
 }
-// The Blob already survives submitRun's retries. Its upload id does too, without retaining discarded recordings.
-const resumableUploads = new WeakMap<Blob, Map<string, { id: string; completionRequested: boolean }>>();
 
-async function uploadInParts(flowId: string, stepId: string, file: Blob, filename: string, opts: UploadRequestOptions): Promise<FilePublic> {
+/**
+ * A file's upload in parts, as much of it as another page needs to address the module's resource again: the user,
+ * flow, step and file name it was made for (`key`), its id and the file's size. Another key or size is another upload.
+ */
+export interface UploadHandle {
+  key: string;
+  id: string;
+  size: number;
+  /** Its completion was asked: Eneo may hold the file, so the resource is only read again, never made anew. */
+  completionRequested: boolean;
+}
+
+interface FileUploadOptions extends UploadRequestOptions {
+  /** The handle `onHandle` last kept for this file: an upload in parts continues it where the module has it. */
+  resume?: UploadHandle | null;
+  /**
+   * Keeps the handle for a later page: once the module has made the upload, and again before its completion is asked;
+   * null once it is gone.
+   */
+  onHandle?: (handle: UploadHandle | null) => Promise<void>;
+}
+
+// The Blob already survives submitRun's retries. Its upload id does too, without retaining discarded recordings.
+const resumableUploads = new WeakMap<Blob, Map<string, UploadHandle>>();
+
+async function uploadInParts(flowId: string, stepId: string, file: Blob, filename: string, opts: FileUploadOptions): Promise<FilePublic> {
   if (opts.signal?.aborted) throw uploadAborted();
   if (loginState.signedOut) throw sessionEnded();
   const key = JSON.stringify([loginState.expectedUser, flowId, stepId, filename]);
   let uploads = resumableUploads.get(file);
   if (!uploads) {
-    uploads = new Map();
+    // A Blob new to this page (after a reload, or read again for another send) takes up the kept upload once.
+    const kept = opts.resume?.key === key && opts.resume.size === file.size ? opts.resume : null;
+    uploads = new Map(kept ? [[key, { ...kept }]] : []);
     resumableUploads.set(file, uploads);
   }
-  const handle = uploads.get(key) ?? { id: crypto.randomUUID(), completionRequested: false };
+  const handle = uploads.get(key) ?? { key, id: crypto.randomUUID(), size: file.size, completionRequested: false };
   uploads.set(key, handle);
   const { id } = handle;
   const path = `/api/uploads/${flowId}/${stepId}/${id}`;
   const forget = () => { if (uploads.get(key) === handle) uploads.delete(key); };
+  // Gone for good (Eneo refused the file, or its receipt is gone): the kept handle goes too, so no later send asks again.
+  const drop = async () => {
+    forget();
+    await opts.onHandle?.(null);
+  };
   const cancel = async () => {
     // A forward already started keeps its receipt. Otherwise release the partial file immediately when possible.
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -993,11 +1023,16 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
     }
   };
   try {
-    // After completing, a missing receipt may mean Eneo already stored the file. Never recreate it automatically.
-    let status = handle.completionRequested
-      ? await request<UploadStatus>(path, { signal: opts.signal })
-      : await request<UploadStatus>(path, { method: "PUT", signal: opts.signal,
+    let status: UploadStatus;
+    if (handle.completionRequested) {
+      // After completing, a missing receipt may mean Eneo already stored the file. Never recreate it automatically.
+      status = await request<UploadStatus>(path, { signal: opts.signal });
+    } else {
+      // Makes the resource, or says where it stands: the module answers this id only for the same file's metadata.
+      status = await request<UploadStatus>(path, { method: "PUT", signal: opts.signal,
         body: JSON.stringify({ filename, content_type: file.type || "application/octet-stream", size: file.size }) });
+      await opts.onHandle?.({ ...handle });
+    }
     while (status.state === "receiving" && status.offset < file.size) {
       if (!Number.isSafeInteger(status.offset) || status.offset < 0 || !Number.isSafeInteger(status.chunk_size) || status.chunk_size <= 0) {
         throw new ApiError(502, "Servern svarade med en ogiltig uppladdningsposition.", null, "invalid_json_response");
@@ -1022,12 +1057,14 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
     opts.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
     if (status.state === "receiving") {
       handle.completionRequested = true;
+      // Kept before it is asked: from here on only the module's receipt can say whether Eneo holds the file.
+      await opts.onHandle?.({ ...handle });
       try {
         status = await request<UploadStatus>(`${path}/complete`, { method: "POST", signal: opts.signal,
           headers: { "X-Upload-Timeout-Seconds": String(Math.ceil(resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) / 1000)) } });
       } catch (error) {
         // A definitive contract rejection removes the resource without forwarding it to Eneo.
-        if (error instanceof ApiError && [413, 422].includes(error.status)) forget();
+        if (error instanceof ApiError && [413, 422].includes(error.status)) await drop();
         throw error;
       }
     }
@@ -1043,7 +1080,7 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
       status = await request<UploadStatus>(path, { signal: opts.signal });
     }
     if (status.state === "complete" && status.file_id) return { id: status.file_id };
-    forget();
+    await drop();
     const failure = status.failure;
     if (failure && failure.status < 500 && failure.status !== 408) throw new ApiError(failure.status, failure.detail, failure, failure.code ?? undefined);
     // Eneo may already have stored the file. Only an explicit new send starts another resource.
@@ -1052,7 +1089,7 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
       failure, "upload_forward_failed");
   } catch (error) {
     if (!(handle.completionRequested && error instanceof ApiError && error.status === 404)) throw error;
-    forget();
+    await drop();
     throw new ApiError(502, "Uppladdningens kvittens finns inte kvar. Inget flöde har startats. Försök igen när du vill.",
       null, "upload_forward_failed");
   } finally {
@@ -1065,7 +1102,7 @@ export async function uploadStepRuntimeFile(
   stepId: string,
   file: Blob,
   filename: string,
-  opts: UploadRequestOptions = {},
+  opts: FileUploadOptions = {},
 ) {
   if (file.size > UPLOAD_PART_BYTES) return uploadInParts(flowId, stepId, file, filename, opts);
   const fd = new FormData();

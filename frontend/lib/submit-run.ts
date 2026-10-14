@@ -19,6 +19,7 @@ import {
   type FlowRunStep,
   type Json,
   type RunContract,
+  type UploadHandle,
 } from "./api";
 import { friendlyError, TOO_MANY_RUNS } from "./errors";
 import { filledValue, labelsSpeakers, oneRecordingLimitSeconds, speakerLabelsFor } from "./flow-session";
@@ -106,6 +107,8 @@ interface SubmitFile {
   filename: string;
   /** Set when an earlier send already uploaded this file. */
   fileId?: string | null;
+  /** An earlier send's upload in parts of this file, unfinished: continued where the module has it. */
+  upload?: UploadHandle | null;
 }
 
 export interface SubmitProgress {
@@ -128,6 +131,8 @@ export interface SubmitParams extends RetryOptions {
   inputPayload: Record<string, unknown>;
   onProgress?: (progress: SubmitProgress) => void;
   onUploaded?: (index: number, fileId: string) => void | Promise<void>;
+  /** The file's upload in parts was made or asked to complete (its handle to keep), or is gone (null). */
+  onUploadHandle?: (index: number, handle: UploadHandle | null) => Promise<void>;
   /** Replaces the key derived from the request, as for a recording. */
   idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
@@ -178,13 +183,16 @@ export async function submitRun(
       fileIds.push(file.fileId);
       continue;
     }
-    report(file.filename, sent);
+    // An upload an earlier send began shows its progress from where the module has it, once it has said.
+    if (!file.upload) report(file.filename, sent);
     const uploaded = await withRetry(
       () =>
         deps.upload(flowId, stepId!, file.blob, file.filename, {
           signal: params.signal,
           runtimeUploadPolicy: contract.runtime_upload_policy,
           onProgress: ({ loaded }) => report(file.filename, sent + loaded),
+          resume: file.upload,
+          onHandle: async (handle) => params.onUploadHandle?.(index, handle),
         }),
       // A lost connection is still waited out; the file stays on the device either way.
       { ...params, maxServerErrorTries: UPLOAD_SERVER_ERROR_TRIES },
@@ -229,13 +237,14 @@ const askRun = <T>(op: () => Promise<T>, opts: RetryOptions) => withRetry(op, { 
  * tab sends or deletes it meanwhile. The run's idempotency key is the
  * recording's, whatever was uploaded, so Eneo makes one run per recording
  * even for a tab without Web Locks, or a send retried after a reload. Uploaded
- * parts are remembered, so a send that stops uploads only the rest next time;
- * the local copy is deleted once Eneo has accepted the run.
+ * parts are remembered, so a send that stops uploads only the rest next time,
+ * and so is a part's unfinished upload in parts, which the next send continues
+ * where the module has it; the local copy is deleted once Eneo has accepted the run.
  */
 export async function submitRecording(
   store: RecordingStore,
   id: string,
-  params: Omit<SubmitParams, "files" | "onUploaded">,
+  params: Omit<SubmitParams, "files" | "onUploaded" | "onUploadHandle">,
   deps?: SubmitDeps,
 ): Promise<FlowRunPublic> {
   if (!(await store.lease(id))) throw new Error(IN_USE_ELSEWHERE);
@@ -281,7 +290,7 @@ function withoutLiveTranscript({ body, idempotencyKey }: RunRequest): RunRequest
 async function sendLeased(
   store: RecordingStore,
   id: string,
-  params: Omit<SubmitParams, "files" | "onUploaded">,
+  params: Omit<SubmitParams, "files" | "onUploaded" | "onUploadHandle">,
   deps?: SubmitDeps,
   uploadedAgain = false,
 ): Promise<FlowRunPublic> {
@@ -346,8 +355,12 @@ async function sendLeased(
           idempotencyKey: `flow-run:recording:${id}`,
           liveTranscriptId: recording.liveTranscriptId,
           singleRecording: true,
-          files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
+          files: files.map((file) => {
+            const { fileId, upload } = recording.parts[file.index];
+            return { ...file, fileId, upload };
+          }),
           onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
+          onUploadHandle: (index, handle) => store.setPartUpload(id, files[index].index, handle),
           onStarting: async (request) => {
             await store.startSubmission(id, request);
             asked = request;
