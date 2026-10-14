@@ -16,7 +16,7 @@ import { copyableHtml, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
 import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
-import { pressing, useFileAccess, waiting } from "./useFileAccess";
+import { pressing, savingWay, useFileAccess, waiting } from "./useFileAccess";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -213,8 +213,8 @@ export function ResultDocument({
       variant="primary"
       icon={<Icon icon={Download} />}
       label={`${downloadLabel}, ${file.name}`}
-      onClick={pressing(access, file.fileId, "download")}
-      {...waiting(access, file.fileId, "download")}
+      onClick={pressing(access, file.fileId, savingWay(file))}
+      {...waiting(access, file.fileId, savingWay(file))}
     >
       {downloadLabel}
     </Button>

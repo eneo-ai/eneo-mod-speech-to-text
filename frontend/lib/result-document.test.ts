@@ -1194,6 +1194,55 @@ test("a screen left while its file is asked for starts no download", async (t) =
   assert.deepEqual(started, []);
 });
 
+/** Safari's engine, which every browser on an iPhone and an iPad has, on an iPad (it says it is a Mac's, with a touch screen) or on a Mac. */
+function safariOn(t: TestContext, device: "an iPad" | "a Mac") {
+  const own = {
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    maxTouchPoints: device === "an iPad" ? 5 : 0,
+  };
+  for (const [name, value] of Object.entries(own)) {
+    Object.defineProperty(navigator, name, { value, configurable: true });
+    t.after(() => void Reflect.deleteProperty(navigator, name));
+  }
+}
+
+test("on an iPhone or an iPad a PDF is saved from a tab of its own, which Safari shows it in: the page is never replaced by it", async (t) => {
+  safariOn(t, "an iPad");
+  let answer!: () => void;
+  const answered = new Promise<Response>((resolve) => (answer = () => resolve(present())));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => answered) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  const started = downloads(t);
+  const opened = tabs(t);
+  const view = await document_({ text, file: pdf });
+  const link = [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => nameOf(a)!.startsWith("Ladda ner PDF"))!;
+
+  await view.act(async () => void press(link));
+  assert.equal(opened.length, 1, "the tab opens at the press itself");
+  assert.equal(link.getAttribute("aria-busy"), "true", "and the pressed download says it waits");
+  await view.act(async () => answer());
+  assert.deepEqual(opened.map(({ url, opener }) => ({ url, opener })), [{ url: INLINE, opener: null }], "sent to the PDF, with no way back to the page");
+  assert.deepEqual(started, [], "nothing in the page's own tab");
+  await view.unmount();
+
+  // A file Safari does not show in place downloads, and so does a PDF on a Mac.
+  globalThis.fetch = (async () => present()) as typeof fetch;
+  const docx: ResultFileView = { ...pdf, fileId: "file-2", name: "Protokoll.docx", kind: "word", typeLabel: "Word", previewable: false };
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const files = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [docx] }));
+  const word = ATTACHMENT.replace("file-1", "file-2");
+  await files.act(async () => void press(files.container.querySelector(`a[href="${word}"]`)!));
+  assert.deepEqual(started, [`${word} (download)`]);
+  await files.unmount();
+  safariOn(t, "a Mac");
+  const mac = await document_({ text, file: pdf });
+  await mac.act(async () => void press([...mac.container.querySelectorAll(`a[href="${ATTACHMENT}"]`)].find((a) => nameOf(a)!.startsWith("Ladda ner PDF"))!));
+  assert.deepEqual(started.slice(1), [`${ATTACHMENT} (download)`]);
+  assert.equal(opened.length, 1, "no tab");
+});
+
 test("narrower than a laptop the tab opens at the press and goes to the file once it is there; a file that is not closes it again", async (t) => {
   widthOf(t, 390);
   let answer: () => Response = missing;
