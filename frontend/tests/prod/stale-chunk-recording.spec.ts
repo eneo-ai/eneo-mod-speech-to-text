@@ -120,7 +120,9 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     await page.unrouteAll();
     page.on("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Ladda om sidan" }).click();
-    await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+    // Left mid-recording, it is offered to go on with, on the list as on its flow's page.
+    await expect(page.getByRole("heading", { name: "Inspelningen avbröts" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Fortsätt spela in/ }).first()).toBeVisible();
     // The duration's space does not break (lib/format.ts): \s is any space.
     const seconds = Number((await page.getByText(/Nämndmöte till rapport · \d+\ss/).textContent())!.match(/· (\d+)\ss/)![1]);
     expect(seconds, "what was recorded up to the leave, not only the audio that had been handed over before it").toBeGreaterThanOrEqual(3);
@@ -131,7 +133,7 @@ for (const mode of ["Spela in", "Strömma"] as const) {
 
     // Still there, and the same, at the next reload; and the flow's page offers to go on with it.
     await page.reload();
-    await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Inspelningen avbröts" })).toBeVisible();
     const again = await savedFile(page);
     expect(again.bytes.equals(saved.bytes), "the same audio, byte for byte").toBe(true);
     await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
