@@ -170,8 +170,7 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await expect(forward).toBeEnabled();
   await page.keyboard.press("Enter");
   await expect(back).toBeDisabled();
-  // Disabled at the edge, the pressed control keeps the focus: the keyboard goes on from where it was.
-  await expect(back).toBeFocused();
+  await expect(position).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(forward).toBeFocused();
   await position.focus();
@@ -182,7 +181,7 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await expect(forward).toBeDisabled();
-  await expect(forward).toBeFocused();
+  await expect(position).toBeFocused();
 });
 
 test("a speed is chosen in one step from the player's menu, and the audio plays at it", async ({ page }, info) => {

@@ -129,7 +129,6 @@ export function AudioPlayer({
         label={playLabel}
         variant="secondary"
         aria-keyshortcuts={playKey}
-        tooltip={playKey && `${playLabel} (${playKey})`}
         data-loading={state.starting || undefined}
         icon={
           state.starting ? (

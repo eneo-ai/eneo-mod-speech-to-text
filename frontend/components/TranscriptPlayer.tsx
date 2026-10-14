@@ -168,11 +168,30 @@ function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: nu
 
 /**
  * The controls docked under the transcript: the keys, Följ, speed, the player and its skips, as playback stands. Each
- * control names its key (`shortcut`) to a screen reader and, with a mouse, in its tooltip; a skip at the recording's
- * edge is disabled but keeps its focus.
+ * control names its key (`shortcut`) to a screen reader; the line above them names the keys to the eye. No tooltip:
+ * shown on keyboard focus, one lies over its neighbours in this row.
  */
-function PlayerControls({ playback, follow, onFollow }: { playback: Playback; follow: boolean; onFollow: () => void }) {
+function PlayerControls({
+  playback,
+  dock,
+  follow,
+  onFollow,
+}: {
+  playback: Playback;
+  dock: HTMLElement | null;
+  follow: boolean;
+  onFollow: () => void;
+}) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
+
+  function skipFromControl(milliseconds: number, trigger: HTMLElement) {
+    playback.skip(milliseconds);
+    const next = playback.getSnapshot();
+    // The pressed control becomes disabled at a boundary. Keep keyboard focus in the player, on its position.
+    if (document.activeElement === trigger && (next.atMs === 0 || next.atEnd)) {
+      dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+    }
+  }
 
   return (
     <>
@@ -193,9 +212,8 @@ function PlayerControls({ playback, follow, onFollow }: { playback: Playback; fo
           isDisabled={unavailable || atStart}
           label={`Bakåt ${SKIP_SECONDS} sekunder`}
           aria-keyshortcuts="J"
-          tooltip={`Bakåt ${SKIP_SECONDS} sekunder (J)`}
           icon={<RotateCcw aria-hidden />}
-          onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
+          onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
         />
         <IconButton
           variant="ghost"
@@ -203,9 +221,8 @@ function PlayerControls({ playback, follow, onFollow }: { playback: Playback; fo
           isDisabled={unavailable || atEnd}
           label={`Framåt ${SKIP_SECONDS} sekunder`}
           aria-keyshortcuts="L"
-          tooltip={`Framåt ${SKIP_SECONDS} sekunder (L)`}
           icon={<RotateCw aria-hidden />}
-          onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
+          onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
         <SpeedMenu playback={playback} rate={rate} className={styles.rate} />
       </AudioPlayer>
@@ -395,7 +412,7 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const [, dockRef] = useDock();
+  const [dock, dockRef] = useDock();
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -897,7 +914,7 @@ export function TranscriptPlayer(
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
         <div id={pastId} ref={dockRef} tabIndex={-1} data-docked-player className={styles.dock}>
-          <PlayerControls playback={playback} follow={follow} onFollow={() => setFollow(true)} />
+          <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} />
         </div>
       ) : (
         // Without a player the way past the passages ends here, and Tab goes on to what follows the transcript.
