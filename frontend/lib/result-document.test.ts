@@ -58,13 +58,18 @@ function filesAnswer(t: TestContext, answer: () => Response) {
 /** Presses a link as a person does, so the page's own handler runs and what a link would do is up to it. */
 const press = (link: Element) => link.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 
-/** The downloads the page starts, by the link it makes for each. */
-function downloads(t: TestContext) {
-  const started: string[] = [];
+/**
+ * The files the page saves, by the name each is saved under and what it holds: read by the page and saved from it
+ * (lib/download), never a link followed to the file, which takes Safari on a phone or a tablet away from the page.
+ */
+async function downloads(t: TestContext) {
+  const download = await import("./download");
+  const saved: string[] = [];
+  t.mock.method(download, "downloadBlob", (blob: Blob, name: string) => void blob.text().then((body) => saved.push(`${name}: ${body}`)));
   t.mock.method(window.HTMLAnchorElement.prototype, "click", function (this: HTMLAnchorElement) {
-    started.push(`${this.getAttribute("href")}${this.hasAttribute("download") ? " (download)" : ""}`);
+    saved.push(`followed ${this.getAttribute("href")}`);
   });
-  return started;
+  return saved;
 }
 
 /** The tabs the page opens: blank at first, so that the press itself opens it, and sent to the file when it is there. */
@@ -1051,7 +1056,7 @@ test("a download starts only once the file is known to be there; if it is not, t
   widthOf(t, 1280);
   let answer: () => Response = missing;
   const asked = filesAnswer(t, () => answer());
-  const started = downloads(t);
+  const started = await downloads(t);
   const { createElement } = await import("react");
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
@@ -1069,7 +1074,7 @@ test("a download starts only once the file is known to be there; if it is not, t
 
   answer = present;
   await view.act(async () => button(view.container, "Försök igen")!.click());
-  assert.deepEqual(started, [`${ATTACHMENT} (download)`], "saved once, by the link the page makes");
+  assert.deepEqual(started, [`${pdf.name}: %`], "saved once, by the page, under Eneo's name for the file");
   assert.deepEqual(alertsOf(view.container), []);
 });
 
@@ -1081,7 +1086,7 @@ test("while a file is asked for, the pressed control says that it waits, and ano
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request) => (asked.push(String(input)), answered)) as typeof fetch;
   t.after(() => void (globalThis.fetch = real));
-  const started = downloads(t);
+  const started = await downloads(t);
   const { createElement } = await import("react");
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
@@ -1095,7 +1100,7 @@ test("while a file is asked for, the pressed control says that it waits, and ano
   assert.equal(asked.length, 1, "a second press while it waits asks nothing");
 
   await view.act(async () => answer());
-  assert.deepEqual(started, [`${ATTACHMENT} (download)`]);
+  assert.deepEqual(started, [`${pdf.name}: %`]);
   assert.equal(link().getAttribute("aria-busy"), null);
 });
 
@@ -1126,7 +1131,7 @@ test("narrower than a laptop the tab opens at the press and goes to the file onc
 test("the document's own download is checked the same way", async (t) => {
   widthOf(t, 390);
   filesAnswer(t, missing);
-  const started = downloads(t);
+  const started = await downloads(t);
   const view = await document_({ text, file: pdf });
   const link = view.container.querySelector<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)!;
   await view.act(async () => void press(link));
