@@ -298,6 +298,16 @@ class FileTests(SignedIn):
         self.assertTrue(headers["content-disposition"].startswith("inline"))
         self.assertEqual(body[:5], b"%PDF-")
 
+    def test_the_dev_profiles_bff_names_the_file_as_the_backend_does(self) -> None:
+        # A phone saves a download under the name the answer gives, and "content.pdf" without one.
+        for disposition in ("inline", "attachment"):
+            with self.subTest(disposition):
+                backend = self.api("GET", f"{self.ARTIFACT}?disposition={disposition}", user=None)[1]["content-disposition"]
+                stub = call(self.stub, "GET", f"{self.ARTIFACT}?disposition={disposition}")[1].get("content-disposition")
+
+                self.assertIn('filename="Protokoll kommunstyrelsen 2026-09-24.pdf"', backend)
+                self.assertEqual(stub, backend)
+
     def test_the_same_pdf_as_a_download_is_an_attachment_in_no_frame_of_ours(self) -> None:
         status, headers, _, _ = self.api("GET", f"{self.ARTIFACT}?disposition=attachment", user=None)
 

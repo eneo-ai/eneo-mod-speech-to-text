@@ -63,11 +63,12 @@ import struct
 import sys
 import threading
 import time
+import unicodedata
 import wave
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("UPSTREAM_PORT", "8401"))
 HOST = os.environ.get("UPSTREAM_HOST", "127.0.0.1")
@@ -303,6 +304,13 @@ DONE = {"status": "completed", "result": {"kind": "artifact", "files": FILES}, "
 TEXT_FILE_BODY = (REPORT + "\n\n" + ("Förvaltningen återkommer med underlag i oktober.\n" * 2048)).encode()
 TEXT_FILE = {"file_id": FILE["text"], "name": "Resultat.txt", "mimetype": "text/plain", "size": len(TEXT_FILE_BODY),
              "step_id": REPORT_STEP_ID}
+
+
+def named(kind, name):
+    """A run's file as the backend names it (`_content_disposition` in backend/app/main.py): Eneo's name for it, as an ASCII
+    fallback and in UTF-8. A phone saves a download under it, and as "content.pdf" without it."""
+    fallback = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode() or "fil"
+    return f"{kind}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
 LONG_REPORT = REPORT + "".join(
     f"\n\n### {title}\n\n{body} Ärendet bereddes av förvaltningen och föredrogs av handläggaren. "
     "Ledamöterna ställde frågor om kostnaderna och om hur invånarna berörs. Beslutet justeras vid nästa sammanträde."
@@ -476,11 +484,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def send(self, status, body, ctype="application/json"):
+    def send(self, status, body, ctype="application/json", extra=None):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        for name, value in (extra or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         try:
             self.wfile.write(data)
@@ -886,9 +896,12 @@ class Handler(BaseHTTPRequestHandler):
         if len(what) == 3 and what[0] == "input-files" and what[2] == "audio" and what[1] in AUDIO:
             return self.audio(AUDIO[what[1]])
         if len(what) == 3 and what[0] == "artifacts" and what[2] == "content":
+            # As the backend answers: under the file's name, and the PDF inline only where the page asks for it.
             if what[1] == FILE["text"]:
-                return self.send(200, TEXT_FILE_BODY, "text/plain;charset=utf-8")
-            return self.send(200, PDF, "application/pdf")
+                return self.send(200, TEXT_FILE_BODY, "text/plain;charset=utf-8", {"Content-Disposition": named("attachment", TEXT_FILE["name"])})
+            inline = parse_qs(url.query).get("disposition", [""])[0] == "inline"
+            pdf_name = next(f["name"] for f in FILES if f["file_id"] == FILE["pdf"])
+            return self.send(200, PDF, "application/pdf", {"Content-Disposition": named("inline" if inline else "attachment", pdf_name)})
         run = run_state(run_id, poll=what == ["status"])
         if run is None:
             return self.send(404, {"code": "flow_run_not_found", "detail": "Run not found."})
