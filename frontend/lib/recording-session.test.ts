@@ -382,6 +382,39 @@ test("a microphone muted while the page was away is told with how long once the 
   assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 20_000, away: false });
 });
 
+test("a page back from the background, where the recorder handed over no audio, is told how long it was away; with audio meanwhile nothing is said", async () => {
+  let now = 0;
+  const { page, show } = fakePage();
+  const { capture, streams, recorders } = await setup({ page, now: () => now });
+  await capture.start(meeting);
+  // A phone takes the microphone from a page in the background without a word (Android: no mute).
+  show("hidden");
+  recorders[0].emit("a"); // what the page asked for as it went
+  now = 12_000;
+  show("visible");
+  assert.equal(capture.getSnapshot().hiddenGap, 12_000);
+  show("hidden");
+  assert.equal(capture.getSnapshot().hiddenGap, null, "told until the page goes away again");
+
+  // A laptop's background tab records on: its chunks come, and there is nothing to tell.
+  for (const text of ["b", "c", "d"]) recorders[0].emit(text);
+  now += 12_000;
+  show("visible");
+  assert.equal(capture.getSnapshot().hiddenGap, null);
+  show("hidden");
+  now += 3_000;
+  show("visible");
+  assert.equal(capture.getSnapshot().hiddenGap, null, "a moment away is no gap");
+
+  // Muted meanwhile: the muted microphone is told, once.
+  show("hidden");
+  streams[0].track.lose("mute");
+  now += 10_000;
+  streams[0].track.regain();
+  show("visible");
+  assert.deepEqual([capture.getSnapshot().mutedGap, capture.getSnapshot().hiddenGap], [{ ms: 10_000, away: true }, null]);
+});
+
 test("a muted microphone misses only recorded time: a mute within Pausa is not told, and one across it counts the recording on either side", async () => {
   let now = 0;
   const { capture, streams } = await setup({ now: () => now });

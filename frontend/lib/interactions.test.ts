@@ -1367,6 +1367,16 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
     assert.equal(silent, false, "counted from when it is in view");
     await listen(400);
     assert.equal(silent, true);
+    // A phone that froze the page in the background read nothing there, not even that it was hidden.
+    visibility = "hidden";
+    await view.act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    t.mock.timers.setTime(Date.now() + 12_000);
+    visibility = "visible";
+    await view.act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    await listen(14_800);
+    assert.equal(silent, false, "back from a frozen background, counted from when it is in view");
+    await listen(400);
+    assert.equal(silent, true);
   } finally {
     await view.unmount();
     page.AudioContext = browserAudio;

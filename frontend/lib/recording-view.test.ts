@@ -181,6 +181,11 @@ test("the bar says when no audio is kept, when the microphone stays muted, how l
     notes: [`Mikrofonen var avstängd i 40 s medan sidan låg i bakgrunden. ${lost}`],
   });
   assert.deepEqual(recordingNotices({ ...base, mutedGap: { ms: 4 * 60_000, away: false } }).notes, [`Mikrofonen var avstängd i 4 min. ${lost}`]);
+  // Away with no audio from the recorder, and no muted microphone to say why: what is missing may be.
+  assert.deepEqual(recordingNotices({ ...base, hiddenGap: 12_000 }), {
+    warnings: [],
+    notes: ["Sidan låg i bakgrunden i 12 s. Ljud från den tiden kan saknas."],
+  });
 
   // What went wrong in keeping the recording is said while it goes on, and in place of the promise that a pause kept it.
   assert.deepEqual(recordingNotices({ ...base, error: "Inspelningen finns inte längre på enheten." }).warnings, [

@@ -33,6 +33,15 @@ export function useSilence(stream: MediaStream | null, recording: boolean): bool
   useEffect(() => {
     if (!recording) setSilent(false);
   }, [recording]);
+  // Away and back, the count starts over: a phone may freeze a page in the background, where nothing was read at all.
+  useEffect(() => {
+    const startOver = () => {
+      watch.current.reset();
+      setSilent(false);
+    };
+    document.addEventListener("visibilitychange", startOver);
+    return () => document.removeEventListener("visibilitychange", startOver);
+  }, []);
   return silent;
 }
 
