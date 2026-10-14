@@ -232,7 +232,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const unstored = useSyncExternalStore(unstoredDrafts.subscribe, unstoredDrafts.any, () => false);
   const leaving = useLeaveQuestion(
     submitting || holdsAudio || unstored,
-    submitting || holdsAudio ? leaveWarning(input.persistent, snapshot.phase, submitting) : UNSTORED_LEAVE,
+    submitting || holdsAudio ? leaveWarning(input.persistent, snapshot.phase, submitting, input.capture.refused) : UNSTORED_LEAVE,
     leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
   );
   useEffect(() => {

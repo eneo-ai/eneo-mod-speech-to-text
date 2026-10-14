@@ -179,10 +179,18 @@ export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: 
  * only when the device keeps it; otherwise leaving loses it, and the way to
  * keep it is "Spara som fil" (after Stoppa, while recording).
  */
-export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false): string {
+export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false, refused: DeviceRefusal | null = null): string {
   if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
   const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
   const stops = sending ? "Sändningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
+  // A full device holds what came before; only what came after is in this tab, and a full disk would refuse a saved
+  // file too: room is the way to keep it, not Spara som fil.
+  if (refused === "full") {
+    return (
+      `${stops}Enheten är full, så det senaste av inspelningen finns bara i den här fliken och försvinner när du lämnar ` +
+      "sidan. Det som spelades in innan finns kvar på enheten. Stanna kvar och frigör utrymme, så sparas resten där."
+    );
+  }
   if (persistent) return `${stops}Det som spelats in finns kvar bland osända inspelningar.`;
   const lost = `${stops}${capturing ? "Den" : "Inspelningen"} finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"

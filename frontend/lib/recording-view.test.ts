@@ -267,6 +267,11 @@ test("details a send found missing stay unfolded while they are filled in, until
 test("leaving an upload says it stops, and what is kept of a recording", () => {
   assert.equal(leaveWarning(true, "setup", true), "Sändningen avbryts, och filen behöver väljas igen.");
   assert.equal(leaveWarning(true, "ready", true), "Sändningen avbryts. Det som spelats in finns kvar bland osända inspelningar.");
+  // A full device keeps what came before; only the latest is in this tab, and a saved file would be refused too.
+  const full = leaveWarning(false, "recording", false, "full");
+  assert.match(full, /^Inspelningen stoppas\. Enheten är full, så det senaste av inspelningen finns bara i den här fliken/);
+  assert.match(full, /Det som spelades in innan finns kvar på enheten\. Stanna kvar och frigör utrymme/);
+  assert.doesNotMatch(full, /Spara som fil/);
   assert.equal(
     leaveWarning(false, "ready", true),
     "Sändningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
