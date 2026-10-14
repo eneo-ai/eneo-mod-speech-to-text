@@ -91,12 +91,14 @@ function FlowsListPage() {
           <VStack gap={8} paddingBlockStart={4} maxWidth={960}>
             <Heading level={1}>Välj ett flöde</Heading>
 
-            {/* Each action goes on in the recording's flow; beside the flows, none is the page's filled action. */}
+            {/* Each action goes on in the recording's flow; beside the flows, none is the page's filled action, and one
+                recording stands in view with the rest folded, so the flows are in view too. */}
             <UnsentRecordings
               list={unsent}
               withFlowName
               evictable={evictable}
               filled={false}
+              folded
               sendLabel={(recording) => createLabel(recording.flowId)}
               onSend={(recording) => void navigate(sendRecordingAddress(recording.flowId, recording.id))}
               onContinue={(recording) => void navigate(continueRecordingAddress(recording.flowId, recording.id))}

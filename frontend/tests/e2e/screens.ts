@@ -209,6 +209,42 @@ export async function leaveRecording(page: Page) {
   await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
 }
 
+/**
+ * A recording of `bytes` bytes for flow 1, kept on this device as the recorder keeps one (lib/recording-store.ts): stopped,
+ * or cut off by a reload ("recording"). The page must be on the app's origin, whose database it is.
+ */
+export async function keptRecording(page: Page, bytes: number, state: "stopped" | "recording" = "stopped"): Promise<string> {
+  return page.evaluate(
+    async ({ bytes, flowId, stepId, state }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const opening = indexedDB.open("tal-till-text", 1);
+        opening.onupgradeneeded = () => {
+          opening.result.createObjectStore("recordings", { keyPath: "id" });
+          opening.result.createObjectStore("chunks", { keyPath: ["recordingId", "part", "seq"] });
+        };
+        opening.onsuccess = () => resolve(opening.result);
+        opening.onerror = () => reject(opening.error);
+      });
+      const id = crypto.randomUUID();
+      const startedAt = Date.now();
+      const writing = db.transaction(["recordings", "chunks"], "readwrite");
+      writing.objectStore("recordings").put({
+        id, ownerId: "user-1", flowId, flowName: "Nämndmöte till rapport", stepId, inputMode: "record", mimeType: "audio/wav",
+        startedAt, durationMs: 280_000, state, runId: null,
+        parts: [{ index: 0, startedAt, durationMs: 280_000, bytes, chunks: 1, fileId: null }],
+      });
+      writing.objectStore("chunks").put({ recordingId: id, part: 0, seq: 0, data: new ArrayBuffer(bytes) });
+      await new Promise((resolve, reject) => {
+        writing.oncomplete = resolve;
+        writing.onerror = () => reject(writing.error);
+      });
+      db.close();
+      return id;
+    },
+    { bytes, flowId: ids.flows.flow1, stepId: ids.steps.audio, state },
+  );
+}
+
 /** A short silent WAV file. */
 export function wav(seconds = 1): Buffer {
   const rate = 8_000;
