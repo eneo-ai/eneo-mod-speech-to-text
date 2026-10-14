@@ -80,7 +80,7 @@ class FakeSocket implements LiveSocket {
 function setupLive(options: { failLoads?: number; failResumes?: number; suspended?: boolean } = {}) {
   const Processor = loadWorklet();
   const sockets: FakeSocket[] = [];
-  const contexts: Array<{ state: string }> = [];
+  const contexts: Array<EventTarget & { state: string }> = [];
   const worklets: Processor[] = [];
   const named: Array<[stepId: string, recordingId: string | undefined]> = [];
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
@@ -88,7 +88,8 @@ function setupLive(options: { failLoads?: number; failResumes?: number; suspende
   let failResumes = options.failResumes ?? 0;
   const client = liveClient({
     audioContext: () => {
-      const context = {
+      // Its state changes are events, as a browser's are.
+      const context = Object.assign(new EventTarget(), {
         state: options.suspended ? "suspended" : "running",
         sampleRate: 16_000,
         audioWorklet: {
@@ -104,7 +105,7 @@ function setupLive(options: { failLoads?: number; failResumes?: number; suspende
           context.state = "closed";
           return Promise.resolve();
         },
-      };
+      });
       contexts.push(context);
       return context as unknown as AudioContext;
     },
@@ -287,6 +288,22 @@ test("live text not ready when the recorder starts misses its opening: the stop 
     deliver();
     assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop" }, late);
   }
+});
+
+test("audio the browser suspends or interrupts while live text runs is resumed as it changes, until it is let go", async () => {
+  const { client, sockets, contexts } = setupLive();
+  const session = client.open("step-audio");
+  session.listen(stream);
+  await settle();
+  sockets[0].ready();
+  const [context] = contexts;
+  context.state = "interrupted"; // a call on the phone, or Siri
+  context.dispatchEvent(new Event("statechange"));
+  assert.equal(context.state, "running", "resumed");
+  session.dispose();
+  context.state = "suspended";
+  context.dispatchEvent(new Event("statechange"));
+  assert.equal(context.state, "suspended", "a context let go is left alone");
 });
 
 test("the browser's live connection names the user the page was opened for, each time it connects", (t) => {

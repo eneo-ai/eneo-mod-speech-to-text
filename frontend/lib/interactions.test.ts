@@ -1255,7 +1255,7 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
   const { useSilence } = await import("../components/flow/recording-hooks");
   // What the microphone gives: the loudest sample of each read.
   let peak = 0;
-  class FakeAudioContext {
+  class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
     close = async () => undefined;
@@ -1339,7 +1339,7 @@ test("with reduced motion, the level meter still shows the microphone's level, w
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
   let peak = 0.5;
-  class FakeAudioContext {
+  class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
     close = async () => undefined;
@@ -1367,30 +1367,40 @@ test("with reduced motion, the level meter still shows the microphone's level, w
   }
 });
 
-/** A stream the meter listens to, a microphone that hears `peak`, and the audio context of a browser that has one. */
-function listening(t: import("node:test").TestContext, peak: { value: number } | null) {
-  class FakeAudioContext {
+/**
+ * A stream the meter listens to, a microphone that hears `peak`, and the audio context of a browser that has one (the
+ * ones made are in `contexts`); "refuses": a browser that throws instead, as one with too many open does.
+ */
+function listening(t: import("node:test").TestContext, peak: { value: number } | null | "refuses") {
+  const contexts: Array<EventTarget & { state: string }> = [];
+  class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
-    resume = async () => undefined;
-    close = async () => undefined;
+    constructor() {
+      super();
+      if (peak === "refuses") throw new DOMException("Too many audio contexts", "NotSupportedError");
+      contexts.push(this);
+    }
+    resume = async () => void (this.state = "running");
+    close = async () => void (this.state = "closed");
     createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
-    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak?.value ?? 0) });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(typeof peak === "object" ? (peak?.value ?? 0) : 0) });
   }
   const page = window as unknown as { AudioContext?: unknown; webkitAudioContext?: unknown };
   const before = { audio: page.AudioContext, webkit: page.webkitAudioContext };
   page.AudioContext = peak ? FakeAudioContext : undefined;
   page.webkitAudioContext = undefined;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  return () => {
+  const restore = () => {
     page.AudioContext = before.audio;
     page.webkitAudioContext = before.webkit;
   };
+  return { restore, contexts };
 }
 
 test("the level meter goes quiet when the stream ends, whichever way it is drawn", async (t) => {
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
-  const restore = listening(t, { value: 0.5 });
+  const { restore } = listening(t, { value: 0.5 });
   const stream = {} as MediaStream;
   try {
     for (const variant of ["steps", "wave"] as const) {
@@ -1409,23 +1419,47 @@ test("the level meter goes quiet when the stream ends, whichever way it is drawn
   }
 });
 
-test("a browser without an audio context still gets a level meter, at rest", async (t) => {
+test("the level's audio is resumed when the system suspends or interrupts it, and when the page is shown again", async (t) => {
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
-  const restore = listening(t, null);
+  const { restore, contexts } = listening(t, { value: 0.5 });
   try {
-    for (const variant of ["steps", "wave"] as const) {
-      const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant }));
-      await view.act(async () => t.mock.timers.tick(500));
-      const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
-      assert.equal(bars.length, 8, `${variant}: the bars are there`);
-      assert.ok(bars.every((bar) => bar.dataset.lit !== "true" && (variant === "steps" || bar.style.transform === "")), `${variant}: at rest`);
-      await view.unmount();
-    }
+    const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant: "steps" }));
+    const [context] = contexts;
+    context.state = "interrupted"; // a call on the phone, or Siri
+    context.dispatchEvent(new Event("statechange"));
+    assert.equal(context.state, "running", "resumed as it changes");
+    context.state = "suspended";
+    document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(context.state, "running", "and when the page is shown again");
+    await view.unmount();
+    context.state = "suspended";
+    document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(context.state, "suspended", "a meter that is gone leaves it alone");
   } finally {
     restore();
   }
 });
+
+for (const [browser, audio] of [["without an audio context", null], ["that refuses one (too many open)", "refuses"]] as const) {
+  test(`a browser ${browser} still gets a level meter, at rest`, async (t) => {
+    const { createElement } = await import("react");
+    const { LevelMeter } = await import("../components/flow/LevelMeter");
+    const { restore } = listening(t, audio);
+    try {
+      for (const variant of ["steps", "wave"] as const) {
+        const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant }));
+        await view.act(async () => t.mock.timers.tick(500));
+        const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
+        assert.equal(bars.length, 8, `${variant}: the bars are there`);
+        assert.ok(bars.every((bar) => bar.dataset.lit !== "true" && (variant === "steps" || bar.style.transform === "")), `${variant}: at rest`);
+        await view.unmount();
+      }
+    } finally {
+      restore();
+    }
+  });
+}
 
 test("a kept review edit comes back only in the shape the review reads: any other, and any din version of another shape, is dropped from the storage and counts as none", async (t) => {
   t.after(() => window.sessionStorage.clear());
