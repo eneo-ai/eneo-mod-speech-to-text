@@ -11,7 +11,7 @@ import {
 } from "./recording-store";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus } from "./online-status";
-import { RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
+import { mayContinue, RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
 import { submitRecording } from "./submit-run";
 
 const meeting: NewRecording = {
@@ -1700,4 +1700,34 @@ test("a browser without a wake lock says so, and two requests that cross leave o
   await until(() => wakeLocks.requested === 2 && wakeLocks.released === 1, "the earlier lock let go");
   await capture.stop();
   assert.equal(wakeLocks.released, 2, "and the later one at Stoppa: none is left holding the screen on");
+});
+
+test("a stop can be taken back with Fortsätt spela in only while the flow takes a further part, and the recorder says which", async () => {
+  const one = await setup();
+  await one.capture.start(meeting, { maxBytes: 10 ** 12, maxFiles: 1 });
+  assert.equal(one.capture.continuesAfterStop(), false, "a flow of one file");
+  one.recorders[0].emit("a");
+  one.capture.togglePause();
+  assert.equal(one.capture.continuesAfterStop(), false, "paused too");
+  const stoppedOne = await one.capture.stop();
+  assert.equal(mayContinue(stoppedOne!, { maxBytes: 10 ** 12, maxFiles: 1 }), false, "and the stored recording says the same");
+
+  const two = await setup();
+  await two.capture.start(meeting, { maxBytes: 10 ** 12, maxFiles: 2 });
+  assert.equal(two.capture.continuesAfterStop(), true);
+  two.recorders[0].emit("a");
+  const stoppedTwo = await two.capture.stop();
+  assert.equal(mayContinue(stoppedTwo!, { maxBytes: 10 ** 12, maxFiles: 2 }), true);
+
+  const open = await setup();
+  await open.capture.start(meeting);
+  assert.equal(open.capture.continuesAfterStop(), true, "a flow without limits");
+
+  let now = 0;
+  const timed = await setup({ now: () => now });
+  await timed.capture.start(meeting, { maxFiles: 10, partMs: 30 * 60_000, maxRecordingMs: 60 * 60_000 });
+  now = 50 * 60_000;
+  assert.equal(timed.capture.continuesAfterStop(), true, "time for a part after this one");
+  now = 59 * 60_000;
+  assert.equal(timed.capture.continuesAfterStop(), false, "no time left for another part before the longest recording");
 });

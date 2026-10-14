@@ -10,7 +10,7 @@
  * - show a response: the URL changed, focus moved elsewhere, an overlay (dialog, menu, list) opened or closed, an
  *   aria-pressed/checked/expanded/selected/current changed, a live region said something, a new tab, download or native
  *   dialog came up, or the page's own content changed (a region that changes by itself, a timer, is left out);
- * - leave the page usable: an overlay it opened closes on Escape or on its own close control.
+ * - leave the page usable: an overlay it opened closes on Escape or on its own close control, and a hint goes by itself.
  *
  * What it does not activate is listed in SKIPPED, by state and control, with the reason; an external link is checked for
  * its address only. What is the current choice already (a chosen radio, the selected tab, the link to the page the person

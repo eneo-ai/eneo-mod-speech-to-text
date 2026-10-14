@@ -5,7 +5,7 @@
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { chooseMode, endLogin, isLaptop, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
+import { chooseMode, endLogin, isLaptop, limitAudio, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
@@ -490,6 +490,18 @@ const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (
       const dialog = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
       await expect(dialog).toBeVisible();
       return { dialog, kept: () => expect(dialog.getByRole("button", { name: "Behåll" }).or(dialog.getByRole("button", { name: "Avbryt" })).first()).toBeVisible() };
+    },
+  },
+  {
+    name: "the stop question",
+    open: async (page) => {
+      await limitAudio(page, 60 * 60, 1);
+      await setup(page);
+      await record(page, "Spela in");
+      await page.getByRole("toolbar", { name: "Inspelningen" }).getByRole("button", { name: "Stoppa" }).click();
+      const dialog = page.getByRole("alertdialog", { name: "Stoppa inspelningen?" });
+      await expect(dialog).toBeVisible();
+      return { dialog, kept: () => expect(dialog.getByRole("button", { name: "Fortsätt spela in" })).toBeVisible() };
     },
   },
   {

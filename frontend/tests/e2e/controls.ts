@@ -111,10 +111,13 @@ function watch() {
     const box = element.getBoundingClientRect();
     return getComputedStyle(element).visibility !== "hidden" && box.width > 0 && box.height > 0;
   };
+  // A hint, as the design system's keyboard hint (useKeyboardHint) is: a popover whose content is hidden from assistive
+  // tech, which shows on keyboard focus and goes by itself, so no Escape closes it.
+  const hint = (element: Element) => element.matches("[popover]") && [...element.children].every((child) => child.getAttribute("aria-hidden") === "true");
   const overlays = () =>
     [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [popover]')]
       .filter((element) => !element.matches('[role="tooltip"]') && (element.matches("dialog") || element.matches("[popover]") ? element.matches(":modal, :popover-open") : shown(element)))
-      .map(key)
+      .map((element) => (hint(element) ? `hint ${key(element)}` : key(element)))
       .sort();
   const snapshot = () => ({
     url: location.href,
@@ -357,6 +360,8 @@ async function check(browser: Browser, info: TestInfo, state: State, control: Co
           opened = await openedSince(copy.page, initial, 1_500);
         }
       }
+      // A hint goes by itself (the design system's keyboard hint after 3 s, shown when Escape gives a toolbar the focus back).
+      if (opened.length && opened.every((overlay) => overlay.startsWith("hint "))) opened = await openedSince(copy.page, initial, 4_000);
       if (opened.length) problems.push(`${where}: opened ${opened.join(", ")}, and neither Escape nor a close control closed it`);
     }
 

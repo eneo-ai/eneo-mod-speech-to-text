@@ -1,15 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { RunContract } from "@/lib/api";
 import { browserDrafts } from "@/lib/drafts";
-import { FlowSession } from "@/lib/flow-session";
+import { captureLimits, FlowSession } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import { probeLength } from "@/lib/playback";
-import type { CaptureDeps } from "@/lib/recording-session";
+import { mayContinue, type CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, sealed } from "@/lib/recording-store";
 import { browserLiveClient, supportsLiveText } from "@/components/flow/live-audio";
 import { useEvictable } from "@/components/UnsentRecordings";
-import { pickSupportedAudioMimetype } from "@/lib/upload";
+import { pickSupportedAudioMimetype, selectRuntimeInputStep } from "@/lib/upload";
 
 type NavigatorWithWakeLock = Navigator & {
   wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
@@ -97,17 +97,20 @@ export function useFlowSession({
   // Leaving the page keeps what was recorded, paused, for recovery.
   useEffect(() => () => session.dispose(), [session]);
 
+  // The ready state offers "Fortsätt spela in" when this browser can record for the flow, no send of the recording has
+  // begun (it is sealed from then on), and the flow takes a further part of it.
+  const { recording } = snapshot;
+  const continues =
+    snapshot.modes.includes("spela-in") &&
+    !capture.limitReached &&
+    !(recording && (sealed(recording) || !mayContinue(recording, captureLimits(contract, selectRuntimeInputStep(contract)))));
+
   return {
     session,
     snapshot,
     capture,
     persistent: capture.recording ? capture.persistent : persistent,
     evictable,
-    // The ready state offers "Fortsätt spela in" when this browser can record for the flow, no send of the
-    // recording has begun (it is sealed from then on), and it did not stop because the flow takes no more.
-    continueStopped:
-      snapshot.modes.includes("spela-in") && !(snapshot.recording && sealed(snapshot.recording)) && !capture.limitReached
-        ? () => void session.continueStopped()
-        : undefined,
+    continueStopped: continues ? () => void session.continueStopped() : undefined,
   };
 }

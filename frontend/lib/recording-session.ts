@@ -151,6 +151,18 @@ const filesIn = (recording: StoredRecording) => recording.parts.filter((part) =>
 const noMoreFiles = (maxFiles: number) =>
   `Flödet tar emot högst ${maxFiles} ${maxFiles === 1 ? "fil" : "filer"}, och inspelningen har redan så många delar.`;
 
+/** Why the flow takes no further part of a recording of `files` files and `recordedMs`, or null while it does. */
+function noFurtherPart(limits: CaptureLimits, files: number, recordedMs: number): string | null {
+  if (limits.maxFiles !== undefined && files >= limits.maxFiles) return noMoreFiles(limits.maxFiles);
+  // A new part must have time to record before the longest recording.
+  if (recordingLeftMs(limits, files + 1, recordedMs) <= 0) return noMoreTime(limits.maxRecordingMs!);
+  return null;
+}
+
+/** Whether "Fortsätt spela in" can add a part to a stored recording under the flow's limits. */
+export const mayContinue = (recording: StoredRecording, limits: CaptureLimits) =>
+  noFurtherPart(limits, filesIn(recording), recording.durationMs) === null;
+
 // How long the recorder says the recording is kept on the device again, once the full device has room.
 const BACK_ON_DEVICE_MS = 10_000;
 
@@ -297,16 +309,17 @@ export class RecordingCapture {
     return this.takeOver(recordingId, limits, (found) => (sealed(found) ? SEND_BEGUN : null));
   }
 
+  /** Whether a stop now can be taken back with "Fortsätt spela in": not once the flow takes no further part. */
+  continuesAfterStop(): boolean {
+    return noFurtherPart(this.limits, this.partCount, this.elapsedMs()) === null;
+  }
+
   /** "Fortsätt spela in" after an interruption: a new part of the same recording. */
   async continueRecording(): Promise<void> {
     if (this.starting !== null || this.snapshot.status !== "interrupted") return;
-    const { maxFiles } = this.limits;
-    if (maxFiles !== undefined && this.partCount >= maxFiles) {
-      this.set({ error: noMoreFiles(maxFiles) });
-      return;
-    }
-    if (recordingLeftMs(this.limits, this.partCount + 1, this.elapsedMs()) <= 0) {
-      this.set({ error: noMoreTime(this.limits.maxRecordingMs!) });
+    const refusal = noFurtherPart(this.limits, this.partCount, this.elapsedMs());
+    if (refusal) {
+      this.set({ error: refusal });
       return;
     }
     this.starting = this.generation;
@@ -431,15 +444,8 @@ export class RecordingCapture {
       const eligible = async () => {
         const found = await store.get(recordingId);
         if (!found) throw new Refusal(NOT_ON_DEVICE);
-        const reason = refusal(found);
+        const reason = refusal(found) ?? noFurtherPart(limits, filesIn(found), found.durationMs);
         if (reason) throw new Refusal(reason);
-        if (limits.maxFiles !== undefined && filesIn(found) >= limits.maxFiles) {
-          throw new Refusal(noMoreFiles(limits.maxFiles));
-        }
-        // A new part must have time to record before the longest recording.
-        if (recordingLeftMs(limits, filesIn(found) + 1, found.durationMs) <= 0) {
-          throw new Refusal(noMoreTime(limits.maxRecordingMs!));
-        }
         return found;
       };
       await eligible();
