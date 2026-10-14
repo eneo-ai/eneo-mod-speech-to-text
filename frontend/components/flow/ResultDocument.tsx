@@ -12,7 +12,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import type { ResultFileView } from "@/lib/run-files";
-import { useCopy } from "./CopyButton";
+import { copyableHtml, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
 import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
@@ -198,7 +198,9 @@ export function ResultDocument({
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
   const share = useShare(file, download, text);
   const access = useFileAccess(flowId, runId);
-  const [copyState, copy] = useCopy(text ?? "");
+  // The text as it is drawn, for a copy that keeps its headings, lists and bold.
+  const article = useRef<HTMLElement | null>(null);
+  const [copyState, copy] = useCopy(text ?? "", () => article.current && copyableHtml(article.current));
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
   const wide = useMediaMatch(LAPTOP);
@@ -296,7 +298,7 @@ export function ResultDocument({
         )}
 
         {text && (
-          <VStack as="article" padding={6}>
+          <VStack as="article" ref={article} padding={6}>
             <Markdown>{text}</Markdown>
           </VStack>
         )}

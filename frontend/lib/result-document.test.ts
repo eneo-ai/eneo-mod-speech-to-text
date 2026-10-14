@@ -213,6 +213,27 @@ test("the document's one filled action is its file's download; without a file it
   await textOnly.unmount();
 });
 
+test("Kopiera texten puts the text on the clipboard formatted, for a word processor or a mail, and as it is written", async (t) => {
+  const markdown = "## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen**.\n\n- Förvaltningen återkommer i oktober.";
+  const written: Record<string, Blob>[] = [];
+  class Item {
+    constructor(readonly items: Record<string, Blob>) {}
+  }
+  Object.defineProperty(globalThis, "ClipboardItem", { value: Item, configurable: true });
+  Object.defineProperty(navigator, "clipboard", { value: { write: async (items: Item[]) => void written.push(items[0].items) }, configurable: true });
+  t.after(() => ["ClipboardItem"].forEach((name) => Reflect.deleteProperty(globalThis, name)));
+  t.after(() => void Reflect.deleteProperty(navigator, "clipboard"));
+  const view = await document_({ text: markdown, file: null });
+  await view.act(async () => button(view.container, "Kopiera texten")!.click());
+  assert.equal(written.length, 1);
+  const html = await written[0]["text/html"].text();
+  assert.equal(await written[0]["text/plain"].text(), markdown, "as written, where only text is taken");
+  assert.match(html, /<h2>Protokoll<\/h2>/, "a heading stays a heading");
+  assert.match(html, /<p>Kommunstyrelsen beslutade att <strong>höja budgetramen<\/strong>\.<\/p>/, "a paragraph with its bold");
+  assert.match(html, /<ul><li>(?:<span>|<\/span>)*Förvaltningen återkommer i oktober\.(?:<\/span>)*<\/li><\/ul>/, "a list item");
+  assert.doesNotMatch(html, /class=|style=|<button|<svg/, "nothing of the page's own look or controls");
+});
+
 test("a text without a file of its own downloads as a text file, under the name the page gives its files", async (t) => {
   const download = await import("./download");
   const saved: { text: string; name: string }[] = [];
