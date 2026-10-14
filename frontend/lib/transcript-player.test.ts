@@ -54,7 +54,7 @@ test("the player's keys are named on its controls and said once in a line; speed
   const doc = parse(render(1));
   const keyOf = (name: string) => doc.querySelector(`button[aria-label="${name}"]`)?.getAttribute("aria-keyshortcuts");
   assert.deepEqual([keyOf("Spela upp"), keyOf("Bakåt 10 sekunder"), keyOf("Framåt 10 sekunder")], ["K", "J", "L"]);
-  assert.match(doc.body.textContent ?? "", /Tangenter: K spelar och pausar, J och L hoppar 10 sekunder, pilarna 5 sekunder\./);
+  assert.match(doc.body.textContent ?? "", /Tangenter: K spelar och pausar, J och L hoppar 10 sekunder\./);
   const speeds = [...doc.querySelectorAll('button[aria-label="Hastighet 1×"]')];
   assert.equal(speeds.length, 2, "one in the row, one above it on a phone");
   assert.ok(speeds.every((speed) => speed.getAttribute("aria-haspopup") === "menu"), "any speed in one step, not a round through them");

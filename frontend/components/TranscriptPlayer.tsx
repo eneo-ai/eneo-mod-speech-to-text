@@ -200,7 +200,7 @@ function PlayerControls({
           where there is a keyboard to press them: with a mouse, never on a touch screen. */}
       <div className={styles.dockTools}>
         <Text type="supporting" className={styles.keys}>
-          Tangenter: K spelar och pausar, J och L hoppar 10 sekunder, pilarna 5 sekunder.
+          Tangenter: K spelar och pausar, J och L hoppar 10 sekunder.
         </Text>
         {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
         <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
