@@ -606,7 +606,12 @@ async function mountAudioSetup(
   {
     step = {},
     parts = [{ index: 0, startedAt: 0, durationMs: 60_000, bytes: 240_000, chunks: 30, fileId: null }],
-  }: { step?: Record<string, unknown>; parts?: import("./recording-store").StoredRecording["parts"] } = {},
+    state = "stopped",
+  }: {
+    step?: Record<string, unknown>;
+    parts?: import("./recording-store").StoredRecording["parts"];
+    state?: import("./recording-store").StoredRecording["state"];
+  } = {},
 ) {
   const { createElement, useState } = await import("react");
   const { FlowInput } = await import("../components/flow/FlowInput");
@@ -617,7 +622,7 @@ async function mountAudioSetup(
       steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", ...step }],
       transcription: { live: { available: false, reason: null }, speaker_labels: labels },
     }) as unknown as import("./api").RunContract;
-  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state: "stopped", parts, runId: null } as import("./recording-store").StoredRecording;
+  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state, parts, runId: null } as import("./recording-store").StoredRecording;
   let publish: (labels: Record<string, unknown>) => void = () => undefined;
   let makeReady = () => {};
   function Setup() {
@@ -758,6 +763,41 @@ test("Ta bort on a ready recording says it was removed, and the focus goes to th
   } finally {
     store.remove = remove;
     await view.unmount();
+  }
+});
+
+test("a recording a reload cut off stands first on the page in one column, under the flow's name, and in the work beside it in two", async () => {
+  // A browser that records, so the cut-off recording's Fortsätt spela in is the page's filled action.
+  const microphones = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { addEventListener() {}, removeEventListener() {}, enumerateDevices: async () => [] } });
+  const recorder = { isTypeSupported: () => true };
+  Object.assign(window, { MediaRecorder: recorder });
+  Object.assign(globalThis, { MediaRecorder: recorder });
+  const matchMedia = window.matchMedia;
+  try {
+    for (const twoColumns of [false, true]) {
+      window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: twoColumns && query === "(min-width: 1024px)" })) as typeof window.matchMedia;
+      const { view, audio } = await mountAudioSetup({ selectable: true, required: false, default: true }, { state: "recording" });
+      try {
+        const recovery = [...view.container.querySelectorAll('[role="region"]')].find((region) => region.textContent?.includes("Inspelningen avbröts"))!;
+        const details = view.container.querySelector("[data-detail-field]")!;
+        const filled = [...view.container.querySelectorAll("button")].filter((b) => b.getAttribute("data-variant") === "primary").map((b) => b.textContent?.trim());
+        assert.deepEqual(filled, ["Fortsätt spela in"], "the page's one filled action");
+        if (twoColumns) assert.ok(audio.contains(recovery), "in the work, beside the flow");
+        else {
+          assert.ok(!audio.contains(recovery) && recovery.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING, "above the details, under the flow's name");
+          assert.equal(recovery.previousElementSibling?.tagName, "H1");
+        }
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
+    window.matchMedia = matchMedia;
+    delete (window as { MediaRecorder?: unknown }).MediaRecorder;
+    delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
+    if (microphones) Object.defineProperty(navigator, "mediaDevices", microphones);
+    else delete (navigator as { mediaDevices?: unknown }).mediaDevices;
   }
 });
 
