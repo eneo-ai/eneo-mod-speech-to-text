@@ -745,7 +745,7 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   }
 });
 
-test("Ta bort on a ready recording says it was removed, and the focus goes to the setup's heading", async () => {
+test("Ta bort on a ready recording says it was removed without moving the page, and the focus goes to the setup's heading", async () => {
   // The device deletes it (here the fixture's recording is not this tab's own, which a browser without Web Locks refuses).
   const store = await (await import("./recording-store")).recordingStore();
   const remove = store.remove;
@@ -758,7 +758,7 @@ test("Ta bort on a ready recording says it was removed, and the focus goes to th
     await view.act(async () => undefined);
     const said = [...view.container.querySelectorAll('[role="status"]')].map((region) => region.textContent);
     assert.ok(said.includes("Inspelningen togs bort."), `said once it is gone: ${said.join(" | ")}`);
-    assert.match(audio.textContent ?? "", /Inspelningen togs bort\./, "and shown where the setup begins");
+    assert.doesNotMatch(audio.textContent ?? "", /Inspelningen togs bort\./, "said, not shown: nothing pushes the setup down");
     assert.ok(document.activeElement?.matches("[data-phase-heading]"), "with the focus on the setup's heading");
   } finally {
     store.remove = remove;
