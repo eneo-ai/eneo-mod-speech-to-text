@@ -88,6 +88,18 @@ test("someone already signed in goes straight on to the flow list", async (t) =>
   assert.equal(router.state.historyAction, "REPLACE");
 });
 
+test("sent here from a page of the module, someone signed in goes back to that address, and never to another site", async (t) => {
+  const signedIn = () => json({ authenticated: true, user: { id: "u", email: "a@b.se", username: "A" } });
+  const { router } = await openLoginPage(t, signedIn, { next: "/flows/a?run=r1" });
+  assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1");
+  await cleanup();
+  for (const elsewhere of ["//evil.example/flows", "/\\evil.example", "https://evil.example"]) {
+    const { router: other } = await openLoginPage(t, signedIn, { next: elsewhere });
+    assert.equal(other.state.location.pathname, "/flows", elsewhere);
+    await cleanup();
+  }
+});
+
 test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", async (t) => {
   window.history.replaceState(null, "", "/?auth_error=1");
   const { container, router } = await openLoginPage(t, signedOut);
@@ -99,7 +111,7 @@ test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", 
 
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
   const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")), { signedOut: true });
-  assert.deepEqual(alerts(document.body).filter((text) => text.includes("kan inte nås")), ["Tal till text kan inte nås just nu."]);
+  assert.deepEqual(alerts(document.body).filter((text) => text.includes("svarar inte")), ["Tal till text svarar inte just nu."]);
   assert.ok(button(container, "Försök igen"));
   assert.equal(container.querySelectorAll("input").length, 0);
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");

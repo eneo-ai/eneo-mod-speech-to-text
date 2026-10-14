@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Outlet, useRouteError } from "react-router";
+import { Outlet, useLocation, useRouteError } from "react-router";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -11,8 +11,8 @@ import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import { keepFocusThroughBusy } from "@/lib/focus-keeper";
 import { readBranding } from "@/lib/read-branding";
-import { RouteEffects } from "@/routes/RouteEffects";
-import { PRODUCT_NAME } from "@/lib/product";
+import { RouteEffects, useRouteReady } from "@/routes/RouteEffects";
+import { documentTitle, PRODUCT_NAME } from "@/lib/product";
 
 /**
  * What every screen stands in: the colour mode, the design system's providers and who the deployment is for. The
@@ -59,6 +59,33 @@ export function RootHydrateFallback() {
 }
 
 /**
+ * What stands where the page asked for cannot: what happened and the ways on, inside the frame. It is a page like any
+ * other: its own title, over the title of the route it stands in for, and, reached by a navigation, said with the focus
+ * in its heading (`useRouteReady`).
+ */
+function StandIn({ heading, text, children }: { heading: string; text: string; children: ReactNode }) {
+  const { pathname } = useLocation();
+  // Again at each address it stands at: the route's own title is set first, at every new path (RouteEffects).
+  useEffect(() => {
+    document.title = documentTitle(heading.replace(/\.$/, ""));
+  }, [heading, pathname]);
+  useRouteReady(true);
+  return (
+    <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
+      <VStack gap={4} maxWidth={640}>
+        <Heading level={1}>{heading}</Heading>
+        <Text as="p" color="secondary">
+          {text}
+        </Text>
+        <HStack gap={3} wrap="wrap">
+          {children}
+        </HStack>
+      </VStack>
+    </ModuleShell>
+  );
+}
+
+/**
  * A page that cannot be shown: its code could not be loaded (a tab that was open across a deploy asks for files that
  * are gone), or it threw. It stands in the page's place, inside the providers, and nothing reloads by itself: a person
  * may be in the middle of something on a page that is still open, and a reload is theirs to choose.
@@ -67,17 +94,18 @@ export function RouteError() {
   const error = useRouteError();
   useEffect(() => console.error("A page could not be shown:", error), [error]);
   return (
-    <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
-      <VStack gap={4} maxWidth={640}>
-        <Heading level={1}>Sidan kunde inte visas.</Heading>
-        <Text as="p" color="secondary">
-          Ladda om sidan.
-        </Text>
-        <HStack gap={3} wrap="wrap">
-          <Button label="Ladda om sidan" variant="primary" onClick={() => window.location.reload()} />
-          <Button label="Till startsidan" variant="secondary" href="/" />
-        </HStack>
-      </VStack>
-    </ModuleShell>
+    <StandIn heading="Sidan kunde inte visas." text="Ladda om sidan.">
+      <Button label="Ladda om sidan" variant="primary" onClick={() => window.location.reload()} />
+      <Button label="Till startsidan" variant="secondary" href="/" />
+    </StandIn>
+  );
+}
+
+/** An address that is no page of the module: it says so, and the way to the start. */
+export function NotFound() {
+  return (
+    <StandIn heading="Sidan finns inte." text="Kontrollera adressen, eller gå till startsidan.">
+      <Button label="Till startsidan" variant="primary" href="/" />
+    </StandIn>
   );
 }

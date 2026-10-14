@@ -8,6 +8,8 @@ import { declare, REAL, type Expectation } from "./sentinel";
 
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
+/** A PDF opens in a dialog from a laptop's width with a mouse; on a touch screen in a tab of its own at every width. */
+export const pdfInDialog = (info: TestInfo) => isLaptop(info) && !info.project.use.hasTouch;
 
 /**
  * Whether a project's browser can record. Every one the gate has can, but Playwright's WebKit for Linux: it is built
@@ -493,7 +495,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/");
-      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text svarar inte just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
   },
@@ -505,11 +507,13 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/flows");
-      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text svarar inte just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
       await expect(page).toHaveURL(/\/flows$/);
     },
   },
+  // An address that is no page of the module.
+  { name: "not-found", go: async (page) => (await page.goto("/finns-inte"), heading(page, "Sidan finns inte.")) },
   // The sign-in page and a signed-in page while the session is still being asked for.
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },
@@ -607,7 +611,7 @@ export const STATES: State[] = [
     only: (info) => !records(info),
     go: async (page) => {
       await setup(page);
-      await expect(page.getByText("Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.")).toBeVisible();
+      await expect(page.getByText("Inspelning fungerar inte här. Öppna sidan via en säker adress (https) i en uppdaterad webbläsare, eller ladda upp en fil i stället.")).toBeVisible();
       await expect(page.getByRole("radio"), "no choice of ways in").toHaveCount(0);
       await expect(page.getByRole("button", { name: "Välj ljudfil" })).toBeVisible();
     },
@@ -1011,8 +1015,8 @@ export const STATES: State[] = [
   },
   {
     name: "result-pdf-dialog",
-    // Below a laptop's width the document's PDF opens in a new tab instead.
-    only: isLaptop,
+    // Below a laptop's width, and on a touch screen, the document's PDF opens in a new tab instead.
+    only: pdfInDialog,
     go: async (page) => {
       await result(page);
       await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
@@ -1160,6 +1164,17 @@ export const STATES: State[] = [
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
       await expect(page.getByRole("main").locator("textarea")).toBeVisible();
+    },
+  },
+  {
+    // A change in the editor: Spara ändring is there only now, and the decision says Spara och fortsätt.
+    name: "review-text-changed",
+    go: async (page) => {
+      await run(page, ids.runs.reviewText);
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      await expect(page.getByRole("button", { name: "Spara ändring" })).toBeVisible();
     },
   },
   {

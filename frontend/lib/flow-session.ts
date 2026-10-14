@@ -260,7 +260,7 @@ export function missingModesNote(
 ): string | null {
   const step = selectRuntimeInputStep(contract);
   if (step?.input_format?.toLowerCase() !== "audio") return null;
-  if (!canRecord) return "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.";
+  if (!canRecord) return "Inspelning fungerar inte här. Öppna sidan via en säker adress (https) i en uppdaterad webbläsare, eller ladda upp en fil i stället.";
   const live = contract?.transcription?.live;
   if ((live?.available && !liveClient) || live?.reason === "model_unavailable") {
     return "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.";

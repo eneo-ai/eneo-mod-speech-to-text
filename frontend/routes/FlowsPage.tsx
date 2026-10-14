@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@astryxdesign/core/Button";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
@@ -15,7 +16,7 @@ import { SlowWait } from "@/components/SlowWait";
 import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { VersionInfo } from "@/components/VersionInfo";
 import { ModuleShell } from "@/kit/ModuleShell";
-import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
+import { ASK_ENEO_OWNER, errorAdvice, type ErrorAdvice } from "@/lib/errors";
 import {
   DISCOVERY_PAGE_CAP,
   DISCOVERY_PAGE_SIZE,
@@ -75,6 +76,11 @@ function FlowsListPage() {
 
   const empty = groups !== null && groups.every((group) => group.flows.length === 0);
   const createLabel = listCreateLabels(groups);
+  // Asked again (Uppdatera, or a Försök igen) and still none: the new Uppdatera takes the focus the pressed button had.
+  const refresh = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (empty && attempt > 0) refresh.current?.focus();
+  }, [empty, attempt]);
 
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand />} end={<AccountMenu />}>
@@ -116,7 +122,8 @@ function FlowsListPage() {
               <EmptyState
                 headingLevel={2}
                 title="Det finns inga publicerade flöden som du kan använda än."
-                description="När ett flöde publiceras i Eneo visas det här."
+                description={`När ett flöde publiceras i Eneo visas det här. ${ASK_ENEO_OWNER} om du saknar ett flöde.`}
+                actions={<Button ref={refresh} label="Uppdatera" onClick={retry} />}
               />
             ) : (
               <FlowList groups={groups} lastFlowId={lastFlowId} />

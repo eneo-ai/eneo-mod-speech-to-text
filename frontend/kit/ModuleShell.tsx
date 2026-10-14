@@ -18,7 +18,7 @@ export function ModuleShell({
 }: {
   /** The navigation landmark's name. */
   label: string;
-  /** The brand, or on a flow's page the way back and the flow's name. */
+  /** The brand, and on a flow's page the way back. */
   heading: ReactNode;
   /** After the heading, where a long text may wrap: the heading's own place never shrinks. */
   start?: ReactNode;

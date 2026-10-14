@@ -311,6 +311,18 @@
   gap: var(--spacing-1);
 }
 
+/* The player's keys: one quiet line where there is a keyboard to press them, with a mouse; never on a touch screen. */
+.keys {
+  display: none;
+  margin-inline-end: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .keys {
+    display: block;
+  }
+}
+
 /* Speed: in the player's row from 640 px, above it below. */
 .rateBelow {
   display: none;
@@ -335,7 +347,8 @@
 }
 
 @media (pointer: coarse) {
-  .rate {
+  .rate,
+  .rateBelow {
     min-inline-size: var(--size-element-md);
   }
 }
@@ -636,10 +649,10 @@
   color: var(--color-background-surface);
 }
 
-/* "Rätta": after the passage, never mid-sentence, always there. */
+/* "Rätta": at the end of the passage's head row, the same place on every passage; never mid-sentence, always there. */
 .correct {
   gap: var(--spacing-1);
-  margin-inline-start: var(--spacing-0-5);
+  margin-inline-start: auto;
   padding-inline: var(--spacing-1-5);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);

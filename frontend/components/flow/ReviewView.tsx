@@ -1,6 +1,6 @@
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
-import { CheckCircle2, UsersRound } from "lucide-react";
+import { CheckCircle2, Pencil, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
   useEffect,
@@ -15,13 +15,14 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
+import { useAnnounce } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { List, ListItem } from "@astryxdesign/core/List";
-import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { ActionRow } from "@/components/ActionRow";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
@@ -87,6 +88,7 @@ const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klar
 /** A review pause: the step's output (the speakers' names, or text) to look over, change and approve, or reject. */
 export function ReviewView({
   flowId,
+  flowName,
   checkpoint,
   runState,
   runError,
@@ -95,6 +97,7 @@ export function ReviewView({
   onReject,
 }: {
   flowId: string;
+  flowName: string;
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
   runError: string | null;
@@ -119,6 +122,7 @@ export function ReviewView({
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
   const heading = usePhaseHeading(title);
+  const announce = useAnnounce();
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
@@ -355,6 +359,8 @@ export function ReviewView({
       handOff.current = editButton;
       setEditing(false);
       draft.drop(sent);
+      // The editor closing shows it; a screen reader hears it.
+      announce("Ändringen är sparad.");
     }, undefined);
   }
 
@@ -385,7 +391,7 @@ export function ReviewView({
         value={rejectReason}
         onChange={setRejectReason}
       />
-      <HStack gap={2} hAlign="end">
+      <ActionRow>
         <Button
           variant="ghost"
           label="Avbryt"
@@ -397,42 +403,43 @@ export function ReviewView({
           }}
         />
         <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
-      </HStack>
+      </ActionRow>
     </VStack>
   ) : null;
 
-  // The choice as a pair at the end of the bar, of one height: Avvisa, then the action the page exists for.
+  // The choice as a pair of one height: Avvisa, then the action the page exists for (ActionRow places them).
   const actions = rejecting ? null : (
-    <HStack gap={3} hAlign="end" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
-      {decided ? (
-        <StackItem size="fill">
-          <Text as="p" type="supporting">
-            {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-          </Text>
-        </StackItem>
-      ) : (
-        <Button
-          ref={rejectButton}
-          variant="secondary"
-          size="lg"
-          label="Avvisa"
-          isDisabled={busy}
-          onClick={() => {
-            handOff.current = reasonField;
-            setShowReject(true);
-          }}
-        />
+    <VStack gap={3}>
+      {decided && (
+        <Text as="p" type="supporting">
+          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+        </Text>
       )}
-      <Button
-        variant="primary"
-        size="lg"
-        icon={<CheckCircle2 aria-hidden />}
-        label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
-        isLoading={working === "approve"}
-        isDisabled={busy || continueBlocked}
-        onClick={() => void saveAndApprove()}
-      />
-    </HStack>
+      <ActionRow>
+        {!decided && (
+          <Button
+            ref={rejectButton}
+            variant="secondary"
+            size="lg"
+            label="Avvisa"
+            isDisabled={busy}
+            onClick={() => {
+              handOff.current = reasonField;
+              setShowReject(true);
+            }}
+          />
+        )}
+        <Button
+          variant="primary"
+          size="lg"
+          icon={<CheckCircle2 aria-hidden />}
+          label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
+          isLoading={working === "approve"}
+          isDisabled={busy || continueBlocked}
+          onClick={() => void saveAndApprove()}
+        />
+      </ActionRow>
+    </VStack>
   );
 
   // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
@@ -452,9 +459,10 @@ export function ReviewView({
     </VStack>
   );
 
+  // The flow's name stands here at every width, as on the result's line: the top bar holds no name.
   const paused = (
     <Text as="p" type="supporting">
-      Väntar på din granskning
+      {flowName} · Väntar på din granskning
     </Text>
   );
 
@@ -466,14 +474,15 @@ export function ReviewView({
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        <VStack gap={3}>
+        <VStack gap={4}>
+          {/* Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. */}
           <List aria-label="Talare" density="compact" hasDividers>
             {namingRows.map((row) => (
               <ListItem
                 key={row.label}
-                label={speakerDisplayLabel(row.label)}
+                label={row.name ?? speakerDisplayLabel(row.label)}
                 startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-                description={<Text color={row.name ? undefined : "secondary"}>{row.name ?? "Inget namn"}</Text>}
+                description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
               />
             ))}
           </List>
@@ -496,7 +505,8 @@ export function ReviewView({
             decided={decided}
             draftKey={namesDraftKey}
           >
-            <Button variant="secondary" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.selfStart} />
+            {/* The card's own action: across the card on a phone, at its start where there is room. */}
+            <Button variant="secondary" size="lg" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.cardAction} />
           </SpeakerNamingDialog>
         </VStack>
       );
@@ -507,8 +517,8 @@ export function ReviewView({
     );
 
     return (
-      <VStack gap={0}>
-        <VStack gap={1} className={styles.intro}>
+      <VStack gap={6}>
+        <VStack gap={1}>
           {paused}
           <Heading level={1} ref={heading} tabIndex={-1}>
             {title}
@@ -581,8 +591,8 @@ export function ReviewView({
   }
 
   return (
-    <VStack gap={0} className={styles.reading}>
-      <VStack gap={1} className={styles.intro}>
+    <VStack gap={6} className={styles.reading}>
+      <VStack gap={1}>
         {paused}
         <Heading level={1} ref={heading} tabIndex={-1}>
           {title}
@@ -596,10 +606,10 @@ export function ReviewView({
       </VStack>
 
       <VStack as="section" gap={3} className={styles.card}>
-        <HStack hAlign="between" vAlign="center">
+        <VStack gap={1}>
           <Text weight="semibold">Innehåll för granskning</Text>
-          <Text type="supporting">{editable ? "Redigerbart" : "Skrivskyddat"}</Text>
-        </HStack>
+          {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
+        </VStack>
 
         {editable && editing ? (
           <TextArea
@@ -611,7 +621,8 @@ export function ReviewView({
             isReadOnly={busy}
             onChange={editText}
             onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
-            rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
+            // Where the field cannot size itself to the text (ReviewView.module.css), a height from its lines.
+            rows={Math.min(24, Math.max(4, text.split("\n").length + 1))}
           />
         ) : (
           <article>
@@ -620,13 +631,16 @@ export function ReviewView({
           </article>
         )}
 
+        {/* The editor's own buttons, no decision: small, at the field's start. Spara ändring keeps a change in Eneo
+            without going on, and is there only while there is one; Avbryt stays where it is when it comes. */}
         {editable && (
-          <HStack gap={2} hAlign="end">
+          <HStack gap={2} wrap="wrap">
             {editing ? (
               <>
                 <Button
                   key="avbryt"
                   variant="ghost"
+                  size="sm"
                   label="Avbryt"
                   isDisabled={busy}
                   onClick={() => {
@@ -636,13 +650,15 @@ export function ReviewView({
                     draft.drop();
                   }}
                 />
-                <Button key="spara" variant="secondary" label="Spara ändring" isLoading={saving} isDisabled={!dirty || busy} onClick={saveOnly} />
+                {dirty && <Button key="spara" variant="secondary" size="sm" label="Spara ändring" isLoading={saving} isDisabled={busy} onClick={saveOnly} />}
               </>
             ) : (
               <Button
                 key="redigera"
                 ref={editButton}
-                variant="ghost"
+                variant="secondary"
+                size="sm"
+                icon={<Pencil aria-hidden />}
                 label="Redigera"
                 isDisabled={busy}
                 onClick={() => {

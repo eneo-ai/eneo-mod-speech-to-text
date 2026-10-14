@@ -166,6 +166,22 @@ test("audio Eneo cannot take says why in Swedish; a server busy measuring is one
   assert.equal(busy.retry, true);
 });
 
+test("a refusal names what was sent as the person knows it, a recording or a file, and no document where a flow makes text", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const said = [
+    "flow_run_idempotency_conflict",
+    "flow_run_invalid_idempotency_key",
+    "flow_run_audio_exceeds_limit",
+    "flow_run_audio_unreadable",
+    "flow_run_audio_length_unknown",
+    "flow_run_audio_measurement_busy",
+    "flow_run_input_file_not_found",
+  ].map((code) => friendlyError(eneo(400, code, "Refused.")));
+  for (const message of said) assert.doesNotMatch(message, /[Ll]judet|[Ll]judfilen|[Dd]okument/, message);
+  assert.match(said[0], /^Inspelningen eller filen har redan skickats/);
+  assert.match(said[2], /^Inspelningen eller filen är längre än flödet tar emot\./);
+});
+
 test("the app's own errors are shown as they are; what the browser raised is not shown in English", () => {
   assert.equal(friendlyError(new Error("Inspelningen finns inte längre på enheten.")), "Inspelningen finns inte längre på enheten.");
   assert.equal(friendlyError(new TypeError("Failed to fetch")), "Anslutningen avbröts. Kontrollera nätverket och försök igen.");

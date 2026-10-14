@@ -11,11 +11,20 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
 import { HeaderBrand } from "@/components/HeaderBrand";
-import { UNREACHABLE } from "@/components/ModuleUnreachable";
 import { ModuleShell } from "@/kit/ModuleShell";
+import { connectionLost } from "@/lib/online-status";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
 import { isRecord } from "@/lib/is-record";
+
+/**
+ * Where the page that sent the person here was going (AuthGate puts it in the route's state): a path of this module, never
+ * another site, by the rule the backend applies to its own copy (`module_path` in backend/app/module_auth.py).
+ */
+function returnAddress(state: unknown): string | null {
+  const next = isRecord(state) ? state.next : null;
+  return typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : null;
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -26,6 +35,8 @@ export default function LoginPage() {
   // False when the module could not be asked who is signed in: the way in is then a second try.
   const [reachable, setReachable] = useState(false);
   const signedOut = reachable && isRecord(location.state) && location.state.signedOut === true;
+  // Read once: cleaning `auth_error` from the address replaces the entry, and its state with it.
+  const [next] = useState(() => returnAddress(location.state));
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -35,17 +46,17 @@ export default function LoginPage() {
     }
     authStatus()
       .then((s) => {
-        if (s.authenticated) void navigate("/flows", { replace: true });
+        if (s.authenticated) void navigate(next ?? "/flows", { replace: true });
         else {
           setReachable(true);
           setChecking(false);
         }
       })
       .catch(() => {
-        setAuthError(UNREACHABLE);
+        setAuthError(connectionLost());
         setChecking(false);
       });
-  }, [navigate]);
+  }, [navigate, next]);
 
   useRouteReady(!checking);
 
@@ -59,7 +70,7 @@ export default function LoginPage() {
   function startLogin() {
     setSubmitting(true);
     setAuthError(null);
-    window.location.assign("/api/auth/login");
+    window.location.assign(next ? `/api/auth/login?${new URLSearchParams({ next })}` : "/api/auth/login");
   }
 
   if (checking) {

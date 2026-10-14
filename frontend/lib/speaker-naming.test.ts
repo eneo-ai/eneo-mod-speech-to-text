@@ -438,17 +438,22 @@ test("while the login has ended the dialog is closed, and it is back with its ty
   assert.ok(trigger.isConnected);
 });
 
-test("the dialog follows the part of the screen the phone's keyboard leaves", async (t) => {
+test("the dialog follows the part of the screen the phone's keyboard leaves: its height, and its top where the browser moves it", async (t) => {
   const listeners = new Set<() => void>();
-  const viewport = { height: 800, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
   Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
   t.after(() => void Reflect.deleteProperty(window, "visualViewport"));
   const { view } = await dialog();
   const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
-  assert.match(dialogElement().getAttribute("style") ?? "", /calc\(800px/, "the dialog starts at the screen's height");
-  viewport.height = 420; // the keyboard opens
+  assert.match(dialogElement().getAttribute("style") ?? "", new RegExp(`calc\\(${window.innerHeight}px`), "the dialog starts at the screen's height");
+  assert.equal(dialogElement().classList.contains("atVisibleTop"), false, "in the middle of the window while all of it is visible");
+  // The keyboard opens, and the browser moves the visible part down to keep the field in sight.
+  viewport.height = 420;
+  viewport.offsetTop = 120;
   await view.act(async () => listeners.forEach((listener) => listener()));
   assert.match(dialogElement().getAttribute("style") ?? "", /calc\(420px/, "and keeps above the keyboard");
+  assert.ok(dialogElement().classList.contains("atVisibleTop"), "at the top of the visible part");
+  assert.equal(dialogElement().style.getPropertyValue("--visible-top"), "120px");
 });
 
 test("with no storage to keep drafts in (a private window), the dialog works and keeps nothing", async (t) => {

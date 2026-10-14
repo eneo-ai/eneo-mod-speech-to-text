@@ -28,12 +28,27 @@ test("a direct visit to a route of the app renders that page, in Swedish", async
   }
 });
 
-/** The path the app has gone to: the route table's catch-all replaces the address once the page's code is there. */
-const goesTo = (page: Page, path: string) => expect.poll(() => new URL(page.url()).pathname, { message: path }).toBe("/");
+test("a run's address opened signed out is where the sign-in leads back to, through Eneo and the backend's callback", async ({ page }) => {
+  const run = `/flows/${ids.flows.flow1}?run=${ids.runs.done}`;
+  await page.goto(run);
+  await page.getByRole("button", { name: "Logga in med Eneo" }).click();
 
-test("an address that is no route of the app goes to the start, and the API's own pages are not there", async ({ page, request }) => {
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  const at = new URL(page.url());
+  expect(at.pathname + at.search, "the address as the person opened it, with its run").toBe(run);
+});
+
+/** The route table's catch-all: the page says the address is none of the app's, and the address stays as it was typed. */
+async function notFound(page: Page, path: string) {
+  await expect(page.getByRole("heading", { name: "Sidan finns inte." }), path).toBeVisible();
+  await expect(page, path).toHaveTitle(`Sidan finns inte${TITLE}`);
+  await expect(page.getByRole("link", { name: "Till startsidan" }), path).toBeVisible();
+  expect(new URL(page.url()).pathname, path).toBe(path);
+}
+
+test("an address that is no route of the app says the page does not exist, and the API's own pages are not there", async ({ page, request }) => {
   await page.goto("/docs");
-  await goesTo(page, "/docs");
+  await notFound(page, "/docs");
 
   const openapi = await request.get("/openapi.json");
   expect(openapi.status()).toBe(404);
@@ -44,7 +59,7 @@ test("a development page is in no default build", async ({ page }) => {
   for (const path of ["/dev/foundation", "/dev/speaker-review"]) {
     await page.goto(path);
 
-    await goesTo(page, path);
+    await notFound(page, path);
   }
 });
 

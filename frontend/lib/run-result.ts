@@ -1,6 +1,7 @@
-import type { FlowRunError, FlowRunResult, RunContract } from "./api";
+import type { FlowRunError, FlowRunResult, RunContract, RunContractStepInput } from "./api";
 import { REVIEW_EXPIRED, REVIEW_REJECTED } from "./errors";
 import { makesText } from "./flow-output";
+import { formatDuration } from "./format";
 import { ofContractVersion } from "./run-progress";
 
 interface RunResultView {
@@ -153,13 +154,20 @@ export interface RunErrorView {
   inputMustChange: boolean;
 }
 
-/** Vad resultatvyn visar för Eneos typade slutfel (`run.error`); stegens namn efter deras ordning. */
+/**
+ * Vad resultatvyn visar för Eneos typade slutfel (`run.error`); stegens namn efter deras ordning. `input` is the
+ * audio step of the run's own version of the contract, whose limit a run that was too long is told.
+ */
 export function runErrorView(
   error: FlowRunError,
   stepLabels: Record<number, string> = {},
+  input: Pick<RunContractStepInput, "max_duration_seconds"> | null = null,
 ): RunErrorView {
+  const limit = input?.max_duration_seconds;
   const explanation =
-    RUN_ERROR_EXPLANATIONS[error.code] ?? "Körningen kunde inte slutföras.";
+    error.code === "typed_io_audio_exceeds_limit" && limit
+      ? `${TOO_LONG.slice(0, -1)} (högst ${formatDuration(limit * 1_000)}).`
+      : (RUN_ERROR_EXPLANATIONS[error.code] ?? "Körningen kunde inte slutföras.");
   const summary = [
     explanation,
     INPUT_HINTS[error.code],

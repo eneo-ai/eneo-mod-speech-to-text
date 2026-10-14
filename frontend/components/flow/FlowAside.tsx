@@ -47,7 +47,7 @@ export function FlowAside({
           {published.name}
         </Heading>
       ) : (
-        <Text as="p" weight="semibold" type="large">
+        <Text as="p" weight="semibold" type="large" className={styles.columnName}>
           {published.name}
         </Text>
       )}

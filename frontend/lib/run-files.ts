@@ -71,17 +71,23 @@ export function resultFileViews(files: readonly ResultFile[]): ResultFileView[] 
   });
 }
 
+const two = (n: number) => String(n).padStart(2, "0");
+
 /**
- * The transcript .txt the page itself creates, named the way Eneo names a
- * run's documents: the flow's name and the run's day in UTC.
+ * A .txt the page itself creates (the transcript, a text result): the flow's name, the run's day and time where the
+ * person is ("2026-09-23 14.02", a full stop since Windows takes no colon in a file name), then what it is
+ * ("transkribering").
  */
-export function transcriptFileName(flowName: string, createdAt?: string): string {
+export function runFileName(flowName: string, createdAt?: string, what = ""): string {
   const name = flowName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
-  const created = createdAt ? new Date(createdAt) : null;
-  const day = created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : "";
-  const base = [name, day].filter(Boolean).join(" ");
-  return base ? `${base} transkribering.txt` : "transkribering.txt";
+  const d = createdAt ? new Date(createdAt) : null;
+  const when =
+    d && !Number.isNaN(d.getTime()) ? `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}.${two(d.getMinutes())}` : "";
+  return `${[name, when, what].filter(Boolean).join(" ") || "Resultat"}.txt`;
 }
+
+/** The transcript's .txt: "Nämndmöte 2026-09-23 14.02 transkribering.txt". */
+export const transcriptFileName = (flowName: string, createdAt?: string) => runFileName(flowName, createdAt, "transkribering");
 
 /**
  * What a generated document says, as Markdown: the text its own step wrote, only where Eneo lays that text out in

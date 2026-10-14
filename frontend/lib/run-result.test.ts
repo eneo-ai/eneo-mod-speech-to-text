@@ -183,6 +183,9 @@ test("the failed step is named from Eneo's description, else the flow graph", ()
 test("audio over the flow's limit is too long, not too large: Eneo's ceilings measure the decoded length", () => {
   const { summary } = runErrorView(runError({ code: "typed_io_audio_exceeds_limit" }));
   assert.match(summary, /^Inspelningen eller filen är längre än flödet klarar\./);
+  // The limit, where the contract of the run's own version gives it.
+  const limited = runErrorView(runError({ code: "typed_io_audio_exceeds_limit" }), {}, { max_duration_seconds: 5 * 3_600 });
+  assert.match(limited.summary, /^Inspelningen eller filen är längre än flödet klarar \(högst 5\u00a0h\)\./);
   assert.match(runErrorView(runError({ code: "typed_io_input_too_large" })).summary, /större än flödet klarar/);
 });
 

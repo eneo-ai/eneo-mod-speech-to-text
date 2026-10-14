@@ -1,9 +1,9 @@
 - main:
-  - paragraph: Väntar på din granskning
+  - paragraph: Nämndmöte till rapport · Väntar på din granskning
   - heading "Sammanfattning" [level=1]
   - paragraph: Du kan ändra texten innan du godkänner och fortsätter.
   - paragraph: /Granska senast 3 jan \d+ \d+:\d+\. Därefter avbryts körningen\./
-  - text: Innehåll för granskning Redigerbart
+  - text: Innehåll för granskning
   - article:
     - document:
       - paragraph: Kommunstyrelsen beslutade att höja budgetramen med två procent.
@@ -18,9 +18,9 @@
     - button "Behåll den senaste":
       - text: ""
       - status
-  - button "Avvisa":
+  - button "Godkänn och fortsätt":
     - text: ""
     - status
-  - button "Godkänn och fortsätt":
+  - button "Avvisa":
     - text: ""
     - status

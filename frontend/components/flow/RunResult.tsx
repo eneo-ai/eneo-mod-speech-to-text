@@ -1,4 +1,4 @@
-import { useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
@@ -9,10 +9,12 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
+import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
-import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { rememberPosition } from "@/lib/playback-position";
+import { fileText, runFileName, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
@@ -107,6 +109,8 @@ export function RunResult({
     [flowId, run.id, transcript.fileIds],
   );
   const playback = usePlayback(sources);
+  // Where this run's recording was left in this browser: put back once its parts are known, and kept from there.
+  useEffect(() => (sources.length ? rememberPosition(playback, run.id, browserStorage()) : undefined), [playback, run.id, sources]);
   const tabs = !wide && showTranscript;
   const sideBySide = wide && showTranscript;
   const [view, setView] = useState<View>("document");
@@ -145,7 +149,7 @@ export function RunResult({
       {offer && (
         <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
       )}
-      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} />}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} downloadName={runFileName(flowName, run.created_at)} />}
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
@@ -180,8 +184,9 @@ export function RunResult({
   );
 
   return (
-    // The frame gives the page its width and edges; a document alone is a reading column on its left edge.
-    <VStack gap={6} paddingBlockStart={2} maxWidth={showTranscript ? undefined : 672}>
+    // The frame gives the page its width and edges. Below a laptop's width every result has the whole column, as the
+    // tabs do; from it a document alone is a reading column on its left edge, as wide as the document beside a transcript.
+    <VStack gap={6} paddingBlockStart={2} maxWidth={showTranscript || !wide ? undefined : 672}>
       <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
         <VStack gap={1}>
           <Heading level={1} ref={heading} tabIndex={-1}>
@@ -189,8 +194,8 @@ export function RunResult({
           </Heading>
           {finished && (
             <Text as="p" type="supporting">
-              {/* On a phone the top bar already names the flow. */}
-              {wide && `${flowName} · `}
+              {/* The flow's name at every width: the top bar holds no name. */}
+              {flowName} ·{" "}
               Skapad {formatRelativeDate(finished)}
               {fromReviewed && " från den rättade transkriberingen"}
             </Text>

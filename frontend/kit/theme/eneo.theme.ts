@@ -75,6 +75,10 @@ export const eneoTheme = defineTheme({
     // A step's name keeps one line and is cut off with an ellipsis, with its state words beside it pushed out of the
     // card (WCAG 1.4.10): a flow's step names are its author's, as long as they like. It wraps, and the words follow it.
     'step-label': {base: {whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', overflowWrap: 'anywhere'}},
+    // The accent bar marks the step under way, or the one that stopped the run: the design system fills it for every
+    // step up to there too, which made the finished steps look as if they were being worked on. A finished step has
+    // its check and its word ("Klar"); its bar is the plain track.
+    'step-bar': {base: {':is([data-progress="completed"] > *)::before': {backgroundColor: 'transparent'}}},
     // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
     // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
     // The blue token is the brand's tint, not the data palette's blue: it follows the deployment's accent colour
@@ -87,6 +91,19 @@ export const eneoTheme = defineTheme({
     'slider-control': {base: {minBlockSize: MOUSE_TARGET}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
     'toggle-button-group': {base: {flexWrap: 'wrap'}},
+    // A chip (the transcript's speaker filter) is a ghost button, which shows no edge at rest: only the pressed one had a
+    // shape. Each has a control's edge, and the pressed one the accent's edge and tint, as a chosen radio row has. The
+    // edge is drawn inside the chip, so no chip changes size (forced colours give every button its own edge, globals.css).
+    // The pressed state is read from aria-pressed: the theme's `isPressed` target writes a value the button never carries.
+    'toggle-button': {
+      base: {
+        boxShadow: 'inset 0 0 0 var(--border-width) var(--color-border-emphasized)',
+        ':is([aria-pressed="true"])': {
+          boxShadow: 'inset 0 0 0 var(--border-width) var(--color-accent)',
+          backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+        },
+      },
+    },
     // One choice of a few (the setup's modes, a passage's speaker) is a row the whole of which is the target: bordered,
     // and the chosen one tinted and ringed in the accent, so the choice reads at a glance, not only from the radio's dot.
     'radio-list-item': {
@@ -127,6 +144,9 @@ export const eneoTheme = defineTheme({
     // system's translucent grey is 1.5:1. Set as the grey the switch's own off, hover and disabled rules read, so its on
     // track and its forced-colours tracks stay the design system's.
     switch: {base: {'--color-background-gray': 'var(--color-border-emphasized)'}},
+    // A dialog opens over the medium band's longest step (--duration-medium-max, 550 ms), which reads as the page
+    // catching up with the press: the fast band's longest is enough to show where it came from.
+    dialog: {base: {animationDuration: 'var(--duration-fast-max)'}},
     // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
     // A disclosure is quieter than the headings around it: body size and medium weight, not the design system's large
     // semibold row.

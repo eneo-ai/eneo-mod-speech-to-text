@@ -308,6 +308,13 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
+    "step-bar": {
+      "base": {
+        ":is([data-progress=\"completed\"] > *)::before": {
+          "backgroundColor": "transparent"
+        }
+      }
+    },
     "token": {
       "base": {
         "overflow": "visible",
@@ -327,6 +334,15 @@ export const eneoTheme = {
     "toggle-button-group": {
       "base": {
         "flexWrap": "wrap"
+      }
+    },
+    "toggle-button": {
+      "base": {
+        "boxShadow": "inset 0 0 0 var(--border-width) var(--color-border-emphasized)",
+        ":is([aria-pressed=\"true\"])": {
+          "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)",
+          "backgroundColor": "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+        }
       }
     },
     "radio-list-item": {
@@ -373,6 +389,11 @@ export const eneoTheme = {
     "switch": {
       "base": {
         "--color-background-gray": "var(--color-border-emphasized)"
+      }
+    },
+    "dialog": {
+      "base": {
+        "animationDuration": "var(--duration-fast-max)"
       }
     },
     "collapsible-trigger": {

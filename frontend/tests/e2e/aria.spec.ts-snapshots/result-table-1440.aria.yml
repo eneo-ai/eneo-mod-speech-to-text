@@ -69,30 +69,30 @@
         - listitem /Talare 1, 0:\d+ i del 1/:
           - button "Talare 1, ändra talare"
           - button /Spela från 0:\d+ i del 1/
-          - text: Välkomna till kommunstyrelsens möte.
           - button /Rätta repliken från 0:\d+ i del 1/
+          - text: Välkomna till kommunstyrelsens möte.
         - listitem /Talare 2, 0:\d+ i del 1/:
           - button "Talare 2, ändra talare"
           - button /Spela från 0:\d+ i del 1/
-          - text: Första punkten gäller budgeten för nästa år.
           - button /Rätta repliken från 0:\d+ i del 1/
+          - text: Första punkten gäller budgeten för nästa år.
         - listitem /Talare 1, 0:\d+ i del 1/:
           - button "Talare 1, ändra talare"
           - button /Spela från 0:\d+ i del 1/
-          - text: Ramen höjs med två procent och förvaltningen återkommer i oktober.
           - button /Rätta repliken från 0:\d+ i del 1/
+          - text: Ramen höjs med två procent och förvaltningen återkommer i oktober.
       - heading "Del 2" [level=3]
       - list "Del 2":
         - listitem /Talare 2, 0:\d+ i del 2/:
           - button "Talare 2, ändra talare"
           - button /Spela från 0:\d+ i del 2/
-          - text: Andra punkten är skolskjutsarna.
           - button /Rätta repliken från 0:\d+ i del 2/
+          - text: Andra punkten är skolskjutsarna.
         - listitem /Talare 1, 0:\d+ i del 2/:
           - button "Talare 1, ändra talare"
           - button /Spela från 0:\d+ i del 2/
-          - text: Nya turer börjar gälla efter höstlovet.
           - button /Rätta repliken från 0:\d+ i del 2/
+          - text: Nya turer börjar gälla efter höstlovet.
       - 'group "Uppspelning: Inspelningen"':
         - button "Spela upp"
         - slider "Position i inspelningen"

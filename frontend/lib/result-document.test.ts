@@ -16,14 +16,17 @@ async function inProviders(element: ReactElement) {
   return mount(createElement(ModuleProviders, null, element));
 }
 
-/** A window this many pixels wide, as far as `(min-width: …px)` can tell; a phone's by default (the test document's). */
-function widthOf(t: TestContext, pixels: number) {
+/**
+ * A window this many pixels wide, as far as `(min-width: …px)` can tell; a phone's by default (the test document's).
+ * With a mouse unless `touch`: then a query that asks for one (`pointer: fine`) does not match.
+ */
+function widthOf(t: TestContext, pixels: number, { touch = false } = {}) {
   const real = window.matchMedia;
   let current = pixels;
   const listeners = new Set<() => void>();
   const matchMedia = (query: string) => ({
     get matches() {
-      return current >= Number(/min-width: (\d+)px/.exec(query)?.[1] ?? Infinity);
+      return current >= Number(/min-width: (\d+)px/.exec(query)?.[1] ?? Infinity) && !(touch && query.includes("pointer: fine"));
     },
     media: query, onchange: null, dispatchEvent: () => false, addListener() {}, removeListener() {},
     addEventListener: (_: string, listener: () => void) => void listeners.add(listener),
@@ -58,7 +61,10 @@ function filesAnswer(t: TestContext, answer: () => Response) {
 /** Presses a link as a person does, so the page's own handler runs and what a link would do is up to it. */
 const press = (link: Element) => link.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 
-/** The downloads the page starts, by the link it makes for each. */
+/**
+ * The downloads the page starts, by the link it makes for each: the module's own address with `download`, which the
+ * browser saves as it streams (the module answers it as an attachment), never a copy the page reads first.
+ */
 function downloads(t: TestContext) {
   const started: string[] = [];
   t.mock.method(window.HTMLAnchorElement.prototype, "click", function (this: HTMLAnchorElement) {
@@ -105,7 +111,7 @@ const text = "## Protokoll\n\nKommunstyrelsen godkänner förslaget.";
 /** Until the code that formats Markdown has arrived (Markdown.tsx): the page is read after it has. */
 const formatted = (view: { act: (callback: () => Promise<void>) => Promise<void> }) => view.act(async () => new Promise<void>((resolve) => setTimeout(resolve, 20)));
 
-async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null }) {
+async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null; downloadName?: string }) {
   const { createElement } = await import("react");
   const { ResultDocument } = await import("../components/flow/ResultDocument");
   const view = await inProviders(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
@@ -183,11 +189,13 @@ test("the document's one filled action is its file's download; without a file it
   const withFile = await document_({ text, file: pdf });
   assert.deepEqual(filled(withFile.container), ["Ladda ner PDF, Protokoll kommunstyrelsen 2026-09-24.pdf"]);
   // The file row names the file, and the name opens it; it never offers the same download again. On a phone's width
-  // that is a tab of its own, as Öppna PDF above the document.
+  // that is a tab of its own, and the one control on the page that opens the file.
   const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
   const name = withFile.container.querySelector<HTMLAnchorElement>(`[data-file-row] a[href="${inline}"]`);
   assert.ok(name, "the file's name is a link to the file");
-  assert.equal(name.target, "_blank", "as Öppna PDF: in a new tab");
+  assert.equal(name.target, "_blank", "in a new tab");
+  const opening = [...withFile.container.querySelectorAll(`a[href="${inline}"]`)].filter((el) => !el.closest("dialog"));
+  assert.deepEqual(opening, [name], "no Öppna PDF above the document that does the same");
   assert.equal(nameOf(name), `Öppna ${pdf.name} i en ny flik`);
   assert.equal(name.textContent, pdf.name, "the words it shows are the file's name, in its accessible name");
   const row = name.closest("[data-file-row]")!;
@@ -201,6 +209,44 @@ test("the document's one filled action is its file's download; without a file it
   const textOnly = await document_({ text, file: null });
   assert.deepEqual(filled(textOnly.container), ["Kopiera texten"]);
   await textOnly.unmount();
+});
+
+test("Kopiera texten puts the text on the clipboard formatted, for a word processor or a mail, and as it is written", async (t) => {
+  const markdown = "## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen**.\n\n- Förvaltningen återkommer i oktober.";
+  const written: Record<string, Blob>[] = [];
+  class Item {
+    constructor(readonly items: Record<string, Blob>) {}
+  }
+  Object.defineProperty(globalThis, "ClipboardItem", { value: Item, configurable: true });
+  Object.defineProperty(navigator, "clipboard", { value: { write: async (items: Item[]) => void written.push(items[0].items) }, configurable: true });
+  t.after(() => ["ClipboardItem"].forEach((name) => Reflect.deleteProperty(globalThis, name)));
+  t.after(() => void Reflect.deleteProperty(navigator, "clipboard"));
+  const view = await document_({ text: markdown, file: null });
+  await view.act(async () => button(view.container, "Kopiera texten")!.click());
+  assert.equal(written.length, 1);
+  const html = await written[0]["text/html"].text();
+  assert.equal(await written[0]["text/plain"].text(), markdown, "as written, where only text is taken");
+  assert.match(html, /<h2>Protokoll<\/h2>/, "a heading stays a heading");
+  assert.match(html, /<p>Kommunstyrelsen beslutade att <strong>höja budgetramen<\/strong>\.<\/p>/, "a paragraph with its bold");
+  assert.match(html, /<ul><li>(?:<span>|<\/span>)*Förvaltningen återkommer i oktober\.(?:<\/span>)*<\/li><\/ul>/, "a list item");
+  assert.doesNotMatch(html, /class=|style=|<button|<svg/, "nothing of the page's own look or controls");
+});
+
+test("a text without a file of its own downloads as a text file, under the name the page gives its files", async (t) => {
+  const download = await import("./download");
+  const saved: { text: string; name: string }[] = [];
+  t.mock.method(download, "downloadBlob", (blob: Blob, name: string) => void blob.text().then((text) => saved.push({ text, name })));
+  const name = "Nämndmöte till rapport 2026-09-24 11.02.txt";
+  for (const width of [390, 1280]) {
+    widthOf(t, width);
+    const view = await document_({ text, file: null, downloadName: name });
+    const save = button(view.container, `Ladda ner ${name}`);
+    assert.ok(save, `${width} px: Ladda ner beside Kopiera texten`);
+    assert.equal(save.textContent, "Ladda ner");
+    await view.act(async () => save.click());
+    await view.unmount();
+  }
+  assert.deepEqual(saved, [{ text, name }, { text, name }], "the text as written, as a .txt");
 });
 
 test("from a laptop's width the file's name opens the preview instead, and no Öppna beside it does the same again", async (t) => {
@@ -286,6 +332,35 @@ test("Dela only where the browser can share, and then the file itself when the d
     Reflect.deleteProperty(navigator, "canShare");
     globalThis.fetch = realFetch;
   }
+});
+
+test("from a laptop's width Dela is there as it is narrower, on the document's edge or on its file's row", async (t) => {
+  widthOf(t, 1280);
+  filesAnswer(t, present);
+  Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  t.after(() => ["share", "canShare"].forEach((name) => Reflect.deleteProperty(navigator, name)));
+  for (const props of [{ text, file: pdf }, { text: null, file: pdf }]) {
+    const view = await document_(props);
+    assert.ok(button(view.container, "Dela"), `Dela, ${props.text ? "with" : "without"} text`);
+    await view.unmount();
+  }
+});
+
+test("on a touch screen the PDF opens in a tab of its own at a laptop's width too, as it does narrower", async (t) => {
+  widthOf(t, 1180, { touch: true });
+  const view = await document_({ text, file: pdf });
+  const row = view.container.querySelector("[data-file-row]")!;
+  const controls = [...row.querySelectorAll("a, button")].filter((el) => !el.closest("dialog"));
+  assert.deepEqual(controls.map(nameOf), [`Öppna ${pdf.name} i en ny flik`], "the same link, with the same icon, whichever way the tablet is turned");
+});
+
+test("a date in a file's name stays on one line: the name breaks before it, never at its hyphens", async () => {
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const dates = [...view.container.querySelectorAll(".date")].filter((el) => !el.closest("dialog")).map((el) => el.textContent);
+  assert.deepEqual(dates, ["2026-09-24"]);
 });
 
 test("the PDF opens on its title, with its actions and Stäng before the viewer, and is fetched only then", async (t) => {
@@ -1052,6 +1127,71 @@ test("a download starts only once the file is known to be there; if it is not, t
   await view.act(async () => button(view.container, "Försök igen")!.click());
   assert.deepEqual(started, [`${ATTACHMENT} (download)`], "saved once, by the link the page makes");
   assert.deepEqual(alertsOf(view.container), []);
+});
+
+test("while a file is asked for, the pressed control says that it waits, and another press asks nothing more", async (t) => {
+  widthOf(t, 1280);
+  const asked: string[] = [];
+  let answer!: () => void;
+  const answered = new Promise<Response>((resolve) => (answer = () => resolve(present())));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => (asked.push(String(input)), answered)) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  // The closed preview dialog holds a download link of its own; this is the row's.
+  const link = () => [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => !a.closest("dialog"))!;
+
+  await view.act(async () => void press(link()));
+  assert.equal(link().getAttribute("aria-busy"), "true", "the download it was asked for waits");
+  assert.equal(button(view.container, `Öppna ${pdf.name}`)!.getAttribute("aria-busy"), null, "only the control that was pressed");
+  await view.act(async () => void press(link()));
+  assert.equal(asked.length, 1, "a second press while it waits asks nothing");
+
+  await view.act(async () => answer());
+  assert.deepEqual(started, [`${ATTACHMENT} (download)`]);
+  assert.equal(link().getAttribute("aria-busy"), null);
+});
+
+test("a run's file downloads as the browser streams it, from its own link: the page never reads it whole, whatever its size", async (t) => {
+  widthOf(t, 1280);
+  let cancelled = false;
+  // No length: a file of unknown size, as Eneo may stream it.
+  const body = () => new ReadableStream({ pull: () => undefined, cancel: () => void (cancelled = true) });
+  filesAnswer(t, () => new Response(body(), { status: 200, headers: { "content-type": "application/pdf" } }));
+  const download = await import("./download");
+  const kept = t.mock.method(download, "downloadBlob", () => undefined);
+  const wholeRead = t.mock.method(Response.prototype, "blob");
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const link = [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => !a.closest("dialog"))!;
+  await view.act(async () => void press(link));
+  assert.equal(cancelled, true, "the check that it is there reads none of it");
+  assert.equal(wholeRead.mock.callCount() + kept.mock.callCount(), 0, "nothing of it is held in the tab");
+  assert.deepEqual(started, [`${ATTACHMENT} (download)`], "saved by the browser from the module's attachment, the page where it was");
+});
+
+test("a screen left while its file is asked for starts no download", async (t) => {
+  widthOf(t, 1280);
+  let answer!: () => void;
+  const answered = new Promise<Response>((resolve) => (answer = () => resolve(present())));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => answered) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const link = [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => !a.closest("dialog"))!;
+  await view.act(async () => void press(link));
+  await view.unmount();
+  answer();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(started, []);
 });
 
 test("narrower than a laptop the tab opens at the press and goes to the file once it is there; a file that is not closes it again", async (t) => {
