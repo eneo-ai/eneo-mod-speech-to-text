@@ -340,8 +340,7 @@ export const eneoTheme = {
       "base": {
         "boxShadow": "inset 0 0 0 var(--border-width) var(--color-border-emphasized)",
         ":is([aria-pressed=\"true\"])": {
-          "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)",
-          "backgroundColor": "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+          "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)"
         }
       }
     },

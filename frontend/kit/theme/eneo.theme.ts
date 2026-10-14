@@ -92,7 +92,8 @@ export const eneoTheme = defineTheme({
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
     'toggle-button-group': {base: {flexWrap: 'wrap'}},
     // A chip (the transcript's speaker filter) is a ghost button, which shows no edge at rest: only the pressed one had a
-    // shape. Each has a control's edge, and the pressed one the accent's edge and tint, as a chosen radio row has. The
+    // shape. Each has a control's edge, and the pressed one the accent's edge. Astryx owns the fill and its matching
+    // label colour so the selected state also keeps their system-colour pair in forced colours. The
     // edge is drawn inside the chip, so no chip changes size (forced colours give every button its own edge, globals.css).
     // The pressed state is read from aria-pressed: the theme's `isPressed` target writes a value the button never carries.
     'toggle-button': {
@@ -100,7 +101,6 @@ export const eneoTheme = defineTheme({
         boxShadow: 'inset 0 0 0 var(--border-width) var(--color-border-emphasized)',
         ':is([aria-pressed="true"])': {
           boxShadow: 'inset 0 0 0 var(--border-width) var(--color-accent)',
-          backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
         },
       },
     },
