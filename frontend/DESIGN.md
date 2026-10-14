@@ -135,6 +135,9 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ### Steps
 - A run's steps say their state in words; the step under way has the accent bar and the spinner, a finished one its check and the plain track.
 
+### Setup
+- What appears when a control is pressed has its place from the first draw: the microphone test's level line rests until the test starts, and its button keeps one width for both of its words, so nothing under them moves.
+
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
 

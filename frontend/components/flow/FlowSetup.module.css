@@ -66,6 +66,19 @@
   }
 }
 
+/* Testa mikrofonen and Sluta testa in one cell, the one not shown hidden: the button keeps the longer one's width. */
+.sameWidth {
+  display: inline-grid;
+}
+
+.sameWidth > * {
+  grid-area: 1 / 1;
+}
+
+.sameWidth > [aria-hidden] {
+  visibility: hidden;
+}
+
 /* The page's bottom edge on a phone, where the primary action docks: full width, over the region's side padding
    and the page's bottom padding, so it stays in reach however long the form is. */
 .dock {

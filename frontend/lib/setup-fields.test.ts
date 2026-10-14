@@ -83,6 +83,22 @@ test("participants: a name's remove button takes it away and the focus goes back
   assert.equal(document.activeElement, input());
 });
 
+test("participants: removed with a finger, the focus stays off the field, so the phone's keyboard does not open", async () => {
+  const { view, input, shown } = await mountNames(["Anna Berg", "Erik Lund"]);
+  const press = (target: Element, pointerType: string) => {
+    const down = new window.MouseEvent("pointerdown", { bubbles: true });
+    Object.defineProperty(down, "pointerType", { value: pointerType });
+    target.dispatchEvent(down);
+    (target as HTMLElement).click();
+  };
+  await view.act(async () => press(button(view.container, "Ta bort Anna Berg")!, "touch"));
+  assert.deepEqual(shown(), ["Erik Lund"]);
+  assert.notEqual(document.activeElement, input(), "a tap leaves the field alone");
+  // A mouse's press after it takes the focus back to the field, as a key's does.
+  await view.act(async () => press(button(view.container, "Ta bort Erik Lund")!, "mouse"));
+  assert.equal(document.activeElement, input());
+});
+
 test("a date detail shows the date it holds once its calendar has loaded", async () => {
   const { DetailsForm } = await import("../components/flow/DetailsForm");
   const view = await mount(
