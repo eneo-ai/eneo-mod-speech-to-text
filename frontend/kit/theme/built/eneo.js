@@ -308,6 +308,13 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
+    "step-bar": {
+      "base": {
+        ":is([data-progress=\"completed\"] > *)::before": {
+          "backgroundColor": "transparent"
+        }
+      }
+    },
     "token": {
       "base": {
         "overflow": "visible",

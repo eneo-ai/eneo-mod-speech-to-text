@@ -132,6 +132,9 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ### Version
 - Folded under “Version” at the end of the flow list: the release (no row without one), the commit and the build time as a key-value list, then Kopiera supportinformation and the commit on GitHub. Not in the account menu, whose rows fill Astryx's 300 px menu on a touch screen.
 
+### Steps
+- A run's steps say their state in words; the step under way has the accent bar and the spinner, a finished one its check and the plain track.
+
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
 

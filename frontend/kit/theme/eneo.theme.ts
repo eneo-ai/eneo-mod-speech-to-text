@@ -75,6 +75,10 @@ export const eneoTheme = defineTheme({
     // A step's name keeps one line and is cut off with an ellipsis, with its state words beside it pushed out of the
     // card (WCAG 1.4.10): a flow's step names are its author's, as long as they like. It wraps, and the words follow it.
     'step-label': {base: {whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', overflowWrap: 'anywhere'}},
+    // The accent bar marks the step under way, or the one that stopped the run: the design system fills it for every
+    // step up to there too, which made the finished steps look as if they were being worked on. A finished step has
+    // its check and its word ("Klar"); its bar is the plain track.
+    'step-bar': {base: {':is([data-progress="completed"] > *)::before': {backgroundColor: 'transparent'}}},
     // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
     // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
     // The blue token is the brand's tint, not the data palette's blue: it follows the deployment's accent colour

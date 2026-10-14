@@ -430,6 +430,10 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-step-bar:is([data-progress="completed"] > *)::before {
+    background-color: transparent;
+  }
+
   .astryx-token {
     overflow: visible;
     height: auto;
