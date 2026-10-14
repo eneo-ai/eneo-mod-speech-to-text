@@ -136,6 +136,14 @@ export function RunTranscriptView({
           </Button>
         </HStack>
       </HStack>
+      {/* Quiet, since the transcript is whole: only the click on a word cannot find its moment. */}
+      {transcript.wordTimingFailed && transcript.fileIds.length > 0 && !unread && (
+        <HStack paddingInline={4} paddingBlockEnd={2}>
+          <Text as="p" type="supporting">
+            Ordtiderna kunde inte tas fram den här gången. Ett klick i texten spelar från början av avsnittet.
+          </Text>
+        </HStack>
+      )}
       {(unread || localError || saveState === "error" || hasDropped) && (
         <VStack gap={2} hAlign="start" paddingInline={4} paddingBlockEnd={3}>
           {unread && (

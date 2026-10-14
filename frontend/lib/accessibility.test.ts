@@ -174,7 +174,7 @@ test("the states shown by a tint alone are outlined in forced colours", () => {
   };
   const markers: [string, string[]][] = [
     ["components/TranscriptEditor.module.css", [".word[data-active]", ".word[data-selected]"]],
-    ["components/TranscriptPlayer.module.css", ['.turn[data-active="true"]', ".sentenceActive"]],
+    ["components/TranscriptPlayer.module.css", ['.turn[data-active="true"]', '.sentence[data-active="true"]']],
   ];
   const unoutlined = markers.flatMap(([file, selectors]) => {
     const forced = forcedColours(readFileSync(file, "utf8"));

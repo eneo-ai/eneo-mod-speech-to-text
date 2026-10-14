@@ -255,6 +255,19 @@ TRANSCRIBE_STEP = {
         "segments_hash": SEGMENTS_HASH}},
     "output_payload_json": {"text": "Transkript"},
 }
+# A flow that times words without identifying speakers: its sentences name no one, and Eneo's forced alignment timed
+# every word, one of them not found in the audio (probability 0).
+TIMED_SEGMENTS = [
+    (0, 0.0, 3.0, "Välkomna till kommunstyrelsens möte."),
+    (0, 3.0, 6.5, "Första punkten gäller budgeten för nästa år."),
+    (0, 6.5, 11.5, "Ramen höjs med två procent och förvaltningen återkommer i oktober."),
+]
+TIMED_STEP = dict(TRANSCRIBE_STEP, input_payload_json={"transcription": {
+    "file_ids": [FILE["audioA"]], "alignment": "forced", "word_timing": {"status": "done"},
+    "segments": [{"file_index": f, "start": a, "end": b, "speaker": None, "text": t,
+                  "words": [dict(w, probability=0.0 if w["word"] == "förvaltningen" else 0.92) for w in words(t, a, b)]}
+                 for f, a, b, t in TIMED_SEGMENTS],
+    "segments_hash": hashlib.sha256(json.dumps(TIMED_SEGMENTS, ensure_ascii=False).encode()).hexdigest()}})
 REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
           "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 REPORT_STEP = {"id": RESULT["report"], "step_id": REPORT_STEP_ID, "step_order": 2, "status": "completed",
@@ -327,6 +340,7 @@ RUNS = {
     RUN["reviewApproved"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     RUN["reviewTextApproved"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     RUN["corrected"]: DONE,
+    RUN["timed"]: dict(DONE, steps=[TIMED_STEP, REPORT_STEP]),
     RUN["pdf"]: only_pdf(REPORT),
     RUN["pdfLong"]: only_pdf(LONG_REPORT),
 }
@@ -896,8 +910,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(404, {"detail": "Transcript words not found."})
             return self.send(200, {
                 "flow_run_id": run_id, "step_id": what[1], "segments_hash": transcript["segments_hash"],
-                "alignment": "fixture", "stale": False,
-                "segments": [{"segment_index": index, "words": [dict(word, probability=None) for word in segment["words"]]}
+                "alignment": transcript.get("alignment", "fixture"), "stale": False,
+                "segments": [{"segment_index": index, "words": [dict(word, probability=word.get("probability")) for word in segment["words"]]}
                              for index, segment in enumerate(transcript["segments"])],
             })
         if what == ["review-checkpoints", "active"]:

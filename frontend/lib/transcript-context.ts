@@ -45,6 +45,8 @@ export interface TranscriptContext {
   speakerNames: Record<string, string>;
   /** The text shown is the start of a longer transcript whose whole could not be read. */
   textPreview: boolean;
+  /** The flow's service could not time the words this run (Eneo's word_timing), so a click plays from the sentence. */
+  wordTimingFailed: boolean;
 }
 
 export const INITIAL_TRANSCRIPT: TranscriptContext = {
@@ -58,6 +60,7 @@ export const INITIAL_TRANSCRIPT: TranscriptContext = {
   corrections: EMPTY_CORRECTIONS,
   speakerNames: {},
   textPreview: false,
+  wordTimingFailed: false,
 };
 
 /** Namn ur ett speaker-mapping-stegs output (`structured.speakers`). */
@@ -200,6 +203,7 @@ export async function loadTranscriptContext({
   let corrections: CorrectionSet = EMPTY_CORRECTIONS;
   let speakerNames: Record<string, string> = {};
   let stepText: TranscriptText | null = null;
+  let wordTimingFailed = false;
   try {
     const steps =
       providedSteps && providedSteps.length > 0
@@ -215,6 +219,8 @@ export async function loadTranscriptContext({
       steps.find(carriesTranscript);
     // Taken before the source is read, so the text is there to show even when that read fails.
     stepText = transcriptText(step);
+    const timing = (stepTranscription(step) as { word_timing?: { status?: unknown } } | null | undefined)?.word_timing;
+    wordTimingFailed = timing?.status === "failed";
     const transcription = await withSourceSegments(flowId, runId, step);
     segments = segmentsFromTranscription(transcription);
     // Without segments the text is the transcript; a preview is read in full first.
@@ -287,5 +293,6 @@ export async function loadTranscriptContext({
     corrections,
     speakerNames,
     textPreview: !fromMetadata && fallbackText === undefined && Boolean(stepText?.fileId),
+    wordTimingFailed,
   };
 }
