@@ -1,4 +1,4 @@
-import { cloneElement, useEffect, useId, useRef, useState, type ReactElement, type MouseEvent } from "react";
+import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type MouseEvent } from "react";
 import { Headphones, Pause } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -19,30 +19,34 @@ import { speakerDisplayLabel } from "@/lib/transcript";
 
 /**
  * The keyboard on a phone covers the lower part of the screen without making
- * the page shorter; the dialog follows the visible part, so the focused field
- * and the actions stay in reach.
+ * the page shorter, and the browser moves the part that is visible to keep the
+ * field being typed in sight; the dialog follows that part, its height and its
+ * top, so the title, the focused field and the actions stay in reach.
  */
-function useVisibleHeight(active: boolean): number | null {
-  const [height, setHeight] = useState<number | null>(null);
+function useVisibleViewport(active: boolean): { height: number; top: number } | null {
+  const [visible, setVisible] = useState<{ height: number; top: number } | null>(null);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!active || !viewport) return;
-    const update = () => setHeight(viewport.height);
+    const update = () => setVisible({ height: viewport.height, top: viewport.offsetTop ?? 0 });
     update();
     viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
     // Some browsers shrink the page itself for the keyboard instead.
     window.addEventListener("resize", update);
     return () => {
       viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
   }, [active]);
   // Once the dialog has its new height, the field being typed in stays in sight above the keyboard.
+  const height = visible?.height ?? null;
   useEffect(() => {
     const focused = document.activeElement;
     if (height && focused instanceof HTMLElement && focused.closest("dialog")) focused.scrollIntoView({ block: "nearest" });
   }, [height]);
-  return height;
+  return visible;
 }
 
 /** The button that opens the dialog, whatever it is: it keeps its own props and gets the dialog's. */
@@ -138,7 +142,15 @@ export function SpeakerNamingDialog({
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const height = useVisibleHeight(shown);
+  const visible = useVisibleViewport(shown);
+  const height = visible?.height ?? null;
+  // Less is visible than the window holds (the keyboard is open, or the page is zoomed in): the dialog stands at the top
+  // of what is visible (SpeakerNamingDialog.module.css), where the middle of the window would put its title out of sight.
+  const covered = visible !== null && visible.height < window.innerHeight - 1;
+  const dialogElement = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    if (covered) dialogElement.current?.style.setProperty("--visible-top", `${visible.top}px`);
+  }, [covered, visible?.top]);
   const descriptionId = useId();
 
   // Esc, Stäng or a click beside only close: what was typed is there when it opens again.
@@ -200,10 +212,12 @@ export function SpeakerNamingDialog({
       })}
       {/* The design system's dialog renders its children closed too: the rows, and their lists, only while it is open. */}
       <Dialog
+        ref={dialogElement}
         isOpen={shown}
         onOpenChange={(next) => !next && close()}
         purpose="info"
         width="42rem"
+        className={covered ? styles.atVisibleTop : undefined}
         maxHeight={height ? `min(90dvh, 48rem, calc(${height}px - 2 * var(--spacing-4)))` : "min(90dvh, 48rem)"}
         aria-describedby={descriptionId}
       >

@@ -4,6 +4,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  container-type: inline-size;
 }
 
 /* Focus brings a control into view at the edge of the dialog's scrolling body, which would clip its ring: room for it. */
@@ -42,6 +43,21 @@
   gap: var(--spacing-1);
   max-inline-size: 18rem;
   min-inline-size: 0;
+}
+
+/* Where the speaker and the name no longer fit side by side (two 14 rem columns and their gap), the name stands under
+   the speaker across the whole row, as a field on a phone does. */
+@container (width < 28.75rem) {
+  .name {
+    max-inline-size: none;
+  }
+}
+
+/* Less is visible than the window holds (a phone's keyboard is open): the dialog stands at the top of the visible part,
+   which the browser moves to keep the field being typed in sight, rather than in the middle of the whole window, where
+   its title went out of sight. --visible-top is that part's top (SpeakerNamingDialog). */
+.atVisibleTop {
+  margin-block: calc(var(--visible-top) + var(--spacing-4)) auto;
 }
 
 /* A ghost button's own padding would set the sample's icon in from the words above it. */
