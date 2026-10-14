@@ -112,4 +112,9 @@ Följande är modulens, inte organisationens, och ändras i koden:
 - De neutrala gråa ytorna och textfärgerna, statusfärgerna (till exempel rött för fel och grönt för klart) och
   talarnas färger i transkriberingen. Bara accentfärgen är organisationens.
 - Den medföljande loggan (`frontend/public/brand/`), som är det som visas utan `ORGANIZATION_LOGO`.
+- Ikonen i fliken och på hemskärmen: modulens mikrofon, `frontend/public/favicon.svg`. `apple-touch-icon.png` är
+  samma märke i 180 × 180 px, utan rundade hörn eftersom telefonen rundar dem själv; ändras märket görs bilden om.
+  Organisationens logga är för bred för en ikon.
+- Färgen på webbläsarens egen list ovanför sidan (`theme-color` i `frontend/index.html`): sidans ytfärg, efter
+  systemets ljusa eller mörka läge. Ett läge som väljs under "Tema" i kontomenyn ändrar den inte.
 - Sidans titel och fliknamn, "Tal till text".

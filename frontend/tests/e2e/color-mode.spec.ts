@@ -112,3 +112,34 @@ for (const name of ["setup", "result"]) {
     expect(moved.filter((count) => count > 0).length, `controls changing colour per frame: ${moved.join(" ")}`).toBeLessThanOrEqual(1);
   });
 }
+
+// What a phone takes from the page beside the page itself: the icon a home screen shows, and the colour of the browser's
+// own bar above the page, which is the page's bar in either mode.
+test("a home screen gets the module's icon, and the browser's bar the colour of the page's own bar in each mode", async ({ page, request }) => {
+  await page.goto("/flows");
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", "/apple-touch-icon.png");
+  const icon = await request.get("/apple-touch-icon.png");
+  expect(icon.status()).toBe(200);
+  expect(icon.headers()["content-type"]).toBe("image/png");
+  const png = await icon.body();
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)], "180 by 180 px, the size a phone asks for").toEqual([180, 180]);
+
+  const bar = page.getByRole("banner");
+  await expect(bar).toBeVisible();
+  // The colour the bar shows: its own, or the first an ancestor paints behind it.
+  const painted = () =>
+    bar.evaluate((element) => {
+      for (let at: Element | null = element; at; at = at.parentElement) {
+        const colour = getComputedStyle(at).backgroundColor;
+        if (colour !== "rgba(0, 0, 0, 0)" && colour !== "transparent") return colour;
+      }
+      return "";
+    });
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16)).join(", ")})`;
+  for (const scheme of ["light", "dark"] as const) {
+    const meta = await page.locator(`meta[name="theme-color"][media="(prefers-color-scheme: ${scheme})"]`).getAttribute("content");
+    expect(meta, `a theme-color for the ${scheme} mode`).toMatch(/^#[0-9a-f]{6}$/i);
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect.poll(painted, { message: `the page's bar in the ${scheme} mode` }).toBe(rgb(meta!));
+  }
+});

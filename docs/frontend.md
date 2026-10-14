@@ -10,7 +10,7 @@ Gränssnittet är en React-app med Vite, react-router och designsystemet Astryx.
 | `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. |
 | `frontend/kit/` | Tema, providers och skal (`ModuleShell`, `ColorModeProvider`). Importerar inget från `routes/`, `components/` eller `lib/`. |
 | `frontend/lib/` | Logik utan gränssnitt, ett ansvar per fil, med testerna bredvid. Importerar ingen UI-kod. |
-| `frontend/styles/`, `frontend/public/` | Skiktordningen och modulens egna stilar; filer som kopieras oförändrade (live-ljudets AudioWorklet och skriptet för första målningen). |
+| `frontend/styles/`, `frontend/public/` | Skiktordningen och modulens egna stilar; filer som kopieras oförändrade (live-ljudets AudioWorklet, skriptet för första målningen och ikonerna för fliken och hemskärmen). |
 
 `routes/` och `components/` får importera `kit/`, `lib/` och Astryx; `kit/` bara Astryx; `lib/` ingen UI.
 
