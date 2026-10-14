@@ -631,6 +631,7 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     corrections: EMPTY_CORRECTIONS,
     speakerNames: {},
     textPreview: false,
+    wordTimingFailed: false,
   };
   const editing = {
     corrections: EMPTY_CORRECTIONS,
@@ -696,6 +697,7 @@ function transcriptView(overrides: Record<string, unknown>) {
         corrections: EMPTY_CORRECTIONS,
         speakerNames: {},
         textPreview: false,
+        wordTimingFailed: false,
         ...overrides,
       } as TranscriptContext,
       confirmedWords: new Set<string>(),
@@ -720,6 +722,13 @@ test("a preview of a longer transcript says so and is neither copied nor downloa
   assert.match(html, /Förhandsvisning, hela transkriberingen kunde inte hämtas/);
   assert.deepEqual(exportButtons(html), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.ok(names(html).includes("Läs in igen"));
+});
+
+test("words the flow's service could not time are said quietly, only where there is audio to click into", () => {
+  const note = /Ordtiderna kunde inte tas fram den här gången\. Ett klick i texten spelar från meningens början\./;
+  assert.match(transcriptView({ wordTimingFailed: true, fileIds: ["file-1"] }), note);
+  assert.doesNotMatch(transcriptView({ wordTimingFailed: true, fileIds: [] }), note, "no audio, no click to explain");
+  assert.doesNotMatch(transcriptView({ fileIds: ["file-1"] }), note, "a flow without a service chose text only");
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {

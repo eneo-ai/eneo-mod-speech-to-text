@@ -59,6 +59,21 @@ test("a real transcription without segments reaches the result page: its text, i
   assert.deepEqual(urls.filter((url) => url.includes("transcript-source")), [], "Eneo said it has no segments");
 });
 
+test("a run whose words the flow's service could not time says so; one that chose no service says nothing", async (t) => {
+  stubEneo(t);
+  const timed = (wordTiming: unknown) => {
+    const step = structuredClone(realSteps[0]);
+    const transcription = (step.input_payload_json as { transcription: Record<string, unknown> }).transcription;
+    if (wordTiming !== undefined) transcription.word_timing = wordTiming;
+    return [step];
+  };
+  const failed = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: timed({ status: "failed", reason: "unavailable" }) });
+  assert.equal(failed.wordTimingFailed, true);
+  assert.equal(failed.segments.length, 1, "the text is shown as without timings");
+  assert.equal((await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: timed(undefined) })).wordTimingFailed, false);
+  assert.equal((await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: timed({ status: "done" }) })).wordTimingFailed, false);
+});
+
 test("segments come from Eneo's transcript source, page by page, with its hash for corrections", async (t) => {
   const step = structuredClone(realSteps[0]);
   const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
