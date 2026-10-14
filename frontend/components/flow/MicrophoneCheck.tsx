@@ -122,16 +122,18 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
           width="var(--microphone-picker-width, min(100%, 24rem))"
         />
-        <Button
-          label={stream ? STOP : TEST}
-          variant="secondary"
-          icon={<Icon icon="microphone" />}
-          onClick={() => (stream ? stopTest() : void test())}
-        >
-          {/* As wide with either word, so it does not shrink under the finger that pressed it. */}
+        <Button label={stream ? STOP : TEST} variant="secondary" onClick={() => (stream ? stopTest() : void test())}>
+          {/* As wide with either word, so it does not shrink under the finger that pressed it: the icon and the word
+              shown, centred together, over the other word's, hidden. */}
           <span className={styles.sameWidth}>
-            <span>{stream ? STOP : TEST}</span>
-            <span aria-hidden>{stream ? TEST : STOP}</span>
+            <span>
+              <Icon icon="microphone" />
+              {stream ? STOP : TEST}
+            </span>
+            <span aria-hidden>
+              <Icon icon="microphone" />
+              {stream ? TEST : STOP}
+            </span>
           </span>
         </Button>
       </HStack>
