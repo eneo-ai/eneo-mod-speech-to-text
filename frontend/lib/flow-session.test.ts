@@ -222,7 +222,7 @@ test("a way the flow would offer but this browser or Eneo cannot give is said, n
   assert.equal(missingModesNote(withLive, { canRecord: true, liveClient: true }), null, "every way is there");
   assert.equal(
     missingModesNote(withLive, { canRecord: false, liveClient: true }),
-    "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.",
+    "Inspelning fungerar inte här. Öppna sidan via en säker adress (https) i en uppdaterad webbläsare, eller ladda upp en fil i stället.",
   );
   assert.equal(missingModesNote(withLive, { canRecord: true, liveClient: false }), "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.");
   assert.equal(missingModesNote(live("model_unavailable"), { canRecord: true, liveClient: true }), "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.");

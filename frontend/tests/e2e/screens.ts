@@ -571,7 +571,7 @@ export const STATES: State[] = [
     only: (info) => !records(info),
     go: async (page) => {
       await setup(page);
-      await expect(page.getByText("Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.")).toBeVisible();
+      await expect(page.getByText("Inspelning fungerar inte här. Öppna sidan via en säker adress (https) i en uppdaterad webbläsare, eller ladda upp en fil i stället.")).toBeVisible();
       await expect(page.getByRole("radio"), "no choice of ways in").toHaveCount(0);
       await expect(page.getByRole("button", { name: "Välj ljudfil" })).toBeVisible();
     },
