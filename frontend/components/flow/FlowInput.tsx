@@ -264,6 +264,9 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     mutedLong: capture.mutedLong,
     mutedGap: capture.mutedGap,
     stalled: capture.stalled,
+    // The recorder's own word on keeping the recording; what a press was answered (the problem) and what a stop ends with
+    // (the ready view) are said there.
+    error: problem ? null : capture.error,
     wakeLock: !capture.screenMayDim,
     makesText,
   });

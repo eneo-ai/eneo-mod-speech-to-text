@@ -76,6 +76,7 @@ export function recordingNotices({
   mutedLong = false,
   mutedGap = null,
   stalled = false,
+  error = null,
   wakeLock,
   backOnDevice = false,
   makesText = false,
@@ -97,6 +98,8 @@ export function recordingNotices({
   mutedGap?: { ms: number; away: boolean } | null;
   /** The recorder hands over no audio: nothing said now is kept. */
   stalled?: boolean;
+  /** What went wrong in keeping the recording while it is captured (the recorder's own sentence). */
+  error?: string | null;
   wakeLock: boolean;
   /** The flow ends in text, not a file. */
   makesText?: boolean;
@@ -104,7 +107,10 @@ export function recordingNotices({
   const warnings: Problem[] = [];
   const notes: string[] = [];
   if (phase === "interrupted") {
-    warnings.push({ title: "Inspelningen pausades när mikrofonen försvann.", detail: "Det som spelats in finns kvar." });
+    // When the device could not keep the pause, that is said in place of the promise.
+    warnings.push({ title: "Inspelningen pausades när mikrofonen försvann.", detail: error ?? "Det som spelats in finns kvar." });
+  } else if (error) {
+    warnings.push({ title: error });
   }
   // A muted microphone is why there is no sound or audio: said alone, and what to do once it has lasted.
   if (phase === "recording" && muted) {

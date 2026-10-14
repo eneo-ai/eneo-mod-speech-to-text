@@ -154,7 +154,8 @@ type EndReason = "stop" | "interrupt" | "leave";
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
-const PAUSE_UNCONFIRMED = "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.";
+// Said under the pause's own warning (recordingNotices), which names the pause.
+const PAUSE_UNCONFIRMED = "Det gick inte att bekräfta att inspelningen sparades på enheten.";
 
 const notOnDevice = (error: unknown) => error instanceof Error && error.message === NOT_ON_DEVICE;
 

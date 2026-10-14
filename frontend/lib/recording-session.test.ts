@@ -887,7 +887,8 @@ test("a microphone lost while the device cannot confirm the pause leaves the rec
   await until(() => capture.getSnapshot().status === "interrupted", "the recording interrupted");
   const { stream, error } = capture.getSnapshot();
   assert.equal(stream, null);
-  assert.equal(error, "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.");
+  // Said under the pause's own warning, which names the pause (recordingNotices).
+  assert.equal(error, "Det gick inte att bekräfta att inspelningen sparades på enheten.");
   assert.equal(await capture.stop(), null);
   assert.equal(capture.getSnapshot().status, "stopped");
 });

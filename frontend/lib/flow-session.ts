@@ -929,11 +929,16 @@ export class FlowSession {
   /** "Fortsätt spela in" after the microphone went away: a new part of the same recording. */
   async continueRecording(): Promise<void> {
     this.microphoneError = null;
+    // What the last press answered is old once this one tries again.
+    this.problem = null;
+    this.emit();
     await this.capture.continueRecording();
-    if (this.capture.getSnapshot().status === "interrupted") {
-      this.problem = microphoneProblem(this.microphoneError);
-      this.emit();
-    }
+    const { status, error } = this.capture.getSnapshot();
+    // No reason: nothing new was tried (a press while the first still waits for the microphone).
+    if (status !== "interrupted" || !error) return;
+    // The browser's reason for a refused microphone says what to do; any other is the recorder's own (the flow's limits).
+    this.problem = this.microphoneError ? microphoneProblem(this.microphoneError) : { title: error };
+    this.emit();
   }
 
   /** The page goes away: what was recorded stays on the device for recovery. */

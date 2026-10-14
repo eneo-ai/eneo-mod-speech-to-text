@@ -146,7 +146,7 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   ]);
 });
 
-test("the bar says when no audio is kept, when the microphone stays muted, and how long it was muted", () => {
+test("the bar says when no audio is kept, when the microphone stays muted, how long it was muted, and what went wrong in keeping the recording", () => {
   const base = {
     phase: "recording" as const,
     silent: false,
@@ -181,6 +181,15 @@ test("the bar says when no audio is kept, when the microphone stays muted, and h
     notes: [`Mikrofonen var avstängd i 40 s medan sidan låg i bakgrunden. ${lost}`],
   });
   assert.deepEqual(recordingNotices({ ...base, mutedGap: { ms: 4 * 60_000, away: false } }).notes, [`Mikrofonen var avstängd i 4 min. ${lost}`]);
+
+  // What went wrong in keeping the recording is said while it goes on, and in place of the promise that a pause kept it.
+  assert.deepEqual(recordingNotices({ ...base, error: "Inspelningen finns inte längre på enheten." }).warnings, [
+    { title: "Inspelningen finns inte längre på enheten." },
+  ]);
+  const unconfirmed = "Det gick inte att bekräfta att inspelningen sparades på enheten.";
+  assert.deepEqual(recordingNotices({ ...base, phase: "interrupted", error: unconfirmed }).warnings, [
+    { title: "Inspelningen pausades när mikrofonen försvann.", detail: unconfirmed },
+  ]);
 });
 
 test("recording state changes are announced once, never the timer", () => {
