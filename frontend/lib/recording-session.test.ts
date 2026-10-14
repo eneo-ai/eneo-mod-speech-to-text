@@ -298,17 +298,55 @@ test("a recorder that hands over no audio is asked for it once, then the page sa
   assert.equal(intervals.size, 0, "and when the page goes");
 });
 
-test("a recorder that stops without saying so is a lost microphone: the recording pauses with what it has", async (t) => {
-  t.mock.timers.enable({ apis: ["setInterval"] });
+test("a recorder that stops without saying so is a lost microphone: the recording pauses with what it has, and keeps audio handed over late", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
   const { capture, store, recorders } = await setup();
   await capture.start(meeting);
   recorders[0].emit("a");
-  recorders[0].state = "inactive"; // no last data, no stop event (WebKit after an interruption)
+  recorders[0].state = "inactive"; // no last data, no stop event yet (WebKit after an interruption)
+  t.mock.timers.tick(2_000); // the look that finds it stopped
+  assert.equal(capture.getSnapshot().status, "recording", "its last audio and its stop event may still be on their way");
   t.mock.timers.tick(2_000);
-  assert.equal(capture.getSnapshot().status, "recording", "its stop event may still be on its way");
-  t.mock.timers.tick(2_000);
-  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
-  assert.deepEqual(await texts(await store.readParts(capture.getSnapshot().recording!.id)), ["a"]);
+  recorders[0].emit("b"); // its last audio, late
+  t.mock.timers.tick(3_000);
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.equal(capture.getSnapshot().status, "recording", "audio came: its stop event may still come too");
+  t.mock.timers.tick(1_000);
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause, without a stop event");
+  recorders[0].emit("c"); // later still
+  const { id } = capture.getSnapshot().recording!;
+  await until(async () => (await texts(await store.readParts(id)))[0] === "abc", "every chunk the recorder handed over is kept");
+});
+
+test("a recorder that never confirms its end holds neither Stoppa nor a page that goes: the part ends unconfirmed after a while, and audio still kept", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const silentStop = (recorder: FakeRecorder) => (recorder.stop = () => void (recorder.state = "inactive"));
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  silentStop(recorders[0]);
+  const stopping = capture.stop();
+  assert.equal(streams[0].track.readyState, "ended", "the microphone goes at once");
+  t.mock.timers.tick(3_000);
+  await settle();
+  assert.equal(capture.getSnapshot().stopping, true, "its last audio may still come");
+  t.mock.timers.tick(1_000);
+  await until(() => capture.getSnapshot().status === "stopped", "Stoppa ends without the recorder's word");
+  const stopped = await stopping;
+  assert.equal(stopped?.state, "stopped");
+  assert.equal(capture.getSnapshot().stopping, false);
+  assert.equal(capture.getSnapshot().error, "Inspelningen stoppades, men webbläsaren bekräftade inte att de sista sekunderna sparades.");
+  recorders[0].emit("b"); // its last audio after all
+  await until(async () => (await texts(await store.readParts(stopped!.id)))[0] === "ab", "audio handed over after the end is kept");
+
+  const left = await setup();
+  await left.capture.start(meeting);
+  left.recorders[0].emit("a");
+  silentStop(left.recorders[0]);
+  const { id } = left.capture.getSnapshot().recording!;
+  left.capture.dispose();
+  t.mock.timers.tick(4_000);
+  await until(async () => (await left.store.get(id))?.state === "paused", "the page that went leaves it paused, for recovery");
 });
 
 test("a microphone muted while the page was away is told with how long once the page is back; muted long in view, the page says to act", async (t) => {
