@@ -64,7 +64,12 @@ export function paintPlayhead(root: ParentNode, targets: PlayheadTargets) {
   }
   for (const { segment, word } of targets.words) {
     for (let before = 0; before < word; before++) {
-      for (const piece of wordPieces(root, segment, before)) mark(piece, { "data-said": "true" });
+      for (const piece of wordPieces(root, segment, before)) {
+        mark(piece, { "data-said": "true" });
+        // The space after it too, so the words said read as one band rather than a row of pills.
+        const gap = piece.parentElement?.nextElementSibling?.firstElementChild;
+        if (gap && !gap.hasAttribute("data-word-index")) mark(gap, { "data-said": "true" });
+      }
     }
     for (const piece of wordPieces(root, segment, word)) mark(piece, { "data-lit": "true", "aria-current": "true" });
   }

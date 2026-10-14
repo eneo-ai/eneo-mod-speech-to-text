@@ -552,6 +552,11 @@
   background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
+/* The words said and the spaces between them are one band. */
+.word[data-said] {
+  border-radius: 0;
+}
+
 .word[data-lit] {
   background-image: linear-gradient(
     to right,

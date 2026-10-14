@@ -41,7 +41,8 @@ function list() {
     .map(
       (segment, s) =>
         `<li data-turn-index="${s}"><span data-segment-index="${s}">${(segment.words ?? [])
-          .map((w, i) => `<span data-word-index="${i}">${w.word}</span> `)
+          // As the player renders a piece: a word, then the space after it, each in a span of its own.
+          .map((w, i) => `<span><span data-word-index="${i}">${w.word}</span></span><span><span> </span></span>`)
           .join("")}</span></li>`,
     )
     .join("");
@@ -60,7 +61,7 @@ test("painting lights the passage, its sentence and the word, and clears what wa
   const word = root.querySelector<HTMLElement>("[data-lit]")!;
   assert.equal(word.style.getPropertyValue("--said"), "50%", "filled as far as it is said");
   // The word before it stays lit a step lighter instead of going out.
-  assert.deepEqual([...root.querySelectorAll("[data-said]")].map((element) => element.textContent), ["Första"]);
+  assert.deepEqual([...root.querySelectorAll("[data-said]")].map((element) => element.textContent), ["Första", " "], "with the space after it");
 
   paintPlayhead(root, playheadTargets(segments, 0, 2.2));
   assert.deepEqual(lit(root), ["Andra"]);
