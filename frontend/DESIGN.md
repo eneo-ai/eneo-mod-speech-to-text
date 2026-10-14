@@ -88,6 +88,7 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
 A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone.
+Every size is in rem, so the text follows the reader's own size: the browser's setting and, on an iPhone or iPad, the text size set in iOS (17 px at the default size, through `-apple-system-body`). A dock (the phone's bottom action bar, the player) that large text makes taller than a third of the window stands at the page's end instead of over it.
 
 ## Layout
 
