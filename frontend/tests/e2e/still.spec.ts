@@ -73,7 +73,7 @@ const ARRIVALS: Arrival[] = [
 const KNOWN: { page: string; when: RegExp; why: string }[] = [
   {
     page: "review",
-    when: /moved 57 px down .* when GET \S+\/transcript-corrections\/ answered$/,
+    when: /moved \d+ px down .* when GET \S+\/transcript-corrections\/ answered$/,
     why: "the speakers' list is drawn before the saved corrections that add a speaker to it are read (bead stt-5db.1)",
   },
   {

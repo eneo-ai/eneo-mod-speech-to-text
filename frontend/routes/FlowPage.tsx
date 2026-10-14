@@ -658,10 +658,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
     if (run.kind === "awaiting_review") {
       return (
-        // The review's own heading names the state, so the flow's name is not the heading.
-        <FlowFrame title={published.name} titleIsHeading={false}>
+        // The review's own heading names the state, and its first line the flow.
+        <FlowFrame>
           <ReviewView
             flowId={flowId}
+            flowName={published.name}
             checkpoint={run.checkpoint}
             runState={{ run: run.run, steps: run.steps }}
             runError={runError}

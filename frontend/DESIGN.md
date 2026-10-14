@@ -115,6 +115,10 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back and icon actions.
+- **Decisions** (a review's Avvisa and its approval, a dialog's Avbryt and Spara): one row at the end of their space,
+  the main action last; up to 640 px wide a stack across the whole width, the main action on top and first for the
+  keyboard (`components/ActionRow.tsx`, as Astryx's alert dialog lays out its own). An editor's own buttons are no
+  decision: small, at the start of the field, right under it (the review's Avbryt and Spara ändring, Redigera).
 
 ### Inputs / Fields
 - Astryx fields with label above and description under the label; focus ring 2 px accent around the whole field.
