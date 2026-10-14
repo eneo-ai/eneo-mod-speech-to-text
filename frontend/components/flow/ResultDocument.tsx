@@ -15,7 +15,7 @@ import type { ResultFileView } from "@/lib/run-files";
 import { useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
-import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
+import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 import { pressing, useFileAccess, waiting } from "./useFileAccess";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
@@ -237,6 +237,11 @@ export function ResultDocument({
     saveText && <DropdownMenuItem icon={Download} label="Ladda ner" onClick={saveText} />
   );
   const moreButton = copyMore ? <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} /> : saveButton("secondary");
+  // Dela wherever the device has a share sheet, at every width.
+  const shareButton = (variant: "ghost" | "secondary") =>
+    share && (
+      <Button variant={variant} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
+    );
 
   return (
     <>
@@ -253,16 +258,13 @@ export function ResultDocument({
             <DropdownMenu
               button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
               hasChevron={false}
-              alignment="end"
+              alignment="center"
             >
               {moreItem}
               <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
           ) : (
-            moreButton ||
-            (share && (
-              <Button icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
-            ))
+            moreButton || shareButton("secondary")
           )}
         </HStack>
       )}
@@ -270,11 +272,12 @@ export function ResultDocument({
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>
-        {/* From a laptop's width: Kopiera and the one download on the document's top edge, above its text. A file
-            without text of its own has the download on its row, as the files under it have theirs. */}
+        {/* From a laptop's width: Dela, Kopiera and the one download on the document's top edge, above its text. A file
+            without text of its own has Dela and the download on its row, as the files under it have theirs. */}
         {wide && text && (
           <>
             <HStack hAlign="end" vAlign="center" gap={1} padding={2}>
+              {shareButton("ghost")}
               {saveButton("ghost")}
               {text && (
                 <Button
@@ -306,9 +309,16 @@ export function ResultDocument({
             <Item
               data-file-row
               startContent={<Icon icon={Kind} />}
-              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text>{file.name}</Text>}
+              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
               description={file.meta}
-              endContent={wide && !text ? primaryDownload : undefined}
+              endContent={
+                wide && !text ? (
+                  <HStack vAlign="center" gap={1}>
+                    {shareButton("ghost")}
+                    {primaryDownload}
+                  </HStack>
+                ) : undefined
+              }
             />
           </>
         )}

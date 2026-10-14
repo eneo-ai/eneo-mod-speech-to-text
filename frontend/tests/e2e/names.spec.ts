@@ -6,7 +6,7 @@
 import { type Route } from "@playwright/test";
 import { expect, test } from "./gate";
 import { axNode } from "./checks";
-import { addParticipants, backLink, chooseMode, isLaptop, result, run, sending, setup, STATES } from "./screens";
+import { addParticipants, backLink, chooseMode, isLaptop, pdfInDialog, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
@@ -382,8 +382,8 @@ test("an old status answer that arrives after the renewal's moves neither the en
   await expect(warning).toBeHidden();
 });
 
-test("below a laptop's width the document's PDF opens in a new tab from its name, and says so", async ({ page }, info) => {
-  test.skip(isLaptop(info), "from a laptop's width the PDF opens in a dialog");
+test("below a laptop's width, and on a touch screen, the document's PDF opens in a new tab from its name, and says so", async ({ page }, info) => {
+  test.skip(pdfInDialog(info), "from a laptop's width with a mouse the PDF opens in a dialog");
   await result(page);
   const link = page.getByRole("link", { name: /^Öppna Protokoll .*\.pdf i en ny flik$/ });
   await expect(link).toHaveAttribute("target", "_blank");

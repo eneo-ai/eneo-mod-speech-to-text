@@ -57,6 +57,24 @@ export function useMediaMatch(query: string): boolean {
 /** Where a PDF opens in a dialog and where in a tab of its own: a phone's width, then a laptop's. */
 const TABLET = "(min-width: 640px)";
 export const LAPTOP = "(min-width: 1024px)";
+/**
+ * A dialog only with a mouse: on a touch screen a PDF opens in a tab of its own at every width, the same action with
+ * the same icon whichever way a tablet is turned, in the device's own viewer.
+ */
+const WITH_A_MOUSE = "(hover: hover) and (pointer: fine)";
+
+/** A file's name, its date kept on one line: "… 2026-09-24.pdf" breaks before the date, never inside it. */
+export function FileName({ name }: { name: string }) {
+  return name.split(/(\d{4}-\d{2}-\d{2})/).map((part, i) =>
+    i % 2 ? (
+      <span key={i} className={styles.date}>
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
 
 /** A link that saves the file it points at: `Button` passes the link it renders no `download`. */
 export function DownloadLink(props: ComponentProps<"a">) {
@@ -87,7 +105,7 @@ export function ResultFiles({
             const download = runArtifactUrl(flowId, runId, file.fileId);
             return (
               <HStack key={file.fileId} as="li" wrap="wrap" vAlign="center" gap={2}>
-                <Item className={styles.file} startContent={<Icon icon={FILE_ICONS[file.kind]} />} label={<Text>{file.name}</Text>} description={file.meta} />
+                <Item className={styles.file} startContent={<Icon icon={FILE_ICONS[file.kind]} />} label={<Text><FileName name={file.name} /></Text>} description={file.meta} />
                 {file.available && (
                   <HStack wrap="wrap" gap={2} paddingInline={2} paddingBlockEnd={2}>
                     {file.previewable && (
@@ -121,7 +139,7 @@ export function ResultFiles({
 
 /**
  * A PDF opens in the browser's own viewer: in a titled dialog where there is
- * room for it, in a new tab on a phone. The dialog opens on its title with its
+ * room for it and a mouse, in a new tab on a phone or a tablet. The dialog opens on its title with its
  * actions and Stäng before the viewer. The viewer is not in the Tab order: the
  * browser's PDF frame keeps Escape to itself and shows this page no focus state,
  * so keyboard users read the file with "Öppna i ny flik", in a whole tab.
@@ -143,7 +161,7 @@ export function OpenFile({
   /** How the file is reached: asked for before the dialog opens or the tab is sent to it. */
   access: FileAccess;
 }) {
-  const roomy = useMediaMatch(name ? LAPTOP : TABLET);
+  const roomy = useMediaMatch(`${name ? LAPTOP : TABLET} and ${WITH_A_MOUSE}`);
   const [open, setOpen] = useState(false);
   // While the login has ended the page is covered and the dialog, which a cover does not reach, is closed; it is
   // back when the login is, with its viewer and where it was.
@@ -164,7 +182,7 @@ export function OpenFile({
   const opener = !roomy ? (
     name ? (
       <Button ref={trigger} {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
-        {file.name}
+        <FileName name={file.name} />
       </Button>
     ) : (
       <Button ref={trigger} {...newTab} icon={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
@@ -182,7 +200,7 @@ export function OpenFile({
       onClick={openDialog}
       {...waiting(access, file.fileId, "open")}
     >
-      {file.name}
+      <FileName name={file.name} />
     </Button>
   ) : (
     <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={openDialog} {...waiting(access, file.fileId, "open")}>

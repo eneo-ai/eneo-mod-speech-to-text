@@ -8,6 +8,8 @@ import { declare, REAL, type Expectation } from "./sentinel";
 
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
+/** A PDF opens in a dialog from a laptop's width with a mouse; on a touch screen in a tab of its own at every width. */
+export const pdfInDialog = (info: TestInfo) => isLaptop(info) && !info.project.use.hasTouch;
 
 /**
  * Whether a project's browser can record. Every one the gate has can, but Playwright's WebKit for Linux: it is built
@@ -972,8 +974,8 @@ export const STATES: State[] = [
   },
   {
     name: "result-pdf-dialog",
-    // Below a laptop's width the document's PDF opens in a new tab instead.
-    only: isLaptop,
+    // Below a laptop's width, and on a touch screen, the document's PDF opens in a new tab instead.
+    only: pdfInDialog,
     go: async (page) => {
       await result(page);
       await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();

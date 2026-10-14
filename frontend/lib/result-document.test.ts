@@ -16,14 +16,17 @@ async function inProviders(element: ReactElement) {
   return mount(createElement(ModuleProviders, null, element));
 }
 
-/** A window this many pixels wide, as far as `(min-width: …px)` can tell; a phone's by default (the test document's). */
-function widthOf(t: TestContext, pixels: number) {
+/**
+ * A window this many pixels wide, as far as `(min-width: …px)` can tell; a phone's by default (the test document's).
+ * With a mouse unless `touch`: then a query that asks for one (`pointer: fine`) does not match.
+ */
+function widthOf(t: TestContext, pixels: number, { touch = false } = {}) {
   const real = window.matchMedia;
   let current = pixels;
   const listeners = new Set<() => void>();
   const matchMedia = (query: string) => ({
     get matches() {
-      return current >= Number(/min-width: (\d+)px/.exec(query)?.[1] ?? Infinity);
+      return current >= Number(/min-width: (\d+)px/.exec(query)?.[1] ?? Infinity) && !(touch && query.includes("pointer: fine"));
     },
     media: query, onchange: null, dispatchEvent: () => false, addListener() {}, removeListener() {},
     addEventListener: (_: string, listener: () => void) => void listeners.add(listener),
@@ -310,6 +313,35 @@ test("Dela only where the browser can share, and then the file itself when the d
     Reflect.deleteProperty(navigator, "canShare");
     globalThis.fetch = realFetch;
   }
+});
+
+test("from a laptop's width Dela is there as it is narrower, on the document's edge or on its file's row", async (t) => {
+  widthOf(t, 1280);
+  filesAnswer(t, present);
+  Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  t.after(() => ["share", "canShare"].forEach((name) => Reflect.deleteProperty(navigator, name)));
+  for (const props of [{ text, file: pdf }, { text: null, file: pdf }]) {
+    const view = await document_(props);
+    assert.ok(button(view.container, "Dela"), `Dela, ${props.text ? "with" : "without"} text`);
+    await view.unmount();
+  }
+});
+
+test("on a touch screen the PDF opens in a tab of its own at a laptop's width too, as it does narrower", async (t) => {
+  widthOf(t, 1180, { touch: true });
+  const view = await document_({ text, file: pdf });
+  const row = view.container.querySelector("[data-file-row]")!;
+  const controls = [...row.querySelectorAll("a, button")].filter((el) => !el.closest("dialog"));
+  assert.deepEqual(controls.map(nameOf), [`Öppna ${pdf.name} i en ny flik`], "the same link, with the same icon, whichever way the tablet is turned");
+});
+
+test("a date in a file's name stays on one line: the name breaks before it, never at its hyphens", async () => {
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const dates = [...view.container.querySelectorAll(".date")].filter((el) => !el.closest("dialog")).map((el) => el.textContent);
+  assert.deepEqual(dates, ["2026-09-24"]);
 });
 
 test("the PDF opens on its title, with its actions and Stäng before the viewer, and is fetched only then", async (t) => {
