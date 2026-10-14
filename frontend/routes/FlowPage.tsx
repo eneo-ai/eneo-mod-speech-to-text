@@ -739,7 +739,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         </FlowFrame>
       );
     }
-    const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;
+    const failure = run.run.error ? runErrorView(run.run.error, stepLabels, ofContractVersion(run.run, contract) ? inputStep : null) : null;
     // The same audio cannot help when the input itself has to change.
     const sameInputHelps = !failure?.inputMustChange;
     const cancelled = runOutcome(run.run.status) === "cancelled";
