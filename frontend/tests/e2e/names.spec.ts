@@ -382,10 +382,10 @@ test("an old status answer that arrives after the renewal's moves neither the en
   await expect(warning).toBeHidden();
 });
 
-test("below a laptop's width the document's PDF opens in a new tab, and says so", async ({ page }, info) => {
+test("below a laptop's width the document's PDF opens in a new tab from its name, and says so", async ({ page }, info) => {
   test.skip(isLaptop(info), "from a laptop's width the PDF opens in a dialog");
   await result(page);
-  const link = page.getByRole("link", { name: "Öppna PDF i en ny flik" });
+  const link = page.getByRole("link", { name: /^Öppna Protokoll .*\.pdf i en ny flik$/ });
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("href", /disposition=inline/);
 });

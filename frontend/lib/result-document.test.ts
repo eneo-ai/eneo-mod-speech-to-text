@@ -183,11 +183,13 @@ test("the document's one filled action is its file's download; without a file it
   const withFile = await document_({ text, file: pdf });
   assert.deepEqual(filled(withFile.container), ["Ladda ner PDF, Protokoll kommunstyrelsen 2026-09-24.pdf"]);
   // The file row names the file, and the name opens it; it never offers the same download again. On a phone's width
-  // that is a tab of its own, as Öppna PDF above the document.
+  // that is a tab of its own, and the one control on the page that opens the file.
   const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
   const name = withFile.container.querySelector<HTMLAnchorElement>(`[data-file-row] a[href="${inline}"]`);
   assert.ok(name, "the file's name is a link to the file");
-  assert.equal(name.target, "_blank", "as Öppna PDF: in a new tab");
+  assert.equal(name.target, "_blank", "in a new tab");
+  const opening = [...withFile.container.querySelectorAll(`a[href="${inline}"]`)].filter((el) => !el.closest("dialog"));
+  assert.deepEqual(opening, [name], "no Öppna PDF above the document that does the same");
   assert.equal(nameOf(name), `Öppna ${pdf.name} i en ny flik`);
   assert.equal(name.textContent, pdf.name, "the words it shows are the file's name, in its accessible name");
   const row = name.closest("[data-file-row]")!;

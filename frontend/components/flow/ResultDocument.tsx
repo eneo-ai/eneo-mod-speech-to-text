@@ -239,22 +239,11 @@ export function ResultDocument({
 
   return (
     <>
-      {/* Narrower: above the document, the download first, opening the file beside it, then the more actions. */}
+      {/* Narrower: above the document, the download first, then the more actions. The file opens from its name, on its
+          row in the document. */}
       {!wide && (
         <HStack wrap="wrap" vAlign="center" gap={2}>
           {primaryDownload}
-          {file?.previewable && inline && (
-            <Button
-              href={inline}
-              target="_blank"
-              rel="noopener noreferrer"
-              icon={<Icon icon="externalLink" />}
-              label={`Öppna ${file.typeLabel} i en ny flik`}
-              onClick={pressing(access, file.fileId, "tab")}
-            >
-              {`Öppna ${file.typeLabel}`}
-            </Button>
-          )}
           {text && !file && (
             <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           )}

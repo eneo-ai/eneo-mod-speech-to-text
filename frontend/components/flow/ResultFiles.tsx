@@ -125,9 +125,8 @@ export function ResultFiles({
  * browser's PDF frame keeps Escape to itself and shows this page no focus state,
  * so keyboard users read the file with "Öppna i ny flik", in a whole tab.
  *
- * On the document's own row the file's name is the one control: a new tab below
- * a laptop's width, as Öppna PDF above the document does there, and the dialog
- * from it.
+ * On the document's own row the file's name is the one control that opens it:
+ * a new tab below a laptop's width, and the dialog from it.
  */
 export function OpenFile({
   file,
