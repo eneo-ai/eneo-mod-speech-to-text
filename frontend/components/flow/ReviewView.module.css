@@ -1,39 +1,31 @@
 /* The review page's layout: what the design system's stacks do not say. The frame (FlowFrame) gives the page its width. */
 
-.intro {
-  margin-block-end: var(--spacing-5);
-}
-
 .description {
   max-inline-size: 65ch;
 }
 
-/* The text review is a reading column. */
-.reading {
-  max-inline-size: 42rem;
+/* The text review is a reading column from a laptop's width; below it, it has the whole column, as the speaker review
+   and every result do. */
+@media (min-width: 1024px) {
+  .reading {
+    max-inline-size: 42rem;
+  }
 }
 
-/* The editing field and its focus frame fit short and zoomed windows. */
+/* The editing field grows with the text, from four lines, and with its focus frame fits short and zoomed windows. */
 .reviewText textarea {
+  field-sizing: content;
+  min-block-size: 4lh;
   max-block-size: 50dvh;
   scroll-margin-block: var(--spacing-3);
 }
 
 /* A section with its own box: what the text review and its rejection are held in. */
 .card {
-  margin-block-end: var(--spacing-5);
   padding: var(--spacing-4);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
   background: var(--color-background-card);
-}
-
-.textActions {
-  padding-block-start: var(--spacing-4);
-}
-
-.notices {
-  margin-block-end: var(--spacing-3);
 }
 
 .notices:empty {
@@ -57,7 +49,7 @@
 .reviewSplit {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--spacing-5);
+  gap: var(--spacing-6);
 }
 
 @media (min-width: 1024px) {
@@ -73,8 +65,11 @@
   }
 }
 
-.selfStart {
-  align-self: flex-start;
+/* The speakers' card's own action spans it up to 640 px wide, where the decision under it stacks too (ActionRow). */
+@media (width > 640px) {
+  .cardAction {
+    align-self: flex-start;
+  }
 }
 
 /* The decision and what stops it, under Namnge talarna: set apart by a rule. */

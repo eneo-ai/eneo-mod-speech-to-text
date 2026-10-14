@@ -7,8 +7,6 @@
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
   --module-page-width: 1180px;
-  /* A form's measure (the flow's setup): a control stays beside its label and the action is not a bar across the screen. */
-  --module-form-width: 40rem;
   /* What the review's transcript card is at least as tall as, and the placeholder that stands for its editor. */
   --module-transcript-min-height: 28rem;
 
@@ -88,6 +86,20 @@
 html:has([data-docked-action], [data-docked-player]) {
   /* Focus can sit on a field's inner control while its ring surrounds the padded field. Keep that whole edge clear. */
   scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
+}
+
+/* A disclosure shows what it opens at once: it fades in instead, so the eye follows what appeared. With reduced motion
+   it appears as it is. */
+@media (prefers-reduced-motion: no-preference) {
+  .astryx-collapsible-content > * {
+    animation: module-reveal var(--duration-fast) var(--ease-standard);
+  }
+}
+
+@keyframes module-reveal {
+  from {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

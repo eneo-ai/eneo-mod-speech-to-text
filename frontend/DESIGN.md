@@ -94,10 +94,12 @@ Every size is in rem, so the text follows the reader's own size: the browser's s
 
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
-(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. In one column, a form is
-as wide as the column; beside the flow's details it keeps the form measure (`--module-form-width`, 40 rem). A row
-that holds a field and a button measures itself (a container query at 36 rem): the field fills the row below it, the
-two stand beside each other from it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
+(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. Every view of the flow,
+the setup's form included, is as wide as its column, so each ends at the same edge; from 1024 px a document alone and
+the text review keep a reading column (672 px). The flow's column is the same in every state: from 1024 px its name
+is the headline's size also where a run's card holds the page's heading. A row that holds a field and a button
+measures itself (a container query at 36 rem): the field fills the row below it, the two stand beside each other from
+it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
 inside a group, 8 px between a label and its control.
 
 ## Elevation & Depth
@@ -116,15 +118,26 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back and icon actions.
+- **Decisions** (a review's Avvisa and its approval, a dialog's Avbryt and Spara): one row at the end of their space,
+  the main action last; up to 640 px wide a stack across the whole width, the main action on top and first for the
+  keyboard (`components/ActionRow.tsx`, as Astryx's alert dialog lays out its own). An editor's own buttons are no
+  decision: small, at the start of the field, right under it (the review's Avbryt and Spara ändring, Redigera).
 
 ### Inputs / Fields
 - Astryx fields with label above and description under the label; focus ring 2 px accent around the whole field.
 
 ### Navigation
 - The header has one persistent “Alla flöden” link in the navigation group. It names its destination; leaving unsent work uses the existing leave question.
+- The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow in its own first line (the review's "Väntar på din granskning", the result's date line).
 
 ### Version
 - Folded under “Version” at the end of the flow list: the release (no row without one), the commit and the build time as a key-value list, then Kopiera supportinformation and the commit on GitHub. Not in the account menu, whose rows fill Astryx's 300 px menu on a touch screen.
+
+### Steps
+- A run's steps say their state in words; the step under way has the accent bar and the spinner, a finished one its check and the plain track.
+
+### Setup
+- What appears when a control is pressed has its place from the first draw: the microphone test's level line rests until the test starts, and its button keeps one width for both of its words, so nothing under them moves.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
@@ -137,10 +150,18 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Choice
 - Radio lists for one choice of a few; a switch with its label for an option that is on or off.
+- Filter chips (toggle buttons, the transcript's speakers) have a control's edge at rest and the accent's edge and tint when pressed, as a chosen radio row has.
 
 ### Bespoke surfaces
 - Transcript text with per-word spans, the level meter, the docked player, the live text sheet: CSS Modules with
   Astryx tokens.
+
+## Motion
+
+Calm and quick, on the design system's tokens: `--duration-fast` (175 ms) with `--ease-standard`. A view of the flow
+that takes another's place fades in (opacity only: the recording's bar is sticky), and so does what a disclosure
+opens; a dialog opens over `--duration-fast-max`. The step under way shows the spinner, and a paused timer turns to
+the secondary colour. With reduced motion nothing fades and spinners stand still.
 
 ## Do's and Don'ts
 

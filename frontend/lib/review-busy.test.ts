@@ -98,6 +98,7 @@ async function review(start = pause, { saves = false } = {}) {
     showPause = setCheckpoint;
     return createElement(ReviewView, {
       flowId: "flow-1",
+      flowName: "Nämndmöte",
       checkpoint,
       runState: { run, steps: [] },
       runError: null,
@@ -133,7 +134,8 @@ test("speaker review exposes a named, readable list without adding keyboard stop
   assert.ok(list, "the speaker collection has an accessible name");
   const entries = Array.from(list.querySelectorAll("li"));
   assert.equal(entries.length, 2);
-  assert.match(entries[0]!.textContent ?? "", /Talare 1.*Anna Berg/);
+  // The name leads, the transcription's label supports it; a speaker with no name keeps the label, and says so.
+  assert.match(entries[0]!.textContent ?? "", /Anna Berg.*Talare 1/);
   assert.match(entries[1]!.textContent ?? "", /Talare 2.*Inget namn/);
   assert.equal(list.querySelectorAll('button, a, input, [tabindex="0"]').length, 0);
 });

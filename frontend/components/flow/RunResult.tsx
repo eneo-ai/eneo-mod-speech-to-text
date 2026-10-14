@@ -184,8 +184,9 @@ export function RunResult({
   );
 
   return (
-    // The frame gives the page its width and edges; a document alone is a reading column on its left edge.
-    <VStack gap={6} paddingBlockStart={2} maxWidth={showTranscript ? undefined : 672}>
+    // The frame gives the page its width and edges. Below a laptop's width every result has the whole column, as the
+    // tabs do; from it a document alone is a reading column on its left edge, as wide as the document beside a transcript.
+    <VStack gap={6} paddingBlockStart={2} maxWidth={showTranscript || !wide ? undefined : 672}>
       <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
         <VStack gap={1}>
           <Heading level={1} ref={heading} tabIndex={-1}>
@@ -193,8 +194,8 @@ export function RunResult({
           </Heading>
           {finished && (
             <Text as="p" type="supporting">
-              {/* On a phone the top bar already names the flow. */}
-              {wide && `${flowName} · `}
+              {/* The flow's name at every width: the top bar holds no name. */}
+              {flowName} ·{" "}
               Skapad {formatRelativeDate(finished)}
               {fromReviewed && " från den rättade transkriberingen"}
             </Text>

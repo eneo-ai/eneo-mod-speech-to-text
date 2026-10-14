@@ -657,12 +657,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
     if (run.kind === "awaiting_review") {
       return (
-        // The review's own heading names the state, so the flow's name is not the heading.
-        <FlowFrame title={published.name} titleIsHeading={false}>
+        // The review's own heading names the state, and its first line the flow.
+        <FlowFrame>
           <WithRunViews>
             {({ ReviewView }) => (
               <ReviewView
                 flowId={flowId}
+                flowName={published.name}
                 checkpoint={run.checkpoint}
                 runState={{ run: run.run, steps: run.steps }}
                 runError={runError}
@@ -717,8 +718,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const inputStep = selectRuntimeInputStep(contract);
     if (runOutcome(run.run.status) === "succeeded") {
       return (
-        // The result has its own layout; its heading names the state, so the flow's name is not the heading.
-        <FlowFrame title={published.name} titleIsHeading={false}>
+        // The result has its own layout; its heading names the state, and the line under it the flow.
+        <FlowFrame>
           <WithRunViews>
             {({ RunResult }) => (
               <RunResult

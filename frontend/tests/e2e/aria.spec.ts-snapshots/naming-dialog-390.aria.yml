@@ -37,9 +37,9 @@
       - combobox "Vem är Talare 3?"
       - button "Visa namn":
         - status
-  - button "Avbryt":
+  - button "Spara namnen":
     - text: ""
     - status
-  - button "Spara namnen":
+  - button "Avbryt":
     - text: ""
     - status

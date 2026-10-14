@@ -1164,6 +1164,17 @@ export const STATES: State[] = [
     },
   },
   {
+    // A change in the editor: Spara ändring is there only now, and the decision says Spara och fortsätt.
+    name: "review-text-changed",
+    go: async (page) => {
+      await run(page, ids.runs.reviewText);
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      await expect(page.getByRole("button", { name: "Spara ändring" })).toBeVisible();
+    },
+  },
+  {
     name: "review-din-version",
     go: async (page) => {
       await run(page, ids.runs.reviewText);

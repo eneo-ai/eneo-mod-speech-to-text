@@ -10,6 +10,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Section } from "@astryxdesign/core/Section";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { ActionRow } from "@/components/ActionRow";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -113,25 +114,7 @@ export function RunFailure({
             {[...new Set([refusal?.message, error].filter(Boolean))].map((message) => (
               <Banner key={message} status="error" title={message} collapsible={false} />
             ))}
-            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
-            <HStack gap={3} wrap="wrap">
-              {offerChooseInput && (
-                <Button label="Välj nytt ljud" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
-              )}
-              {offerRetry && (
-                // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
-                <Button
-                  label="Försök igen"
-                  variant={run.error?.retryable ? "primary" : "secondary"}
-                  isLoading={retrying}
-                  icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
-                  onClick={() => leaveFirst(retry)}
-                />
-              )}
-              {offerStartAgain && (
-                <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
-              )}
-            </HStack>
+            {/* What the way on does, then the way on itself. */}
             {offerRetry && (
               <Text as="p" type="supporting">
                 Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
@@ -141,6 +124,28 @@ export function RunFailure({
               <Text as="p" type="supporting">
                 En ny körning använder samma ljud och uppgifter och gör om alla steg.
               </Text>
+            )}
+            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
+            {(offerChooseInput || offerRetry || offerStartAgain) && (
+              <ActionRow>
+                {offerChooseInput && (
+                  <Button label="Välj nytt ljud" variant="primary" size="lg" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
+                )}
+                {offerRetry && (
+                  // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
+                  <Button
+                    label="Försök igen"
+                    variant={run.error?.retryable ? "primary" : "secondary"}
+                    size="lg"
+                    isLoading={retrying}
+                    icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
+                    onClick={() => leaveFirst(retry)}
+                  />
+                )}
+                {offerStartAgain && (
+                  <Button label="Starta en ny körning" variant="primary" size="lg" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
+                )}
+              </ActionRow>
             )}
           </VStack>
         </VStack>
