@@ -29,6 +29,13 @@ import {
 } from "./recording-store";
 
 const CHUNK_MS = 2_000;
+// The recorder is looked at every CHUNK_MS while the page is in view. After this many looks without audio from it, it is
+// asked for its audio once; one more without, and the page says that nothing is being kept.
+const QUIET_LOOKS = 3;
+// A microphone muted this long in view is no passing route change: the page says what to do.
+const MUTED_LONG_MS = 15_000;
+// The shortest muted stretch the page tells of afterwards.
+const MUTED_GAP_MS = 2_000;
 
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
@@ -84,6 +91,12 @@ interface CaptureSnapshot {
   limitReached: boolean;
   /** The microphone's track is muted for now; the recording goes on, and the same track's sound comes back. */
   muted: boolean;
+  /** Muted for MUTED_LONG_MS in view: it is not coming back by itself. */
+  mutedLong: boolean;
+  /** How long the microphone was muted, told once the page is in view with it back; `away`: the page was in the background. */
+  mutedGap: { ms: number; away: boolean } | null;
+  /** The recorder records but hands over no audio, not even when asked: what is said now is not kept. */
+  stalled: boolean;
   /** Stoppa: the recorder has stopped and the recording is being stored; what follows its audio stops now too. */
   stopping: boolean;
 }
@@ -193,6 +206,8 @@ interface Part {
   ended: Promise<void>;
   /** Its recorded time has joined that of the earlier parts. */
   counted: boolean;
+  /** The watch found its recorder stopped, and the stop event that ends the part (onStop) had not come. */
+  seenStopped?: boolean;
 }
 
 export class RecordingCapture {
@@ -209,6 +224,9 @@ export class RecordingCapture {
     remainingMs: null,
     limitReached: false,
     muted: false,
+    mutedLong: false,
+    mutedGap: null,
+    stalled: false,
     stopping: false,
   };
   private listeners = new Set<() => void>();
@@ -237,6 +255,14 @@ export class RecordingCapture {
   // Recorded time of the parts before the running one, on a monotonic clock:
   // never by counting timer ticks, which hidden tabs throttle.
   private earlierPartsMs = 0;
+  // The watch over the running part (`watch`, in view only), and its looks without audio and with the microphone muted.
+  private watching: ReturnType<typeof setInterval> | null = null;
+  private quietLooks = 0;
+  private mutedLooks = 0;
+  // Since when the microphone is muted, muted time not yet told (`mutedGap`), and whether the page was away meanwhile.
+  private mutedSince: number | null = null;
+  private untoldMutedMs = 0;
+  private mutedAway = false;
 
   /** `openStore` is called on the first start, never while rendering. */
   constructor(
@@ -349,6 +375,8 @@ export class RecordingCapture {
     } else if (part?.recorder.state === "paused") {
       part.recorder.resume();
       part.since = this.now();
+      // Paused, it had nothing to hand over: the watch counts from here.
+      this.quietLooks = 0;
       this.scheduleHandover(part);
       this.set({ status: "recording" });
     }
@@ -488,17 +516,23 @@ export class RecordingCapture {
     this.part = null;
   }
 
-  /** Records a part on the opened microphone, listening for it to go away. */
+  /** Records a part on the opened microphone, listening for it to go away, and watching that its audio comes. */
   private record(stream: MediaStream) {
     stream.getAudioTracks().forEach((track) => {
       track.addEventListener("ended", this.onMicrophoneLost);
       track.addEventListener("mute", this.onMuteChange);
       track.addEventListener("unmute", this.onMuteChange);
     });
+    // A new microphone: nothing muted or quiet of the one before carries over.
+    this.mutedSince = null;
+    this.untoldMutedMs = 0;
+    this.mutedAway = false;
+    this.set({ stalled: false, mutedGap: null });
     this.onMuteChange();
     this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
     this.deps.window?.addEventListener("pagehide", this.flush);
     this.beginPart(stream);
+    this.watching ??= setInterval(this.watch, CHUNK_MS);
   }
 
   /** Records a new part on `stream`; throws when the browser will not start a recorder. */
@@ -525,6 +559,9 @@ export class RecordingCapture {
     const onData = (event: Event) => {
       const data = (event as BlobEvent).data;
       if (!data || data.size === 0) return;
+      // Audio: the recorder is alive.
+      this.quietLooks = 0;
+      if (this.snapshot.stalled) this.set({ stalled: false });
       part.bytes += data.size;
       const durationMs = this.partElapsed(part);
       void part.index
@@ -569,6 +606,7 @@ export class RecordingCapture {
     recorder.start(CHUNK_MS);
     part.since = this.now();
     this.part = part;
+    this.quietLooks = 0;
     // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
     this.scheduleHandover(part);
@@ -781,7 +819,50 @@ export class RecordingCapture {
 
   private onMuteChange = () => {
     const muted = !!this.microphone?.getAudioTracks().some((track) => track.muted);
-    if (muted !== this.snapshot.muted) this.set({ muted });
+    const hidden = this.deps.page?.visibilityState === "hidden";
+    if (muted && this.mutedSince === null) {
+      this.mutedSince = this.now();
+      this.mutedAway ||= hidden;
+    } else if (!muted && this.mutedSince !== null) {
+      this.untoldMutedMs += this.now() - this.mutedSince;
+      this.mutedSince = null;
+    }
+    if (muted !== this.snapshot.muted) {
+      // A muted microphone explains the missing audio; once back, the watch starts over.
+      this.quietLooks = this.mutedLooks = 0;
+      this.set({ muted, mutedLong: false, stalled: false, mutedGap: null });
+    }
+    // In view with the microphone back: how long it was muted since the page last told.
+    if (muted || hidden) return;
+    if (this.untoldMutedMs >= MUTED_GAP_MS) this.set({ mutedGap: { ms: this.untoldMutedMs, away: this.mutedAway } });
+    this.untoldMutedMs = 0;
+    this.mutedAway = false;
+  };
+
+  /**
+   * Every CHUNK_MS while a part records in view. A recorder that stopped without its stop event is a lost microphone. One
+   * that hands over no audio is asked for it once, and then said to keep nothing: the timer runs on the clock, and audio
+   * that never reaches the store is not in the recording (a recorder that gives its audio only at its stop, a stalled
+   * encoder). A page in the background is not watched: a phone holds its recorder's audio back, and slows its timers.
+   */
+  private watch = () => {
+    const part = this.part;
+    if (!part || this.snapshot.status !== "recording" || this.deps.page?.visibilityState === "hidden") return;
+    if (part.recorder.state === "inactive") {
+      // Its stop event pauses the recording (onStop); one still missing at the next look will not come.
+      if (part.seenStopped) part.recorder.dispatchEvent(new Event("stop"));
+      part.seenStopped = true;
+      return;
+    }
+    if (part.ending) return;
+    if (this.snapshot.muted) {
+      this.mutedLooks += 1;
+      if (this.mutedLooks * CHUNK_MS >= MUTED_LONG_MS && !this.snapshot.mutedLong) this.set({ mutedLong: true });
+      return;
+    }
+    this.quietLooks += 1;
+    if (this.quietLooks === QUIET_LOOKS) this.flush();
+    else if (this.quietLooks > QUIET_LOOKS && !this.snapshot.stalled) this.set({ stalled: true });
   };
 
   /** True, with the microphone let go, when the page went away during a start. */
@@ -829,6 +910,9 @@ export class RecordingCapture {
       track.removeEventListener("unmute", this.onMuteChange);
     });
     stream?.getTracks().forEach((track) => track.stop());
+    // Nothing records without it: the watch goes with it.
+    if (this.watching !== null) clearInterval(this.watching);
+    this.watching = null;
   }
 
   /** A phone may freeze or kill a hidden page, and a tab may close: store what is recorded so far. */
@@ -843,7 +927,14 @@ export class RecordingCapture {
   private onVisibilityChange = () => {
     const { status } = this.snapshot;
     if (status !== "recording" && status !== "paused") return;
-    if (this.deps.page?.visibilityState === "hidden") return this.flush();
+    if (this.deps.page?.visibilityState === "hidden") {
+      // Muted from here, it was muted while the page was away; a gap told before is old news when it is back.
+      if (this.mutedSince !== null) this.mutedAway = true;
+      if (this.snapshot.mutedGap) this.set({ mutedGap: null });
+      return this.flush();
+    }
+    // In view again: the watch counts from here.
+    this.quietLooks = this.mutedLooks = 0;
     // The wake lock ended with the hidden page; the microphone may have too, or be muted for now.
     void this.takeWakeLock();
     this.onMuteChange();

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 
 import { ApiError, type FormField, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
@@ -176,6 +176,10 @@ function memoryDrafts(): DraftStorage {
   };
 }
 
+// A page always goes away in the end, and a recording left running goes with it: so does every test's.
+const sessions: FlowSession[] = [];
+afterEach(() => sessions.splice(0).forEach((session) => session.dispose()));
+
 async function setup(
   options: {
     store?: RecordingStore;
@@ -212,6 +216,7 @@ async function setup(
     live: options.live === undefined ? fakeLiveClient().client : options.live,
     drafts: options.drafts,
   });
+  sessions.push(session);
   return { session, store, streams, recorders };
 }
 

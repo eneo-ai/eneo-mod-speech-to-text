@@ -261,6 +261,9 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     backOnDevice: capture.backOnDevice,
     remainingMs: capture.remainingMs,
     muted: capture.muted,
+    mutedLong: capture.mutedLong,
+    mutedGap: capture.mutedGap,
+    stalled: capture.stalled,
     wakeLock: !capture.screenMayDim,
     makesText,
   });

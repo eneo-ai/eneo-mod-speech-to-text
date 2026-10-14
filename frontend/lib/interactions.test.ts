@@ -1265,6 +1265,8 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
   const page = window as unknown as { AudioContext?: unknown };
   const browserAudio = page.AudioContext;
   page.AudioContext = FakeAudioContext;
+  let visibility: DocumentVisibilityState = "visible";
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
   t.mock.timers.enable({ apis: ["setInterval", "Date"] });
   let silent = false;
   const microphone = {} as MediaStream;
@@ -1291,9 +1293,20 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
       await listen(60_000);
       assert.equal(silent, false, `a quiet room, minute ${minute + 1}`);
     }
+    // A phone gives a page in the background none of the microphone: its zeros there are no muted microphone.
+    peak = 0;
+    visibility = "hidden";
+    await listen(20_000);
+    assert.equal(silent, false, "not said for a page in the background");
+    visibility = "visible";
+    await listen(14_800);
+    assert.equal(silent, false, "counted from when it is in view");
+    await listen(400);
+    assert.equal(silent, true);
   } finally {
     await view.unmount();
     page.AudioContext = browserAudio;
+    delete (document as { visibilityState?: unknown }).visibilityState;
   }
 });
 
