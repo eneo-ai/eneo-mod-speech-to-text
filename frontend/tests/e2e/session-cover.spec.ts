@@ -273,6 +273,8 @@ test("signed out, a recording is stopped from the sign-in dialog, and is done wh
   await record(page, "Spela in");
   await endLogin(page);
   const dialog = page.getByRole("alertdialog", signIn);
+  // The dialog's Pausa and Stoppa ignore a press for 700 ms after they appear, as the bar's do.
+  await page.waitForTimeout(800);
   await dialog.getByRole("button", { name: "Stoppa" }).click();
   await expect(dialog.getByRole("button", { name: "Stoppa" }), "nothing to stop once it is done").toHaveCount(0);
   await expect(dialog.getByText("Inspelningen är stoppad och sparad."), "the dialog says it, where the button was").toBeVisible();

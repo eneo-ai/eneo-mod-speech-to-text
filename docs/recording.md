@@ -25,6 +25,7 @@ Om lagringen slutar fungera av något annat skäl, till exempel när webbplatsda
 Om mikrofonens ljud tillfälligt försvinner men dess ljudspår finns kvar, visar inspelaren en varning. Ljudet kommer tillbaka automatiskt när mikrofonen är tillgänglig igen. Om ljudspåret avslutas avbryts inspelningen; **Fortsätt spela in** öppnar då mikrofonen och startar en ny del av samma inspelning.
 
 - Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida, och **Fortsätt spela in** spelar in i en ny del av samma inspelning. Efter **Stoppa** finns knappen också bredvid **Skapa dokument**, tills inspelningen har börjat skickas.
+- **Pausa** och **Stoppa** gör ingenting de första 0,7 sekunderna efter att de visats, i inspelningsfältet och i dialogen för ny inloggning, så att ett tryck som var menat för något annat inte avslutar mötet.
 - En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
 - Inspelaren (`frontend/lib/recording-session.ts`) ber webbläsaren hålla skärmen tänd (Screen Wake Lock). Om webbläsaren saknar det, nekar det eller släpper det medan sidan visas står **Låt skärmen vara tänd under inspelningen.** i inspelningsfältet, tills en senare begäran beviljas.
 
