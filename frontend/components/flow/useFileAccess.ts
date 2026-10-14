@@ -4,10 +4,15 @@ import { fileProblem } from "@/lib/errors";
 
 /** How a person gets a run's file: saved, opened in a tab of its own, or by the caller's own way (the preview dialog). */
 export type FileWay = "download" | "tab" | { open: () => void };
+/** A way by its name: "open" for the caller's own. */
+type WayName = "download" | "tab" | "open";
+const nameOf = (way: FileWay): WayName => (typeof way === "string" ? way : "open");
 
 export interface FileAccess {
   /** Why the file last asked for could not be had, and which file it was; null while nothing failed. */
   problem: { fileId: string; message: string } | null;
+  /** The file being asked for and the way, until the answer has come (`waiting`). */
+  pending: { fileId: string; way: WayName } | null;
   /** Gets the file the way asked once it is known to be there. Call it inside the person's press. */
   start(fileId: string, way: FileWay): void;
   /** Asks again for what failed last. Call it inside the person's press. */
@@ -30,6 +35,7 @@ function save(url: string) {
  */
 export function useFileAccess(flowId: string, runId: string): FileAccess {
   const [problem, setProblem] = useState<FileAccess["problem"]>(null);
+  const [pending, setPending] = useState<FileAccess["pending"]>(null);
   const last = useRef<{ fileId: string; way: FileWay } | null>(null);
   const busy = useRef(false);
 
@@ -38,6 +44,7 @@ export function useFileAccess(flowId: string, runId: string): FileAccess {
       if (busy.current) return;
       busy.current = true;
       last.current = { fileId, way };
+      setPending({ fileId, way: nameOf(way) });
       const tab = way === "tab" ? window.open("", "_blank") : null;
       checkRunArtifact(flowId, runId, fileId)
         .then(
@@ -58,12 +65,24 @@ export function useFileAccess(flowId: string, runId: string): FileAccess {
             setProblem({ fileId, message: fileProblem(error) });
           },
         )
-        .finally(() => void (busy.current = false));
+        .finally(() => {
+          busy.current = false;
+          setPending(null);
+        });
     },
     [flowId, runId],
   );
   const again = useCallback(() => last.current && start(last.current.fileId, last.current.way), [start]);
-  return { problem, start, again };
+  return { problem, pending, start, again };
+}
+
+/**
+ * A file control's props while its file is asked for: busy, with the design system's spinner once the wait is more
+ * than a moment. Never disabled: the design system draws a disabled Button with an address as a button, and the focus
+ * on the link would fall to the page. A press meanwhile asks nothing (`start`).
+ */
+export function waiting(access: FileAccess, fileId: string, way: WayName) {
+  return { isLoading: access.pending?.fileId === fileId && access.pending.way === way, isInterruptible: true } as const;
 }
 
 /**

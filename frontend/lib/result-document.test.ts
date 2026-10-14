@@ -1073,6 +1073,32 @@ test("a download starts only once the file is known to be there; if it is not, t
   assert.deepEqual(alertsOf(view.container), []);
 });
 
+test("while a file is asked for, the pressed control says that it waits, and another press asks nothing more", async (t) => {
+  widthOf(t, 1280);
+  const asked: string[] = [];
+  let answer!: () => void;
+  const answered = new Promise<Response>((resolve) => (answer = () => resolve(present())));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => (asked.push(String(input)), answered)) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  // The closed preview dialog holds a download link of its own; this is the row's.
+  const link = () => [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => !a.closest("dialog"))!;
+
+  await view.act(async () => void press(link()));
+  assert.equal(link().getAttribute("aria-busy"), "true", "the download it was asked for waits");
+  assert.equal(button(view.container, `Öppna ${pdf.name}`)!.getAttribute("aria-busy"), null, "only the control that was pressed");
+  await view.act(async () => void press(link()));
+  assert.equal(asked.length, 1, "a second press while it waits asks nothing");
+
+  await view.act(async () => answer());
+  assert.deepEqual(started, [`${ATTACHMENT} (download)`]);
+  assert.equal(link().getAttribute("aria-busy"), null);
+});
+
 test("narrower than a laptop the tab opens at the press and goes to the file once it is there; a file that is not closes it again", async (t) => {
   widthOf(t, 390);
   let answer: () => Response = missing;

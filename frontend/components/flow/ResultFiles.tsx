@@ -26,7 +26,7 @@ import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
 import { ProblemAlert } from "./ProblemAlert";
 import styles from "./ResultFiles.module.css";
-import { pressing, useFileAccess, type FileAccess } from "./useFileAccess";
+import { pressing, useFileAccess, waiting, type FileAccess } from "./useFileAccess";
 
 export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   pdf: FileText,
@@ -99,6 +99,7 @@ export function ResultFiles({
                       icon={<Icon icon={Download} />}
                       label={`Ladda ner ${file.name}`}
                       onClick={pressing(access, file.fileId, "download")}
+                      {...waiting(access, file.fileId, "download")}
                     >
                       Ladda ner
                     </Button>
@@ -158,7 +159,7 @@ export function OpenFile({
     wasOpen.current = open;
   }, [open]);
 
-  const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file.fileId, "tab") } as const;
+  const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file.fileId, "tab"), ...waiting(access, file.fileId, "tab") } as const;
   const openDialog = () => access.start(file.fileId, { open: () => setOpen(true) });
   const opener = !roomy ? (
     name ? (
@@ -179,11 +180,12 @@ export function OpenFile({
       endContent={<Icon icon={Eye} />}
       label={`Öppna ${file.name}`}
       onClick={openDialog}
+      {...waiting(access, file.fileId, "open")}
     >
       {file.name}
     </Button>
   ) : (
-    <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={openDialog}>
+    <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={openDialog} {...waiting(access, file.fileId, "open")}>
       Öppna
     </Button>
   );
