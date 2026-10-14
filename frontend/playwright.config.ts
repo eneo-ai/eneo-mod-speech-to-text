@@ -92,7 +92,9 @@ export default defineConfig({
     channel: "chromium",
     locale: "sv-SE",
     timezoneId: "Europe/Stockholm",
-    permissions: ["microphone"],
+    // A list of permissions denies every one it leaves out. A browser keeps the screen on for a page in view without
+    // asking, and the recorder says when it does not: the screen's wake lock is granted as it is there.
+    permissions: ["microphone", "screen-wake-lock"],
     // The fake microphone records a tone, and the tests that play a recording would send it to the speakers: the output
     // device is muted, and playback runs as it does with sound.
     launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--mute-audio"] },

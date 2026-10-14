@@ -250,7 +250,6 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
-  const wakeLock = "wakeLock" in navigator;
   const { warnings, notes } = recordingNotices({
     phase,
     silent,
@@ -260,7 +259,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     backOnDevice: capture.backOnDevice,
     remainingMs: capture.remainingMs,
     muted: capture.muted,
-    wakeLock,
+    wakeLock: !capture.screenMayDim,
     makesText,
   });
   return (

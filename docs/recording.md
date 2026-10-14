@@ -26,6 +26,7 @@ Om mikrofonens ljud tillfälligt försvinner men dess ljudspår finns kvar, visa
 
 - Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida, och **Fortsätt spela in** spelar in i en ny del av samma inspelning. Efter **Stoppa** finns knappen också bredvid **Skapa dokument**, tills inspelningen har börjat skickas.
 - En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
+- Inspelaren (`frontend/lib/recording-session.ts`) ber webbläsaren hålla skärmen tänd (Screen Wake Lock). Om webbläsaren saknar det, nekar det eller släpper det medan sidan visas står **Låt skärmen vara tänd under inspelningen.** i inspelningsfältet, tills en senare begäran beviljas.
 
 ## Delar och filgränser
 

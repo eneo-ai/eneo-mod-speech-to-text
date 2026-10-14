@@ -1,9 +1,10 @@
 /**
  * The recording's controls are one toolbar named for the recording: Pausa and Stoppa are one Tab stop and the arrow keys
  * move between them, and with Strömma the status and the timer are in it too. Each control keeps the house's target size.
+ * The line under them says what else matters now, such as a screen the browser will not keep on.
  */
 import { expect, test } from "./gate";
-import { STATES } from "./screens";
+import { record, setup, STATES } from "./screens";
 
 for (const state of ["recording", "stromma"]) {
   test(`${state}: Pausa and Stoppa are one Tab stop in a toolbar, and the arrows move between them`, async ({ page }, info) => {
@@ -49,3 +50,14 @@ for (const state of ["disk-full", "silent-microphone", "time-left-5"]) {
     for (const name of ["Pausa", "Stoppa"]) await expect(page.getByRole("button", { name, exact: true })).toBeInViewport();
   });
 }
+
+test("a screen the browser will not keep on is said under the controls, and the recording goes on", async ({ page, context }, info) => {
+  test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "one laptop and one phone");
+  // This browser refuses the screen's wake lock (the gate's grants it, as a browser does for a page in view).
+  await context.clearPermissions();
+  await context.grantPermissions(["microphone"]);
+  await setup(page);
+  await record(page, "Spela in");
+  await expect(page.getByRole("status").filter({ hasText: "Låt skärmen vara tänd under inspelningen." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
+});

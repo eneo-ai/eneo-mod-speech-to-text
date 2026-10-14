@@ -76,6 +76,8 @@ interface CaptureSnapshot {
   refused: DeviceRefusal | null;
   /** The device was full and keeps the recording again: said for a moment while recording. */
   backOnDevice: boolean;
+  /** The screen may go dark during the recording: the browser holds no wake lock for it (it has none, refused it, or let it go). */
+  screenMayDim: boolean;
   /** Recording time left before the flow's last allowed file is full; null when the flow sets no such limit. */
   remainingMs: number | null;
   /** The recording stopped because the flow takes no more files. */
@@ -88,6 +90,8 @@ interface CaptureSnapshot {
 
 interface WakeLockLike {
   release(): Promise<void>;
+  /** "release": the lock ended, released by the page or by the system. */
+  addEventListener?(type: "release", listener: () => void): void;
 }
 
 export interface PageLike {
@@ -189,6 +193,7 @@ export class RecordingCapture {
     persistent: true,
     refused: null,
     backOnDevice: false,
+    screenMayDim: false,
     remainingMs: null,
     limitReached: false,
     muted: false,
@@ -844,13 +849,26 @@ export class RecordingCapture {
 
   private async takeWakeLock() {
     this.releaseWakeLock();
+    let lock: WakeLockLike | null = null;
     try {
-      const lock = (await this.deps.requestWakeLock?.()) ?? null;
-      if (this.part) this.wakeLock = lock;
-      else void lock?.release().catch(() => undefined);
+      lock = (await this.deps.requestWakeLock?.()) ?? null;
     } catch {
-      // No wake lock (unsupported, or the page is hidden): recording goes on.
+      // Refused (the page is hidden, or the system will not): recording goes on, and the bar says to keep the screen on.
     }
+    if (!this.part) {
+      void lock?.release().catch(() => undefined);
+      return;
+    }
+    // Two requests that crossed (a start, and the page shown again): the later lock is kept, the earlier let go.
+    this.releaseWakeLock();
+    this.wakeLock = lock;
+    lock?.addEventListener?.("release", () => {
+      if (this.wakeLock !== lock) return; // the page's own release
+      this.wakeLock = null;
+      // Every hidden page loses it and asks again when it is shown; a page in view lost it to the system.
+      if (this.deps.page?.visibilityState !== "hidden") this.set({ screenMayDim: true });
+    });
+    if (this.snapshot.screenMayDim !== (lock === null)) this.set({ screenMayDim: lock === null });
   }
 
   private releaseWakeLock() {

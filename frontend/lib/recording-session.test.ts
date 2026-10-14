@@ -136,6 +136,8 @@ async function setup(
     microphone?: { denied?: boolean; wait?: Promise<void> };
     /** The screen's wake lock is granted only once this settles. */
     wakeLock?: Promise<void>;
+    /** The browser's own answer to a wake lock request, in place of one that grants every request. */
+    requestWakeLock?: CaptureDeps["requestWakeLock"];
   } = {},
 ) {
   const store = options.store ?? (await openRecordingStore({}));
@@ -158,15 +160,17 @@ async function setup(
       return recorder as unknown as MediaRecorder;
     },
     now: options.now,
-    requestWakeLock: async () => {
-      wakeLocks.requested += 1;
-      await options.wakeLock;
-      return {
-        release: async () => {
-          wakeLocks.released += 1;
-        },
-      };
-    },
+    requestWakeLock:
+      options.requestWakeLock ??
+      (async () => {
+        wakeLocks.requested += 1;
+        await options.wakeLock;
+        return {
+          release: async () => {
+            wakeLocks.released += 1;
+          },
+        };
+      }),
     page: options.page,
     window: options.window as CaptureDeps["window"],
   };
@@ -1624,4 +1628,76 @@ test("a full device that has room again after Stoppa takes the recording back, a
   assert.equal(capture.getSnapshot().refused, null);
   assert.equal(capture.getSnapshot().backOnDevice, false, "the note is the recording bar's, which is gone");
   assert.deepEqual(await texts(await (await otherTab()).readPartsToSend(id)), ["ab."]);
+});
+
+/** The screen's wake lock as the browser hands it out: released by the page, or by the system (`lose`). */
+class FakeWakeLock extends EventTarget {
+  released = false;
+  async release() {
+    this.lose();
+  }
+  lose() {
+    if (this.released) return;
+    this.released = true;
+    this.dispatchEvent(new Event("release"));
+  }
+}
+
+test("a wake lock the browser refuses or lets go of says so, and a later one that is granted takes it back", async () => {
+  const { page, show } = fakePage();
+  let grant = false;
+  const locks: FakeWakeLock[] = [];
+  const { capture } = await setup({
+    page,
+    requestWakeLock: async () => {
+      if (!grant) throw new DOMException("Wake Lock permission request denied", "NotAllowedError");
+      const lock = new FakeWakeLock();
+      locks.push(lock);
+      return lock;
+    },
+  });
+  await capture.start(meeting);
+  assert.equal(capture.getSnapshot().screenMayDim, true, "refused: the screen may go dark");
+
+  grant = true;
+  show("hidden");
+  show("visible"); // asked again, and granted
+  await until(() => !capture.getSnapshot().screenMayDim, "the lock taken back");
+
+  locks[0].lose(); // the system lets it go (a battery saver)
+  assert.equal(capture.getSnapshot().screenMayDim, true, "said at once");
+  show("hidden");
+  show("visible");
+  await until(() => !capture.getSnapshot().screenMayDim, "granted again");
+
+  show("hidden");
+  locks[1].lose(); // every hidden page loses it, and asks again when it is shown
+  assert.equal(capture.getSnapshot().screenMayDim, false, "not said for a hidden page");
+  show("visible");
+  await until(() => locks.length === 3, "asked again");
+  assert.equal(capture.getSnapshot().screenMayDim, false);
+
+  await capture.stop();
+  assert.equal(locks[2].released, true, "the page lets its lock go at Stoppa");
+  assert.equal(capture.getSnapshot().screenMayDim, false, "its own release is no loss");
+});
+
+test("a browser without a wake lock says so, and two requests that cross leave one lock, released at Stoppa", async () => {
+  const none = await setup({ requestWakeLock: async () => null });
+  await none.capture.start(meeting);
+  assert.equal(none.capture.getSnapshot().screenMayDim, true);
+
+  let grant = () => {};
+  const wakeLock = new Promise<void>((resolve) => (grant = resolve));
+  const { page, show } = fakePage();
+  const { capture, wakeLocks } = await setup({ page, wakeLock });
+  const starting = capture.start(meeting); // asks for the lock, and waits
+  await until(() => capture.getSnapshot().status === "recording", "recording");
+  show("hidden");
+  show("visible"); // asks again while the first is unanswered
+  grant();
+  await starting;
+  await until(() => wakeLocks.requested === 2 && wakeLocks.released === 1, "the earlier lock let go");
+  await capture.stop();
+  assert.equal(wakeLocks.released, 2, "and the later one at Stoppa: none is left holding the screen on");
 });
