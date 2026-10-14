@@ -40,35 +40,35 @@
       - listitem /Anna Berg, 0:\d+ i del 1/:
         - button "Anna Berg, ändra talare"
         - button /Spela från 0:\d+ i del 1/
-        - text: Välkomna till kommunstyrelsens möte.
         - button /Rätta repliken från 0:\d+ i del 1/
+        - text: Välkomna till kommunstyrelsens möte.
       - listitem /Erik Lund, 0:\d+ i del 1/:
         - button "Erik Lund, ändra talare"
         - button /Spela från 0:\d+ i del 1/
-        - text: Första punkten gäller budgeten för nästa år.
         - button /Rätta repliken från 0:\d+ i del 1/
+        - text: Första punkten gäller budgeten för nästa år.
       - listitem /Talare 3, 0:\d+ i del 1/:
         - button "Talare 3, ändra talare"
         - button /Spela från 0:\d+ i del 1/
-        - text: Ramen höjs med två procent
         - button /Rätta repliken från 0:\d+ i del 1/
+        - text: Ramen höjs med två procent
       - listitem /Anna Berg, 0:\d+ i del 1/:
         - button "Anna Berg, ändra talare"
         - button /Spela från 0:\d+ i del 1/
-        - text: och förvaltningen återkommer i oktober.
         - button /Rätta repliken från 0:\d+ i del 1/
+        - text: och förvaltningen återkommer i oktober.
     - heading "Del 2" [level=3]
     - list "Del 2":
       - listitem /Erik Lund, 0:\d+ i del 2/:
         - button "Erik Lund, ändra talare"
         - button /Spela från 0:\d+ i del 2/
-        - text: Andra punkten är skolskjutsarna.
         - button /Rätta repliken från 0:\d+ i del 2/
+        - text: Andra punkten är skolskjutsarna.
       - listitem /Anna Berg, 0:\d+ i del 2/:
         - button "Anna Berg, ändra talare"
         - button /Spela från 0:\d+ i del 2/
-        - text: Nya turer börjar gälla efter höstlovet.
         - button /Rätta repliken från 0:\d+ i del 2/
+        - text: Nya turer börjar gälla efter höstlovet.
     - 'group "Uppspelning: Inspelningen"':
       - button "Spela upp"
       - slider "Position i inspelningen"

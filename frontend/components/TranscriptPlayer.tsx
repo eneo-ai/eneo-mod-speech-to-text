@@ -1056,6 +1056,23 @@ function TurnBlock({
             picker((trigger) => (
               <Button {...trigger} variant="ghost" size="sm" label="Ändra talare" className={styles.changeSpeaker} />
             ))}
+          {canEdit && !editingHere && (
+            // In the same place on every passage, at the end of its head row, whatever the length of its text; never
+            // mid-sentence, and there for mouse and touch alike: an action that appears only under the pointer is one
+            // a mouse user never learns exists. Before the sentences it makes the targets while choosing.
+            <button
+              ref={correct}
+              type="button"
+              // With the part, as the play button: two parts both start at 0:00.
+              aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
+              aria-expanded={several ? choosing : undefined}
+              onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
+              className={join(styles.inline, styles.correct)}
+            >
+              {choosing ? <Check aria-hidden strokeWidth={2} /> : <Pencil aria-hidden strokeWidth={2} />}
+              {choosing ? "Klar" : "Rätta"}
+            </button>
+          )}
         </div>
         {choosable && <Text as="p" type="supporting" className={styles.hint}>Välj meningen du vill rätta.</Text>}
         <div className={styles.text}>
@@ -1164,22 +1181,6 @@ function TurnBlock({
               </span>
             );
           })}
-          {canEdit && !editingHere && (
-            // After the passage, never mid-sentence, and on every passage for mouse and touch alike: an action
-            // that appears only under the pointer is one a mouse user never learns exists.
-            <button
-              ref={correct}
-              type="button"
-              // With the part, as the play button: two parts both start at 0:00.
-              aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
-              aria-expanded={several ? choosing : undefined}
-              onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
-              className={join(styles.inline, styles.correct)}
-            >
-              {choosing ? <Check aria-hidden strokeWidth={2} /> : <Pencil aria-hidden strokeWidth={2} />}
-              {choosing ? "Klar" : "Rätta"}
-            </button>
-          )}
         </div>
       </div>
     </li>

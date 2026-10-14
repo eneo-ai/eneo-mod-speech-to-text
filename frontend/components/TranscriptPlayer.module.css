@@ -649,10 +649,10 @@
   color: var(--color-background-surface);
 }
 
-/* "Rätta": after the passage, never mid-sentence, always there. */
+/* "Rätta": at the end of the passage's head row, the same place on every passage; never mid-sentence, always there. */
 .correct {
   gap: var(--spacing-1);
-  margin-inline-start: var(--spacing-0-5);
+  margin-inline-start: auto;
   padding-inline: var(--spacing-1-5);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
