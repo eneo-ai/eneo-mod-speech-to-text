@@ -32,58 +32,119 @@ export function playheadTargets(segments: readonly TranscriptSegment[], part: nu
 const key = (targets: PlayheadTargets) =>
   `${targets.segments.join(",")}|${targets.words.map((w) => `${w.segment}:${w.word}`).join(",")}`;
 
-const wordPieces = (root: ParentNode, segment: number, word: number) =>
-  root.querySelectorAll<HTMLElement>(`[data-segment-index="${segment}"] [data-word-index="${word}"]`);
+/** A sentence's words as rendered: each word's pieces by its index, and the space after each word. */
+type SentenceWords = { pieces: HTMLElement[][]; gaps: (HTMLElement | null)[] };
 
 /**
- * Lights `targets` in the transcript under `root`: the sentence (`[data-segment-index]`) and its passage
+ * Lights the playhead in the transcript under `root`: the sentence (`[data-segment-index]`) and its passage
  * (`[data-turn-index]`) get `data-active`; the word being said (its pieces, `[data-word-index]`) `data-lit` and
- * `aria-current`, and the words of its sentence already said `data-said`, so a word passed is not switched off but
- * stays a step lighter. The list renders none of these, so React never undoes them; whatever this lit before is
- * cleared first. How much of the word is said is drawn by `sweepPlayhead`.
+ * `aria-current`, filled as far as it is said (`--said`); and the words of its sentence already said `data-said`, with
+ * the spaces between them, so a word passed is not switched off but stays a step lighter. The list renders none of
+ * these, so React never undoes them.
+ *
+ * A sentence's words are looked up once, when it is first lit. As the playhead moves on in a sentence only the words
+ * passed change, so a long passage costs the same at its end as at its start; a new sentence, a move back or a
+ * render of the list paints afresh.
  */
-export function paintPlayhead(root: ParentNode, targets: PlayheadTargets) {
-  for (const element of root.querySelectorAll<HTMLElement>("[data-playhead]")) {
-    element.removeAttribute("data-playhead");
-    element.removeAttribute("data-active");
-    element.removeAttribute("data-lit");
-    element.removeAttribute("data-said");
-    element.removeAttribute("aria-current");
-    element.style.removeProperty("--said");
+export class PlayheadPainter {
+  private lit: PlayheadTargets = NOTHING_LIT;
+  private sentences = new Map<number, SentenceWords>();
+
+  constructor(private readonly root: ParentNode) {}
+
+  /** Forgets the elements it knows, which a render of the list may have replaced, and paints afresh next time. */
+  reset() {
+    this.sentences.clear();
+    this.lit = NOTHING_LIT;
+    this.clear();
   }
-  const mark = (element: Element, attributes: Record<string, string>) => {
-    element.setAttribute("data-playhead", "");
-    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
-  };
-  for (const segment of targets.segments) {
-    const sentence = root.querySelector(`[data-segment-index="${segment}"]`);
-    if (!sentence) continue;
-    mark(sentence, { "data-active": "true" });
-    const turn = sentence.closest("[data-turn-index]");
-    if (turn) mark(turn, { "data-active": "true" });
-  }
-  for (const { segment, word } of targets.words) {
-    for (let before = 0; before < word; before++) {
-      for (const piece of wordPieces(root, segment, before)) {
-        mark(piece, { "data-said": "true" });
-        // The space after it too, so the words said read as one band rather than a row of pills.
-        const gap = piece.parentElement?.nextElementSibling?.firstElementChild;
-        if (gap && !gap.hasAttribute("data-word-index")) mark(gap, { "data-said": "true" });
+
+  paint(next: PlayheadTargets) {
+    const before = this.lit;
+    const moveOn =
+      before.segments.join(",") === next.segments.join(",") &&
+      next.words.every((w) => (before.words.find((b) => b.segment === w.segment)?.word ?? 0) <= w.word);
+    if (!moveOn) {
+      this.clear();
+      for (const segment of next.segments) {
+        const sentence = this.root.querySelector(`[data-segment-index="${segment}"]`);
+        if (!sentence) continue;
+        mark(sentence, { "data-active": "true" });
+        const turn = sentence.closest("[data-turn-index]");
+        if (turn) mark(turn, { "data-active": "true" });
       }
     }
-    for (const piece of wordPieces(root, segment, word)) mark(piece, { "data-lit": "true", "aria-current": "true" });
+    for (const now of next.words) {
+      const was = moveOn ? before.words.find((b) => b.segment === now.segment) : undefined;
+      if (was?.word === now.word) continue;
+      const { pieces, gaps } = this.words(now.segment);
+      for (const piece of was ? pieces[was.word] ?? [] : []) {
+        piece.removeAttribute("data-lit");
+        piece.removeAttribute("aria-current");
+        piece.style.removeProperty("--said");
+      }
+      for (let word = was?.word ?? 0; word < now.word; word++) {
+        for (const piece of pieces[word] ?? []) mark(piece, { "data-said": "true" });
+        const gap = gaps[word];
+        if (gap) mark(gap, { "data-said": "true" });
+      }
+      for (const piece of pieces[now.word] ?? []) mark(piece, { "data-lit": "true", "aria-current": "true" });
+    }
+    // A sentence left (two spoken at once, one ending) keeps nothing lit.
+    if (moveOn) {
+      for (const was of before.words) {
+        if (next.words.some((w) => w.segment === was.segment)) continue;
+        for (const piece of this.words(was.segment).pieces[was.word] ?? []) {
+          piece.removeAttribute("data-lit");
+          piece.removeAttribute("aria-current");
+        }
+      }
+    }
+    this.sweep(next);
+    this.lit = next;
   }
-  sweepPlayhead(root, targets);
-}
 
-/** Fills the word being said as far as it has been said: one style property on its pieces, so a frame costs nothing. */
-export function sweepPlayhead(root: ParentNode, targets: PlayheadTargets) {
-  for (const { segment, word, said } of targets.words) {
-    const value = `${Math.round(said * 100)}%`;
-    for (const piece of wordPieces(root, segment, word)) {
-      if (piece.style.getPropertyValue("--said") !== value) piece.style.setProperty("--said", value);
+  /** Fills the word being said as far as it has been said: one style property on its pieces. */
+  sweep(targets: PlayheadTargets) {
+    for (const { segment, word, said } of targets.words) {
+      const value = `${Math.round(said * 100)}%`;
+      for (const piece of this.words(segment).pieces[word] ?? []) {
+        if (piece.style.getPropertyValue("--said") !== value) piece.style.setProperty("--said", value);
+      }
     }
   }
+
+  private words(segment: number): SentenceWords {
+    let found = this.sentences.get(segment);
+    if (found) return found;
+    found = { pieces: [], gaps: [] };
+    const sentence = this.root.querySelector(`[data-segment-index="${segment}"]`);
+    for (const piece of sentence?.querySelectorAll<HTMLElement>("[data-word-index]") ?? []) {
+      const index = Number(piece.dataset.wordIndex);
+      (found.pieces[index] ??= []).push(piece);
+      // The space after a word is the next piece when it is no word: the player renders each piece in a span.
+      const gap = piece.parentElement?.nextElementSibling?.firstElementChild as HTMLElement | null | undefined;
+      if (gap && !gap.hasAttribute("data-word-index")) found.gaps[index] = gap;
+    }
+    this.sentences.set(segment, found);
+    return found;
+  }
+
+  private clear() {
+    for (const element of this.root.querySelectorAll<HTMLElement>("[data-playhead]")) {
+      element.removeAttribute("data-playhead");
+      element.removeAttribute("data-active");
+      element.removeAttribute("data-lit");
+      element.removeAttribute("data-said");
+      element.removeAttribute("aria-current");
+      element.style.removeProperty("--said");
+    }
+  }
+}
+
+function mark(element: Element, attributes: Record<string, string>) {
+  element.setAttribute("data-playhead", "");
+  for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
 }
 
 const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -104,7 +165,14 @@ export function useTranscriptPlayhead(
   onFollow: (segmentIndex: number) => void,
   paint = true,
 ): () => number {
-  const state = useRef({ segments, onFollow, paint, painted: "", follow: -1 });
+  const state = useRef({
+    segments,
+    onFollow,
+    paint,
+    painted: "",
+    follow: -1,
+    painter: null as { root: HTMLElement; painter: PlayheadPainter } | null,
+  });
   state.current.segments = segments;
   state.current.onFollow = onFollow;
   state.current.paint = paint;
@@ -119,8 +187,11 @@ export function useTranscriptPlayhead(
       const targets = reducedMotion() ? { ...found, words: found.words.map((w) => ({ ...w, said: 1 })) } : found;
       const painted = key(targets);
       if (own.paint && root.current) {
-        if (repaint || painted !== own.painted) paintPlayhead(root.current, targets);
-        else sweepPlayhead(root.current, targets);
+        if (own.painter?.root !== root.current) own.painter = { root: root.current, painter: new PlayheadPainter(root.current) };
+        const { painter } = own.painter;
+        if (repaint) painter.reset();
+        if (repaint || painted !== own.painted) painter.paint(targets);
+        else painter.sweep(targets);
       }
       own.painted = painted;
       if (targets.follow !== own.follow) {

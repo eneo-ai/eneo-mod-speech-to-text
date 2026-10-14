@@ -4,7 +4,7 @@ import test, { afterEach } from "node:test";
 import { cleanup, installDom, mount } from "./test-dom";
 import { Playback, type MediaLike } from "./playback";
 import type { TranscriptSegment } from "./transcript";
-import { NOTHING_LIT, paintPlayhead, playheadTargets } from "./transcript-playhead";
+import { NOTHING_LIT, PlayheadPainter, playheadTargets } from "./transcript-playhead";
 
 installDom();
 afterEach(cleanup);
@@ -55,7 +55,8 @@ const active = (root: ParentNode) => [...root.querySelectorAll('[data-active="tr
 
 test("painting lights the passage, its sentence and the word, and clears what was lit before", () => {
   const root = list();
-  paintPlayhead(root, playheadTargets(segments, 0, 1.35));
+  const painter = new PlayheadPainter(root);
+  painter.paint(playheadTargets(segments, 0, 1.35));
   assert.deepEqual(lit(root), ["punkten."]);
   assert.deepEqual(active(root), ["LI", "SPAN"]);
   const word = root.querySelector<HTMLElement>("[data-lit]")!;
@@ -63,13 +64,51 @@ test("painting lights the passage, its sentence and the word, and clears what wa
   // The word before it stays lit a step lighter instead of going out.
   assert.deepEqual([...root.querySelectorAll("[data-said]")].map((element) => element.textContent), ["Första", " "], "with the space after it");
 
-  paintPlayhead(root, playheadTargets(segments, 0, 2.2));
+  painter.paint(playheadTargets(segments, 0, 2.2));
   assert.deepEqual(lit(root), ["Andra"]);
   assert.equal(root.querySelectorAll('[data-turn-index="0"] [data-active], [data-turn-index="0"][data-active]').length, 0);
+  assert.equal(root.querySelectorAll('[data-turn-index="0"] [data-said]').length, 0, "a sentence left keeps nothing said");
 
-  paintPlayhead(root, NOTHING_LIT);
+  painter.paint(NOTHING_LIT);
   assert.deepEqual([lit(root), active(root), root.querySelectorAll("[data-playhead]").length], [[], [], 0]);
   assert.equal(word.style.getPropertyValue("--said"), "", "its fill is cleared too");
+});
+
+test("in a long passage a word moving on changes only the words passed, without looking the passage up again", () => {
+  const long: TranscriptSegment[] = [
+    {
+      fileIndex: 0, start: 0, end: 600, speaker: "SPEAKER_00", text: "",
+      words: Array.from({ length: 600 }, (_, i) => word(`ord${i}`, i, i + 1)),
+    },
+  ];
+  const root = document.createElement("ol");
+  root.innerHTML = `<li data-turn-index="0"><span data-segment-index="0">${long[0].words!
+    .map((w, i) => `<span><span data-word-index="${i}">${w.word}</span></span><span><span> </span></span>`)
+    .join("")}</span></li>`;
+  document.body.append(root);
+  const painter = new PlayheadPainter(root);
+  painter.paint(playheadTargets(long, 0, 590.5));
+  assert.equal(root.querySelectorAll("[data-said]").length, 590 * 2);
+
+  let lookups = 0;
+  const count = <T extends (...args: never[]) => unknown>(f: T) => ((...args: Parameters<T>) => (lookups++, f(...args))) as T;
+  root.querySelectorAll = count(root.querySelectorAll.bind(root));
+  root.querySelector = count(root.querySelector.bind(root));
+  const changed: string[] = [];
+  const observer = new MutationObserver((records) => records.forEach((r) => changed.push(r.attributeName ?? "")));
+  observer.observe(root, { attributes: true, subtree: true });
+  painter.paint(playheadTargets(long, 0, 591.5));
+  const records = observer.takeRecords();
+  observer.disconnect();
+  assert.equal(lookups, 0, "the passage's words are known");
+  assert.ok(records.length + changed.length < 20, `a handful of changes, not the whole passage (${records.length})`);
+  assert.deepEqual(lit(root), ["ord591"]);
+  assert.equal(root.querySelectorAll("[data-said]").length, 591 * 2);
+
+  // Back in the passage: painted afresh, nothing past the playhead stays said.
+  painter.paint(playheadTargets(long, 0, 10.5));
+  assert.deepEqual(lit(root), ["ord10"]);
+  assert.equal(root.querySelectorAll("[data-said]").length, 10 * 2);
 });
 
 function media(): MediaLike & { paused: boolean } {
