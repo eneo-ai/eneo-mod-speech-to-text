@@ -18,7 +18,9 @@ Utloggning tar inte bort sparade inspelningar. Inloggningssidan förklarar detta
 
 Om enheten blir full under inspelningen visas varningen **Enheten är full.** Inspelningen fortsätter i flikens minne och finns bara där tills det finns plats, så fliken ska inte stängas. Frigör utrymme, till exempel genom att tömma Hämtade filer och papperskorgen. Appen försöker spara på enheten igen var 20:e sekund, och direkt när webbläsarens uppskattning av lagringen visar att det finns plats igen. Det gäller också efter **Stoppa**. När enheten tar emot det som bara fanns i fliken skrivs allt i en enda skrivning, i ordning, och flikens kopia släpps; en skrivning som inte får plats lämnar enhetens kopia som den var. Inspelningsfältet säger en kort stund att inspelningen sparas på enheten igen.
 
-Om lagringen slutar fungera av något annat skäl, till exempel när webbplatsdata rensas under inspelningen, visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
+Om en skrivning misslyckas av något annat skäl försöker appen en gång till på en ny anslutning till databasen. Misslyckas även den visas varningen **Enheten kan inte spara mer av inspelningen.** Inspelningen fortsätter i fliken, och appen försöker spara på enheten igen var 20:e sekund, som när enheten är full. När det går skrivs det som bara fanns i fliken till enheten och varningen försvinner. Står varningen kvar när du stoppar: välj **Spara som fil**.
+
+Om webbplatsdata rensas under inspelningen visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
 
 ## Fortsätta en inspelning
 
