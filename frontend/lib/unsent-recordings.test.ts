@@ -221,7 +221,7 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
 
   // The device reads nothing back, and refuses the deletion: another tab holds the recording.
   t.mock.method(store, "recordingStore", async () => ({
-    readParts: async () => {
+    readFile: async () => {
       throw new Error("disk");
     },
     remove: async () => {

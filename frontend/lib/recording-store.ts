@@ -504,6 +504,20 @@ export class RecordingStore {
   }
 
   /**
+   * The recording's file at `nth` of its files (its parts with audio, filesIn), read alone: Spara som fil saves one a
+   * press. Null when the recording has no such file, or its audio is gone from the device.
+   */
+  readFile(id: string, nth: number): Promise<RecordingFile | null> {
+    return this.serial(async () => {
+      const recording = await this.load(id);
+      const part = recording?.parts.filter((p) => p.bytes > 0)[nth];
+      if (!recording || !part) return null;
+      const file = await this.readPart(recording, part);
+      return file.blob.size > 0 ? file : null;
+    });
+  }
+
+  /**
    * The parts to send: each part with every chunk the recording counted (sequence 0 up to its last, and as many bytes),
    * or the integrity error, so that what is left on the device never goes to Eneo as if it were all of it, and the local
    * copy is never deleted for it. A part with no chunk left is a gap too, not a part to leave out.
@@ -519,34 +533,32 @@ export class RecordingStore {
   private async readEach(id: string): Promise<Array<RecordingFile & { whole: boolean }>> {
     const recording = await this.load(id);
     if (!recording) return [];
-    const type = baseMimetype(recording.mimeType);
     const files: Array<RecordingFile & { whole: boolean }> = [];
     // One part at a time: only one part's audio is in memory while it becomes a file (hours of a meeting, on a phone).
-    for (const part of recording.parts) {
-      // What this tab holds follows what the database has (it goes back onto the device only whole). The database's
-      // are read first and an unreadable database is the read's failure: audio held in this tab is never taken for all
-      // there is, and both copies stay.
-      const stored = await this.backend.chunks(id, part.index);
-      const here = await this.overflow.chunks(id, part.index);
-      // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
-      const bySeq = new Map<number, Chunk>();
-      for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
-      const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
-      const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
-      const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
-      // Safari's WebM is made seekable in Chromium; a WebM file's first chunk holds its whole header; MP4 carries its own duration.
-      const data = await withKeyframes(chunks.map((chunk) => chunk.data), type);
-      if (data.length > 0) {
-        data[0] = await withRecordedDuration(data[0], part.durationMs, type);
-      }
-      files.push({
-        index: part.index,
-        blob: new Blob(data, { type }),
-        filename: recordingFilename(recording, part.index),
-        whole,
-      });
-    }
+    for (const part of recording.parts) files.push(await this.readPart(recording, part));
     return files;
+  }
+
+  /** One part as a file, whole or as far as it survived. */
+  private async readPart(recording: StoredRecording, part: RecordingPart): Promise<RecordingFile & { whole: boolean }> {
+    const type = baseMimetype(recording.mimeType);
+    // What this tab holds follows what the database has (it goes back onto the device only whole). The database's
+    // are read first and an unreadable database is the read's failure: audio held in this tab is never taken for all
+    // there is, and both copies stay.
+    const stored = await this.backend.chunks(recording.id, part.index);
+    const here = await this.overflow.chunks(recording.id, part.index);
+    // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
+    const bySeq = new Map<number, Chunk>();
+    for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
+    const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+    const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
+    const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
+    // Safari's WebM is made seekable in Chromium; a WebM file's first chunk holds its whole header; MP4 carries its own duration.
+    const data = await withKeyframes(chunks.map((chunk) => chunk.data), type);
+    if (data.length > 0) {
+      data[0] = await withRecordedDuration(data[0], part.durationMs, type);
+    }
+    return { index: part.index, blob: new Blob(data, { type }), filename: recordingFilename(recording, part.index), whole };
   }
 
   /** Eneo accepted the run: the local copy is no longer needed. */

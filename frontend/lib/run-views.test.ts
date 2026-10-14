@@ -183,7 +183,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   assert.match(text(stopped), /Filen är uppladdad\. Flödet startar inte just nu\./);
   assert.match(text(stopped), /Det går fortfarande inte att skicka\. Försök igen när du vill\. Försök igen Avbryt/);
 
-  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recordingId: "rec-1" });
+  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recording: { id: "rec-1", files: 1 } });
   assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
   assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
 });

@@ -97,9 +97,9 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
   // The device has the parts, and the browser cannot turn them into a download.
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const readParts = store.readParts;
+  const readFile = store.readFile;
   const createObjectURL = URL.createObjectURL;
-  store.readParts = async () => [{ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]) }] as never;
+  store.readFile = async () => ({ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]) });
   try {
     const view = await ready();
     await view.act(async () => undefined);
@@ -111,7 +111,7 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
     assert.ok(named(view.container, "Spara som fil"), "and the button is still there");
   } finally {
-    store.readParts = readParts;
+    store.readFile = readFile;
     URL.createObjectURL = createObjectURL;
   }
 });
@@ -119,14 +119,14 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
 test("a recording of two files says so on Spara som fil, and saves one file a press, so the browser blocks neither", async () => {
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const readParts = store.readParts;
+  const readFile = store.readFile;
   const createObjectURL = URL.createObjectURL;
   const saved: string[] = [];
-  store.readParts = async () =>
-    [
-      { index: 0, filename: "inspelning-del-1.webm", blob: new Blob(["a"]) },
-      { index: 1, filename: "inspelning-del-2.webm", blob: new Blob(["b"]) },
-    ] as never;
+  const files = [
+    { index: 0, filename: "inspelning-del-1.webm", blob: new Blob(["a"]) },
+    { index: 1, filename: "inspelning-del-2.webm", blob: new Blob(["b"]) },
+  ];
+  store.readFile = async (_id, nth) => files[nth] ?? null;
   try {
     const part = recording.parts[0];
     const view = await ready({ recording: { ...recording, parts: [part, { ...part, index: 1 }] } });
@@ -144,7 +144,7 @@ test("a recording of two files says so on Spara som fil, and saves one file a pr
     assert.equal(saved.length, 2);
     assert.equal(save.textContent?.trim(), "Spara som 2 filer", "and from the first again");
   } finally {
-    store.readParts = readParts;
+    store.readFile = readFile;
     URL.createObjectURL = createObjectURL;
   }
 });
