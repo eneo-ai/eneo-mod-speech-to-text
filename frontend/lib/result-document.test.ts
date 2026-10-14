@@ -41,6 +41,17 @@ function widthOf(t: TestContext, pixels: number, { touch = false } = {}) {
   };
 }
 
+/**
+ * A row of actions laid out as a browser lays it out, which jsdom does not: `row` px wide (a phone's, 358, by default),
+ * every action in it `action` px.
+ */
+function laidOut(t: TestContext, row = 358, action = 150) {
+  t.mock.method(window.HTMLElement.prototype, "getBoundingClientRect", function (this: HTMLElement) {
+    const width = this.matches("button, a") ? action : [...this.children].some((child) => child.matches("button, a")) ? row : 0;
+    return { x: 0, y: 0, top: 0, left: 0, right: width, bottom: 0, width, height: 0, toJSON: () => ({}) } as DOMRect;
+  });
+}
+
 // What the module answers for a run's file when a person asks for it: the first byte, or why not.
 const INLINE = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
 const ATTACHMENT = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
@@ -295,7 +306,7 @@ test("on a narrower screen the one more action beside the download is a button, 
   assert.ok(!buttons.includes("Fler alternativ"), "no menu for a single action");
 });
 
-test("Dela only where the browser can share, and then the file itself when the device takes its type", async () => {
+test("Dela only where the browser can share, and then the file itself when the device takes its type", async (t) => {
   const without = await document_({ text: null, file: pdf });
   assert.ok(![...without.container.querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Fler alternativ"), "nothing more to offer, no menu");
   await without.unmount();
@@ -316,7 +327,17 @@ test("Dela only where the browser can share, and then the file itself when the d
     assert.ok(names.includes("Dela") && !names.includes("Fler alternativ"), `Dela is a button and no menu holds it (${names})`);
     await alone.unmount();
 
-    // Beside Kopiera texten there are two: a menu.
+    // Beside the download there are two: in the row where it has room for them,
+    laidOut(t, 800);
+    const roomy = await document_({ text, file: pdf });
+    await roomy.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    const inRow = [...roomy.container.querySelectorAll("button")].map(nameOf);
+    assert.ok(inRow.includes("Kopiera texten") && inRow.includes("Dela") && !inRow.includes("Fler alternativ"), `both in the row (${inRow})`);
+    await roomy.unmount();
+    t.mock.restoreAll();
+
+    // and in a menu where it has not.
+    laidOut(t);
     const view = await document_({ text, file: pdf });
     await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     const more = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;
@@ -773,7 +794,8 @@ test("Dela reads a file ahead only when its size is known and under the cap, and
     globalThis.fetch = realFetch;
   });
 
-  // Size unknown: nothing is read ahead; Dela shares the text.
+  // Size unknown: nothing is read ahead; Dela, in the menu on a phone, shares the text.
+  laidOut(t);
   const unknown = await document_({ text, file: { ...pdf, sizeBytes: null } });
   await unknown.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   assert.equal(fetched.length, 0, "no read ahead of a file of unknown size");

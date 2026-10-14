@@ -1,6 +1,38 @@
 import { expect, test } from "./gate";
-import { fileBackedText, isLaptop, result } from "./screens";
+import { fileBackedText, isLaptop, result, run } from "./screens";
 import ids from "../fixtures/ids.json";
+
+test("a text's more actions stand beside Kopiera texten where they fit, and fold into Fler alternativ where they do not", async ({ page }, info) => {
+  test.skip(info.project.name !== "tablet-portrait", "an iPad held upright, then a phone's width and back");
+  await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true }));
+  // An 11-inch iPad held upright: the width the actions were folded at with room to spare.
+  await page.setViewportSize({ width: 834, height: 1194 });
+  await run(page, ids.runs.plain);
+  await expect(page.getByRole("heading", { name: "Texten är klar" })).toBeVisible();
+  const copy = page.getByRole("button", { name: "Kopiera texten", exact: true });
+  const save = page.getByRole("button", { name: /^Ladda ner .*\.txt$/ });
+  const share = page.getByRole("button", { name: "Dela", exact: true });
+  const more = page.getByRole("button", { name: "Fler alternativ" });
+  const inOneRow = async () => {
+    const tops = await Promise.all([copy, save, share].map(async (button) => Math.round((await button.boundingBox())!.y)));
+    return new Set(tops).size === 1;
+  };
+
+  await expect(share).toBeVisible();
+  await expect(save).toBeVisible();
+  await expect(more).toHaveCount(0);
+  expect(await inOneRow(), "Kopiera texten, Ladda ner and Dela in one row").toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(more, "a phone's width has no room for them").toBeVisible();
+  await expect(share).toHaveCount(0);
+  await expect(save).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth), "and the page does not get wider for them").toBeLessThanOrEqual(390);
+
+  await page.setViewportSize({ width: 834, height: 1194 });
+  await expect(share, "back in the row once there is room").toBeVisible();
+  await expect(more).toHaveCount(0);
+});
 
 test("copying or sharing a file-backed preview says that it is only the beginning", async ({ page }, info) => {
   test.skip(!["phone-320-light", "phone-320-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name), "narrow and wide action bars, in both themes");

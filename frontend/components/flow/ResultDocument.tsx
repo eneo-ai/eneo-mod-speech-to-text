@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -162,6 +162,35 @@ async function runShare(share: Share, title: string, text: string | null): Promi
 }
 
 /**
+ * Whether a row's actions fit on one line, measured before the row is drawn: while they stand in it, their widths and
+ * the gaps between them against the row's width; while they are folded, the width they took when they last stood in it.
+ * Measured again whenever the row or one of its actions changes size: a tablet turned, a label that says Kopierat, the
+ * font arriving. `ref` goes on the row.
+ */
+function useRoomInRow() {
+  const [row, ref] = useState<HTMLElement | null>(null);
+  const [fits, setFits] = useState(true);
+  const needs = useRef(0);
+  useLayoutEffect(() => {
+    if (!row) return;
+    const measure = () => {
+      if (fits) {
+        const actions = [...row.children];
+        const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
+        needs.current = actions.reduce((sum, action) => sum + action.getBoundingClientRect().width, gap * (actions.length - 1));
+      }
+      setFits(needs.current <= row.getBoundingClientRect().width);
+    };
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    for (const element of [row, ...row.children]) observer.observe(element);
+    return () => observer.disconnect();
+  }, [row, fits]);
+  return { ref, fits };
+}
+
+/**
  * What the flow produced, first on the page: the text as a readable page and
  * its file, with one filled action (the file's download, or copying the text
  * when there is no file) and never a second download of the same file.
@@ -204,6 +233,7 @@ export function ResultDocument({
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
   const wide = useMediaMatch(LAPTOP);
+  const room = useRoomInRow();
 
   const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
   const primaryDownload = file && download && (
@@ -250,13 +280,14 @@ export function ResultDocument({
       {/* Narrower: above the document, the download first, then the more actions. The file opens from its name, on its
           row in the document. */}
       {!wide && (
-        <HStack wrap="wrap" vAlign="center" gap={2}>
+        <HStack ref={room.ref} wrap="wrap" vAlign="center" gap={2}>
           {primaryDownload}
           {text && !file && (
             <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           )}
-          {/* Two more actions fold into a menu; one is a button of its own, not a menu of one. */}
-          {moreItem && share ? (
+          {/* Two more actions stand beside it where the row has room for them, and fold into a menu where it has not.
+              One is a button of its own, never a menu of one. */}
+          {moreItem && share && !room.fits ? (
             <DropdownMenu
               button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
               hasChevron={false}
@@ -266,7 +297,10 @@ export function ResultDocument({
               <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
           ) : (
-            moreButton || shareButton("secondary")
+            <>
+              {moreButton}
+              {shareButton("secondary")}
+            </>
           )}
         </HStack>
       )}
