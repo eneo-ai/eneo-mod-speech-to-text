@@ -73,8 +73,6 @@ export function probeLength(url: string, signal?: AbortSignal): Promise<number |
 /** How many parts' lengths are probed at once. */
 const PROBES_AT_ONCE = 3;
 
-function ignore() {}
-
 /**
  * Moves the element to `withinMs` unless it is there: a fresh part starts at 0 without a seek, so audio its browser
  * cannot seek in (a WebM without Cues whose blocks are not keyframes, in Chromium) still plays from its start.
@@ -246,7 +244,7 @@ export class Playback {
     this.started = true;
     // A part still loading plays once it has loaded.
     if (this.pending) this.pending.play = true;
-    else void media.play().catch(ignore);
+    else this.play(media);
     this.emit();
   }
 
@@ -307,7 +305,7 @@ export class Playback {
     this.pending = null;
     if (next) {
       place(media, next.withinMs);
-      if (next.play) void media.play().catch(ignore);
+      if (next.play) this.play(media);
     }
     this.emit();
   };
@@ -354,6 +352,16 @@ export class Playback {
 
   // ---------- Internals ----------
 
+  /**
+   * Plays the element. Audio its browser will not play can say so only by refusing to play (no error event): that is
+   * the audio's failure too. A play that a pause or a new part cut short is not.
+   */
+  private play(media: MediaLike): void {
+    media.play().catch((error: unknown) => {
+      if ((error as { name?: unknown } | null)?.name === "NotSupportedError") this.onError();
+    });
+  }
+
   private load(part: number, withinMs: number, play: boolean): void {
     const url = this.sources[part]?.url;
     if (!this.media || !url) {
@@ -362,7 +370,7 @@ export class Playback {
     }
     if (this.loaded === url && !this.pending) {
       place(this.media, withinMs);
-      if (play) void this.media.play().catch(ignore);
+      if (play) this.play(this.media);
       return;
     }
     // The part loads, which pauses the element without a pause event; it plays once loaded if asked to.

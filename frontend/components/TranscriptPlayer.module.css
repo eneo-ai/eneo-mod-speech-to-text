@@ -311,6 +311,18 @@
   gap: var(--spacing-1);
 }
 
+/* The player's keys: one quiet line where there is a keyboard to press them, with a mouse; never on a touch screen. */
+.keys {
+  display: none;
+  margin-inline-end: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .keys {
+    display: block;
+  }
+}
+
 /* Speed: in the player's row from 640 px, above it below. */
 .rateBelow {
   display: none;
@@ -335,7 +347,8 @@
 }
 
 @media (pointer: coarse) {
-  .rate {
+  .rate,
+  .rateBelow {
     min-inline-size: var(--size-element-md);
   }
 }

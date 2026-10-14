@@ -77,6 +77,7 @@
           - button /Spela från 0:\d+ i del 2/
           - text: Nya turer börjar gälla efter höstlovet.
           - button /Rätta repliken från 0:\d+ i del 2/
+      - text: "Tangenter: K spelar och pausar, J och L hoppar 10 sekunder, pilarna 5 sekunder."
       - 'group "Uppspelning: Inspelningen"':
         - button "Spela upp"
         - slider "Position i inspelningen"

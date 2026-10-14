@@ -496,3 +496,32 @@ test("a player that lets go of its element stops the element's request, so its a
   assert.equal(media.loads.at(-1), "", "and a load, which stops what was being read");
   assert.equal(media.paused, true);
 });
+
+test("audio the browser will not play is unavailable, also when it says so only by refusing to play", async () => {
+  const { playback, media } = started();
+  media.play = () => {
+    media.paused = true;
+    return Promise.reject(Object.assign(new Error("The operation is not supported."), { name: "NotSupportedError" }));
+  };
+  playback.toggle();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(playback.getSnapshot().unavailable, true, "said, with Försök igen");
+  // A play that a pause or a new part cut short is no failure.
+  const other = started();
+  other.media.play = () => Promise.reject(Object.assign(new Error("Interrupted."), { name: "AbortError" }));
+  other.playback.toggle();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(other.playback.getSnapshot().unavailable, false);
+});
+
+test("every player says when its audio cannot be played, beside its controls, and Försök igen loads it again", async () => {
+  const { playback } = started();
+  const view = await mount(createElement(AudioPlayer, { playback, label: "Inspelning" }));
+  assert.equal(view.container.querySelector('[role="alert"]'), null);
+  await view.act(async () => playback.onError());
+  const alert = view.container.querySelector('[role="alert"]')!;
+  assert.match(alert.textContent ?? "", /^Ljudet kunde inte spelas upp\.Försök igen$/);
+  await view.act(async () => [...alert.querySelectorAll("button")].find((b) => b.textContent === "Försök igen")!.click());
+  assert.equal(playback.getSnapshot().unavailable, false, "the part is loaded again");
+  assert.equal(view.container.querySelector('[role="alert"]'), null);
+});

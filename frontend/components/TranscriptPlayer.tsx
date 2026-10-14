@@ -13,6 +13,7 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@astryxdesign/core/DropdownMenu";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -148,70 +149,65 @@ function ReviewEditorAtPlayhead({
   );
 }
 
-/** The controls docked under the transcript: speed, the audio's failure, the player and its skips, as playback stands. */
-function PlayerControls({
-  playback,
-  dock,
-  follow,
-  onFollow,
-}: {
-  playback: Playback;
-  dock: HTMLElement | null;
-  follow: boolean;
-  onFollow: () => void;
-}) {
+/** The speed, chosen from a menu: any speed in one step, never a round through the others. */
+function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: number; className: string }) {
+  return (
+    <DropdownMenu
+      button={{ label: `Hastighet ${rateLabel(rate)}`, children: rateLabel(rate), variant: "ghost", size: "sm", className }}
+      placement="above"
+      alignment="end"
+    >
+      <DropdownMenuRadioGroup label="Hastighet" value={String(rate)} onChange={(value) => playback.setRate(Number(value))}>
+        {RATES.map((option) => (
+          <DropdownMenuRadioItem key={option} value={String(option)} label={rateLabel(option)} />
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The controls docked under the transcript: the keys, Följ, speed, the player and its skips, as playback stands. Each
+ * control names its key (`shortcut`) to a screen reader and, with a mouse, in its tooltip; a skip at the recording's
+ * edge is disabled but keeps its focus.
+ */
+function PlayerControls({ playback, follow, onFollow }: { playback: Playback; follow: boolean; onFollow: () => void }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
-
-  function cycleRate() {
-    playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
-  }
-
-  function skipFromControl(milliseconds: number, trigger: HTMLElement) {
-    playback.skip(milliseconds);
-    const next = playback.getSnapshot();
-    // The pressed control becomes disabled at a boundary. Keep keyboard focus in the player, on its position.
-    if (document.activeElement === trigger && (next.atMs === 0 || next.atEnd)) {
-      dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
-    }
-  }
 
   return (
     <>
       {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
-          row from 640 px (below it the copy here is shown, and the one in the row is not). */}
+          row from 640 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
+          where there is a keyboard to press them: with a mouse, never on a touch screen. */}
       <div className={styles.dockTools}>
+        <Text type="supporting" className={styles.keys}>
+          Tangenter: K spelar och pausar, J och L hoppar 10 sekunder, pilarna 5 sekunder.
+        </Text>
         {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
-        <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rateBelow} onClick={cycleRate}>
-          {rateLabel(rate)}
-        </Button>
+        <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
       </div>
-      {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
-      {unavailable && (
-        <p role="alert" className={styles.error}>
-          Ljudet kunde inte spelas.{" "}
-          <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
-        </p>
-      )}
-      <AudioPlayer playback={playback} label="Inspelningen">
+      <AudioPlayer playback={playback} label="Inspelningen" playKey="K">
         <IconButton
           variant="ghost"
           className={styles.skip}
           isDisabled={unavailable || atStart}
           label={`Bakåt ${SKIP_SECONDS} sekunder`}
+          aria-keyshortcuts="J"
+          tooltip={`Bakåt ${SKIP_SECONDS} sekunder (J)`}
           icon={<RotateCcw aria-hidden />}
-          onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
+          onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
         />
         <IconButton
           variant="ghost"
           className={styles.skip}
           isDisabled={unavailable || atEnd}
           label={`Framåt ${SKIP_SECONDS} sekunder`}
+          aria-keyshortcuts="L"
+          tooltip={`Framåt ${SKIP_SECONDS} sekunder (L)`}
           icon={<RotateCw aria-hidden />}
-          onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
+          onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
         />
-        <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
-          {rateLabel(rate)}
-        </Button>
+        <SpeedMenu playback={playback} rate={rate} className={styles.rate} />
       </AudioPlayer>
     </>
   );
@@ -399,7 +395,7 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const [dock, dockRef] = useDock();
+  const [, dockRef] = useDock();
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -901,7 +897,7 @@ export function TranscriptPlayer(
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
         <div id={pastId} ref={dockRef} tabIndex={-1} data-docked-player className={styles.dock}>
-          <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} />
+          <PlayerControls playback={playback} follow={follow} onFollow={() => setFollow(true)} />
         </div>
       ) : (
         // Without a player the way past the passages ends here, and Tab goes on to what follows the transcript.

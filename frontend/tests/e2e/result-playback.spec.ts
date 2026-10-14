@@ -170,7 +170,8 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await expect(forward).toBeEnabled();
   await page.keyboard.press("Enter");
   await expect(back).toBeDisabled();
-  await expect(position).toBeFocused();
+  // Disabled at the edge, the pressed control keeps the focus: the keyboard goes on from where it was.
+  await expect(back).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(forward).toBeFocused();
   await position.focus();
@@ -181,7 +182,27 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await expect(forward).toBeDisabled();
-  await expect(position).toBeFocused();
+  await expect(forward).toBeFocused();
+});
+
+test("a speed is chosen in one step from the player's menu, and the audio plays at it", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "the speed's place on a phone and on a laptop");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await page.getByRole("button", { name: "Hastighet 1×" }).click();
+  await page.getByRole("menuitemradio", { name: "0,75×" }).click();
+  await expect(page.getByRole("button", { name: "Hastighet 0,75×" })).toBeVisible();
+  expect(await page.locator("audio").first().evaluate((audio: HTMLAudioElement) => audio.playbackRate)).toBe(0.75);
+});
+
+test("the player's keys are said once where there is a keyboard to press them, and not on a touch screen", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a touch screen and a mouse");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const keys = page.getByText(/^Tangenter: K spelar och pausar/);
+  if (info.project.use.hasTouch) await expect(keys).toBeHidden();
+  else await expect(keys).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spela upp", exact: true })).toHaveAttribute("aria-keyshortcuts", "K");
 });
 
 /** Safari's writer, independently of lib/webm-keyframes: every SimpleBlock's keyframe flag off, in place. */
