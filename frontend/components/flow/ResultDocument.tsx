@@ -213,7 +213,7 @@ export function ResultDocument({
       variant="primary"
       icon={<Icon icon={Download} />}
       label={`${downloadLabel}, ${file.name}`}
-      onClick={pressing(access, file, "download")}
+      onClick={pressing(access, file.fileId, "download")}
       {...waiting(access, file.fileId, "download")}
     >
       {downloadLabel}
