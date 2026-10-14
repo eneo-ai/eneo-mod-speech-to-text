@@ -34,6 +34,7 @@ import { downloadBlob } from "@/lib/download";
 import { scrollBehavior } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { useSignedOut } from "@/components/AuthGate";
+import { ActionRow } from "@/components/ActionRow";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
@@ -1296,10 +1297,10 @@ function SpeakerPicker({
             }
             footer={
               <LayoutFooter hasDivider>
-                <HStack gap={2} hAlign="end">
-                  <Button variant="ghost" size="sm" label="Avbryt" onClick={close} />
-                  <Button variant="primary" size="sm" label="Spara" isDisabled={!choice || choice === current} onClick={submit} />
-                </HStack>
+                <ActionRow>
+                  <Button variant="ghost" label="Avbryt" onClick={close} />
+                  <Button variant="primary" label="Spara" isDisabled={!choice || choice === current} onClick={submit} />
+                </ActionRow>
               </LayoutFooter>
             }
           />

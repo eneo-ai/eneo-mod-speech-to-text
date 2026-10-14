@@ -4,10 +4,10 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
@@ -289,24 +289,20 @@ export function SpeakerNamingDialog({
             <LayoutFooter hasDivider>
               <VStack gap={3}>
                 {refusal && <Banner status="error" title={refusal} collapsible={false} />}
-                <HStack gap={2} wrap="wrap" hAlign="end" vAlign="center">
+                {decided && <Text as="p" color="secondary">Namnen är redan sparade.</Text>}
+                <ActionRow>
+                  {!decided && <Button variant="ghost" label="Avbryt" onClick={end} />}
                   {decided ? (
-                    <>
-                      <Text as="p" color="secondary" className={styles.note}>Namnen är redan sparade.</Text>
-                      <Button variant="secondary" label="Stäng" onClick={close} />
-                    </>
+                    <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (
-                    <>
-                      <Button variant="ghost" label="Avbryt" onClick={end} />
-                      <Button
-                        variant="primary"
-                        label={saving ? "Sparar…" : "Spara namnen"}
-                        isDisabled={disabled || saving}
-                        onClick={() => void submit()}
-                      />
-                    </>
+                    <Button
+                      variant="primary"
+                      label={saving ? "Sparar…" : "Spara namnen"}
+                      isDisabled={disabled || saving}
+                      onClick={() => void submit()}
+                    />
                   )}
-                </HStack>
+                </ActionRow>
               </VStack>
             </LayoutFooter>
           }
