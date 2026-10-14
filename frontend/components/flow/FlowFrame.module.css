@@ -162,3 +162,13 @@
     line-height: 1.3;
   }
 }
+
+/* A run's card has the page's heading, so the flow's name beside it is no heading: from a laptop's width, where the
+   flow has a column of its own, it keeps the size it has on the setup and while recording, so the column stays as it
+   is while the run goes on. */
+@media (min-width: 1024px) {
+  .columnName {
+    font-size: var(--text-heading-1-size);
+    line-height: var(--text-heading-1-leading);
+  }
+}

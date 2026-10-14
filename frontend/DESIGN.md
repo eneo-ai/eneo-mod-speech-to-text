@@ -93,10 +93,12 @@ A heading that wraps balances its lines (`text-wrap: balance`), so its last line
 
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
-(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. In one column, a form is
-as wide as the column; beside the flow's details it keeps the form measure (`--module-form-width`, 40 rem). A row
-that holds a field and a button measures itself (a container query at 36 rem): the field fills the row below it, the
-two stand beside each other from it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
+(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. Every view of the flow,
+the setup's form included, is as wide as its column, so each ends at the same edge; from 1024 px a document alone and
+the text review keep a reading column (672 px). The flow's column is the same in every state: from 1024 px its name
+is the headline's size also where a run's card holds the page's heading. A row that holds a field and a button
+measures itself (a container query at 36 rem): the field fills the row below it, the two stand beside each other from
+it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
 inside a group, 8 px between a label and its control.
 
 ## Elevation & Depth

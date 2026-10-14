@@ -35,15 +35,15 @@
 
 
 /* The setup stands further from the details above it than its own parts stand apart (a section's heading starts it).
-   In one column it is as wide as the details above it, so the mode cards, the microphone row and the action end where
-   the participants field ends; beside the details, from a laptop's width, it keeps a form's measure. */
+   It is as wide as its column, as every view of the flow is: in one column the mode cards, the microphone row and the
+   action end where the participants field ends, and beside the details, from a laptop's width, where the recording's
+   stage and a run's card end. */
 .setup {
   margin-block-start: var(--spacing-4);
 }
 
 @media (min-width: 1024px) {
   .setup {
-    max-width: var(--module-form-width);
     margin-block-start: 0;
   }
 }
