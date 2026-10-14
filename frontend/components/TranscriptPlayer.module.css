@@ -451,7 +451,8 @@
   transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
 }
 
-.sentenceActive {
+/* The playhead's sentence and word are lit by useTranscriptPlayhead, as data attributes the list never renders. */
+.sentence[data-active="true"] {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
@@ -504,7 +505,7 @@
 /* Pressing the text plays from it: under a mouse, the word that would play shows it, or the sentence where words have no
    times. A touch screen has no hover to show it on. */
 @media (hover: hover) and (pointer: fine) {
-  .sentence:not(.choosable) .word[data-word-start]:not(.lit):hover,
+  .sentence:not(.choosable) .word[data-word-start]:not([data-lit]):hover,
   .sentence:not(.choosable):not(:has([data-word-start])):hover {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   }
@@ -546,13 +547,13 @@
   text-underline-offset: var(--spacing-0-5);
 }
 
-.lit {
+.word[data-lit] {
   background: var(--color-accent);
   color: var(--color-on-accent);
 }
 
 @media (forced-colors: active) {
-  .lit {
+  .word[data-lit] {
     background: Highlight;
     color: HighlightText;
   }
@@ -562,7 +563,7 @@
     outline: 2px solid Highlight;
   }
 
-  .sentenceActive {
+  .sentence[data-active="true"] {
     outline: 1px dotted Highlight;
   }
 }

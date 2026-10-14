@@ -26,7 +26,8 @@ import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton
 import { VStack } from "@astryxdesign/core/VStack";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import type { TranscriptEditor } from "@/components/TranscriptEditor";
-import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
 import { downloadBlob } from "@/lib/download";
@@ -42,9 +43,6 @@ import {
   computeTurns,
   countFiles,
   effectiveSpeakerLabel,
-  findActiveSegmentIndex,
-  findActiveSegmentIndices,
-  findActiveWordIndex,
   findHits,
   paragraphTurns,
   pendingSpeakerReview,
@@ -129,6 +127,95 @@ type EditorProps = ComponentProps<typeof TranscriptEditor>;
 const editor = lazyLoader<ComponentType<EditorProps>>(() => import("@/components/TranscriptEditor").then((module) => module.TranscriptEditor));
 /** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
 export const preloadTranscriptEditor = () => editor.load();
+
+/** The review editor, following playback itself: it lights words as it renders, so it is the one part rendered again as the audio plays. */
+function ReviewEditorAtPlayhead({
+  playback,
+  hasAudio,
+  ...props
+}: Omit<EditorProps, "currentFile" | "currentTime" | "playing" | "audioAvailable"> & { playback: Playback; hasAudio: boolean }) {
+  const position = usePlaybackState(playback);
+  // Nothing is lit until playback has started or been moved.
+  const currentTime = position.started ? position.withinMs / 1_000 : Number.NEGATIVE_INFINITY;
+  return (
+    <LazyTranscriptEditor
+      {...props}
+      audioAvailable={hasAudio && !position.unavailable}
+      currentFile={position.part}
+      currentTime={currentTime}
+      playing={position.playing}
+    />
+  );
+}
+
+/** The controls docked under the transcript: speed, the audio's failure, the player and its skips, as playback stands. */
+function PlayerControls({
+  playback,
+  dock,
+  follow,
+  onFollow,
+}: {
+  playback: Playback;
+  dock: HTMLElement | null;
+  follow: boolean;
+  onFollow: () => void;
+}) {
+  const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
+
+  function cycleRate() {
+    playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
+  }
+
+  function skipFromControl(milliseconds: number, trigger: HTMLElement) {
+    playback.skip(milliseconds);
+    const next = playback.getSnapshot();
+    // The pressed control becomes disabled at a boundary. Keep keyboard focus in the player, on its position.
+    if (document.activeElement === trigger && (next.atMs === 0 || next.atEnd)) {
+      dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+    }
+  }
+
+  return (
+    <>
+      {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
+          row from 640 px (below it the copy here is shown, and the one in the row is not). */}
+      <div className={styles.dockTools}>
+        {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
+        <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rateBelow} onClick={cycleRate}>
+          {rateLabel(rate)}
+        </Button>
+      </div>
+      {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
+      {unavailable && (
+        <p role="alert" className={styles.error}>
+          Ljudet kunde inte spelas.{" "}
+          <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
+        </p>
+      )}
+      <AudioPlayer playback={playback} label="Inspelningen">
+        <IconButton
+          variant="ghost"
+          className={styles.skip}
+          isDisabled={unavailable || atStart}
+          label={`Bakåt ${SKIP_SECONDS} sekunder`}
+          icon={<RotateCcw aria-hidden />}
+          onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
+        />
+        <IconButton
+          variant="ghost"
+          className={styles.skip}
+          isDisabled={unavailable || atEnd}
+          label={`Framåt ${SKIP_SECONDS} sekunder`}
+          icon={<RotateCw aria-hidden />}
+          onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
+        />
+        <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
+          {rateLabel(rate)}
+        </Button>
+      </AudioPlayer>
+    </>
+  );
+}
 
 function LazyTranscriptEditor(props: EditorProps) {
   const { value: Editor, failed } = useLoaded(editor);
@@ -313,22 +400,13 @@ export function TranscriptPlayer(
     hasAudio && !shared ? Array.from({ length: fileCount }, (_, i) => ({ url: audioSrcFor(i), durationMs: null })) : NO_SOURCES,
   );
   const playback = shared ?? own;
-  const position = usePlaybackState(playback);
-  const currentFile = position.part;
-  const currentTime = position.withinMs / 1_000;
-  const paused = !position.playing;
-  const audioUnavailable = position.unavailable;
-  const rate = position.rate;
+  // The list does not follow playback by rendering: useTranscriptPlayhead lights it, and the controls under it
+  // (PlayerControls) render their own state. A list of an hour's meeting takes a fifth of a second to render.
 
   const applied = useMemo(() => applyCorrections(segments, corrections), [segments, corrections]);
   const shown = applied.segments;
-  // Nothing is lit until playback has started or been moved.
-  const playhead = position.started ? currentTime : Number.NEGATIVE_INFINITY;
-  const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, playhead));
   // A flow without speaker labels names no speaker: "Okänd talare" on every block would mislead.
   const labelled = shown.some((segment) => segment.speaker !== null) || speakerReviews.length > 0;
-  // Scrolling follows only once playback has started or been moved.
-  const activeIndex = position.started ? findActiveSegmentIndex(shown, currentFile, currentTime) : -1;
   const correctedIndices = applied.corrected;
   const correctedRanges = applied.ranges;
   // Unlabelled text reads as paragraphs, one per timed block.
@@ -398,41 +476,36 @@ export function TranscriptPlayer(
     [hasAudio, playback],
   );
 
-  function cycleRate() {
-    playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
-  }
-
-  function skipFromControl(milliseconds: number, trigger: HTMLElement) {
-    playback.skip(milliseconds);
-    const next = playback.getSnapshot();
-    // The pressed control becomes disabled at a boundary. Keep keyboard focus in the player, on its position.
-    if (document.activeElement === trigger && (next.atMs === 0 || next.atEnd)) {
-      dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
-    }
-  }
-
   function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
     const action = shortcut(e);
     if (!action) return;
     const target = e.target as HTMLElement;
     // The position slider moves by its own keys; controls and text fields keep theirs.
     if (target.closest("button, a, input, select, textarea, [role=button], [role=slider], [role=menuitemradio], [role=radio], [contenteditable]")) return;
-    if (!hasAudio || audioUnavailable) return;
+    if (!hasAudio || playback.getSnapshot().unavailable) return;
     if (action.preventDefault) e.preventDefault();
     if (action.skipMs === 0) playback.toggle();
     else playback.skip(action.skipMs);
   }
 
-  useEffect(() => {
-    if (!follow || activeIndex < 0 || !listRef.current || editingIndex >= 0) return;
-    const el = listRef.current.querySelector<HTMLElement>(
-      `[data-segment-index="${activeIndex}"]`,
-    );
+  // The sentence being played stays in view, while following and not editing a line.
+  const following = useRef({ follow, editing: editingIndex >= 0 });
+  following.current = { follow, editing: editingIndex >= 0 };
+  const keepInView = useCallback((segmentIndex: number) => {
+    if (!following.current.follow || following.current.editing || !listRef.current) return;
+    const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block) return;
     programmaticScrollUntil.current = Date.now() + 800;
     block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
-  }, [activeIndex, follow, editingIndex]);
+  }, []);
+  // The review editor lights its own words; the playhead only keeps its place in view there.
+  const playheadAt = useTranscriptPlayhead(listRef, playback, shown, keepInView, !reviewEnabled);
+  // Following again, or closing a line's editor, brings the playhead's sentence back.
+  useEffect(() => {
+    const at = playheadAt();
+    if (at >= 0) keepInView(at);
+  }, [follow, editingIndex, playheadAt, keepInView]);
 
   // The search's current hit is brought into view, and playback stops pulling the text away from it.
   useEffect(() => {
@@ -745,9 +818,9 @@ export function TranscriptPlayer(
         onTouchMove={onUserScroll}
         className={join(styles.scrollport, !reviewEnabled && styles.padded)}
       >
-        {reviewEnabled ? <LazyTranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
+        {reviewEnabled ? <ReviewEditorAtPlayhead playback={playback} raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
-          audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={playhead} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
+          hasAudio={hasAudio} onSeek={(fileIndex, time, autoplay, end) => {
             if (end === undefined) return seekTo(fileIndex, time, autoplay);
             // "Lyssna" on a passage plays it and stops at its end.
             if (hasAudio) setFollow(true);
@@ -777,8 +850,6 @@ export function TranscriptPlayer(
                     correctedRanges={correctedRanges}
                     hitsBySegment={hitsBySegment}
                     partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                    activeIndices={activeIndices}
-                    currentTime={playhead}
                     labelled={labelled}
                     displayName={displayName}
                     labelOptions={labelOptions}
@@ -818,42 +889,7 @@ export function TranscriptPlayer(
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
         <div id={pastId} ref={dockRef} tabIndex={-1} data-docked-player className={styles.dock}>
-          {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
-              row from 640 px (below it the copy here is shown, and the one in the row is not). */}
-          <div className={styles.dockTools}>
-            {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={() => setFollow(true)} />}
-            <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rateBelow} onClick={cycleRate}>
-              {rateLabel(rate)}
-            </Button>
-          </div>
-          {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
-          {audioUnavailable && (
-            <p role="alert" className={styles.error}>
-              Ljudet kunde inte spelas.{" "}
-              <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
-            </p>
-          )}
-          <AudioPlayer playback={playback} label="Inspelningen">
-            <IconButton
-              variant="ghost"
-              className={styles.skip}
-              isDisabled={audioUnavailable || position.atMs === 0}
-              label={`Bakåt ${SKIP_SECONDS} sekunder`}
-              icon={<RotateCcw aria-hidden />}
-              onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
-            />
-            <IconButton
-              variant="ghost"
-              className={styles.skip}
-              isDisabled={audioUnavailable || position.atEnd}
-              label={`Framåt ${SKIP_SECONDS} sekunder`}
-              icon={<RotateCw aria-hidden />}
-              onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
-            />
-            <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
-              {rateLabel(rate)}
-            </Button>
-          </AudioPlayer>
+          <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} />
         </div>
       ) : (
         // Without a player the way past the passages ends here, and Tab goes on to what follows the transcript.
@@ -871,8 +907,6 @@ function TurnBlock({
   correctedRanges,
   hitsBySegment,
   partLabel,
-  activeIndices,
-  currentTime,
   displayName,
   labelOptions,
   labelled,
@@ -898,8 +932,6 @@ function TurnBlock({
   hitsBySegment: ReadonlyMap<number, Hit[]>;
   /** " i del 2" when the recording has parts, so a time says where it is. */
   partLabel: string;
-  activeIndices: ReadonlySet<number>;
-  currentTime: number;
   displayName: (label: string | null) => string;
   labelOptions: readonly string[];
   labelled: boolean;
@@ -926,7 +958,6 @@ function TurnBlock({
   const markLabel = toCheck || decision === "unresolved" ? null : turn.speaker;
   // The passage's own words for who speaks; a passage to check suggests no one.
   const name = effectiveSpeakerLabel(turn.parts[0].segment, displayName);
-  const isActive = turn.parts.some((p) => activeIndices.has(p.segmentIndex));
   const storedSpeaker = rawSegments[turn.parts[0]?.segment.sourceSegmentIndex ?? turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const clock = formatClock(turn.start * 1_000);
   // One "Rätta" per passage. In a passage of several sentences it first makes each sentence the target.
@@ -963,7 +994,6 @@ function TurnBlock({
   return (
     <li
       data-turn-index={turn.index}
-      data-active={isActive}
       aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
       className={styles.turn}
     >
@@ -1005,7 +1035,6 @@ function TurnBlock({
         {choosable && <Text as="p" type="supporting" className={styles.hint}>Välj meningen du vill rätta.</Text>}
         <div className={styles.text}>
           {turn.parts.map((part) => {
-            const partActive = activeIndices.has(part.segmentIndex);
             const corrected = correctedIndices.has(part.segmentIndex);
             const ranges = correctedRanges.get(part.segmentIndex) ?? [];
             const partClock = formatClock(part.segment.start * 1_000);
@@ -1043,14 +1072,12 @@ function TurnBlock({
                       onStartEdit(part.segmentIndex);
                     },
                   })}
-                  className={join(styles.sentence, partActive && styles.sentenceActive, choosable && styles.choosable)}
+                  className={join(styles.sentence, choosable && styles.choosable)}
                 >
                   {shown.map((piece, k, all) => {
                     const key = piece.word ? wordKey(part.segment.sourceSegmentIndex ?? part.segmentIndex, piece.word) : null;
                     const confirmed = key !== null && confirmedWords.has(key);
                     const flagged = Boolean(piece.word?.uncertain) && !confirmed;
-                    const isWordActive =
-                      Boolean(piece.word) && partActive && piece.wordIndex === findActiveWordIndex(part.segment.words ?? [], currentTime);
                     // The confirm button sits after the word's last piece.
                     const lastOfWord =
                       Boolean(piece.word?.uncertain) &&
@@ -1060,7 +1087,7 @@ function TurnBlock({
                       <span key={k}>
                         <Word
                           data-word-start={piece.word ? piece.word.start : undefined}
-                          aria-current={isWordActive ? "true" : undefined}
+                          data-word-index={piece.word ? piece.wordIndex : undefined}
                           data-hit={piece.hit ?? undefined}
                           className={join(
                             styles.word,
@@ -1068,7 +1095,6 @@ function TurnBlock({
                             confirmed && styles.confirmed,
                             piece.hit === "match" && styles.match,
                             piece.hit === "current" && styles.currentMatch,
-                            isWordActive && styles.lit,
                             piece.correctedFrom !== null && styles.corrected,
                           )}
                           title={
