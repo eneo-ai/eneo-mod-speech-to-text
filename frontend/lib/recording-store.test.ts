@@ -807,6 +807,32 @@ test("a database that keeps failing is tried again as a full device is, and take
   assert.deepEqual(await texts(await (await openRecordingStore(env)).readPartsToSend(recording.id)), ["ab"], "the device alone has all of it");
 });
 
+test("a recording's parts are read one at a time, so a long recording's audio is never in memory all at once", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  for (const text of ["a", "b", "c"]) {
+    const part = await store.startPart(recording.id);
+    await store.append(recording.id, part, new Blob([text]), 1_000);
+  }
+  const getAll = IDBObjectStore.prototype.getAll;
+  let reading = 0;
+  let most = 0;
+  IDBObjectStore.prototype.getAll = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["getAll"]>) {
+    const request = getAll.apply(this, args);
+    if (this.name === "chunks") {
+      most = Math.max(most, (reading += 1));
+      request.addEventListener("success", () => (reading -= 1));
+    }
+    return request;
+  };
+  try {
+    assert.deepEqual(await texts(await store.readParts(recording.id)), ["a", "b", "c"]);
+  } finally {
+    IDBObjectStore.prototype.getAll = getAll;
+  }
+  assert.equal(most, 1, "the next part is read once the one before is a file");
+});
+
 test("a device cleared in the middle of a recording: the recording goes on in this tab, and what is kept saves as a file and can be sent", async () => {
   const { env, closeConnections, wipe } = closable();
   const store = await openRecordingStore(env);
