@@ -1,10 +1,11 @@
 /**
- * Fortsätt spela in on a recording a closed tab cut off, in the flow list: the flow's page records on in the same
- * recording, as its own Fortsätt spela in does, without showing the choice of audio on the way.
+ * Fortsätt spela in on a recording a closed tab cut off, in the flow list: it stands before the other unsent recordings,
+ * which fold away so the flows stay in view, and the flow's page records on in the same recording, as its own Fortsätt
+ * spela in does, without showing the choice of audio on the way.
  */
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
-import { backLink, record, setup, stop } from "./screens";
+import { backLink, keptRecording, record, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "one laptop and one phone"));
 
@@ -39,4 +40,16 @@ test("from the flow list, Fortsätt spela in records on in the cut-off recording
   await backLink(tab).click();
   await tab.getByRole("alertdialog", { name: "Lämna sidan?" }).getByRole("button", { name: "Lämna sidan" }).click();
   await expect(tab.getByRole("heading", { name: "En inspelning har inte skickats" }), "one recording: the meeting went on in it").toBeVisible();
+});
+
+test("with three unsent recordings the flow list keeps its flows in view: the one a reload cut off stands first, the rest folded", async ({ page }) => {
+  await page.goto("/flows");
+  await keptRecording(page, 1_000);
+  await keptRecording(page, 1_000, "recording"); // cut off by a reload
+  await keptRecording(page, 1_000);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "3 inspelningar har inte skickats" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "2 inspelningar till" })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Fortsätt spela in" }), "the one to go on with, though not the newest").toBeVisible();
+  await expect(page.getByRole("link", { name: /^Nämndmöte till rapport/ }).first(), "a flow above the fold").toBeInViewport({ ratio: 1 });
 });

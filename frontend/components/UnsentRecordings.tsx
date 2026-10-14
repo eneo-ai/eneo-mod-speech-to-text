@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -102,7 +103,8 @@ export function resumableRecording(recordings: UnsentRecording[]): UnsentRecordi
 /**
  * Recordings kept on this device that Eneo has not received yet; when the device cannot be read, a notice in
  * their place, so that the person is not left thinking there are none. "Fortsätt spela in" on a recording a reload cut
- * off is the page's one filled action, unless the person has chosen another way (`filled` false).
+ * off is the page's one filled action, unless the person has chosen another way (`filled` false). `folded` (the flow
+ * list) shows one, the latest a reload cut off before the newest, and folds the rest away, so what follows stays in view.
  */
 export function UnsentRecordings({
   list: { recordings, unreadable, retry },
@@ -112,6 +114,7 @@ export function UnsentRecordings({
   withFlowName = false,
   sendLabel,
   evictable = false,
+  folded = false,
 }: {
   list: UnsentList;
   /** Absent where the flow cannot run now: the recordings are then only saved as files or deleted. */
@@ -124,6 +127,7 @@ export function UnsentRecordings({
   sendLabel: (recording: StoredRecording) => string;
   /** The browser may delete the recordings (useEvictable): the list then does not promise they stay. */
   evictable?: boolean;
+  folded?: boolean;
 }) {
   const headingId = useId();
   if (unreadable) {
@@ -137,6 +141,19 @@ export function UnsentRecordings({
   if (recordings.length === 0) return null;
   const resumable = onContinue ? resumableRecording(recordings) : undefined;
   const cutOff = recordings.length === 1 && resumable !== undefined;
+  const shown = folded ? (resumable ?? recordings[0]) : null;
+  const rest = recordings.filter((recording) => shown !== null && recording !== shown);
+  const row = (recording: UnsentRecording) => (
+    <UnsentRecordingRow
+      key={recording.id}
+      recording={recording}
+      withFlowName={withFlowName}
+      sendLabel={sendLabel(recording)}
+      onSend={onSend}
+      onContinue={continuable(recording) ? onContinue : undefined}
+      primary={filled && recording === resumable}
+    />
+  );
   // A named region (Section is no landmark), as the screen reader's list of landmarks has it.
   return (
     <VStack role="region" aria-labelledby={headingId} gap={3}>
@@ -160,19 +177,12 @@ export function UnsentRecordings({
                 : "De finns kvar på den här enheten tills de har skickats."}
         </Text>
       </VStack>
-      <List hasDividers>
-        {recordings.map((recording) => (
-          <UnsentRecordingRow
-            key={recording.id}
-            recording={recording}
-            withFlowName={withFlowName}
-            sendLabel={sendLabel(recording)}
-            onSend={onSend}
-            onContinue={continuable(recording) ? onContinue : undefined}
-            primary={filled && recording === resumable}
-          />
-        ))}
-      </List>
+      <List hasDividers>{shown ? row(shown) : recordings.map(row)}</List>
+      {rest.length > 0 && (
+        <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
+          <List hasDividers>{rest.map(row)}</List>
+        </Collapsible>
+      )}
     </VStack>
   );
 }

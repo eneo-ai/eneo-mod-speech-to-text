@@ -163,6 +163,28 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");
 });
 
+test("folded, the list shows one recording, the latest a reload cut off before the newest, and the rest under a closed fold", async () => {
+  const cutOff = (id: string, startedAt: number) => ({ ...recording(id, 60_000, startedAt), state: "recording" as const });
+  const newest = recording("new", 60_000, at(23, 11, 0));
+  const listed = [newest, cutOff("cut", at(23, 10, 0)), recording("old", 60_000, at(23, 9, 0))];
+  const { container } = await render({ recordings: listed, onContinue: () => {}, folded: true });
+  assert.equal(container.querySelector("h2")?.textContent, "3 inspelningar har inte skickats");
+  const fold = button(container, "2 inspelningar till")!;
+  assert.equal(fold.getAttribute("aria-expanded"), "false", "closed until opened");
+  const folded = document.getElementById(fold.getAttribute("aria-controls")!)!;
+  const shown = rowsOf(container).filter((row) => !folded.contains(row));
+  assert.equal(shown.length, 1);
+  assert.ok(button(shown[0], "Fortsätt spela in"), "the one to go on with stands in view");
+  assert.equal(rowsOf(folded).length, 2);
+
+  const { container: none } = await render({ recordings: [newest, recording("old", 60_000, at(23, 9, 0))], onContinue: () => {}, folded: true });
+  const [first] = rowsOf(none);
+  assert.match(first.textContent!, /Inspelning 23 sep 11:00/, "without one cut off, the newest");
+  assert.ok(button(none, "En inspelning till"));
+  const { container: page } = await render({ recordings: listed, onContinue: () => {} });
+  assert.equal(button(page, "2 inspelningar till"), null, "on a flow's page every one is in view");
+});
+
 test("once the person chooses another way on the page, a cut-off recording's Fortsätt spela in is no longer the filled action", async () => {
   const cutOff = { ...recording("a", 60_000, at(23, 10, 12)), state: "recording" as const };
   const { container } = await render({ recordings: [cutOff], onContinue: () => {}, filled: false });
