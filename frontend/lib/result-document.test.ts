@@ -105,7 +105,7 @@ const text = "## Protokoll\n\nKommunstyrelsen godkänner förslaget.";
 /** Until the code that formats Markdown has arrived (Markdown.tsx): the page is read after it has. */
 const formatted = (view: { act: (callback: () => Promise<void>) => Promise<void> }) => view.act(async () => new Promise<void>((resolve) => setTimeout(resolve, 20)));
 
-async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null }) {
+async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null; downloadName?: string }) {
   const { createElement } = await import("react");
   const { ResultDocument } = await import("../components/flow/ResultDocument");
   const view = await inProviders(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
@@ -201,6 +201,23 @@ test("the document's one filled action is its file's download; without a file it
   const textOnly = await document_({ text, file: null });
   assert.deepEqual(filled(textOnly.container), ["Kopiera texten"]);
   await textOnly.unmount();
+});
+
+test("a text without a file of its own downloads as a text file, under the name the page gives its files", async (t) => {
+  const download = await import("./download");
+  const saved: { text: string; name: string }[] = [];
+  t.mock.method(download, "downloadBlob", (blob: Blob, name: string) => void blob.text().then((text) => saved.push({ text, name })));
+  const name = "Nämndmöte till rapport 2026-09-24 11.02.txt";
+  for (const width of [390, 1280]) {
+    widthOf(t, width);
+    const view = await document_({ text, file: null, downloadName: name });
+    const save = button(view.container, `Ladda ner ${name}`);
+    assert.ok(save, `${width} px: Ladda ner beside Kopiera texten`);
+    assert.equal(save.textContent, "Ladda ner");
+    await view.act(async () => save.click());
+    await view.unmount();
+  }
+  assert.deepEqual(saved, [{ text, name }, { text, name }], "the text as written, as a .txt");
 });
 
 test("from a laptop's width the file's name opens the preview instead, and no Öppna beside it does the same again", async (t) => {

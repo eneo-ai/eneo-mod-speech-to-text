@@ -10,6 +10,7 @@ import { Item } from "@astryxdesign/core/Item";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import type { ResultFileView } from "@/lib/run-files";
 import { useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
@@ -174,6 +175,7 @@ export function ResultDocument({
   preview = null,
   textIsPreview = false,
   label = "Dokumentet",
+  downloadName,
 }: {
   flowId: string;
   runId: string;
@@ -189,6 +191,8 @@ export function ResultDocument({
   textIsPreview?: boolean;
   /** What the run makes, named ("Dokumentet", "Texten"; `outputWords`). */
   label?: string;
+  /** What a text without a file of its own downloads as (`runFileName`). */
+  downloadName?: string;
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
@@ -217,6 +221,21 @@ export function ResultDocument({
   const shareName = textIsPreview && share?.kind === "text" ? "Dela början" : "Dela";
   // Copying the text is one of the more actions when the file is the filled one above it.
   const copyMore = Boolean(text && file);
+  // A text with no file of its own is saved as one, as it is written.
+  const saveText = text && !file && downloadName ? () => downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), downloadName) : null;
+  const saveButton = (variant: "ghost" | "secondary") =>
+    saveText && (
+      <Button variant={variant} icon={<Icon icon={Download} />} label={`Ladda ner ${downloadName}`} onClick={saveText}>
+        Ladda ner
+      </Button>
+    );
+  // The one more action beside Dela: copying where the file is the filled action, else saving the text.
+  const moreItem = copyMore ? (
+    <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
+  ) : (
+    saveText && <DropdownMenuItem icon={Download} label="Ladda ner" onClick={saveText} />
+  );
+  const moreButton = copyMore ? <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} /> : saveButton("secondary");
 
   return (
     <>
@@ -240,21 +259,20 @@ export function ResultDocument({
             <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           )}
           {/* Two more actions fold into a menu; one is a button of its own, not a menu of one. */}
-          {copyMore && share ? (
+          {moreItem && share ? (
             <DropdownMenu
               button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
               hasChevron={false}
               alignment="end"
             >
-              <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
+              {moreItem}
               <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
-          ) : copyMore ? (
-            <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           ) : (
-            share && (
+            moreButton ||
+            (share && (
               <Button icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
-            )
+            ))
           )}
         </HStack>
       )}
@@ -267,6 +285,7 @@ export function ResultDocument({
         {wide && text && (
           <>
             <HStack hAlign="end" vAlign="center" gap={1} padding={2}>
+              {saveButton("ghost")}
               {text && (
                 <Button
                   variant={file ? "ghost" : "primary"}
