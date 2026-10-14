@@ -264,7 +264,7 @@ function UnsentRecordingRow({
                 <Text as="p" color="secondary">
                   I den här webbläsaren kan den bara sparas som fil.
                 </Text>
-                <Button label={saving.label} aria-describedby={summaryId} onClick={() => void save()} />
+                <Button label={saving.label} aria-describedby={summaryId} isLoading={saving.busy} isInterruptible onClick={() => void save()} />
               </VStack>
             )
           ) : confirming ? (
@@ -294,7 +294,16 @@ function UnsentRecordingRow({
                 {onSend && audio && (
                   <Button label={sendLabel} width="100%" aria-describedby={summaryId} onClick={() => onSend(recording)} />
                 )}
-                {audio && <Button label={saving.label} width="100%" aria-describedby={summaryId} onClick={() => void save()} />}
+                {audio && (
+                  <Button
+                    label={saving.label}
+                    width="100%"
+                    aria-describedby={summaryId}
+                    isLoading={saving.busy}
+                    isInterruptible
+                    onClick={() => void save()}
+                  />
+                )}
               </Grid>
               <Grid columns={ACTION_COLUMNS}>
                 <Button

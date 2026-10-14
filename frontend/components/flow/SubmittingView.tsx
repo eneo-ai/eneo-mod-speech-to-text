@@ -98,7 +98,9 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
       <RetryNotice wait={wait} />
       <HStack gap={2} wrap="wrap">
         <Button label="Avbryt" variant="secondary" onClick={onCancel} />
-        {recording && <Button label={saving.label} variant="secondary" onClick={() => void save()} />}
+        {recording && (
+          <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
+        )}
       </HStack>
       {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>
