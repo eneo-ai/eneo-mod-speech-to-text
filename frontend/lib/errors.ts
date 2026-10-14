@@ -24,7 +24,9 @@ const TOO_LARGE = "Det som skickades är större än flödet tar emot.";
 const TOO_MANY_FILES = "Det är fler filer än flödet tar emot.";
 const WRONG_TYPE = "Filtypen stöds inte.";
 const FILE_UNUSABLE = "Filen kunde inte användas. Ladda upp den igen.";
-const NO_ACCESS = "Du har inte behörighet till det här. Kontakta den som ansvarar för Eneo i din verksamhet om du behöver det.";
+/** Whom a person asks for what is Eneo's to give (access, a flow): its owner where they work, not this module's. */
+export const ASK_ENEO_OWNER = "Kontakta den som ansvarar för Eneo i din verksamhet";
+const NO_ACCESS = `Du har inte behörighet till det här. ${ASK_ENEO_OWNER} om du behöver det.`;
 const MODULE_ACCESS = "Tal till text har inte behörighet till det här flödet. Kontakta den som ansvarar för Tal till text.";
 const REVIEW_CHANGED = "Granskningen har ändrats. Ladda om sidan och försök igen.";
 /** What a refused request and a finished run say alike of a review and of a busy server. */

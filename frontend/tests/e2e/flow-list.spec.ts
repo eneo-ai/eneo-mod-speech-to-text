@@ -50,16 +50,35 @@ test("while the flows load a status says so, the placeholder rows are hidden fro
   expect((await reflow(page)).horizontalScroll).toBe(false);
 });
 
-test("no flows to run says so in the user's words, in the outline, and shows no list", async ({ page }) => {
-  await page.route(FLOWS, answer([]));
+test("no flows to run says so in the user's words, in the outline, whom to ask, and Uppdatera looks again", async ({ page }) => {
+  let published = false;
+  let hold: Promise<void> | null = null;
+  await page.route(FLOWS, async (route) => {
+    await hold;
+    return published ? route.fallback() : answer([])(route);
+  });
   await page.goto("/flows");
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { name: "Det finns inga publicerade flöden som du kan använda än.", level: 2 })).toBeVisible();
-  await expect(main.getByText("När ett flöde publiceras i Eneo visas det här.")).toBeVisible();
+  await expect(main.getByText("När ett flöde publiceras i Eneo visas det här. Kontakta den som ansvarar för Eneo i din verksamhet om du saknar ett flöde.")).toBeVisible();
   await expect(main.getByRole("list")).toHaveCount(0);
   await expect(page.getByRole("status").filter({ hasText: "Laddar flödena…" })).toHaveCount(0);
   await clean(page);
   expect((await reflow(page)).horizontalScroll).toBe(false);
+
+  // Still none: the Uppdatera that comes back with the answer has the focus the pressed one had.
+  const refresh = main.getByRole("button", { name: "Uppdatera" });
+  let release!: () => void;
+  hold = new Promise((resolve) => (release = resolve));
+  await refresh.click();
+  await expect(refresh, "the list is read again").toHaveCount(0);
+  hold = null;
+  release();
+  await expect(refresh).toBeFocused();
+  // A flow was published meanwhile.
+  published = true;
+  await refresh.click();
+  await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
 });
 
 test("a list Eneo cut at the cap says how many are shown", async ({ page }) => {
