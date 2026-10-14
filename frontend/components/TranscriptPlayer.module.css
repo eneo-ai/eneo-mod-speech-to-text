@@ -397,10 +397,27 @@
     margin-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
   }
 
-  /* A wrapped heading has separate rows of controls. Reserve their touch height instead of overlapping the row
-     above or the passage below it with the inline text's negative margin. */
+  /* Keep the visible text's 24 px row; its touch area extends into the passage's padding. Wrapped rows and the
+     text below leave enough room for that area, so neighbouring controls never share a hit target. */
+  .head {
+    row-gap: var(--spacing-6);
+  }
+
   .head .inline {
+    position: relative;
+    min-block-size: var(--spacing-6);
     margin-block: 0;
+  }
+
+  .head .inline::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
+  }
+
+  .head + .text {
+    margin-block-start: var(--spacing-3);
   }
 }
 
