@@ -205,6 +205,18 @@ export class Playback {
     this.emit();
   }
 
+  /**
+   * Puts the position at `withinMs` in `part`, where a person left off, before anything has played: nothing plays and
+   * it is no move (`started` stays false), so nothing is lit and no pause is docked until they play.
+   */
+  resumeAt(part: number, withinMs: number): void {
+    if (this.started || this.sources.length === 0) return;
+    this.part = Math.min(Math.max(0, part), this.sources.length - 1);
+    this.withinMs = this.clampWithin(this.part, withinMs);
+    this.load(this.part, this.withinMs, false);
+    this.emit();
+  }
+
   /** A position on the whole recording, as the slider gives it. */
   seekAt(atMs: number): void {
     const { part, withinMs } = this.locate(atMs);
