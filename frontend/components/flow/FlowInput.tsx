@@ -1,6 +1,7 @@
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -29,6 +30,7 @@ import { FocusedRecorder, RecordingBar, SignedOutControls } from "@/components/f
 import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/recording-hooks";
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
+import { useSignedOut } from "@/components/AuthGate";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { resumableRecording, UnsentRecordings, type UnsentList } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
@@ -250,18 +252,26 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
-  const wakeLock = "wakeLock" in navigator;
   const { warnings, notes } = recordingNotices({
     phase,
     silent,
     lowSpace: capture.lowSpace,
     persistent: persistent !== false,
     refused: capture.refused,
+    backOnDevice: capture.backOnDevice,
     remainingMs: capture.remainingMs,
     muted: capture.muted,
-    wakeLock,
+    wakeLock: !capture.screenMayDim,
     makesText,
   });
+  // Stoppa asks first only where it cannot be taken back with Fortsätt spela in: the flow takes no further part of the
+  // recording. Asked from the sign-in dialog, the question opens above it; asked from the page, it is closed while the
+  // login has ended and back after the new one, as the page's other questions are.
+  const signedOut = useSignedOut();
+  const [stopAsked, setStopAsked] = useState<{ signedOut: boolean } | null>(null);
+  const capturing = phase === "recording" || phase === "paused";
+  if (stopAsked && !capturing) setStopAsked(null);
+  const stop = () => (capturing && !session.capture.continuesAfterStop() ? setStopAsked({ signedOut }) : void session.stop());
   return (
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
@@ -277,7 +287,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
       <SignedOutControls
         phase={phase}
         onPause={() => session.togglePause()}
-        onStop={() => void session.stop()}
+        onStop={stop}
       />
       <RecordingBar
         capture={session.capture}
@@ -288,7 +298,21 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
         notes={notes}
         makesText={makesText}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
-        onStop={() => void session.stop()}
+        onStop={stop}
+      />
+      {/* Going on is the safe answer, and has the focus; nothing recorded is lost either way. */}
+      <AlertDialog
+        isOpen={stopAsked !== null && (stopAsked.signedOut || !signedOut)}
+        onOpenChange={(open) => !open && setStopAsked(null)}
+        title="Stoppa inspelningen?"
+        description="Den kan inte fortsätta efteråt. Vill du spela in mer behöver du starta en ny inspelning."
+        cancelLabel="Fortsätt spela in"
+        actionLabel="Stoppa"
+        actionVariant="secondary"
+        onAction={() => {
+          setStopAsked(null);
+          void session.stop();
+        }}
       />
     </>
   );

@@ -99,12 +99,23 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
       "Låt skärmen vara tänd under inspelningen.",
     ],
   });
-  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), {
-    warnings: [
-      { title: "Enheten har inte plats för att spara mer.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
-    ],
-    notes: [],
-  });
+  const full = {
+    title: "Enheten är full.",
+    detail:
+      "Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma Hämtade filer och " +
+      "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
+  };
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), { warnings: [full], notes: [] });
+  assert.deepEqual(
+    recordingNotices({ ...base, persistent: false, refused: "full", lowSpace: true }).warnings,
+    [full],
+    "a full device is said once, not also as one with little room",
+  );
+  assert.deepEqual(
+    recordingNotices({ ...base, backOnDevice: true }),
+    { warnings: [], notes: ["Det finns plats igen, och inspelningen sparas på enheten."] },
+    "back on the device: a calm note in the bar's line",
+  );
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
     { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
   ]);
@@ -256,6 +267,11 @@ test("details a send found missing stay unfolded while they are filled in, until
 test("leaving an upload says it stops, and what is kept of a recording", () => {
   assert.equal(leaveWarning(true, "setup", true), "Sändningen avbryts, och filen behöver väljas igen.");
   assert.equal(leaveWarning(true, "ready", true), "Sändningen avbryts. Det som spelats in finns kvar bland osända inspelningar.");
+  // A full device keeps what came before; only the latest is in this tab, and a saved file would be refused too.
+  const full = leaveWarning(false, "recording", false, "full");
+  assert.match(full, /^Inspelningen stoppas\. Enheten är full, så det senaste av inspelningen finns bara i den här fliken/);
+  assert.match(full, /Det som spelades in innan finns kvar på enheten\. Stanna kvar och frigör utrymme/);
+  assert.doesNotMatch(full, /Spara som fil/);
   assert.equal(
     leaveWarning(false, "ready", true),
     "Sändningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",

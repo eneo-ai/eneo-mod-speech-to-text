@@ -11,7 +11,7 @@ import {
 } from "./recording-store";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus } from "./online-status";
-import { RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
+import { mayContinue, RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
 import { submitRecording } from "./submit-run";
 
 const meeting: NewRecording = {
@@ -136,6 +136,8 @@ async function setup(
     microphone?: { denied?: boolean; wait?: Promise<void> };
     /** The screen's wake lock is granted only once this settles. */
     wakeLock?: Promise<void>;
+    /** The browser's own answer to a wake lock request, in place of one that grants every request. */
+    requestWakeLock?: CaptureDeps["requestWakeLock"];
   } = {},
 ) {
   const store = options.store ?? (await openRecordingStore({}));
@@ -158,15 +160,17 @@ async function setup(
       return recorder as unknown as MediaRecorder;
     },
     now: options.now,
-    requestWakeLock: async () => {
-      wakeLocks.requested += 1;
-      await options.wakeLock;
-      return {
-        release: async () => {
-          wakeLocks.released += 1;
-        },
-      };
-    },
+    requestWakeLock:
+      options.requestWakeLock ??
+      (async () => {
+        wakeLocks.requested += 1;
+        await options.wakeLock;
+        return {
+          release: async () => {
+            wakeLocks.released += 1;
+          },
+        };
+      }),
     page: options.page,
     window: options.window as CaptureDeps["window"],
   };
@@ -1558,4 +1562,172 @@ test("the recorder says when space runs low or the device stops keeping the reco
   assert.match((await texts(await store.readParts(id)))[0], /yz$/, "nothing recorded after the refusal is lost");
   await capture.stop();
   assert.equal(capture.getSnapshot().persistent, false, "the ready state after Stoppa still says so");
+});
+
+/** The device has no room for a chunk until the returned function gives it room again. */
+function fillDevice(): () => void {
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  return () => void (IDBObjectStore.prototype.put = put);
+}
+
+/** A device that fills up during a recording: its store, the store's try of the full device (run by the test), and its database. */
+async function fillingDevice() {
+  const indexedDB = new IDBFactory();
+  const retry = { run: () => {} };
+  const env = { indexedDB, keyRange: IDBKeyRange, locks: fakeWebLocks(), timer: (run: () => void) => void (retry.run = run) };
+  const store = await openRecordingStore(env);
+  const { capture, recorders } = await setup({ store });
+  await capture.start(meeting);
+  const { id } = capture.getSnapshot().recording!;
+  recorders[0].emit("a");
+  const room = fillDevice();
+  try {
+    recorders[0].emit("b");
+    await until(() => capture.getSnapshot().refused === "full", "the full device said");
+  } finally {
+    room(); // the person frees room; the store has not tried the device again yet
+  }
+  return { capture, recorders, store, id, retry: () => retry.run(), otherTab: () => openRecordingStore({ ...env, timer: undefined }) };
+}
+
+test("once the full device has room again the warning goes, a note says the recording is kept on the device again for a moment, and recording goes on there", async (t) => {
+  const { capture, recorders, id, retry, otherTab } = await fillingDevice();
+  assert.deepEqual([capture.getSnapshot().persistent, capture.getSnapshot().backOnDevice], [false, false]);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  retry();
+  await until(() => capture.getSnapshot().refused === null, "back on the device");
+  assert.deepEqual([capture.getSnapshot().persistent, capture.getSnapshot().backOnDevice], [true, true]);
+  t.mock.timers.tick(9_999);
+  assert.equal(capture.getSnapshot().backOnDevice, true);
+  t.mock.timers.tick(1);
+  assert.equal(capture.getSnapshot().backOnDevice, false, "said for ten seconds");
+  recorders[0].emit("c");
+  await until(async () => (await (await otherTab()).get(id))?.parts[0]?.chunks === 3, "the next chunk on the device");
+});
+
+test("Stoppa while the recording goes back onto the device keeps every chunk on the device, in order, and the ready state says it is kept there", async () => {
+  const { capture, recorders, id, retry, otherTab } = await fillingDevice();
+  retry(); // the move is in the store's queue
+  recorders[0].emit("c");
+  const stopped = await capture.stop();
+  assert.equal(stopped?.state, "stopped");
+  assert.equal(capture.getSnapshot().persistent, true);
+  assert.deepEqual(await texts(await (await otherTab()).readPartsToSend(id)), ["abc."], "the device alone has all of it");
+});
+
+test("a full device that has room again after Stoppa takes the recording back, and the ready state follows", async () => {
+  const { capture, retry, id, otherTab } = await fillingDevice();
+  await capture.stop();
+  assert.deepEqual([capture.getSnapshot().persistent, capture.getSnapshot().refused], [false, "full"], "said while only this tab has part of it");
+  retry();
+  await until(() => capture.getSnapshot().persistent, "kept on the device again");
+  assert.equal(capture.getSnapshot().refused, null);
+  assert.equal(capture.getSnapshot().backOnDevice, false, "the note is the recording bar's, which is gone");
+  assert.deepEqual(await texts(await (await otherTab()).readPartsToSend(id)), ["ab."]);
+});
+
+/** The screen's wake lock as the browser hands it out: released by the page, or by the system (`lose`). */
+class FakeWakeLock extends EventTarget {
+  released = false;
+  async release() {
+    this.lose();
+  }
+  lose() {
+    if (this.released) return;
+    this.released = true;
+    this.dispatchEvent(new Event("release"));
+  }
+}
+
+test("a wake lock the browser refuses or lets go of says so, and a later one that is granted takes it back", async () => {
+  const { page, show } = fakePage();
+  let grant = false;
+  const locks: FakeWakeLock[] = [];
+  const { capture } = await setup({
+    page,
+    requestWakeLock: async () => {
+      if (!grant) throw new DOMException("Wake Lock permission request denied", "NotAllowedError");
+      const lock = new FakeWakeLock();
+      locks.push(lock);
+      return lock;
+    },
+  });
+  await capture.start(meeting);
+  assert.equal(capture.getSnapshot().screenMayDim, true, "refused: the screen may go dark");
+
+  grant = true;
+  show("hidden");
+  show("visible"); // asked again, and granted
+  await until(() => !capture.getSnapshot().screenMayDim, "the lock taken back");
+
+  locks[0].lose(); // the system lets it go (a battery saver)
+  assert.equal(capture.getSnapshot().screenMayDim, true, "said at once");
+  show("hidden");
+  show("visible");
+  await until(() => !capture.getSnapshot().screenMayDim, "granted again");
+
+  show("hidden");
+  locks[1].lose(); // every hidden page loses it, and asks again when it is shown
+  assert.equal(capture.getSnapshot().screenMayDim, false, "not said for a hidden page");
+  show("visible");
+  await until(() => locks.length === 3, "asked again");
+  assert.equal(capture.getSnapshot().screenMayDim, false);
+
+  await capture.stop();
+  assert.equal(locks[2].released, true, "the page lets its lock go at Stoppa");
+  assert.equal(capture.getSnapshot().screenMayDim, false, "its own release is no loss");
+});
+
+test("a browser without a wake lock says so, and two requests that cross leave one lock, released at Stoppa", async () => {
+  const none = await setup({ requestWakeLock: async () => null });
+  await none.capture.start(meeting);
+  assert.equal(none.capture.getSnapshot().screenMayDim, true);
+
+  let grant = () => {};
+  const wakeLock = new Promise<void>((resolve) => (grant = resolve));
+  const { page, show } = fakePage();
+  const { capture, wakeLocks } = await setup({ page, wakeLock });
+  const starting = capture.start(meeting); // asks for the lock, and waits
+  await until(() => capture.getSnapshot().status === "recording", "recording");
+  show("hidden");
+  show("visible"); // asks again while the first is unanswered
+  grant();
+  await starting;
+  await until(() => wakeLocks.requested === 2 && wakeLocks.released === 1, "the earlier lock let go");
+  await capture.stop();
+  assert.equal(wakeLocks.released, 2, "and the later one at Stoppa: none is left holding the screen on");
+});
+
+test("a stop can be taken back with Fortsätt spela in only while the flow takes a further part, and the recorder says which", async () => {
+  const one = await setup();
+  await one.capture.start(meeting, { maxBytes: 10 ** 12, maxFiles: 1 });
+  assert.equal(one.capture.continuesAfterStop(), false, "a flow of one file");
+  one.recorders[0].emit("a");
+  one.capture.togglePause();
+  assert.equal(one.capture.continuesAfterStop(), false, "paused too");
+  const stoppedOne = await one.capture.stop();
+  assert.equal(mayContinue(stoppedOne!, { maxBytes: 10 ** 12, maxFiles: 1 }), false, "and the stored recording says the same");
+
+  const two = await setup();
+  await two.capture.start(meeting, { maxBytes: 10 ** 12, maxFiles: 2 });
+  assert.equal(two.capture.continuesAfterStop(), true);
+  two.recorders[0].emit("a");
+  const stoppedTwo = await two.capture.stop();
+  assert.equal(mayContinue(stoppedTwo!, { maxBytes: 10 ** 12, maxFiles: 2 }), true);
+
+  const open = await setup();
+  await open.capture.start(meeting);
+  assert.equal(open.capture.continuesAfterStop(), true, "a flow without limits");
+
+  let now = 0;
+  const timed = await setup({ now: () => now });
+  await timed.capture.start(meeting, { maxFiles: 10, partMs: 30 * 60_000, maxRecordingMs: 60 * 60_000 });
+  now = 50 * 60_000;
+  assert.equal(timed.capture.continuesAfterStop(), true, "time for a part after this one");
+  now = 59 * 60_000;
+  assert.equal(timed.capture.continuesAfterStop(), false, "no time left for another part before the longest recording");
 });

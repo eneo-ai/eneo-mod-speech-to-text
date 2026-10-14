@@ -6,7 +6,7 @@
  */
 import { type CDPSession, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { backLink, chooseMode, fileBackedText, record, result, reviewEditor, run, setup, stop } from "./screens";
+import { backLink, chooseMode, fileBackedText, limitAudio, record, result, reviewEditor, run, setup, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
@@ -203,6 +203,19 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => backLink(page).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // Stoppa where it cannot be taken back (a flow of one file), on a recording paused so that nothing else on the page moves.
+  "stop question": {
+    go: async (page) => {
+      await limitAudio(page, 60 * 60, 1);
+      await setup(page);
+      await record(page, "Spela in");
+      await page.getByRole("button", { name: "Pausa" }).click();
+      await expect(page.getByRole("button", { name: "Fortsätt", exact: true })).toBeVisible();
+    },
+    show: (page) => page.getByRole("toolbar", { name: "Inspelningen" }).getByRole("button", { name: "Stoppa" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Stoppa inspelningen?" }),
+    hide: (page) => page.getByRole("button", { name: "Fortsätt spela in" }).click(),
   },
   // A popover of the setup page: the list of microphones (a bottom sheet on a touch screen, not counted here).
   "microphone picker": {

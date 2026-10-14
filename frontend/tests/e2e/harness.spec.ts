@@ -142,6 +142,25 @@ test("a control that answers a mouse and not a finger is caught on a touch scree
   expect((await sweep(browser, info, deaf, {}, held(info, true))).problems, "a finger's tap is not").toEqual(['button "Spela in" (1 of 1): nothing happened that a person could see']);
 });
 
+test("a hint that goes by itself is waited for, not closed, and one that stays is an overlay left open", async ({ browser }, info) => {
+  // A hint as the design system's keyboard hint is (useKeyboardHint): a manual popover that no Escape closes, its content
+  // hidden from assistive tech, gone after `ms`, or never.
+  const hinting = (ms: number | null) =>
+    fixture("hint", `
+      <main><h1>Prov</h1><button>Visa tipset</button></main>
+      <div id="hint" popover="manual"><span aria-hidden="true">← → för att navigera</span></div>
+      <script>
+        document.querySelector("button").addEventListener("click", () => {
+          document.getElementById("hint").showPopover();
+          ${ms === null ? "" : `setTimeout(() => document.getElementById("hint").hidePopover(), ${ms});`}
+        });
+      </script>`);
+  expect((await sweep(browser, info, hinting(3_000), {}, held(info, false))).problems, "gone after 3 s, as the design system's").toEqual([]);
+  expect((await sweep(browser, info, hinting(null), {}, held(info, false))).problems).toEqual([
+    expect.stringMatching(/^button "Visa tipset" \(1 of 1\): opened hint div:← → för att navigera, and neither Escape nor a close control closed it$/),
+  ]);
+});
+
 test("a control that only a keyboard reaches is pressed with the keyboard where it is declared so, and fails where it is not", async ({ browser }, info) => {
   // Off the screen until it has focus, as a way past a long list is.
   const skip = fixture("skip", `

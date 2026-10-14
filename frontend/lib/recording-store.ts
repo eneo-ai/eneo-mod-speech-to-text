@@ -2,10 +2,11 @@
  * The one owner of recordings on the device. Every MediaRecorder chunk is
  * stored in IndexedDB as it arrives, under the recording id, part and
  * sequence number; a part is a valid audio file when its chunks are joined in
- * order. A crash, reload or expired session therefore loses at most the latest
- * chunk. Without IndexedDB, or when the device refuses a write, the audio is
- * kept in memory and `persistent` turns false: the recording then lives only
- * in this tab.
+ * order. A crash, reload, power cut or expired session therefore loses at most
+ * the latest chunk. Without IndexedDB, or when the device refuses a write, the
+ * audio is kept in memory and `persistent` turns false: the recording then
+ * lives only in this tab. A device that refused for want of room is tried again
+ * until it takes what this tab holds, and the recording is kept on it again.
  */
 
 import type { Json, UploadHandle } from "./api";
@@ -88,6 +89,8 @@ export interface StoreEnv {
   storage?: Pick<StorageManager, "estimate" | "persist"> & Partial<Pick<StorageManager, "persisted">>;
   locks?: Pick<LockManager, "request" | "query">;
   now?: () => number;
+  /** Runs `run` after `ms`: how a full device is tried again. Without it only an estimate that shows room tries it. */
+  timer?: (run: () => void, ms: number) => void;
 }
 
 const DB_NAME = "tal-till-text";
@@ -96,6 +99,8 @@ const RECORDINGS = "recordings";
 const CHUNKS = "chunks";
 // 100 MiB: about 7 hours of speech at the recorder's 32 kbit/s (about 4 at the 54 kbit/s WebKit gives); below this the recorder warns.
 const LOW_SPACE_BYTES = 100 * 1024 * 1024;
+// How often a device that refused audio for want of room is tried again.
+const RETRY_FULL_MS = 20_000;
 
 interface Chunk {
   recordingId: string;
@@ -105,7 +110,8 @@ interface Chunk {
 }
 
 interface Backend {
-  put(recording: StoredRecording, chunk?: Chunk): Promise<void>;
+  /** The recording and its new chunks, all of them or none. */
+  put(recording: StoredRecording, chunks?: Chunk[]): Promise<void>;
   get(id: string): Promise<StoredRecording | undefined>;
   list(): Promise<StoredRecording[]>;
   chunks(id: string, part: number): Promise<Chunk[]>;
@@ -167,15 +173,19 @@ function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: 
     }
   }
   return {
-    async put(recording, chunk) {
+    async put(recording, chunks = []) {
       // Safari cannot always store a Blob in IndexedDB; an ArrayBuffer works everywhere.
-      const data = chunk?.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk?.data;
+      const stored = await Promise.all(
+        chunks.map(async (chunk) => ({ ...chunk, data: chunk.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk.data })),
+      );
       await use(async (db) => {
-        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+        // Strict: on the disk before the write counts as done, so a power cut loses at most the chunk being written. A
+        // browser without the option ignores it and keeps its own default.
+        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite", { durability: "strict" });
         const done = completion(tx);
         try {
           tx.objectStore(RECORDINGS).put(recording);
-          if (chunk) tx.objectStore(CHUNKS).put({ ...chunk, data });
+          for (const chunk of stored) tx.objectStore(CHUNKS).put(chunk);
         } catch (error) {
           done.catch(() => undefined);
           tx.abort();
@@ -209,14 +219,14 @@ export function memoryBackend(): Backend {
   const recordings = new Map<string, StoredRecording>();
   const chunks = new Map<string, Chunk[]>();
   return {
-    async put(recording, chunk) {
+    async put(recording, added = []) {
       recordings.set(recording.id, recording);
-      if (!chunk) return;
+      if (added.length === 0) return;
       // In place: the array is this backend's own (chunks() hands out copies), and a copy per chunk is quadratic over
       // a recording of thousands of chunks.
       const held = chunks.get(recording.id);
-      if (held) held.push(chunk);
-      else chunks.set(recording.id, [chunk]);
+      if (held) added.forEach((chunk) => held.push(chunk));
+      else chunks.set(recording.id, added.slice());
     },
     get: async (id) => recordings.get(id),
     list: async () => [...recordings.values()],
@@ -293,6 +303,8 @@ export class RecordingStore {
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
   private overflowed = new Map<string, DeviceRefusal>();
+  // A try of the full device is waiting on the timer.
+  private retrying = false;
   // The first chunk of the part being recorded, which holds its header: all that is left to play of a part
   // when the device's copy goes (the browser's data is cleared), together with what is recorded after it.
   private heads = new Map<string, { part: number; data: Blob }>();
@@ -498,8 +510,9 @@ export class RecordingStore {
     const type = baseMimetype(recording.mimeType);
     return Promise.all(
       recording.parts.map(async (part) => {
-        // Overflow is sticky, so its chunks follow the database's. The database's are read first and an unreadable
-        // database is the read's failure: audio held in this tab is never taken for all there is, and both copies stay.
+        // What this tab holds follows what the database has (it goes back onto the device only whole). The database's
+        // are read first and an unreadable database is the read's failure: audio held in this tab is never taken for all
+        // there is, and both copies stay.
         const stored = await this.backend.chunks(id, part.index);
         const here = await this.overflow.chunks(id, part.index);
         // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
@@ -652,17 +665,17 @@ export class RecordingStore {
     }
   }
 
+  /** Whether the browser's estimate leaves little room; an estimate with room tries a full device again at once. */
   async lowOnSpace(): Promise<boolean> {
+    let room: number | null = null;
     try {
       const estimate = await this.env.storage?.estimate();
-      return (
-        estimate?.quota != null &&
-        estimate.usage != null &&
-        estimate.quota - estimate.usage < LOW_SPACE_BYTES
-      );
+      if (estimate?.quota != null && estimate.usage != null) room = estimate.quota - estimate.usage;
     } catch {
-      return false;
+      // Not said: not low.
     }
+    if (room !== null && room >= LOW_SPACE_BYTES && this.full().length > 0) void this.retryFull();
+    return room !== null && room < LOW_SPACE_BYTES;
   }
 
   subscribe(listener: () => void): () => void {
@@ -728,7 +741,7 @@ export class RecordingStore {
     );
     const kept = { ...copy, parts };
     this.overflowed.set(id, "lost");
-    await this.overflow.put(kept, head && { recordingId: id, part: head.part, seq: 0, data: head.data });
+    await this.overflow.put(kept, head ? [{ recordingId: id, part: head.part, seq: 0, data: head.data }] : []);
     return kept;
   }
 
@@ -741,17 +754,63 @@ export class RecordingStore {
 
   private async write(recording: StoredRecording, chunk?: Chunk): Promise<void> {
     if (this.leases.has(recording.id)) this.live.set(recording.id, recording);
+    const chunks = chunk ? [chunk] : [];
     if (!this.overflowed.has(recording.id)) {
       try {
-        await this.backend.put(recording, chunk);
+        await this.backend.put(recording, chunks);
         return;
       } catch (error) {
         // Full disk or a lost database connection: keep the rest in this tab.
         const full = error instanceof DOMException && error.name === "QuotaExceededError";
         this.overflowed.set(recording.id, full ? "full" : "failed");
+        if (full) this.retryLater();
       }
     }
-    await this.overflow.put(recording, chunk);
+    await this.overflow.put(recording, chunks);
+  }
+
+  /** The recordings the device refused for want of room. */
+  private full(): string[] {
+    return [...this.overflowed].filter(([, why]) => why === "full").map(([id]) => id);
+  }
+
+  /** A full device is tried again in RETRY_FULL_MS: one timer, however many chunks it refuses meanwhile. */
+  private retryLater(): void {
+    if (this.retrying || !this.env.timer) return;
+    this.retrying = true;
+    this.env.timer(() => {
+      this.retrying = false;
+      void this.retryFull();
+    }, RETRY_FULL_MS);
+  }
+
+  /** In the queue, so no chunk comes between: what the full device refused goes onto it, and is tried again while it has no room. */
+  private retryFull(): Promise<void> {
+    return this.change(async () => {
+      for (const id of this.full()) await this.flush(id);
+      if (this.full().length > 0) this.retryLater();
+    });
+  }
+
+  /**
+   * What this tab holds of a recording goes onto the device in one write: the recording as it is now and every chunk
+   * held here, so the device's copy is whole or as it was, also after a crash in the middle. Then the recording is kept
+   * on the device again, and this tab lets its copy and the lease for it go.
+   */
+  private async flush(id: string): Promise<void> {
+    const recording = await this.overflow.get(id);
+    if (!recording) return;
+    // ponytail: one write, so the device needs room for all of it at once (about 15 MB per hour held at 32 kbit/s);
+    // writing it in pieces needs a recording that says how much of it the device has.
+    const held = (await Promise.all(recording.parts.map((part) => this.overflow.chunks(id, part.index)))).flat();
+    try {
+      await this.backend.put(recording, held);
+    } catch {
+      return; // Still no room: kept here, and tried again.
+    }
+    this.overflowed.delete(id);
+    await this.overflow.delete(id);
+    if (!this.inUse.has(id) && !this.held.has(id)) this.dropLease(id);
   }
 
   private async delete(id: string): Promise<void> {
@@ -796,6 +855,7 @@ export function recordingStore(): Promise<RecordingStore> {
     keyRange: globalThis.IDBKeyRange,
     storage: globalThis.navigator?.storage,
     locks: globalThis.navigator?.locks,
+    timer: (run, ms) => void setTimeout(run, ms),
   });
   return shared;
 }

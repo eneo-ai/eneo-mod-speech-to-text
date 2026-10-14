@@ -601,17 +601,20 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
  * on the device. This browser cannot record, so the flow's one way in is a file. `publish` is Eneo saying something
  * else of the speaker labels while the page is open, and `makeReady` the earlier recording taken up to become a document.
  */
-async function mountAudioSetup(speaker_labels: Record<string, unknown>) {
+async function mountAudioSetup(
+  speaker_labels: Record<string, unknown>,
+  { step = {}, parts = [] }: { step?: Record<string, unknown>; parts?: import("./recording-store").StoredRecording["parts"] } = {},
+) {
   const { createElement, useState } = await import("react");
   const { FlowInput } = await import("../components/flow/FlowInput");
   const { useFlowSession } = await import("../components/flow/useFlowSession");
   const contractWith = (labels: Record<string, unknown>) =>
     ({
       ...IBIC_CONTRACT,
-      steps_requiring_input: [{ step_id: "step-audio", input_format: "audio" }],
+      steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", ...step }],
       transcription: { live: { available: false, reason: null }, speaker_labels: labels },
     }) as unknown as import("./api").RunContract;
-  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state: "stopped", parts: [], runId: null } as import("./recording-store").StoredRecording;
+  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state: "stopped", parts, runId: null } as import("./recording-store").StoredRecording;
   let publish: (labels: Record<string, unknown>) => void = () => undefined;
   let makeReady = () => {};
   function Setup() {
@@ -727,6 +730,36 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   } finally {
     store.remove = remove;
     await view.unmount();
+    delete (window as { MediaRecorder?: unknown }).MediaRecorder;
+    delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
+    if (microphones) Object.defineProperty(navigator, "mediaDevices", microphones);
+    else delete (navigator as { mediaDevices?: unknown }).mediaDevices;
+  }
+});
+
+test("a recording the flow takes no further part of offers no Fortsätt spela in when it is ready, since that could only be refused", async () => {
+  // A browser that records, so the ready state has "Fortsätt spela in" to offer.
+  const microphones = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { addEventListener() {}, removeEventListener() {}, enumerateDevices: async () => [] } });
+  const recorder = { isTypeSupported: () => true };
+  Object.assign(window, { MediaRecorder: recorder });
+  Object.assign(globalThis, { MediaRecorder: recorder });
+  const labels = { selectable: false, required: true, default: true };
+  const part = { index: 0, startedAt: 0, durationMs: 60_000, bytes: 1_000, chunks: 30, fileId: null };
+  try {
+    for (const [maxFiles, expected] of [
+      [1, ["Spara som fil", "Skapa dokument", "Ta bort"]],
+      [2, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"]],
+    ] as const) {
+      const { view, offered, makeReady } = await mountAudioSetup(labels, { step: { max_files: maxFiles }, parts: [part] });
+      try {
+        await view.act(async () => makeReady());
+        assert.deepEqual(offered(), expected, `a flow of ${maxFiles} file(s), and a recording of one`);
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
     delete (window as { MediaRecorder?: unknown }).MediaRecorder;
     delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
     if (microphones) Object.defineProperty(navigator, "mediaDevices", microphones);

@@ -138,7 +138,7 @@ export async function stop(page: Page) {
 }
 
 /** The flow takes audio in `files` files of at most `seconds` each (Eneo's max_duration_seconds). */
-async function limitAudio(page: Page, seconds: number, files: number) {
+export async function limitAudio(page: Page, seconds: number, files: number) {
   await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
     const contract = await (await route.fetch()).json();
     contract.steps_requiring_input = contract.steps_requiring_input.map((step: object) => ({
@@ -859,9 +859,20 @@ export const STATES: State[] = [
           return put.apply(this, args);
         };
       });
-      await recordingSays(page, /^Enheten har inte plats för att spara mer\./, () =>
+      await recordingSays(page, /^Enheten är full\./, () =>
         page.evaluate(() => ((window as unknown as { diskFull?: boolean }).diskFull = true)),
       );
+    },
+  },
+  {
+    name: "stop-question",
+    go: async (page) => {
+      // A flow of one file: a stop cannot be taken back with Fortsätt spela in, so Stoppa asks first.
+      await limitAudio(page, 60 * 60, 1);
+      await setup(page);
+      await record(page, "Spela in");
+      await page.getByRole("toolbar", { name: "Inspelningen" }).getByRole("button", { name: "Stoppa" }).click();
+      await expect(page.getByRole("alertdialog", { name: "Stoppa inspelningen?" })).toBeVisible();
     },
   },
   {

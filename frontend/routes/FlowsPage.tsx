@@ -24,7 +24,7 @@ import {
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
-import { sendRecordingAddress } from "@/lib/flow-address";
+import { continueRecordingAddress, sendRecordingAddress } from "@/lib/flow-address";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
@@ -85,12 +85,15 @@ function FlowsListPage() {
           <VStack gap={8} paddingBlockStart={4} maxWidth={960}>
             <Heading level={1}>Välj ett flöde</Heading>
 
+            {/* Each action goes on in the recording's flow; beside the flows, none is the page's filled action. */}
             <UnsentRecordings
               list={unsent}
               withFlowName
               evictable={evictable}
+              filled={false}
               sendLabel={(recording) => createLabel(recording.flowId)}
               onSend={(recording) => void navigate(sendRecordingAddress(recording.flowId, recording.id))}
+              onContinue={(recording) => void navigate(continueRecordingAddress(recording.flowId, recording.id))}
             />
 
             {problem ? (

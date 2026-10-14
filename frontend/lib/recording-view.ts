@@ -74,6 +74,7 @@ export function recordingNotices({
   remainingMs,
   muted,
   wakeLock,
+  backOnDevice = false,
   makesText = false,
 }: {
   phase: SessionPhase;
@@ -81,6 +82,8 @@ export function recordingNotices({
   lowSpace: boolean;
   persistent: boolean;
   refused: DeviceRefusal | null;
+  /** The device was full and keeps the recording again. */
+  backOnDevice?: boolean;
   /** Recording time the flow still takes; null when it sets no end. */
   remainingMs: number | null;
   /** The microphone's track is muted for now (a headset changing its route). */
@@ -107,24 +110,32 @@ export function recordingNotices({
   if (phase === "recording" && silent) {
     warnings.push({ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." });
   }
-  if (lowSpace) {
+  if (lowSpace && refused !== "full") {
     warnings.push({ title: "Det finns lite lagringsutrymme kvar på enheten.", detail: "Frigör utrymme om du ska spela in länge." });
   }
-  if (refused) {
+  if (refused === "full") {
+    // Nothing stops, and the store moves what only this tab has onto the device once it has room: freeing room is the way
+    // to keep it (a full disk would refuse Spara som fil too).
+    warnings.push({
+      title: "Enheten är full.",
+      detail:
+        "Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma Hämtade filer och " +
+        "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
+    });
+  } else if (refused) {
     // Nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
     // The device's copy gone (its data cleared) is more than a device that stops keeping: what came before may be lost.
     const [cause, before] =
-      refused === "full"
-        ? ["Enheten har inte plats för att spara mer.", ""]
-        : refused === "lost"
-          ? ["Inspelningen kan inte längre sparas på enheten.", "Det som spelats in tidigare kan ha försvunnit. "]
-          : ["Enheten kan inte spara mer av inspelningen.", ""];
+      refused === "lost"
+        ? ["Inspelningen kan inte längre sparas på enheten.", "Det som spelats in tidigare kan ha försvunnit. "]
+        : ["Enheten kan inte spara mer av inspelningen.", ""];
     warnings.push({ title: cause, detail: `${before}Inspelningen fortsätter, men välj Spara som fil när du stoppar.` });
   } else if (!persistent) {
     notes.push(
       `Inspelningen sparas bara i den här fliken. Stäng inte fliken innan ${makesText ? "texten är skapad" : "dokumentet är skapat"}.`,
     );
   }
+  if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
   return { warnings, notes };
 }
@@ -168,10 +179,18 @@ export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: 
  * only when the device keeps it; otherwise leaving loses it, and the way to
  * keep it is "Spara som fil" (after Stoppa, while recording).
  */
-export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false): string {
+export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false, refused: DeviceRefusal | null = null): string {
   if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
   const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
   const stops = sending ? "Sändningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
+  // A full device holds what came before; only what came after is in this tab, and a full disk would refuse a saved
+  // file too: room is the way to keep it, not Spara som fil.
+  if (refused === "full") {
+    return (
+      `${stops}Enheten är full, så det senaste av inspelningen finns bara i den här fliken och försvinner när du lämnar ` +
+      "sidan. Det som spelades in innan finns kvar på enheten. Stanna kvar och frigör utrymme, så sparas resten där."
+    );
+  }
   if (persistent) return `${stops}Det som spelats in finns kvar bland osända inspelningar.`;
   const lost = `${stops}${capturing ? "Den" : "Inspelningen"} finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"

@@ -128,7 +128,7 @@ test("someone else signed in: the dialog says who, and whom to sign in as, and s
   assert.equal(button(dialog, "Stäng"), null);
 });
 
-test("signed out, a recording can still be paused and stopped from the sign-in dialog, without logging in", async () => {
+test("signed out, a recording can still be paused and stopped from the sign-in dialog, without logging in", async (t) => {
   const { createElement } = await import("react");
   const { SessionEndWarning } = await import("../components/SessionEndWarning");
   const { SignedOutSlot } = await import("../components/AuthGate");
@@ -150,8 +150,15 @@ test("signed out, a recording can still be paused and stopped from the sign-in d
       { value: slot },
       createElement(SignedOutControls, { phase, onPause: () => pressed.push("pausa"), onStop: () => pressed.push("stoppa") }),
     );
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const page = await mount(recorder("recording"));
   assert.match(dialog.textContent ?? "", /En inspelning som pågår fortsätter och sparas på enheten\./, "said of a recording that runs, not of one that has stopped");
+  // The dialog comes up under a finger busy on the page: a tap in its first moment is not taken as Pausa or Stoppa.
+  await page.act(async () => button(dialog, "Stoppa")!.click());
+  t.mock.timers.tick(699);
+  await page.act(async () => button(dialog, "Pausa")!.click());
+  assert.deepEqual(pressed, [], "a press within 700 ms of the controls appearing does nothing");
+  t.mock.timers.tick(1);
   await page.act(async () => button(dialog, "Pausa")!.click());
   const stop = button(dialog, "Stoppa")!;
   stop.focus();

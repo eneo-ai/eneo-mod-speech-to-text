@@ -20,8 +20,20 @@ import type { RecordingCapture } from "@/lib/recording-session";
 import { stopLine } from "@/lib/recording-view";
 import styles from "./Recorder.module.css";
 
-// Pausa and Stoppa appear under the finger that tapped Starta: a double tap's second tap must not end the meeting.
+// Pausa and Stoppa appear under the finger that tapped Starta (or on the page, in the sign-in dialog): a double tap's
+// second tap must not end the meeting.
 const SETTLE_MS = 700;
+
+/** Wraps an action so that a press within SETTLE_MS of the controls appearing does nothing. */
+function useSettled() {
+  const shownAt = useRef<number | null>(null);
+  useEffect(() => {
+    shownAt.current = Date.now();
+  }, []);
+  return (act: () => void) => () => {
+    if (shownAt.current !== null && Date.now() - shownAt.current >= SETTLE_MS) act();
+  };
+}
 
 /** "Spelar in" with the red dot while the recorder records; "Pausad" otherwise. Never colour alone. */
 function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
@@ -120,13 +132,7 @@ export function RecordingBar({
   onStop: () => void;
 }) {
   const running = phase === "recording";
-  const shownAt = useRef<number | null>(null);
-  useEffect(() => {
-    shownAt.current = Date.now();
-  }, []);
-  const settled = (act: () => void) => () => {
-    if (shownAt.current !== null && Date.now() - shownAt.current >= SETTLE_MS) act();
-  };
+  const settled = useSettled();
   const marker = showStatus ? "" : undefined;
   const readout = (
     <div className={styles.readout}>
@@ -196,7 +202,13 @@ export function RecordingBar({
 export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPhase; onPause: () => void; onStop: () => void }) {
   const slot = useContext(SignedOutSlot);
   if (!slot || (phase !== "recording" && phase !== "paused")) return null;
-  return createPortal(
+  return createPortal(<SignedOutControlGroup phase={phase} onPause={onPause} onStop={onStop} />, slot);
+}
+
+/** Mounted when the dialog shows the controls, so a press in the moment they appear is ignored, as on the bar. */
+function SignedOutControlGroup({ phase, onPause, onStop }: { phase: SessionPhase; onPause: () => void; onStop: () => void }) {
+  const settled = useSettled();
+  return (
     <HStack role="group" aria-label="Inspelningen" gap={2} wrap="wrap" justify="between" align="center">
       <RecordingStatus phase={phase} />
       <HStack gap={2}>
@@ -204,13 +216,12 @@ export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPh
           label={phase === "recording" ? "Pausa" : "Fortsätt"}
           variant="secondary"
           icon={<Icon icon={phase === "recording" ? Pause : Play} size="sm" />}
-          onClick={onPause}
+          onClick={settled(onPause)}
         />
         {/* Not the filled button it is on the recording's own page: the dialog's one action is the new login. */}
-        <Button label="Stoppa" variant="secondary" icon={<Icon icon="stop" size="sm" />} onClick={onStop} />
+        <Button label="Stoppa" variant="secondary" icon={<Icon icon="stop" size="sm" />} onClick={settled(onStop)} />
       </HStack>
-    </HStack>,
-    slot,
+    </HStack>
   );
 }
 
