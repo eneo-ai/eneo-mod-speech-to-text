@@ -1,6 +1,6 @@
 - main:
   - heading "Dokumentet är klart" [level=1]
-  - paragraph: /Skapad i dag \d+:\d+/
+  - paragraph: /Nämndmöte till rapport · Skapad i dag \d+:\d+/
   - button "Ny inspelning"
   - tablist "Visa":
     - tab "Dokument" [selected]

@@ -970,7 +970,7 @@ test("the way back: a link to the flow list named Alla flöden, a router link", 
 test("the phone top bar's back chevron is named like every other way back", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount((await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }))).tree);
+  const view = await mount((await signedIn(createElement(FlowFrame, { children: null }))).tree);
   const chevron = view.container.querySelector('[role="banner"] a[aria-label="Alla flöden"]');
   assert.ok(chevron, "the arrow in the bar is named like every other way back");
   assert.equal(chevron.getAttribute("href"), "/flows");
@@ -1116,7 +1116,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     return createElement(
       LeaveContext.Provider,
       { value: leaving },
-      createElement(FlowFrame, { title: "Sammanfattning", titleIsHeading: false, children: null }),
+      createElement(FlowFrame, { children: null }),
       leaving.question,
     );
   }

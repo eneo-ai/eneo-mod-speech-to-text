@@ -189,8 +189,8 @@ export function RunResult({
           </Heading>
           {finished && (
             <Text as="p" type="supporting">
-              {/* On a phone the top bar already names the flow. */}
-              {wide && `${flowName} · `}
+              {/* The flow's name at every width: the top bar holds no name. */}
+              {flowName} ·{" "}
               Skapad {formatRelativeDate(finished)}
               {fromReviewed && " från den rättade transkriberingen"}
             </Text>

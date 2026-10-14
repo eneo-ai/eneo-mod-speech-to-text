@@ -125,6 +125,7 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Navigation
 - The header has one persistent “Alla flöden” link in the navigation group. It names its destination; leaving unsent work uses the existing leave question.
+- The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow in its own first line (the review's "Väntar på din granskning", the result's date line).
 
 ### Version
 - Folded under “Version” at the end of the flow list: the release (no row without one), the commit and the build time as a key-value list, then Kopiera supportinformation and the commit on GitHub. Not in the account menu, whose rows fill Astryx's 300 px menu on a touch screen.

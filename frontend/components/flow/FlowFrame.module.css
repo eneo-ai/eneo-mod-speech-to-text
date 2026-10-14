@@ -110,24 +110,10 @@
   display: contents;
 }
 
-/* What shows only on one side of the laptop breakpoint: they set no display of their own, so the component's
-   own (flex, inline-flex) stands where it shows. */
+/* What shows only from the laptop breakpoint: it sets no display of its own, so the component's own (flex,
+   inline-flex) stands where it shows. */
 @media (max-width: 1023.98px) {
   .fromLaptop {
-    display: none;
-  }
-}
-
-@media (min-width: 1024px) {
-  .belowLaptop {
-    display: none;
-  }
-}
-
-/* The flow's name beside the way back and the account, where a phone has room for it; on the narrowest the view's own
-   heading names what it is. */
-@media (max-width: 359.98px) {
-  .besideTheWayBack {
     display: none;
   }
 }

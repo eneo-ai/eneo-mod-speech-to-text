@@ -715,8 +715,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const inputStep = selectRuntimeInputStep(contract);
     if (runOutcome(run.run.status) === "succeeded") {
       return (
-        // The result has its own layout; its heading names the state, so the flow's name is not the heading.
-        <FlowFrame title={published.name} titleIsHeading={false}>
+        // The result has its own layout; its heading names the state, and the line under it the flow.
+        <FlowFrame>
           <RunResult
             flowId={flowId}
             flowName={published.name}
