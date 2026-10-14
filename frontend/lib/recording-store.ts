@@ -2,10 +2,10 @@
  * The one owner of recordings on the device. Every MediaRecorder chunk is
  * stored in IndexedDB as it arrives, under the recording id, part and
  * sequence number; a part is a valid audio file when its chunks are joined in
- * order. A crash, reload or expired session therefore loses at most the latest
- * chunk. Without IndexedDB, or when the device refuses a write, the audio is
- * kept in memory and `persistent` turns false: the recording then lives only
- * in this tab.
+ * order. A crash, reload, power cut or expired session therefore loses at most
+ * the latest chunk. Without IndexedDB, or when the device refuses a write, the
+ * audio is kept in memory and `persistent` turns false: the recording then
+ * lives only in this tab.
  */
 
 import type { Json } from "./api";
@@ -169,7 +169,9 @@ function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: 
       // Safari cannot always store a Blob in IndexedDB; an ArrayBuffer works everywhere.
       const data = chunk?.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk?.data;
       await use(async (db) => {
-        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+        // Strict: on the disk before the write counts as done, so a power cut loses at most the chunk being written. A
+        // browser without the option ignores it and keeps its own default.
+        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite", { durability: "strict" });
         const done = completion(tx);
         try {
           tx.objectStore(RECORDINGS).put(recording);

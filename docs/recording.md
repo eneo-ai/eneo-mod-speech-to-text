@@ -8,7 +8,7 @@ Innan en del laddas upp får WebM-filen det en spelare behöver. Chrome skriver 
 
 ## Inspelningen sparas på enheten
 
-Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). När lagringen fungerar finns de sparade bitarna kvar efter en omladdning, en krasch eller en utgången session; den senaste biten kan gå förlorad.
+Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). Varje skrivning ligger på disken innan den räknas som klar (IndexedDB:s `durability: "strict"`; en webbläsare utan det alternativet använder sitt eget standardläge). När lagringen fungerar finns de sparade bitarna kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session; den senaste biten kan gå förlorad.
 
 - Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**.
 - Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**. Appen har ingen automatisk tidsgräns för osända inspelningar.

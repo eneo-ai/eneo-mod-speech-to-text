@@ -531,6 +531,25 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   assert.equal(store.refused(other.id), "failed", "a refusal that is not a full device");
 });
 
+test("audio and the recording's state are on the disk before a write counts as done, so a power cut loses at most the chunk being written", async () => {
+  const durability = new Set<string>();
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    durability.add(`${this.name}: ${this.transaction.durability}`);
+    return put.apply(this, args);
+  };
+  try {
+    const store = await openRecordingStore(device());
+    const recording = await store.create(meeting);
+    await store.startPart(recording.id);
+    await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+    await store.setState(recording.id, "stopped");
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  assert.deepEqual([...durability].sort(), ["chunks: strict", "recordings: strict"]);
+});
+
 /**
  * A device whose open connections a test can close for real, as a browser does when it drops one, and whose next opens it
  * can refuse. The database underneath is fake-indexeddb's: a closed connection throws InvalidStateError on its next
