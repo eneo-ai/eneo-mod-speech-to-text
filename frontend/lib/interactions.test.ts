@@ -603,7 +603,10 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
  */
 async function mountAudioSetup(
   speaker_labels: Record<string, unknown>,
-  { step = {}, parts = [] }: { step?: Record<string, unknown>; parts?: import("./recording-store").StoredRecording["parts"] } = {},
+  {
+    step = {},
+    parts = [{ index: 0, startedAt: 0, durationMs: 60_000, bytes: 240_000, chunks: 30, fileId: null }],
+  }: { step?: Record<string, unknown>; parts?: import("./recording-store").StoredRecording["parts"] } = {},
 ) {
   const { createElement, useState } = await import("react");
   const { FlowInput } = await import("../components/flow/FlowInput");

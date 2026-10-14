@@ -23,7 +23,7 @@ import type { LiveSession, Problem } from "@/lib/flow-session";
 import { createActionLabel } from "@/lib/flow-output";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
-import { recordingStore, type StoredRecording } from "@/lib/recording-store";
+import { hasAudio, recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
 
 /** How long a recording's addresses outlive the player that read them. */
@@ -154,8 +154,11 @@ export function ReadyPanel({
   }, [confirming]);
   const name = recordingName(recording.startedAt);
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
-  // Stopped a moment after it started, most likely by mistake: going on is the likely next step.
-  const moment = onContinue !== undefined && recording.durationMs < 2_000;
+  // No audio reached the device: nothing to make or save, only going on and deleting.
+  const audio = hasAudio(recording);
+  const create = audio ? onCreate : undefined;
+  // Stopped a moment after it started, most likely by mistake, or with nothing kept: going on is the likely next step.
+  const moment = onContinue !== undefined && (recording.durationMs < 2_000 || !audio);
 
   async function save() {
     setSaveProblem(null);
@@ -182,26 +185,30 @@ export function ReadyPanel({
       {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
       {live && <LiveDraft live={live} makesText={makesText} />}
 
-      <HStack gap={4} wrap="wrap" align="center">
-        <Button label="Spara som fil" variant="secondary" icon={<Icon icon={Download} size="sm" />} onClick={() => void save()} />
-        <StackItem size="fill">
-          <Text as="p" type="supporting">
-            {persistent
-              ? `Inspelningen finns kvar på enheten tills ${made}.`
-              : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
-          </Text>
-        </StackItem>
-      </HStack>
+      {audio ? (
+        <HStack gap={4} wrap="wrap" align="center">
+          <Button label="Spara som fil" variant="secondary" icon={<Icon icon={Download} size="sm" />} onClick={() => void save()} />
+          <StackItem size="fill">
+            <Text as="p" type="supporting">
+              {persistent
+                ? `Inspelningen finns kvar på enheten tills ${made}.`
+                : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
+            </Text>
+          </StackItem>
+        </HStack>
+      ) : (
+        <Text as="p">Inget ljud sparades i den här inspelningen.</Text>
+      )}
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {problem && <ProblemAlert problem={problem} reveal />}
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
-      {moment && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
-      {(onCreate || onContinue) && (
+      {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
+      {(create || onContinue) && (
         <VStack gap={0}>
           <Grid columns={{ minWidth: 220, repeat: "fit" }} gap={3}>
-            {onCreate && (
+            {create && (
               <Button
                 variant={moment ? "secondary" : "primary"}
                 size="lg"
@@ -212,7 +219,7 @@ export function ReadyPanel({
                 // name stays; the button shows a spinner meanwhile, and the line under it says why.
                 isLoading={finishing}
                 isInterruptible
-                onClick={onCreate}
+                onClick={create}
               />
             )}
             {onContinue && (

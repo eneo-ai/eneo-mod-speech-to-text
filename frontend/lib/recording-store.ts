@@ -268,6 +268,11 @@ export function continuable(recording: StoredRecording): boolean {
   return recording.state === "recording" || recording.state === "paused";
 }
 
+/** Whether any audio reached the device: a recording without is nothing to send or save, only to go on with or delete. */
+export function hasAudio(recording: StoredRecording): boolean {
+  return recording.parts.some((part) => part.bytes > 0);
+}
+
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
 function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);

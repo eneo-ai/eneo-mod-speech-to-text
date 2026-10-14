@@ -13,6 +13,7 @@ import { saveRecordingAsFiles } from "@/components/save-recording";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
   continuable,
+  hasAudio,
   IN_USE_ELSEWHERE,
   recordingStore,
   type StoredRecording,
@@ -194,6 +195,8 @@ function UnsentRecordingRow({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
   const wasConfirming = useRef(false);
+  // No audio reached the device: nothing to send or save, only going on with it and deleting it.
+  const audio = hasAudio(recording);
 
   // Focus follows the question: to "Avbryt" when it opens, back to "Ta bort" when it closes.
   useEffect(() => {
@@ -238,16 +241,19 @@ function UnsentRecordingRow({
               <Text as="p" color="secondary">
                 {recordingDetails(recording, { withFlowName })}
               </Text>
+              {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
             </VStack>
           </HStack>
           {recording.exportOnly ? (
-            // Without Web Locks another tab may still hold it: here it is only read.
-            <VStack gap={2} hAlign="start">
-              <Text as="p" color="secondary">
-                I den här webbläsaren kan den bara sparas som fil.
-              </Text>
-              <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
-            </VStack>
+            // Without Web Locks another tab may still hold it: here it is only read, as a file when it has audio.
+            audio && (
+              <VStack gap={2} hAlign="start">
+                <Text as="p" color="secondary">
+                  I den här webbläsaren kan den bara sparas som fil.
+                </Text>
+                <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
+              </VStack>
+            )
           ) : confirming ? (
             <VStack role="group" aria-labelledby={questionId} gap={2} hAlign="start">
               <Text as="p" id={questionId}>
@@ -269,8 +275,8 @@ function UnsentRecordingRow({
                     onClick={() => onContinue(recording)}
                   />
                 )}
-                {onSend && <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />}
-                <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
+                {onSend && audio && <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />}
+                {audio && <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />}
               </HStack>
               <Button
                 ref={deleteRef}
