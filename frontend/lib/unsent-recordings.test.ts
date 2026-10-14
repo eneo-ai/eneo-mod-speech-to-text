@@ -278,12 +278,12 @@ test("a recording another tab holds is listed with why nothing can be done with 
   const { useUnsentRecordings } = await import("../components/UnsentRecordings");
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const { listUnsent, listHeldElsewhere, mayChange } = store;
+  const { listUnsentGroups, mayChange } = store;
   const mine = recording("a", 60_000, at(23, 10, 12));
   const recordedElsewhere = { ...recording("b", 60_000, at(23, 11, 0)), state: "recording" as const };
   let elsewhere = [recordedElsewhere];
-  store.listUnsent = async () => [mine];
-  store.listHeldElsewhere = async () => elsewhere;
+  let offered = [mine];
+  store.listUnsentGroups = async () => ({ offered, elsewhere });
   store.mayChange = () => true;
   function Unsent() {
     return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, onContinue: () => {}, sendLabel: () => "Skapa dokument" });
@@ -299,13 +299,12 @@ test("a recording another tab holds is listed with why nothing can be done with 
 
     // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
     elsewhere = [];
-    store.listUnsent = async () => [recordedElsewhere, mine];
+    offered = [recordedElsewhere, mine];
     await act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
     await act(async () => undefined);
     assert.deepEqual(labels(rowsOf(container)[0]), ["Fortsätt spela in", "Skapa dokument", "Spara som fil", "Ta bort"]);
   } finally {
-    store.listUnsent = listUnsent;
-    store.listHeldElsewhere = listHeldElsewhere;
+    store.listUnsentGroups = listUnsentGroups;
     store.mayChange = mayChange;
   }
 });
@@ -314,11 +313,11 @@ test("recordings the device's store cannot list are not passed over: a notice st
   const { useUnsentRecordings } = await import("../components/UnsentRecordings");
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const listUnsent = store.listUnsent;
+  const listUnsentGroups = store.listUnsentGroups;
   let readable = false;
-  store.listUnsent = async () => {
+  store.listUnsentGroups = async () => {
     if (!readable) throw new Error("the database is not readable");
-    return [recording("a", 60_000, at(23, 10, 12))];
+    return { offered: [recording("a", 60_000, at(23, 10, 12))], elsewhere: [] };
   };
   function Unsent() {
     return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, sendLabel: () => "Skapa dokument" });
@@ -334,6 +333,6 @@ test("recordings the device's store cannot list are not passed over: a notice st
     assert.doesNotMatch(container.textContent!, /Kunde inte läsa/);
     assert.equal(rowsOf(container).length, 1, "the recording is listed once the store can be read");
   } finally {
-    store.listUnsent = listUnsent;
+    store.listUnsentGroups = listUnsentGroups;
   }
 });

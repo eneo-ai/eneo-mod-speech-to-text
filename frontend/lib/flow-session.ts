@@ -18,7 +18,7 @@ import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { isRecord } from "./is-record";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
-import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
+import { END_UNCONFIRMED, RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes, formatDuration } from "./format";
 import type { LivePiece, LiveSnapshot } from "./live-transcriber";
@@ -1177,6 +1177,7 @@ export class FlowSession {
       this.ready = recording;
       // A stop at the flow's size limit says so; what was recorded is kept.
       if (error) this.problem = { title: error };
+      else if (this.problem?.title === END_UNCONFIRMED) this.problem = null;
     }
     if (status === "recording") this.problem = null;
     this.emit();

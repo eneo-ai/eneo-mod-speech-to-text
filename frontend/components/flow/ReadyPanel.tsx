@@ -23,6 +23,7 @@ import type { LiveSession, Problem } from "@/lib/flow-session";
 import { createActionLabel } from "@/lib/flow-output";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
+import { END_UNCONFIRMED } from "@/lib/recording-session";
 import { filesIn, hasAudio, recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
 
@@ -36,7 +37,7 @@ function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; 
   // The audio is read again only when it changes: the stored recording is a new object whenever anything about it is
   // written (an uploaded part's file id, the send), and an address taken away while the player still loads it is an
   // error in Safari ("WebKitBlobResource error 1"), and a player that starts over.
-  const audio = `${recording.id}|${recording.parts.map((part) => `${part.index}:${part.durationMs}`).join(",")}`;
+  const audio = `${recording.id}|${recording.parts.map((part) => `${part.index}:${part.durationMs}:${part.bytes}:${part.chunks}`).join(",")}`;
   useEffect(() => {
     let cancelled = false;
     let urls: string[] = [];
@@ -157,7 +158,8 @@ export function ReadyPanel({
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
   // No audio reached the device: nothing to make or save, only going on and deleting.
   const audio = hasAudio(recording);
-  const create = audio ? onCreate : undefined;
+  const awaitingStop = recording.parts.some((part) => part.endConfirmed === false);
+  const create = audio && !awaitingStop ? onCreate : undefined;
   // Stopped a moment after it started, most likely by mistake, or with nothing kept: going on is the likely next step.
   const moment = onContinue !== undefined && (recording.durationMs < 2_000 || !audio);
 
@@ -205,7 +207,8 @@ export function ReadyPanel({
       )}
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
-      {problem && <ProblemAlert problem={problem} reveal />}
+      {awaitingStop && <ProblemAlert problem={{ title: "Webbläsaren har inte bekräftat inspelningens stopp.", detail: "Spara ljudet som fil för att behålla det. Du kan sedan ladda upp filen i en ny inspelning." }} />}
+      {problem && !(awaitingStop && problem.title === END_UNCONFIRMED) && <ProblemAlert problem={problem} reveal />}
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}

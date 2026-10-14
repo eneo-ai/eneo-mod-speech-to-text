@@ -7,10 +7,18 @@ export async function saveRecordingFile(
   recordingId: string,
   nth = 0,
   openStore: () => Promise<Pick<RecordingStore, "readFile">> = recordingStore,
-): Promise<void> {
-  const file = await (await openStore()).readFile(recordingId, nth);
-  if (!file) throw new Error(NOT_ON_DEVICE);
-  downloadBlob(file.blob, file.filename);
+  files = nth + 1,
+): Promise<number> {
+  const store = await openStore();
+  for (let at = nth; at < files; at += 1) {
+    // A successful read with no surviving audio is a missing part, not a storage failure. Try the next part; a failed
+    // database read throws and leaves the cursor where it was, so retry never skips audio that might still be there.
+    const file = await store.readFile(recordingId, at);
+    if (!file) continue;
+    downloadBlob(file.blob, file.filename);
+    return at + 1;
+  }
+  throw new Error(NOT_ON_DEVICE);
 }
 
 /**
@@ -31,8 +39,7 @@ export function useSaveRecording(recordingId: string, files: number) {
     saving.current = true;
     setBusy(true);
     try {
-      await saveRecordingFile(recordingId, at);
-      setNext(at + 1);
+      setNext(await saveRecordingFile(recordingId, at, recordingStore, files));
       return true;
     } catch {
       return false;

@@ -31,6 +31,8 @@ interface RecordingPart {
   durationMs: number;
   bytes: number;
   chunks: number;
+  /** False while the recorder may still deliver final audio. Absent on recordings made before this field existed. */
+  endConfirmed?: boolean;
   /** Eneo's file id once this part is uploaded. */
   fileId: string | null;
   /** The module's resource for this part's upload in parts, until the file id is known: a later send continues it. */
@@ -420,6 +422,13 @@ export class RecordingStore {
     }));
   }
 
+  setPartEndConfirmed(id: string, part: number, endConfirmed: boolean): Promise<void> {
+    return this.update(id, (recording) => ({
+      ...recording,
+      parts: recording.parts.map((p) => p.index === part ? { ...p, endConfirmed } : p),
+    }));
+  }
+
   /** The part's upload in parts was made or asked to complete; null once it is gone. */
   setPartUpload(id: string, part: number, upload: UploadHandle | null): Promise<void> {
     return this.update(id, (recording) => ({
@@ -482,28 +491,34 @@ export class RecordingStore {
 
   /** Recordings Eneo has not accepted as a run, newest first, except those being captured. */
   listUnsent(ownerId: string): Promise<StoredRecording[]> {
-    return this.unsent(ownerId, false);
+    return this.listUnsentGroups(ownerId).then(({ offered }) => offered);
   }
 
   /** Unsent recordings another tab holds now (it records, shows, sends or deletes one): told of, never offered here. */
   listHeldElsewhere(ownerId: string): Promise<StoredRecording[]> {
-    return this.unsent(ownerId, true);
+    return this.listUnsentGroups(ownerId).then(({ elsewhere }) => elsewhere);
   }
 
-  private unsent(ownerId: string, elsewhere: boolean): Promise<StoredRecording[]> {
+  /** One recording and lock snapshot, so a lease moving between tabs cannot put a recording into both groups. */
+  listUnsentGroups(ownerId: string): Promise<{ offered: StoredRecording[]; elsewhere: StoredRecording[] }> {
     return this.serial(async () => {
       const locks = await this.env.locks?.query().catch(() => null);
       const held = new Set(locks?.held?.map((lock) => lock.name) ?? []);
-      return (await this.all())
+      const recordings = (await this.all())
         .filter(
           (r) =>
             r.ownerId === ownerId &&
             r.state !== "submitted" &&
-            !this.inUse.has(r.id) &&
-            // A lock this tab keeps is its own; any other held lock is another tab's.
-            (!this.leases.has(r.id) && held.has(lockName(r.id))) === elsewhere,
+            !this.inUse.has(r.id),
         )
         .sort((a, b) => b.startedAt - a.startedAt);
+      const groups: { offered: StoredRecording[]; elsewhere: StoredRecording[] } = { offered: [], elsewhere: [] };
+      for (const recording of recordings) {
+        // A lock this tab keeps is its own; any other held lock is another tab's.
+        const elsewhere = !this.leases.has(recording.id) && held.has(lockName(recording.id));
+        groups[elsewhere ? "elsewhere" : "offered"].push(recording);
+      }
+      return groups;
     });
   }
 
@@ -533,6 +548,10 @@ export class RecordingStore {
    */
   readPartsToSend(id: string): Promise<RecordingFile[]> {
     return this.serial(async () => {
+      const recording = await this.load(id);
+      if (recording?.parts.some((part) => part.endConfirmed === false)) {
+        throw new Error("Webbläsaren har inte bekräftat inspelningens stopp. Spara ljudet som fil för att behålla det och ladda upp filen i en ny inspelning.");
+      }
       const files = await this.readEach(id);
       if (files.some((file) => !file.whole)) throw new Error(INCOMPLETE_ON_DEVICE);
       return files.filter((file) => file.blob.size > 0);
@@ -574,6 +593,8 @@ export class RecordingStore {
   accept(id: string, runId: string): Promise<void> {
     return this.change(async () => {
       const recording = await this.load(id);
+      // The UI may have stopped waiting, but this recorder still owns audio that could arrive after an upload.
+      if (recording?.parts.some((part) => part.endConfirmed === false)) return;
       // The device's copy says "submitted": what this tab holds is no longer needed.
       let marked = false;
       if (recording) {

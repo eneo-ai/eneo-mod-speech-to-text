@@ -250,3 +250,15 @@ test("a recording the device cannot read says why there is no player, and the ne
     store.readParts = readParts;
   }
 });
+
+test("an unconfirmed recorder's audio can be saved but cannot be sent until confirmation arrives", async () => {
+  const pending = { ...recording, parts: recording.parts.map((part) => ({ ...part, endConfirmed: false })) };
+  const view = await ready({ recording: pending });
+  assert.equal(named(view.container, "Skapa dokument"), null);
+  assert.ok(named(view.container, "Spara som fil"));
+  assert.match(view.container.textContent!, /bekräftat inspelningens stopp/);
+  const { ReadyPanel } = await import("../components/flow/ReadyPanel");
+  await view.act(async () => view.rerender(createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate() {}, onDiscard() {} })));
+  assert.ok(named(view.container, "Skapa dokument"));
+  assert.doesNotMatch(view.container.textContent!, /bekräftat inspelningens stopp/);
+});

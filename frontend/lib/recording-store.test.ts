@@ -1101,3 +1101,17 @@ test("recording asks for persistent storage and warns when little space is left"
   await tight.requestPersistence();
   assert.equal(persistCalls, 1);
 });
+
+test("offered and held recordings come from one lock snapshot even when a lease moves between queries", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  const tab = await openRecordingStore(env);
+  let queries = 0;
+  env.locks!.query = async () => ({ held: ++queries === 1 ? [] : [{ name: `tal-till-text-recording:${recording.id}`, mode: "exclusive" }], pending: [] });
+  const groups = await tab.listUnsentGroups(meeting.ownerId);
+  assert.equal(queries, 1);
+  assert.deepEqual([...groups.offered, ...groups.elsewhere].map((r) => r.id), [recording.id]);
+});

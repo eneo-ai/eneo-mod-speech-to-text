@@ -349,6 +349,63 @@ test("a recorder that never confirms its end holds neither Stoppa nor a page tha
   await until(async () => (await left.store.get(id))?.state === "paused", "the page that went leaves it paused, for recovery");
 });
 
+test("an unconfirmed stop keeps its time, follows late-only audio, and cannot submit until the recorder confirms", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  let now = 0;
+  const { capture, store, recorders } = await setup({ now: () => now });
+  await capture.start(meeting);
+  now = 60_000;
+  recorders[0].stop = () => void (recorders[0].state = "inactive");
+  const stopping = capture.stop();
+  now = 64_000;
+  t.mock.timers.tick(4_000);
+  const stopped = (await stopping)!;
+  await assert.rejects(store.readPartsToSend(stopped.id), /bekräfta.*stopp|bekräftat.*stopp/);
+  recorders[0].emit("late-only");
+  await until(() => capture.getSnapshot().recording?.parts[0]?.bytes === 9, "ready metadata follows late audio");
+  assert.equal(capture.getSnapshot().recording?.durationMs, 60_000);
+  await store.accept(stopped.id, "run-must-not-delete");
+  assert.ok(await store.get(stopped.id), "unconfirmed audio survives acceptance");
+  recorders[0].dispatchEvent(new Event("stop"));
+  await until(async () => {
+    try { return (await store.readPartsToSend(stopped.id)).length === 1; } catch { return false; }
+  }, "confirmed audio can be submitted");
+  assert.deepEqual(await texts(await store.readPartsToSend(stopped.id)), ["late-only"]);
+});
+
+test("an unconfirmed interruption is still warned about after Stoppa", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  recorders[0].state = "inactive";
+  t.mock.timers.tick(2_000);
+  t.mock.timers.tick(4_000);
+  await until(() => capture.getSnapshot().status === "interrupted");
+  assert.match(capture.getSnapshot().error ?? "", /bekräftade inte/);
+  await capture.stop();
+  assert.match(capture.getSnapshot().error ?? "", /bekräftade inte/);
+});
+
+test("late callbacks from a deleted recording cannot report errors against a new capture", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].stop = () => void (recorders[0].state = "inactive");
+  const stopping = capture.stop();
+  t.mock.timers.tick(4_000);
+  const old = (await stopping)!;
+  capture.reset();
+  await store.discard(old.id);
+  await capture.start(meeting);
+  recorders[0].emit("old audio");
+  for (let i = 0; i < 20; i += 1) await settle();
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(capture.getSnapshot().error, null);
+  recorders[1].emit("new audio");
+  await until(async () => (await texts(await store.readParts(capture.getSnapshot().recording!.id)))[0] === "new audio");
+});
+
 test("a microphone muted while the page was away is told with how long once the page is back; muted long in view, the page says to act", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   let now = 0;

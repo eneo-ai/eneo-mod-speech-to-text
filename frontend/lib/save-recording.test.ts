@@ -61,3 +61,19 @@ test("Spara som fil reads only the file it saves: one part of the recording, not
   assert.match(downloads[0].name, /-del-2\.webm$/);
   assert.equal(await downloads[0].blob.text(), "b");
 });
+
+test("export skips a confirmed missing part, but never skips a failed database read", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { saveRecordingFile } = await import("../components/save-recording");
+  const reads: number[] = [];
+  const store = { readFile: async (_id: string, nth: number) => {
+    reads.push(nth);
+    return nth === 0 ? null : { index: 1, blob: new Blob(["surviving audio"]), filename: "part-2.webm" };
+  } };
+  assert.equal(await saveRecordingFile("rec", 0, async () => store, 3), 2, "the next press begins after the surviving part");
+  assert.deepEqual(reads, [0, 1]);
+  reads.length = 0;
+  store.readFile = async (_id, nth) => { reads.push(nth); throw new Error("database unavailable"); };
+  await assert.rejects(saveRecordingFile("rec", 0, async () => store, 3), /database unavailable/);
+  assert.deepEqual(reads, [0], "retry stays at the failed read");
+});

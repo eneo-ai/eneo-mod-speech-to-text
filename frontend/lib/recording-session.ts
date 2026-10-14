@@ -165,7 +165,7 @@ type EndReason = "stop" | "interrupt" | "leave";
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
-const END_UNCONFIRMED = "Inspelningen stoppades, men webbläsaren bekräftade inte att de sista sekunderna sparades.";
+export const END_UNCONFIRMED = "Inspelningen stoppades, men webbläsaren bekräftade inte att de sista sekunderna sparades.";
 // Said under the pause's own warning (recordingNotices), which names the pause.
 const PAUSE_UNCONFIRMED = "Det gick inte att bekräfta att inspelningen sparades på enheten.";
 
@@ -205,6 +205,7 @@ function microphoneError(error: unknown): string {
 
 /** One MediaRecorder run and the file it makes. */
 interface Part {
+  recordingId: string;
   recorder: MediaRecorder;
   /** Its index in the store; its chunks wait for it. */
   index: Promise<number>;
@@ -430,7 +431,9 @@ export class RecordingCapture {
     this.finish();
     // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed. A reason
     // given before (the flow's limit) is said rather than a recorder that did not confirm its end.
-    const unconfirmed = confirmed ? {} : { error: this.snapshot.error ?? END_UNCONFIRMED };
+    const unconfirmed = confirmed && !stopped?.parts.some((part) => part.endConfirmed === false)
+      ? {}
+      : { error: this.snapshot.error ?? END_UNCONFIRMED };
     this.set(
       failure === null
         ? { status: "stopped", recording: stopped, stream: null, stopping: false, ...unconfirmed }
@@ -574,6 +577,7 @@ export class RecordingCapture {
       waiting = setTimeout(() => void finish(false), END_WAIT_MS);
     };
     const part: Part = {
+      recordingId: id,
       recorder,
       // Queued before any of the part's chunks.
       index: store.startPart(id),
@@ -594,9 +598,12 @@ export class RecordingCapture {
       // Audio from a recorder whose part is ending: its stop event may come after it.
       if (waiting !== null) wait();
       // Audio: the recorder is alive, in the background too.
-      this.quietLooks = 0;
-      if (this.hiddenSince !== null) this.hiddenChunks += 1;
-      if (this.snapshot.stalled) this.set({ stalled: false });
+      const current = this.snapshot.recording?.id === id;
+      if (current) {
+        this.quietLooks = 0;
+        if (this.hiddenSince !== null) this.hiddenChunks += 1;
+        if (this.snapshot.stalled) this.set({ stalled: false });
+      }
       part.bytes += data.size;
       const durationMs = this.partElapsed(part);
       void part.index
@@ -604,11 +611,12 @@ export class RecordingCapture {
         .then(this.followStore)
         .catch((error) => {
           // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
-          if (notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
+          if (this.snapshot.recording?.id === id && notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
         });
+      if (!current) return;
       this.chunks += 1;
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
-        void store.lowOnSpace().then((lowSpace) => lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
+        void store.lowOnSpace().then((lowSpace) => this.snapshot.recording?.id === id && lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
       }
       // A full part's overlap belongs to its own file, not to the running one.
       if (part !== this.part) return;
@@ -634,7 +642,10 @@ export class RecordingCapture {
         this.part = null;
         this.clearHandover();
         // A stop nobody asked for means the microphone went away.
-        if ((part.ending ?? "interrupt") === "interrupt") await this.interrupt();
+        if ((part.ending ?? "interrupt") === "interrupt") {
+          if (!confirmed) this.set({ error: this.snapshot.error ?? END_UNCONFIRMED });
+          await this.interrupt();
+        }
       }
       ended(confirmed);
     };
@@ -644,6 +655,7 @@ export class RecordingCapture {
       recorder.removeEventListener("dataavailable", onData);
       recorder.removeEventListener("error", onError);
       recorder.removeEventListener("stop", onStop);
+      void part.index.then((index) => store.setPartEndConfirmed(id, index, true)).catch(() => undefined);
       void finish(true);
     };
 
@@ -807,6 +819,12 @@ export class RecordingCapture {
 
   /** Every end of a part goes through here: Stoppa, a page that goes, a lost microphone, a handover. */
   private endPart(part: Part, reason: EndReason): Promise<boolean> {
+    if (part.ending === null) {
+      // Event delivery can take seconds after capture ends; it adds no recorded time.
+      part.ms = this.partElapsed(part);
+      part.since = null;
+      void part.index.then((index) => this.store!.setPartEndConfirmed(part.recordingId, index, false)).catch(() => undefined);
+    }
     part.ending ??= reason;
     // Its deadline goes as its end begins, not at the stop event after it.
     if (part === this.part) this.clearHandover();
@@ -852,8 +870,18 @@ export class RecordingCapture {
     const { recording, refused: was, status } = this.snapshot;
     if (!store || !recording) return;
     const refused = store.refused(recording.id);
-    if (refused === was && store.persistent === this.snapshot.persistent) return;
-    this.set({ persistent: store.persistent, refused });
+    if (refused !== was || store.persistent !== this.snapshot.persistent) {
+      this.set({ persistent: store.persistent, refused });
+    }
+    // Stopped recorders may deliver their last audio after the UI's wait ended. Publish its metadata too, so the
+    // ready view's audio, export and send decisions follow the stored recording rather than the timeout's snapshot.
+    if (status === "stopped" || status === "interrupted") {
+      void store.get(recording.id).then((latest) => {
+        if (!latest || this.snapshot.recording?.id !== recording.id || this.snapshot.status !== status) return;
+        const confirmed = !latest.parts.some((part) => part.endConfirmed === false);
+        this.set({ recording: latest, ...(confirmed && this.snapshot.error === END_UNCONFIRMED ? { error: null } : {}) });
+      }).catch(() => undefined);
+    }
     const capturing = status === "recording" || status === "paused" || status === "interrupted";
     if (refused !== was) this.sayBackOnDevice(capturing && was === "full" && refused === null);
   };

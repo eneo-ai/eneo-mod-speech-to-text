@@ -46,8 +46,8 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentLis
     void recordingStore().then((store) => {
       if (cancelled) return;
       const load = () =>
-        Promise.all([store.listUnsent(ownerId), store.listHeldElsewhere(ownerId)]).then(
-          ([offered, elsewhere]) => {
+        store.listUnsentGroups(ownerId).then(
+          ({ offered, elsewhere }) => {
             if (cancelled) return;
             setUnreadable(false);
             setRecordings(

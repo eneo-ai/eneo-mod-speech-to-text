@@ -2181,3 +2181,22 @@ test("the details and speaker choices kept through a reload come back only in th
   const counted = await opened({ [choicesKey]: JSON.stringify({ labels: true, count: "7", edited: true }) });
   assert.deepEqual(counted.choices, [true, "7", false], "with the count as the person's own");
 });
+
+test("the ready session follows late-only audio and clears the stop warning when confirmation finally arrives", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { session, recorders } = await setup();
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].stop = () => void (recorders[0].state = "inactive");
+  const stopping = session.stop();
+  t.mock.timers.tick(4_000);
+  await stopping;
+  assert.equal(session.getSnapshot().phase, "ready");
+  assert.match(session.getSnapshot().problem?.title ?? "", /bekräftade inte/);
+  recorders[0].emit("late-only");
+  await until(() => session.getSnapshot().recording?.parts[0]?.bytes === 9);
+  recorders[0].dispatchEvent(new Event("stop"));
+  await until(() => session.getSnapshot().recording?.parts[0]?.endConfirmed === true);
+  assert.equal(session.getSnapshot().problem, null);
+});
