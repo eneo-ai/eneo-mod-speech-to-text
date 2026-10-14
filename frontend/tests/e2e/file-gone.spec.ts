@@ -65,6 +65,8 @@ test("a download of a file that is gone starts nothing, and starts when the file
   files.gone = false;
   const saved = page.waitForEvent("download");
   await page.getByRole("button", { name: "Försök igen" }).click();
-  expect((await saved).url()).toMatch(/disposition=attachment/);
+  // Read by the page and saved from it, under Eneo's name: never a link followed away from the page.
+  expect((await saved).url()).toMatch(/^blob:/);
+  expect((await saved).suggestedFilename()).toMatch(/^Protokoll .*\.pdf$/);
   await expect(gone(page)).toHaveCount(0);
 });

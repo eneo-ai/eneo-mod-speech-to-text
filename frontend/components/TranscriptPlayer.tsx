@@ -13,6 +13,7 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@astryxdesign/core/DropdownMenu";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -148,7 +149,28 @@ function ReviewEditorAtPlayhead({
   );
 }
 
-/** The controls docked under the transcript: speed, the audio's failure, the player and its skips, as playback stands. */
+/** The speed, chosen from a menu: any speed in one step, never a round through the others. */
+function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: number; className: string }) {
+  return (
+    <DropdownMenu
+      button={{ label: `Hastighet ${rateLabel(rate)}`, children: rateLabel(rate), variant: "ghost", size: "sm", className }}
+      placement="above"
+      alignment="end"
+    >
+      <DropdownMenuRadioGroup label="Hastighet" value={String(rate)} onChange={(value) => playback.setRate(Number(value))}>
+        {RATES.map((option) => (
+          <DropdownMenuRadioItem key={option} value={String(option)} label={rateLabel(option)} />
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The controls docked under the transcript: the keys, Följ, speed, the player and its skips, as playback stands. Each
+ * control names its key (`shortcut`) to a screen reader; the line above them names the keys to the eye. No tooltip:
+ * shown on keyboard focus, one lies over its neighbours in this row.
+ */
 function PlayerControls({
   playback,
   dock,
@@ -162,10 +184,6 @@ function PlayerControls({
 }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
 
-  function cycleRate() {
-    playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
-  }
-
   function skipFromControl(milliseconds: number, trigger: HTMLElement) {
     playback.skip(milliseconds);
     const next = playback.getSnapshot();
@@ -178,26 +196,22 @@ function PlayerControls({
   return (
     <>
       {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
-          row from 640 px (below it the copy here is shown, and the one in the row is not). */}
+          row from 640 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
+          where there is a keyboard to press them: with a mouse, never on a touch screen. */}
       <div className={styles.dockTools}>
+        <Text type="supporting" className={styles.keys}>
+          Tangenter: K spelar och pausar, J och L hoppar 10 sekunder.
+        </Text>
         {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
-        <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rateBelow} onClick={cycleRate}>
-          {rateLabel(rate)}
-        </Button>
+        <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
       </div>
-      {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
-      {unavailable && (
-        <p role="alert" className={styles.error}>
-          Ljudet kunde inte spelas.{" "}
-          <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
-        </p>
-      )}
-      <AudioPlayer playback={playback} label="Inspelningen">
+      <AudioPlayer playback={playback} label="Inspelningen" playKey="K">
         <IconButton
           variant="ghost"
           className={styles.skip}
           isDisabled={unavailable || atStart}
           label={`Bakåt ${SKIP_SECONDS} sekunder`}
+          aria-keyshortcuts="J"
           icon={<RotateCcw aria-hidden />}
           onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
         />
@@ -206,12 +220,11 @@ function PlayerControls({
           className={styles.skip}
           isDisabled={unavailable || atEnd}
           label={`Framåt ${SKIP_SECONDS} sekunder`}
+          aria-keyshortcuts="L"
           icon={<RotateCw aria-hidden />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
-        <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
-          {rateLabel(rate)}
-        </Button>
+        <SpeedMenu playback={playback} rate={rate} className={styles.rate} />
       </AudioPlayer>
     </>
   );
@@ -1043,6 +1056,23 @@ function TurnBlock({
             picker((trigger) => (
               <Button {...trigger} variant="ghost" size="sm" label="Ändra talare" className={styles.changeSpeaker} />
             ))}
+          {canEdit && !editingHere && (
+            // In the same place on every passage, at the end of its head row, whatever the length of its text; never
+            // mid-sentence, and there for mouse and touch alike: an action that appears only under the pointer is one
+            // a mouse user never learns exists. Before the sentences it makes the targets while choosing.
+            <button
+              ref={correct}
+              type="button"
+              // With the part, as the play button: two parts both start at 0:00.
+              aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
+              aria-expanded={several ? choosing : undefined}
+              onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
+              className={join(styles.inline, styles.correct)}
+            >
+              {choosing ? <Check aria-hidden strokeWidth={2} /> : <Pencil aria-hidden strokeWidth={2} />}
+              {choosing ? "Klar" : "Rätta"}
+            </button>
+          )}
         </div>
         {choosable && <Text as="p" type="supporting" className={styles.hint}>Välj meningen du vill rätta.</Text>}
         <div className={styles.text}>
@@ -1151,22 +1181,6 @@ function TurnBlock({
               </span>
             );
           })}
-          {canEdit && !editingHere && (
-            // After the passage, never mid-sentence, and on every passage for mouse and touch alike: an action
-            // that appears only under the pointer is one a mouse user never learns exists.
-            <button
-              ref={correct}
-              type="button"
-              // With the part, as the play button: two parts both start at 0:00.
-              aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
-              aria-expanded={several ? choosing : undefined}
-              onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
-              className={join(styles.inline, styles.correct)}
-            >
-              {choosing ? <Check aria-hidden strokeWidth={2} /> : <Pencil aria-hidden strokeWidth={2} />}
-              {choosing ? "Klar" : "Rätta"}
-            </button>
-          )}
         </div>
       </div>
     </li>

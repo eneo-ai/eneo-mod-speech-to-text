@@ -5,8 +5,33 @@ import { useAnnounce } from "@astryxdesign/core/hooks";
 
 type CopyState = "idle" | "copied" | "failed";
 
-/** Copies text; the state says "Kopierat" for a moment, or that it failed. */
-export function useCopy(text: string): [CopyState, () => Promise<void>] {
+/** The attributes a copied text keeps: where a link goes, and how a table's cells and a list's numbers run. */
+const KEPT = new Set(["href", "colspan", "rowspan", "start"]);
+
+/**
+ * A rendered text as HTML for the clipboard: its structure alone (headings, paragraphs, lists, tables, bold, links),
+ * without the page's classes, styles and controls, so a word processor or a mail lays it out in its own style.
+ */
+export function copyableHtml(element: Element): string {
+  const copy = element.cloneNode(true) as Element;
+  copy.querySelectorAll("button, svg, [aria-hidden='true']").forEach((el) => el.remove());
+  // The design system draws a paragraph as a div with the role; on the clipboard it is a paragraph.
+  copy.querySelectorAll("[role='paragraph']").forEach((el) => {
+    const paragraph = el.ownerDocument.createElement("p");
+    paragraph.append(...el.childNodes);
+    el.replaceWith(paragraph);
+  });
+  for (const el of [copy, ...copy.querySelectorAll("*")]) {
+    for (const { name } of [...el.attributes]) if (!KEPT.has(name)) el.removeAttribute(name);
+  }
+  return copy.innerHTML;
+}
+
+/**
+ * Copies text; the state says "Kopierat" for a moment, or that it failed. With `html`, the text goes formatted too
+ * (`copyableHtml`), and a place that takes text alone gets `text`; a browser that cannot write both copies the text.
+ */
+export function useCopy(text: string, html?: () => string | null): [CopyState, () => Promise<void>] {
   const [state, setState] = useState<CopyState>("idle");
   const announce = useAnnounce();
 
@@ -18,7 +43,14 @@ export function useCopy(text: string): [CopyState, () => Promise<void>] {
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(text);
+      const markup = html?.();
+      if (markup && typeof ClipboardItem === "function" && typeof navigator.clipboard?.write === "function") {
+        const item = new ClipboardItem({
+          "text/html": new Blob([markup], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        });
+        await navigator.clipboard.write([item]);
+      } else await navigator.clipboard.writeText(text);
       setState("copied");
       announce("Kopierat");
     } catch {

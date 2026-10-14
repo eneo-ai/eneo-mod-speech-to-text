@@ -47,3 +47,19 @@ test("the document stands still while its file is read for Dela", async ({ page 
   await expect(share, "and can be pressed once it is").toBeEnabled();
   expect(await top(), "the document is where it was").toBe(before);
 });
+
+test("a copied text keeps its headings and bold where it is pasted, and is the text as written where only text is taken", async ({ page, context }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "Chromium's own clipboard, read back by the page");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await fileBackedText(page);
+  await page.getByRole("button", { name: "Kopiera början", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Kopierat", exact: true })).toBeVisible();
+  const copied = await page.evaluate(async () => {
+    const [item] = await navigator.clipboard.read();
+    return { html: await (await item.getType("text/html")).text(), plain: await (await item.getType("text/plain")).text() };
+  });
+  expect(copied.html).toContain("<h2>Protokoll</h2>");
+  expect(copied.html).toContain("<strong>höja budgetramen</strong>");
+  expect(copied.html).not.toMatch(/class=|style=/);
+  expect(copied.plain).toMatch(/^## Protokoll\n\nKommunstyrelsen beslutade att \*\*höja budgetramen\*\*/);
+});

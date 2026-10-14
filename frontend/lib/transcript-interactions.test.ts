@@ -229,7 +229,7 @@ test("a bulk change past Eneo's cap on speaker edits is refused before anything 
   assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
 });
 
-test("one Rätta per passage, after its text; in a passage of several sentences each sentence is then the target", async () => {
+test("one Rätta per passage, in the same place on every passage: its head row; in a passage of several sentences each sentence is then the target", async () => {
   const opened: string[] = [];
   const two: TranscriptSegment[] = [
     {
@@ -246,11 +246,13 @@ test("one Rätta per passage, after its text; in a passage of several sentences 
   const rätta = [...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Rätta");
   assert.equal(rätta.length, 2, "one per passage, not one per sentence");
   const sentences = () => [...view.container.querySelectorAll<HTMLElement>('[role="button"][data-segment-index]')];
+  const sentencesOf = (button: Element) => [...button.closest("[data-turn-index]")!.querySelectorAll("[data-segment-index]")];
   assert.equal(sentences().length, 0, "no sentence targets at rest");
   assert.equal(view.container.querySelectorAll('button[aria-label^="Bekräfta att"]').length, 1, "the uncertain word can be confirmed at rest");
   const first = rätta[0];
   assert.equal(first.getAttribute("aria-label"), "Rätta repliken från 0:00: välj mening");
-  assert.ok(first.previousElementSibling?.textContent?.includes("Vi har två punkter."), "after the passage's last sentence");
+  assert.ok(rätta.every((button) => button.parentElement?.classList.contains("head")), "beside the passage's clock, whatever the length of its text");
+  assert.ok(first.compareDocumentPosition(sentencesOf(first)[0]) & Node.DOCUMENT_POSITION_FOLLOWING, "before the sentences it makes the targets");
 
   await view.act(async () => first.click());
   assert.ok(view.container.textContent?.includes("Välj meningen du vill rätta."), "a hint above the passage");

@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabKey, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, chooseMode, isLaptop, isPhone, needsRecording, run, setup, STATES } from "./screens";
+import { backLink, chooseMode, isLaptop, isPhone, needsRecording, pdfInDialog, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
@@ -165,7 +165,7 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
 // content is a link away, in a tab of its own), or Tab leads out of it back to the dialog's own controls (WCAG
 // 2.1.2). From those controls, Escape closes the dialog.
 test("the PDF preview holds focus, never traps it in the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
-  test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a new tab");
+  test.skip(!pdfInDialog(info), "below a laptop's width, and on a touch screen, the PDF opens in a new tab");
   await run(page, ids.runs.done);
   const trigger = page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ });
   const dialog = page.getByRole("dialog");
