@@ -3,8 +3,9 @@
  * under the page's heading, the transcript beside both from the page's top, and the transcript keeping to the window
  * while the document scrolls past it. Below that width they are tabs (result-tabs.spec.ts).
  */
+import { type Locator } from "@playwright/test";
 import { expect, test } from "./gate";
-import { isLaptop, result } from "./screens";
+import { isLaptop, result, STATES } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!isLaptop(info), "tabs below a laptop's width"));
 
@@ -42,3 +43,73 @@ test("scrolled past a long document, the transcript stays at the top of the wind
   const top = await page.evaluate(() => Math.round(document.getElementById("result-panel-transcript")!.getBoundingClientRect().top));
   expect(top, "kept 24 px under the window's top edge").toBe(24);
 });
+
+test("on a wide screen the result's workspace grows with the window, the bar with it, and its text keeps a reading measure", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "the window's size is set here");
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  await result(page);
+  const brand = (await page.getByRole("banner").getByRole("img").first().boundingBox())!;
+  const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+  expect(Math.round(title.x), "the page's heading under the brand").toBe(Math.round(brand.x));
+  const transcript = (await page.locator("#result-panel-transcript").boundingBox())!;
+  expect(transcript.width, "the transcript beside the document has room").toBeGreaterThanOrEqual(700);
+  await expectReadingMeasure(page.locator("#result-panel-document article"));
+});
+
+test("a result without a transcript is as wide as the page's column, its text at a reading measure", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "the window's size is set here");
+  // An iPad on its side.
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await STATES.find((state) => state.name === "result-without-transcript")!.go(page, info);
+  const card = (await page.getByRole("region", { name: /^Texten/ }).boundingBox())!;
+  const brand = (await page.getByRole("banner").getByRole("img").first().boundingBox())!;
+  // The page's column is centred: it ends as far from the window's right edge as the brand starts from its left.
+  expect(Math.round(card.x), "from the column's start").toBe(Math.round(brand.x));
+  expect(Math.round(card.x + card.width), "to its end").toBe(1180 - Math.round(brand.x));
+  await expectReadingMeasure(page.locator("article"));
+});
+
+test("the PDF preview uses a wide screen and stays inside a laptop's window", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "the window's sizes are set here");
+  for (const [width, height] of [[1280, 720], [2560, 1440], [3840, 2160]]) {
+    await page.setViewportSize({ width, height });
+    await result(page);
+    await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveCSS("transform", "none");
+    const box = (await dialog.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(Math.min(width * 0.9, 1400) - 1);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(height);
+    await page.getByRole("button", { name: "Stäng", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
+
+/**
+ * The text's first paragraph (a block of prose with a measure of its own, not a heading) is as wide as the measure lets
+ * it be, the column being wider here: a line of it holds 72 to 80 characters, counted in "0"s of its own font, as CSS's
+ * `ch` is.
+ */
+async function expectReadingMeasure(article: Locator) {
+  const [width, least, most] = await article.first().evaluate((text) => {
+    const element = [...text.querySelectorAll("*")].find(
+      (block) => getComputedStyle(block).maxWidth.endsWith("px") && !block.matches("h1, h2, h3, h4, h5, h6") && block.textContent?.trim(),
+    )!;
+    const characters = (count: number) => {
+      const probe = document.createElement("span");
+      probe.textContent = "0".repeat(count);
+      probe.style.whiteSpace = "nowrap";
+      element.append(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    };
+    return [element.getBoundingClientRect().width, characters(72), characters(80)];
+  });
+  expect(width, "a line of the text holds 72 to 80 characters").toBeGreaterThanOrEqual(least);
+  expect(width).toBeLessThanOrEqual(most);
+}

@@ -184,14 +184,14 @@ export function RunResult({
   );
 
   return (
-    // The frame gives the page its width and edges. Below a laptop's width every result has the whole column, as the
-    // tabs do; from it a document alone is a reading column on its left edge, as wide as the document beside a transcript.
-    // One tree for every width, so the transcript (and a correction being written in it) stays mounted when the window
+    // The frame gives the page its width and edges, and every result has the whole column; its text keeps a reading
+    // measure in it (Markdown). With the transcript beside the text it is a workspace, whose column grows with a wide
+    // window (styles/globals.css). One tree for every width, so the transcript (and a correction being written in it) stays mounted when the window
     // crosses the laptop breakpoint: below it the heading, the tabs and the two panels in one column; from it the
     // heading and the document 7 columns of 13 and the transcript 6 beside them, from the page's top, so that it ends in
     // the window before the page is scrolled. Below it a hidden panel is an empty span, which takes no room between
     // rows because the grid has no row gap.
-    <VStack paddingBlockStart={2} maxWidth={showTranscript || !wide ? undefined : 672}>
+    <VStack paddingBlockStart={2} data-workspace={showTranscript || undefined}>
       <Grid columns={sideBySide ? 13 : 1} columnGap={8}>
         <GridSpan columns={sideBySide ? 7 : "full"}>
           <VStack gap={6}>

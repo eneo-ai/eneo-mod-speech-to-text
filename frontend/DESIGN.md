@@ -93,10 +93,11 @@ Every size is in rem, so the text follows the reader's own size: the browser's s
 ## Layout
 
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
+The result with its transcript and the speaker review widen with a large window, up to 1600 px; document prose keeps a 75ch reading measure.
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
 (480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. Every view of the flow,
-the setup's form included, is as wide as its column, so each ends at the same edge; from 1024 px a document alone and
-the text review keep a reading column (672 px). From 1024 px the transcript's card of the result and the review stands
+the setup's form included, is as wide as its column, so each ends at the same edge; a document alone fills the page's
+column with its prose capped at the reading measure, and the text review keeps a reading column (672 px). From 1024 px the transcript's card of the result and the review stands
 beside the heading from the page's top, keeps to the window as the page scrolls and is as tall as the window below the
 bar (`--view-fit-height`, FlowFrame) less a gutter, so its player is in view before anything is scrolled. The flow's
 column is the same in every state: from 1024 px its name is the headline's size also where a run's card holds the

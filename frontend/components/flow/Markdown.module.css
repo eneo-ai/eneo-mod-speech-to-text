@@ -1,4 +1,6 @@
-/* The text as it was written while its formatting loads: its lines and its blank lines are kept. */
+/* The text as it was written while its formatting loads: its lines and its blank lines are kept, at the formatted
+   text's reading measure (MarkdownFormatted). */
 .plain {
+  max-inline-size: 75ch;
   white-space: pre-wrap;
 }

@@ -535,8 +535,8 @@ export function ReviewView({
 
         {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. Split
             from a laptop's width, the heading stands over the speakers, so the transcript beside them starts at the
-            page's top and ends in the window. */}
-        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
+            page's top and ends in the window; a workspace, whose column grows with a wide window (styles/globals.css). */}
+        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit} data-workspace={SPEAKER_REVIEW_ENABLED ? undefined : true}>
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
               {/* Folded, unless names typed earlier bring the dialog back: it is in this card, and opens by itself. */}
