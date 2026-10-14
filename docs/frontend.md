@@ -6,7 +6,7 @@ Gränssnittet är en React-app med Vite, react-router och designsystemet Astryx.
 
 | Sökväg | Innehåll |
 |---|---|
-| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar, varje annan adress "Sidan finns inte.") och sidorna. Varje sidas kod hämtas när routen först besöks. `routes/dev/` är utvecklingssidor. |
+| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar, varje annan adress "Sidan finns inte.") och sidorna. Varje sidas kod hämtas när routen först besöks. På `/flows/:id` hämtas en körnings resultat, granskning och felvy (`components/flow/run-views.tsx`) först när en körning öppnas, medan körningen läses. `routes/dev/` är utvecklingssidor. |
 | `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. |
 | `frontend/kit/` | Tema, providers och skal (`ModuleShell`, `ColorModeProvider`). Importerar inget från `routes/`, `components/` eller `lib/`. |
 | `frontend/lib/` | Logik utan gränssnitt, ett ansvar per fil, med testerna bredvid. Importerar ingen UI-kod. |
