@@ -474,6 +474,8 @@ export const STATES: State[] = [
       await expect(page).toHaveURL(/\/flows$/);
     },
   },
+  // An address that is no page of the module.
+  { name: "not-found", go: async (page) => (await page.goto("/finns-inte"), heading(page, "Sidan finns inte.")) },
   // The sign-in page and a signed-in page while the session is still being asked for.
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },

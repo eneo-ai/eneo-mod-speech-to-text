@@ -120,6 +120,22 @@ test("a link to a flow and Back, with the session's answer late: the title at on
   expect(blocking((await axe(page)).violations), "axe passes after Back").toEqual([]);
 });
 
+test("a page whose code cannot be fetched is a page too: its own title, said once, and the focus in its heading", async ({ page, sentinel }) => {
+  // The page's code: the dev server's module, or the built chunk.
+  const code = /\/(routes\/FlowPage\.tsx|assets\/FlowPage-[^/]+\.js)(\?|$)/;
+  sentinel.expect({ console: /status of 404.*FlowPage/ }, { console: /A page could not be shown/ });
+  await page.addInitScript(listen);
+  await flows(page);
+  await page.route(code, (route) => route.fulfill({ status: 404, body: "" }));
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
+
+  await expect(page.getByRole("heading", { name: "Sidan kunde inte visas." })).toBeVisible();
+  const title = "Sidan kunde inte visas · Tal till text";
+  await expect.poll(() => page.title(), { timeout: 1_000 }).toBe(title);
+  await expect.poll(() => said(page), { timeout: 1_000 }).toEqual([title]);
+  await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true, text: "Sidan kunde inte visas." });
+});
+
 test("signing out: the sign-in page's title, announcement and heading, not the spinner's", async ({ page }) => {
   await page.addInitScript(listen);
   await flows(page);

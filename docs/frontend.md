@@ -6,7 +6,7 @@ Gränssnittet är en React-app med Vite, react-router och designsystemet Astryx.
 
 | Sökväg | Innehåll |
 |---|---|
-| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar) och sidorna. Varje sidas kod hämtas när routen först besöks. `routes/dev/` är utvecklingssidor. |
+| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar, varje annan adress "Sidan finns inte.") och sidorna. Varje sidas kod hämtas när routen först besöks. `routes/dev/` är utvecklingssidor. |
 | `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. |
 | `frontend/kit/` | Tema, providers och skal (`ModuleShell`, `ColorModeProvider`). Importerar inget från `routes/`, `components/` eller `lib/`. |
 | `frontend/lib/` | Logik utan gränssnitt, ett ansvar per fil, med testerna bredvid. Importerar ingen UI-kod. |
@@ -30,6 +30,7 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 - Efter en navigering sätts routens titel direkt, och när sidan säger att den har sitt innehåll (`useRouteReady`) läses titeln upp, fokus flyttas till sidans rubrik och sidan scrollas. Ingen annan kod scrollar efter en navigering (`routes/RouteEffects.tsx`).
 - En sida med osparat arbete frågar i sin egen dialog innan den lämnas: länk, märket, Bakåt och Framåt. Webbläsarens egen fråga täcker omladdning och att stänga fliken.
 - En kod som inte går att hämta (en flik som stått öppen över en ny version) ersätts av "Sidan kunde inte visas." med åtgärden "Ladda om sidan", på personens eget val: inget laddas om av sig självt och inget som håller en inspelning eller en redigering monteras av.
+- En adress som inte är någon av appens sidor visar "Sidan finns inte." med vägen till startsidan; adressen står kvar som den skrevs. Den och "Sidan kunde inte visas." (`routes/Root.tsx`) har egna titlar, och efter en navigering läses de upp och deras rubrik får fokus som på andra sidor.
 
 ## Konventioner
 
