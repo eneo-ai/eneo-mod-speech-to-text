@@ -28,6 +28,16 @@ test("a direct visit to a route of the app renders that page, in Swedish", async
   }
 });
 
+test("a run's address opened signed out is where the sign-in leads back to, through Eneo and the backend's callback", async ({ page }) => {
+  const run = `/flows/${ids.flows.flow1}?run=${ids.runs.done}`;
+  await page.goto(run);
+  await page.getByRole("button", { name: "Logga in med Eneo" }).click();
+
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  const at = new URL(page.url());
+  expect(at.pathname + at.search, "the address as the person opened it, with its run").toBe(run);
+});
+
 /** The path the app has gone to: the route table's catch-all replaces the address once the page's code is there. */
 const goesTo = (page: Page, path: string) => expect.poll(() => new URL(page.url()).pathname, { message: path }).toBe("/");
 

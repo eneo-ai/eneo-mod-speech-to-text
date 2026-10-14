@@ -132,7 +132,7 @@ Motorprojekten är `phone-390-webkit`, `tablet-landscape-webkit`, `laptop-1440-w
 | Test (`frontend/tests/prod/`) | Bevisar |
 |---|---|
 | `headers.spec.ts` | Att varje svar bär säkerhetsheadrarna i `backend/app/security_headers.json`, och att bara den inline PDF:en får ramas in, av den egna origin. |
-| `routes.spec.ts` | Att varje adress i appen är sidan, att en saknad fil eller en okänd `/api`-sökväg är ett 404 som inte är en sida, och att en vanlig build inte har utvecklingssidor. |
+| `routes.spec.ts` | Att varje adress i appen är sidan, att en adress som öppnas utloggad är dit inloggningen leder tillbaka, att en saknad fil eller en okänd `/api`-sökväg är ett 404 som inte är en sida, och att en vanlig build inte har utvecklingssidor. |
 | `first-paint.spec.ts` | Att de första bildrutorna har rätt färgläge och organisationens märke, med långsamt eller blockerat JavaScript. |
 | `stale-chunk.spec.ts`, `stale-chunk-recording.spec.ts` | Att en flik som stått öppen över en ny version lämnas med en rad och en omladdningsknapp, och att en pågående inspelning inte går förlorad. |
 | `upstream.spec.ts` | Vad modulen gör med en förfrågan på vägen till Eneo och tillbaka, läst ur stubben. |

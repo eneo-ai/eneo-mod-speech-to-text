@@ -26,7 +26,7 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 
 ## Routing, titlar och fokus
 
-- Routern är en data-router utan loaders och utan serverrendering. Varje sida som kräver inloggning lägger en egen `AuthGate`, så ett routebyte nollställer sidans tillstånd.
+- Routern är en data-router utan loaders och utan serverrendering. Varje sida som kräver inloggning lägger en egen `AuthGate`, så ett routebyte nollställer sidans tillstånd. Den som inte är inloggad skickas till inloggningen och därifrån tillbaka till adressen den öppnade, med `?run=` ([Inloggning och session](auth-and-session.md#eneo-sso)).
 - Efter en navigering sätts routens titel direkt, och när sidan säger att den har sitt innehåll (`useRouteReady`) läses titeln upp, fokus flyttas till sidans rubrik och sidan scrollas. Ingen annan kod scrollar efter en navigering (`routes/RouteEffects.tsx`).
 - En sida med osparat arbete frågar i sin egen dialog innan den lämnas: länk, märket, Bakåt och Framåt. Webbläsarens egen fråga täcker omladdning och att stänga fliken.
 - En kod som inte går att hämta (en flik som stått öppen över en ny version) ersätts av "Sidan kunde inte visas." med åtgärden "Ladda om sidan", på personens eget val: inget laddas om av sig självt och inget som håller en inspelning eller en redigering monteras av.

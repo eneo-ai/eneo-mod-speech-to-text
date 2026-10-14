@@ -146,7 +146,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         if (!s) return;
         const sessionIdentity = sessionUser(s);
         if (!sessionIdentity) {
-          void navigate("/", { replace: true });
+          // The address as the person opened it (a run's `?run=` with it), for the sign-in to bring them back to.
+          void navigate("/", { replace: true, state: { next: window.location.pathname + window.location.search } });
           return;
         }
         setUser(sessionIdentity);
