@@ -516,20 +516,26 @@ export function ReviewView({
       </Text>
     );
 
+    const intro = (
+      <VStack gap={1}>
+        {paused}
+        <Heading level={1} ref={heading} tabIndex={-1}>
+          {title}
+        </Heading>
+        <Text as="p" type="supporting" className={styles.description}>
+          {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
+        </Text>
+        {deadline}
+      </VStack>
+    );
+
     return (
       <VStack gap={6}>
-        <VStack gap={1}>
-          {paused}
-          <Heading level={1} ref={heading} tabIndex={-1}>
-            {title}
-          </Heading>
-          <Text as="p" type="supporting" className={styles.description}>
-            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
-          </Text>
-          {deadline}
-        </VStack>
+        {SPEAKER_REVIEW_ENABLED && intro}
 
-        {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
+        {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. Split
+            from a laptop's width, the heading stands over the speakers, so the transcript beside them starts at the
+            page's top and ends in the window. */}
         <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
@@ -551,13 +557,16 @@ export function ReviewView({
               </Collapsible>
             </Card>
           ) : (
-            <Card padding={4} role="group" aria-label="Talare">
-              <VStack gap={3}>
-                {speakers}
-                {unmappedNote}
-              </VStack>
-              {decision}
-            </Card>
+            <VStack gap={6}>
+              {intro}
+              <Card padding={4} role="group" aria-label="Talare">
+                <VStack gap={3}>
+                  {speakers}
+                  {unmappedNote}
+                </VStack>
+                {decision}
+              </Card>
+            </VStack>
           )}
           {/* There the card folds away, so the decision follows it instead. */}
           {SPEAKER_REVIEW_ENABLED && decision}

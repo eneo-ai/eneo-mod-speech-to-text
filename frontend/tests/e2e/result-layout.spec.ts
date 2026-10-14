@@ -1,14 +1,14 @@
 /**
- * A finished run from a laptop's width: the document and the transcript side by side, the document the wider (7 to 6),
- * both from the same top, and the transcript keeping to the window while the document scrolls past it. Below that
- * width they are tabs (result-tabs.spec.ts).
+ * A finished run from a laptop's width: the document and the transcript side by side, the document the wider (7 to 6)
+ * under the page's heading, the transcript beside both from the page's top, and the transcript keeping to the window
+ * while the document scrolls past it. Below that width they are tabs (result-tabs.spec.ts).
  */
 import { expect, test } from "./gate";
 import { isLaptop, result } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!isLaptop(info), "tabs below a laptop's width"));
 
-test("the document is the wider column, the transcript sits beside it from the same top and keeps to the window", async ({ page }) => {
+test("the document is the wider column, the transcript sits beside it and the heading from the page's top and keeps to the window", async ({ page }) => {
   await result(page);
   const columns = await page.evaluate(() => {
     const box = (id: string) => {
@@ -16,11 +16,14 @@ test("the document is the wider column, the transcript sits beside it from the s
       const rect = section.getBoundingClientRect();
       return { left: rect.left, width: rect.width, top: rect.top, position: getComputedStyle(section).position };
     };
-    return { document: box("result-panel-document"), transcript: box("result-panel-transcript") };
+    const heading = document.querySelector("h1")!.getBoundingClientRect();
+    return { document: box("result-panel-document"), transcript: box("result-panel-transcript"), heading: { left: heading.left, top: heading.top } };
   });
-  const { document: doc, transcript } = columns;
+  const { document: doc, transcript, heading } = columns;
   expect(doc.left, "the document is on the left").toBeLessThan(transcript.left);
-  expect(Math.round(doc.top), "from the same top").toBe(Math.round(transcript.top));
+  expect(Math.round(heading.left), "under the heading").toBe(Math.round(doc.left));
+  expect(Math.round(doc.top), "under the heading").toBeGreaterThan(Math.round(heading.top));
+  expect(Math.round(transcript.top), "the transcript from the page's top, beside the heading").toBe(Math.round(heading.top));
   expect(doc.width / transcript.width, "the document is a little wider: 7 to 6").toBeGreaterThan(1.1);
   expect(doc.width / transcript.width).toBeLessThan(1.25);
   expect(transcript.position, "the transcript keeps in view while the document scrolls past it").toBe("sticky");

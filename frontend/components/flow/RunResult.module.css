@@ -12,6 +12,12 @@
   align-self: start;
 }
 
+/* Below a laptop's width the transcript is the second tab's panel, in the span after the tabs' own: as far from them
+   as the first. */
+.afterTabs {
+  margin-block-start: var(--spacing-4);
+}
+
 /* On a phone's Dokument tab, once the recording has played: its pause and time docked at the bottom, edge to edge
    of the page's gutters, and back in the page on a short screen (a phone on its side, 200 % zoom). */
 .docked {
