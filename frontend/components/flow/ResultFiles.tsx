@@ -218,8 +218,8 @@ export function OpenFile({
       <Dialog
         isOpen={open && !covered}
         onOpenChange={setOpen}
-        width={1024}
-        maxHeight="85dvh"
+        width="min(90vw, 1400px)"
+        maxHeight="90dvh"
         onFocus={(event: FocusEvent<HTMLDialogElement>) => {
           if (event.target === event.currentTarget) event.currentTarget.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
         }}

@@ -66,13 +66,18 @@
   }
 }
 
-/* Testa mikrofonen and Sluta testa in one cell, the one not shown hidden: the button keeps the longer one's width. */
+/* Testa mikrofonen and Sluta testa in one cell, the one not shown hidden: the button keeps the longer one's width.
+   Each carries the icon, as far from the word as the button sets its own, so it stays beside the word shown. */
 .sameWidth {
   display: inline-grid;
 }
 
 .sameWidth > * {
   grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-1-5);
 }
 
 .sameWidth > [aria-hidden] {

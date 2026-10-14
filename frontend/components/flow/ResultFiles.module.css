@@ -32,6 +32,6 @@
 .viewer {
   display: block;
   inline-size: 100%;
-  block-size: min(calc(85dvh - 7rem), 56rem);
+  block-size: min(calc(90dvh - 7rem), 56rem);
   border: 0;
 }

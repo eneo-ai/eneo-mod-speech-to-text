@@ -114,11 +114,13 @@ test("the page that loads says so, in one status region, and is busy", async () 
   assert.deepEqual([...view.container.querySelectorAll("h1")].map((h) => h.textContent), ["Tal till text"], "a page has its h1 while it loads too");
 });
 
-test("the page for a flow that cannot be opened has one h1, and Försök igen only where trying again can help", async () => {
+test("the page for a flow that cannot be opened has one h1, one way back (the bar's), and Försök igen only where trying again can help", async () => {
   const { FlowUnavailable } = await import("../components/flow/FlowPageStates");
   const { ApiError } = await import("./api");
   const gone = await mount(await signedIn(createElement(FlowUnavailable, { error: new ApiError(404, "Flow not found.", null, "not_found") })));
   assert.deepEqual([...gone.container.querySelectorAll("h1")].map((h) => h.textContent), ["Flödet är inte längre tillgängligt."]);
+  const back = [...gone.container.querySelectorAll('a[href="/flows"]')].filter((a) => a.textContent?.trim() === "Alla flöden");
+  assert.deepEqual(back.map((a) => Boolean(a.closest('[role="banner"]'))), [true]);
   assert.ok(![...gone.container.querySelectorAll("button")].some((b) => b.textContent === "Försök igen"));
   await gone.unmount();
   const down = await mount(await signedIn(createElement(FlowUnavailable, { error: new ApiError(503, "Service Unavailable", null) })));

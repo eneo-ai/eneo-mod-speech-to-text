@@ -3,6 +3,7 @@ import { Outlet, useLocation, useRouteError } from "react-router";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { LoadingShell } from "@/components/LoadingShell";
@@ -72,15 +73,20 @@ function StandIn({ heading, text, children }: { heading: string; text: string; c
   useRouteReady(true);
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
-      <VStack gap={4} maxWidth={640}>
-        <Heading level={1}>{heading}</Heading>
-        <Text as="p" color="secondary">
-          {text}
-        </Text>
-        <HStack gap={3} wrap="wrap">
-          {children}
-        </HStack>
-      </VStack>
+      {/* The page's column, as the flow list has it, so the heading starts where the bar's brand does at every width. */}
+      <Layout height="auto" contentWidth="calc(var(--module-page-width) + var(--spacing-8))" padding={4}>
+        <LayoutContent isScrollable={false}>
+          <VStack gap={4} paddingBlockStart={4} maxWidth={640}>
+            <Heading level={1}>{heading}</Heading>
+            <Text as="p" color="secondary">
+              {text}
+            </Text>
+            <HStack gap={3} wrap="wrap">
+              {children}
+            </HStack>
+          </VStack>
+        </LayoutContent>
+      </Layout>
     </ModuleShell>
   );
 }

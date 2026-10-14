@@ -24,6 +24,13 @@
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
+/* A workspace (`data-workspace`: a result with its transcript beside it, the speakers' review): the page's column grows
+   with a wide window, from 1180 px at a 1686 px window to 1600 px, so the transcript beside the text has room. The bar
+   reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
+:root:has([data-workspace]) {
+  --module-page-width: clamp(1180px, 70vw, 1600px);
+}
+
 /* A speaker's colour as the stylesheets read it: data-speaker-color is the speaker's index, from lib/transcript. */
 [data-speaker-color="0"] { --tint: var(--module-speaker-0); }
 [data-speaker-color="1"] { --tint: var(--module-speaker-1); }

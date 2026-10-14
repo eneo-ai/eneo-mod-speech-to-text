@@ -16,6 +16,10 @@
 @media (min-width: 1024px) {
   .page {
     padding-block-start: var(--spacing-4);
+    /* The window's height below where a view starts, before the page is scrolled: under the shell's bar (its height as
+       the shell measures it, a banner over it included), the shell's padding and this page's. A card that keeps to the
+       window (the transcript's, on the result and the review) is no taller, so its end is in view from the first paint. */
+    --view-fit-height: calc(100dvh - var(--_app-shell-header-height, 0px) - 2 * var(--spacing-4));
   }
 }
 

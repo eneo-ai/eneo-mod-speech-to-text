@@ -79,7 +79,9 @@
   border-block-start: var(--border-width) solid var(--color-border);
 }
 
-/* The transcript's card. From a laptop's width it has a height of its own, within the screen's, and scrolls inside. */
+/* The transcript's card. From a laptop's width it keeps to the window, one gutter from its top, and its text scrolls
+   inside it, the player docked below. Beside the speakers it starts at the page's top: as tall as the window below that
+   (FlowFrame's --view-fit-height) less a gutter, it ends in the window before the page is scrolled. */
 .transcriptCard {
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
@@ -88,8 +90,10 @@
 
 @media (min-width: 1024px) {
   .transcriptCard {
+    position: sticky;
+    inset-block-start: var(--spacing-6);
     min-block-size: var(--module-transcript-min-height);
-    max-block-size: calc(100dvh - 14rem);
+    max-block-size: calc(var(--view-fit-height, 100dvh) - var(--spacing-6));
     overflow: hidden;
   }
 }
