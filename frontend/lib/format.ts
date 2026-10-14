@@ -49,9 +49,9 @@ export function formatDateTime(value: string | Date): string {
 }
 
 /**
- * "22 s", "32 min", "1 h 5 min". Whole elapsed seconds, as the timer and the player count them: 7.6 s reads
- * "7 s", never "8 s" beside "0:07"; minutes and hours are rounded to the unit shown. One line long, as a size is: its
- * spaces do not break, so a line never ends between a number and its unit or between the hours and the minutes.
+ * "22 s", "32 min", "1 h 5 min". Whole elapsed units, as the timer and the player count them: 7.6 s reads "7 s",
+ * never "8 s" beside "0:07", and 1:45 reads "1 min", never "2 min". One line long, as a size is: its spaces do not
+ * break, so a line never ends between a number and its unit or between the hours and the minutes.
  */
 export function formatDuration(ms: number): string {
   return durationWords(ms).replace(/ /g, NBSP);
@@ -60,7 +60,7 @@ export function formatDuration(ms: number): string {
 function durationWords(ms: number): string {
   const seconds = Math.floor(Math.max(0, ms) / 1000);
   if (seconds < 60) return `${seconds} s`;
-  const minutes = Math.round(seconds / 60);
+  const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   // A day and more in days and hours ("10 dygn 23 h"), never in hundreds of hours.

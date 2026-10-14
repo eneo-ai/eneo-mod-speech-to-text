@@ -5,7 +5,7 @@
 
 import type { FormField } from "./api";
 import type { Problem, SessionPhase } from "./flow-session";
-import { formatClock } from "./format";
+import { formatClock, formatDuration } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
@@ -73,6 +73,10 @@ export function recordingNotices({
   refused,
   remainingMs,
   muted,
+  mutedLong = false,
+  mutedGap = null,
+  stalled = false,
+  error = null,
   wakeLock,
   backOnDevice = false,
   makesText = false,
@@ -88,6 +92,14 @@ export function recordingNotices({
   remainingMs: number | null;
   /** The microphone's track is muted for now (a headset changing its route). */
   muted: boolean;
+  /** Muted long enough in view that it is not coming back by itself. */
+  mutedLong?: boolean;
+  /** How long the microphone was muted, now that it is back; `away`: the page was in the background meanwhile. */
+  mutedGap?: { ms: number; away: boolean } | null;
+  /** The recorder hands over no audio: nothing said now is kept. */
+  stalled?: boolean;
+  /** What went wrong in keeping the recording while it is captured (the recorder's own sentence). */
+  error?: string | null;
   wakeLock: boolean;
   /** The flow ends in text, not a file. */
   makesText?: boolean;
@@ -95,10 +107,28 @@ export function recordingNotices({
   const warnings: Problem[] = [];
   const notes: string[] = [];
   if (phase === "interrupted") {
-    warnings.push({ title: "Inspelningen pausades när mikrofonen försvann.", detail: "Det som spelats in finns kvar." });
+    // When the device could not keep the pause, that is said in place of the promise.
+    warnings.push({ title: "Inspelningen pausades när mikrofonen försvann.", detail: error ?? "Det som spelats in finns kvar." });
+  } else if (error) {
+    warnings.push({ title: error });
   }
+  // A muted microphone is why there is no sound or audio: said alone, and what to do once it has lasted.
   if (phase === "recording" && muted) {
-    warnings.push({ title: "Mikrofonen är tillfälligt borta.", detail: "Inspelningen fortsätter av sig själv när den är tillbaka." });
+    warnings.push(
+      mutedLong
+        ? {
+            title: "Mikrofonen är fortfarande avstängd.",
+            detail:
+              "Kontrollera att ingen annan app använder den, till exempel ett samtal. Kommer ljudet inte tillbaka, välj Stoppa och spela in vidare.",
+          }
+        : { title: "Mikrofonen är tillfälligt borta.", detail: "Inspelningen fortsätter av sig själv när den är tillbaka." },
+    );
+  } else if (phase === "recording" && stalled) {
+    // Stoppa ends the recorder, which then hands over what it holds.
+    warnings.push({
+      title: "Ljudet sparas inte just nu.",
+      detail: "Kontrollera mikrofonen. Står varningen kvar, välj Stoppa: det som hunnit spelas in sparas, och du kan spela in vidare.",
+    });
   }
   if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
     // Two steps, never a count: a calm note from fifteen minutes, and a warning from five, when what is said after the
@@ -107,7 +137,7 @@ export function recordingNotices({
     if (remainingMs <= 5 * MINUTE) warnings.push({ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops });
     else notes.push(`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`);
   }
-  if (phase === "recording" && silent) {
+  if (phase === "recording" && silent && !muted) {
     warnings.push({ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." });
   }
   if (lowSpace && refused !== "full") {
@@ -134,6 +164,10 @@ export function recordingNotices({
     notes.push(
       `Inspelningen sparas bara i den här fliken. Stäng inte fliken innan ${makesText ? "texten är skapad" : "dokumentet är skapat"}.`,
     );
+  }
+  if (mutedGap) {
+    const where = mutedGap.away ? " medan sidan låg i bakgrunden" : "";
+    notes.push(`Mikrofonen var avstängd i ${formatDuration(mutedGap.ms)}${where}. Det som sades då kom inte med i inspelningen.`);
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");

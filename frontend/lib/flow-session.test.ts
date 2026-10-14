@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 
 import { ApiError, type FormField, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
@@ -176,6 +176,10 @@ function memoryDrafts(): DraftStorage {
   };
 }
 
+// A page always goes away in the end, and a recording left running goes with it: so does every test's.
+const sessions: FlowSession[] = [];
+afterEach(() => sessions.splice(0).forEach((session) => session.dispose()));
+
 async function setup(
   options: {
     store?: RecordingStore;
@@ -212,6 +216,7 @@ async function setup(
     live: options.live === undefined ? fakeLiveClient().client : options.live,
     drafts: options.drafts,
   });
+  sessions.push(session);
   return { session, store, streams, recorders };
 }
 
@@ -787,6 +792,44 @@ test("a denied or missing microphone says what happened and what to do next, and
   // Choosing another mode clears the problem; so does a start that works.
   missing.session.selectMode("ladda-upp");
   assert.equal(missing.session.getSnapshot().problem, null);
+});
+
+test("Fortsätt spela in after a lost microphone says why the recorder refused it, and a second press while it waits says nothing", async () => {
+  /** A session recording in `contract` whose microphone went away, and the microphone's next answer held until `grant`. */
+  async function interrupted(contract: RunContract) {
+    let grant = () => {};
+    let waiting = false;
+    const made = await setup({
+      getStream: async () => {
+        if (waiting) await new Promise<void>((resolve) => (grant = resolve));
+        const stream = new FakeStream();
+        made.streams.push(stream);
+        return stream as unknown as MediaStream;
+      },
+    });
+    made.session.setContract(contract);
+    made.session.selectMode("spela-in");
+    await made.session.start();
+    made.recorders[0].emit("audio");
+    made.streams[0].track.readyState = "ended";
+    made.streams[0].track.dispatchEvent(new Event("ended")); // another app takes the microphone
+    await until(() => made.session.getSnapshot().phase === "interrupted", "the interruption");
+    waiting = true;
+    return { ...made, grant: () => grant() };
+  }
+  const contract = audioContract();
+  const oneFile = await interrupted({ ...contract, steps_requiring_input: [{ ...contract.steps_requiring_input![0], max_files: 1 }] });
+  await oneFile.session.continueRecording();
+  assert.deepEqual(oneFile.session.getSnapshot().problem, { title: "Flödet tar emot högst 1 fil, och inspelningen har redan så många delar." });
+  assert.equal(oneFile.streams.length, 1, "no microphone was asked for");
+
+  const { session, grant } = await interrupted(contract);
+  const continuing = session.continueRecording(); // waits for the microphone
+  await session.continueRecording();
+  assert.equal(session.getSnapshot().problem, null, "the first press is still going on");
+  grant();
+  await continuing;
+  assert.equal(session.getSnapshot().phase, "recording");
 });
 
 test("stop leads to the ready state with the recording, never back to setup", async () => {

@@ -234,6 +234,116 @@ test("back on a page whose microphone went quiet while hidden, the recording goe
   assert.equal(capture.getSnapshot().muted, false);
 });
 
+/** The intervals set and not yet cleared: a capture's watch must not outlive it. */
+function liveIntervals(t: import("node:test").TestContext) {
+  const live = new Set<unknown>();
+  const set = globalThis.setInterval;
+  const clear = globalThis.clearInterval;
+  globalThis.setInterval = ((run: () => void, ms?: number) => {
+    const id = set(run, ms);
+    live.add(id);
+    return id;
+  }) as typeof setInterval;
+  globalThis.clearInterval = ((id?: Parameters<typeof clearInterval>[0]) => {
+    live.delete(id);
+    clear(id);
+  }) as typeof clearInterval;
+  t.after(() => {
+    globalThis.setInterval = set;
+    globalThis.clearInterval = clear;
+  });
+  return live;
+}
+
+test("a recorder that hands over no audio is asked for it once, then the page says nothing is kept, until audio comes again", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const intervals = liveIntervals(t);
+  const { page, show } = fakePage();
+  const { capture, recorders } = await setup({ page });
+  await capture.start(meeting);
+  const look = (times = 1) => t.mock.timers.tick(2_000 * times);
+  look(2);
+  assert.equal(recorders[0].flushes, 0, "a chunk may still be on its way");
+  look();
+  assert.equal(recorders[0].flushes, 1, "six seconds without audio: the recorder is asked for it");
+  assert.equal(capture.getSnapshot().stalled, false);
+  look();
+  assert.equal(capture.getSnapshot().stalled, true, "still nothing: said");
+  look(5);
+  assert.equal(recorders[0].flushes, 1, "asked once");
+  recorders[0].emit("a");
+  assert.equal(capture.getSnapshot().stalled, false, "audio again: the warning goes");
+
+  // A page in the background is not watched (a phone holds its recorder's audio back); in view again it starts over.
+  show("hidden");
+  const flushes = recorders[0].flushes;
+  look(10);
+  show("visible");
+  look(2);
+  assert.deepEqual([recorders[0].flushes, capture.getSnapshot().stalled], [flushes, false]);
+  // Paused, the recorder has nothing to hand over; going on starts the count over.
+  capture.togglePause();
+  look(10);
+  capture.togglePause();
+  look(2);
+  assert.deepEqual([recorders[0].flushes, capture.getSnapshot().stalled], [flushes, false]);
+
+  assert.equal(intervals.size, 1, "one watch");
+  await capture.stop();
+  assert.equal(intervals.size, 0, "it ends with Stoppa");
+  look(10);
+  assert.equal(recorders[0].flushes, flushes);
+  await capture.start(meeting);
+  capture.dispose();
+  assert.equal(intervals.size, 0, "and when the page goes");
+});
+
+test("a recorder that stops without saying so is a lost microphone: the recording pauses with what it has", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  recorders[0].state = "inactive"; // no last data, no stop event (WebKit after an interruption)
+  t.mock.timers.tick(2_000);
+  assert.equal(capture.getSnapshot().status, "recording", "its stop event may still be on its way");
+  t.mock.timers.tick(2_000);
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+  assert.deepEqual(await texts(await store.readParts(capture.getSnapshot().recording!.id)), ["a"]);
+});
+
+test("a microphone muted while the page was away is told with how long once the page is back; muted long in view, the page says to act", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let now = 0;
+  const { page, show } = fakePage();
+  const { capture, streams } = await setup({ page, now: () => now });
+  await capture.start(meeting);
+  show("hidden");
+  streams[0].track.lose("mute"); // the phone takes the microphone from a page in the background
+  now = 40_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedGap, null, "not told to a page nobody sees");
+  show("visible");
+  assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 40_000, away: true });
+  show("hidden");
+  assert.equal(capture.getSnapshot().mutedGap, null, "told until the page goes away again");
+  show("visible");
+
+  streams[0].track.lose("mute");
+  now += 1_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedGap, null, "a second's route change is not told");
+  streams[0].track.lose("mute");
+  t.mock.timers.tick(14_000);
+  assert.equal(capture.getSnapshot().mutedLong, false);
+  t.mock.timers.tick(2_000);
+  assert.equal(capture.getSnapshot().mutedLong, true, "muted 15 s in view");
+  assert.equal(capture.getSnapshot().stalled, false, "a muted microphone is not a stalled recorder");
+  now += 20_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedLong, false);
+  assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 20_000, away: false });
+});
+
 test("a microphone that ends, or a recorder that stops or fails by itself, pauses the recording too", async () => {
   const losses: Array<[string, (stream: FakeStream, recorder: FakeRecorder) => void]> = [
     ["the track ended", (stream) => stream.track.lose("ended")],
@@ -735,6 +845,7 @@ test("Stoppa lets the microphone go without waiting for the database, and the la
   await settle();
   await settle();
   assert.equal(streams[0].track.readyState, "ended", "the hardware is released while the storage is still pending");
+  assert.equal(await capture.stop(), null, "a second Stoppa while it is stored does nothing");
   release();
   const stopped = await stopping;
   assert.equal(stopped?.state, "stopped");
@@ -777,7 +888,8 @@ test("a microphone lost while the device cannot confirm the pause leaves the rec
   await until(() => capture.getSnapshot().status === "interrupted", "the recording interrupted");
   const { stream, error } = capture.getSnapshot();
   assert.equal(stream, null);
-  assert.equal(error, "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.");
+  // Said under the pause's own warning, which names the pause (recordingNotices).
+  assert.equal(error, "Det gick inte att bekräfta att inspelningen sparades på enheten.");
   assert.equal(await capture.stop(), null);
   assert.equal(capture.getSnapshot().status, "stopped");
 });

@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -74,15 +74,21 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
 /** How long the browser's question about the microphone may be left before the page says where it is. */
 const MICROPHONE_ANSWER_WAIT_MS = 3_000;
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
+const REMOVED = "Inspelningen togs bort.";
 
+/** A media query, as useSyncExternalStore follows it. */
+const media = (query: string) => ({
+  subscribe: (onChange: () => void) => {
+    const list = window.matchMedia(query);
+    list.addEventListener("change", onChange);
+    return () => list.removeEventListener("change", onChange);
+  },
+  matches: () => window.matchMedia(query).matches,
+});
 // Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
-const PHONE = "(max-width: 767.98px)";
-const subscribePhone = (onChange: () => void) => {
-  const query = window.matchMedia(PHONE);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-};
-const isPhone = () => window.matchMedia(PHONE).matches;
+const PHONE = media("(max-width: 767.98px)");
+// From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
+const COLUMNS = media("(min-width: 1024px)");
 
 /** The tab title follows the state; its own component, so the timer re-renders only this. */
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
@@ -126,8 +132,12 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // "Ta bort" took the ready recording away: said, and shown in the setup it leaves, until a recording begins.
+  const [removed, setRemoved] = useState(false);
+  if (removed && group !== "setup") setRemoved(false);
   const [dockSlot, dockRef] = useDock();
-  const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
+  const phone = useSyncExternalStore(PHONE.subscribe, PHONE.matches, () => false);
+  const columns = useSyncExternalStore(COLUMNS.subscribe, COLUMNS.matches, () => false);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
@@ -139,6 +149,31 @@ export function FlowInput({
   // A flow that cannot run now: the session takes no way on, so none is offered, in the setup or over a recording
   // that was ready before.
   const blocked = speakerLabelsGap(contract.transcription?.speaker_labels) === "blocked";
+  // The setup's unsent recordings: a send takes one up as the document's input, and "Fortsätt spela in" records on in
+  // one a reload cut off. The session refuses both while the count is no count; its field takes the focus to put it right.
+  const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
+  const onContinue = snapshot.modes.includes("spela-in")
+    ? (recording: StoredRecording) => (countInvalid ? focusSpeakerCount() : void session.continueCutOff(recording))
+    : undefined;
+  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile, until the
+  // person chooses a file to send instead.
+  const resuming = onContinue !== undefined && resumableRecording(unsent.recordings) !== undefined && !(mode === "ladda-upp" && snapshot.file);
+  const unsentRecordings = (
+    <UnsentRecordings
+      list={unsent}
+      sendLabel={() => `${createActionLabel(text)} av inspelningen`}
+      filled={resuming}
+      evictable={input.evictable}
+      onSend={(recording) => {
+        if (countInvalid) return focusSpeakerCount();
+        session.adopt(recording);
+        void createDocument(session);
+      }}
+      onContinue={onContinue}
+    />
+  );
+  // In one column the flow's details stand above the work: the recording to go on with comes first, under its name.
+  const recoveryFirst = group === "setup" && !blocked && resuming && !columns;
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -177,6 +212,7 @@ export function FlowInput({
             published={published}
             classification={contract.security_classification}
             compact={holdsAudio}
+            lead={recoveryFirst ? unsentRecordings : undefined}
             // The blocked setup asks for nothing: its details would be filled in for no run, and on a phone they stand
             // above the reason. What was typed before stays with the session.
             details={blocked && group === "setup" ? null : details}
@@ -190,7 +226,7 @@ export function FlowInput({
       >
         {/* Recording state changes are said once here; the timer never is. */}
         <VisuallyHidden as="p" role="status">
-          {recordingAnnouncement(phase)}
+          {removed ? REMOVED : recordingAnnouncement(phase)}
         </VisuallyHidden>
         <VStack
           as="section"
@@ -210,6 +246,9 @@ export function FlowInput({
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
               unsent={unsent}
+              unsentRecordings={recoveryFirst ? null : unsentRecordings}
+              resuming={resuming}
+              removed={removed}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -224,7 +263,7 @@ export function FlowInput({
               // (the session's problem), saving as a file and deleting.
               onCreate={blocked ? undefined : () => void createDocument(session)}
               onContinue={blocked ? undefined : input.continueStopped}
-              onDiscard={() => void session.discard()}
+              onDiscard={() => void session.discard().then((gone) => gone && setRemoved(true))}
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
@@ -261,6 +300,12 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     backOnDevice: capture.backOnDevice,
     remainingMs: capture.remainingMs,
     muted: capture.muted,
+    mutedLong: capture.mutedLong,
+    mutedGap: capture.mutedGap,
+    stalled: capture.stalled,
+    // The recorder's own word on keeping the recording; what a press was answered (the problem) and what a stop ends with
+    // (the ready view) are said there.
+    error: problem || capture.stopping ? null : capture.error,
     wakeLock: !capture.screenMayDim,
     makesText,
   });
@@ -271,7 +316,12 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
   const [stopAsked, setStopAsked] = useState<{ signedOut: boolean } | null>(null);
   const capturing = phase === "recording" || phase === "paused";
   if (stopAsked && !capturing) setStopAsked(null);
-  const stop = () => (capturing && !session.capture.continuesAfterStop() ? setStopAsked({ signedOut }) : void session.stop());
+  const stop = () => {
+    // Stopping already: a second press asks and stops nothing more.
+    if (capture.stopping) return;
+    if (capturing && !session.capture.continuesAfterStop()) setStopAsked({ signedOut });
+    else void session.stop();
+  };
   return (
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
@@ -297,6 +347,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
         warnings={warnings}
         notes={notes}
         makesText={makesText}
+        stopping={capture.stopping}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
         onStop={stop}
       />
@@ -331,6 +382,9 @@ function SetupWorkspace({
   onOpenRun,
   onMoreRuns,
   unsent,
+  unsentRecordings,
+  resuming,
+  removed,
 }: {
   contract: RunContract;
   input: Session;
@@ -340,6 +394,12 @@ function SetupWorkspace({
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   unsent: UnsentList;
+  /** The unsent recordings to send or go on with, where the setup lists them; null where they stand first on the page. */
+  unsentRecordings: ReactNode;
+  /** A recording a reload cut off is the page's one filled action, "Fortsätt spela in". */
+  resuming: boolean;
+  /** The ready recording was just removed: said above the way to a new one (the page's status said it too). */
+  removed: boolean;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -368,12 +428,6 @@ function SetupWorkspace({
   const create = createActionLabel(text);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
-  const onContinue = modes.includes("spela-in")
-    ? (recording: StoredRecording) => (countInvalid ? focusSpeakerCount() : void session.continueCutOff(recording))
-    : undefined;
-  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile, until the
-  // person chooses a file to send instead.
-  const resuming = onContinue !== undefined && resumableRecording(unsent.recordings) !== undefined && !(mode === "ladda-upp" && file);
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
       ? create
@@ -438,18 +492,9 @@ function SetupWorkspace({
 
   return (
     <VStack gap={6}>
-      <UnsentRecordings
-        list={unsent}
-        sendLabel={sendLabel}
-        filled={resuming}
-        evictable={input.evictable}
-        onSend={(recording) => {
-          if (countInvalid) return focusSpeakerCount();
-          session.adopt(recording);
-          void createDocument(session);
-        }}
-        onContinue={onContinue}
-      />
+      {unsentRecordings}
+
+      {removed && <Text as="p">{REMOVED}</Text>}
 
       {modes.length > 1 ? (
         <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} note={snapshot.modesNote} />

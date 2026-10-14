@@ -65,6 +65,16 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
   assert.ok(alert.compareDocumentPosition(pause) & Node.DOCUMENT_POSITION_FOLLOWING, "above the controls");
   assert.match(alert.textContent ?? "", /Vi hör inget från mikrofonen\./);
 
+  // Stoppa pressed: it says the recording is being stored, keeping the focus, and Pausa waits.
+  const stopping = await mount(
+    createElement(RecordingBar, { capture, phase: "recording", stream: null, showStatus: false, warnings: [], notes: [], stopping: true, onPause() {}, onStop() {} }),
+  );
+  const [pauseWhileStopping, stopWhileStopping] = stopping.container.querySelectorAll("button");
+  assert.equal(stopWhileStopping.getAttribute("aria-label"), "Sparar…");
+  assert.equal(stopWhileStopping.getAttribute("aria-busy"), "true");
+  assert.equal(stopWhileStopping.disabled, false, "busy, not disabled: the focus stays on it");
+  assert.equal(pauseWhileStopping.disabled, true);
+
   const recorder = await mount(createElement(FocusedRecorder, { capture, phase: "recording", stream: null }));
   for (const view of [running, recorder]) {
     // Everything inside a live region is checked for the timer, and the timer itself is on the page.

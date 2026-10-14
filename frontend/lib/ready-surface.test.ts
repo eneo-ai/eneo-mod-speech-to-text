@@ -116,6 +116,39 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
   }
 });
 
+test("a recording of two files says so on Spara som fil, and saves one file a press, so the browser blocks neither", async () => {
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const readParts = store.readParts;
+  const createObjectURL = URL.createObjectURL;
+  const saved: string[] = [];
+  store.readParts = async () =>
+    [
+      { index: 0, filename: "inspelning-del-1.webm", blob: new Blob(["a"]) },
+      { index: 1, filename: "inspelning-del-2.webm", blob: new Blob(["b"]) },
+    ] as never;
+  try {
+    const part = recording.parts[0];
+    const view = await ready({ recording: { ...recording, parts: [part, { ...part, index: 1 }] } });
+    await view.act(async () => undefined);
+    URL.createObjectURL = (blob: Blob) => {
+      saved.push(String((blob as Blob & { size: number }).size));
+      return "blob:saved";
+    };
+    const save = named(view.container, "Spara som 2 filer")!;
+    assert.ok(save, "the number of files, before the first is saved");
+    await view.act(async () => save.click());
+    assert.equal(saved.length, 1, "one file a press");
+    assert.equal(save.textContent?.trim(), "Spara fil 2 av 2");
+    await view.act(async () => save.click());
+    assert.equal(saved.length, 2);
+    assert.equal(save.textContent?.trim(), "Spara som 2 filer", "and from the first again");
+  } finally {
+    store.readParts = readParts;
+    URL.createObjectURL = createObjectURL;
+  }
+});
+
 test("the delete question: Avbryt and Escape keep the recording; Ta bort discards once, closing first", async () => {
   const view = await ready();
   const trigger = named(view.container, "Ta bort")!;

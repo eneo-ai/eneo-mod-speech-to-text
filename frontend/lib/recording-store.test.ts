@@ -754,6 +754,85 @@ test("a database connection the browser closed is reopened: what was kept is rea
   assert.deepEqual((await store.listUnsent("user-1")).map((r) => r.id), [], "this tab's own, still leased");
 });
 
+/** The device's database fails every chunk write (WebKit's "Connection to Indexed Database server lost") until restored. */
+function failChunkWrites(times = Infinity): () => void {
+  const put = IDBObjectStore.prototype.put;
+  let left = times;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks" && left-- > 0) throw new DOMException("Connection to Indexed Database server lost.", "UnknownError");
+    return put.apply(this, args);
+  };
+  return () => void (IDBObjectStore.prototype.put = put);
+}
+
+test("a database failure that is not a full device is tried once more on a reopened connection, so a passing one keeps the recording on the device", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const restore = failChunkWrites(1);
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  } finally {
+    restore();
+  }
+  assert.equal(store.refused(recording.id), null, "a moment's failure is no refusal");
+  assert.equal(store.persistent, true);
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["ab"]);
+});
+
+test("a database that keeps failing is tried again as a full device is, and takes what this tab held once it works", async () => {
+  const later = testTimer();
+  const env = device({ timer: later.timer });
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const restore = failChunkWrites();
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+    assert.equal(store.refused(recording.id), "failed");
+    assert.deepEqual(later.waits, [20_000], "tried again in 20 seconds");
+    later.fire();
+    await store.get(recording.id); // the try is in the store's queue
+    assert.equal(store.refused(recording.id), "failed", "still failing: the audio stays in this tab");
+    assert.deepEqual(later.waits, [20_000, 20_000], "and is tried again");
+  } finally {
+    restore();
+  }
+  later.fire();
+  await store.get(recording.id);
+  assert.equal(store.refused(recording.id), null, "kept on the device again");
+  assert.equal(store.persistent, true);
+  assert.deepEqual(await texts(await (await openRecordingStore(env)).readPartsToSend(recording.id)), ["ab"], "the device alone has all of it");
+});
+
+test("a recording's parts are read one at a time, so a long recording's audio is never in memory all at once", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  for (const text of ["a", "b", "c"]) {
+    const part = await store.startPart(recording.id);
+    await store.append(recording.id, part, new Blob([text]), 1_000);
+  }
+  const getAll = IDBObjectStore.prototype.getAll;
+  let reading = 0;
+  let most = 0;
+  IDBObjectStore.prototype.getAll = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["getAll"]>) {
+    const request = getAll.apply(this, args);
+    if (this.name === "chunks") {
+      most = Math.max(most, (reading += 1));
+      request.addEventListener("success", () => (reading -= 1));
+    }
+    return request;
+  };
+  try {
+    assert.deepEqual(await texts(await store.readParts(recording.id)), ["a", "b", "c"]);
+  } finally {
+    IDBObjectStore.prototype.getAll = getAll;
+  }
+  assert.equal(most, 1, "the next part is read once the one before is a file");
+});
+
 test("a device cleared in the middle of a recording: the recording goes on in this tab, and what is kept saves as a file and can be sent", async () => {
   const { env, closeConnections, wipe } = closable();
   const store = await openRecordingStore(env);

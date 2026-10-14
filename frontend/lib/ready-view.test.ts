@@ -100,6 +100,19 @@ test("a recording of a moment says so, and makes Fortsätt spela in the one fill
   assert.doesNotMatch(ready(1_200), note, "nothing to offer when the recorder cannot go on");
 });
 
+test("a recording with no audio says so plainly, and offers neither a document nor a file: only going on with it and deleting it", () => {
+  const silent = { ...recording, durationMs: 0, parts: [{ index: 0, startedAt: 0, durationMs: 0, bytes: 0, chunks: 0, fileId: null }] };
+  const html = renderToStaticMarkup(
+    createElement(ReadyPanel, { recording: silent, persistent: true, problem: null, onCreate: noop, onContinue: noop, onDiscard: noop }),
+  );
+  assert.match(html, /Inget ljud sparades i den här inspelningen\./);
+  assert.doesNotMatch(html, /mycket kort/, "not a short recording: none at all");
+  for (const name of ["Skapa dokument", "Spara som fil"]) assert.ok(!hasButton(html, name), name);
+  const filled = [...parse(html).querySelectorAll("button")].filter((button) => button.getAttribute("data-variant") === "primary");
+  assert.deepEqual(filled.map((button) => button.textContent?.trim()), ["Fortsätt spela in"]);
+  assert.ok(hasButton(html, "Ta bort"));
+});
+
 test("after Stoppa, Strömma's live text stays to read and copy, marked as preliminary", () => {
   const snapshot: LiveSnapshot = {
     status: "ended",

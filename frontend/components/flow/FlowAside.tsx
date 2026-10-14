@@ -19,6 +19,7 @@ export function FlowAside({
   classification,
   titleIsHeading = true,
   compact = false,
+  lead,
   details,
   summary,
   open,
@@ -30,6 +31,8 @@ export function FlowAside({
   /** False where the state's card has the page's heading. */
   titleIsHeading?: boolean;
   compact?: boolean;
+  /** What the page asks of the person first, under the flow's name (a recording to go on with, in one column). */
+  lead?: ReactNode;
   details: ReactNode;
   /** The details in one line, for the fold; none, no fold. */
   summary?: string | null;
@@ -48,6 +51,7 @@ export function FlowAside({
           {published.name}
         </Text>
       )}
+      {lead}
       <VStack gap={6} className={compact ? styles.fromLaptop : undefined}>
         {published.description && <Text as="p" color="secondary">{published.description}</Text>}
         <ClassificationNote classification={classification} />

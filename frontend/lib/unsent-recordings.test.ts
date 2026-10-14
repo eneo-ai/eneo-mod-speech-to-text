@@ -23,7 +23,7 @@ const recording = (id: string, durationMs: number, startedAt: number): StoredRec
   startedAt,
   durationMs,
   state: "stopped",
-  parts: [],
+  parts: [{ index: 0, startedAt, durationMs, bytes: 32_000, chunks: 8, fileId: null }],
   runId: null,
 });
 
@@ -109,6 +109,21 @@ test("the actions call back with their recording, and Fortsätt spela in only wh
   assert.equal(button(list, "Fortsätt spela in"), null, "where nothing can take it over (a flow that cannot run now), it is not offered");
 });
 
+test("a recording with no audio says so plainly, and offers neither a document nor a file: only going on with it and deleting it", async () => {
+  const silent = (id: string, state: "stopped" | "recording") => ({
+    ...recording(id, 0, at(23, 10, 12)),
+    state,
+    parts: [{ index: 0, startedAt: 0, durationMs: 0, bytes: 0, chunks: 0, fileId: null }],
+  });
+  const { container } = await render({ recordings: [silent("a", "recording"), silent("b", "stopped")], onContinue: () => {} });
+  const [cutOff, stopped] = rowsOf(container);
+  for (const row of [cutOff, stopped]) assert.match(row.textContent!, /Inget ljud sparades i den här inspelningen\./);
+  assert.deepEqual(labels(cutOff), ["Fortsätt spela in", "Ta bort"]);
+  assert.deepEqual(labels(stopped), ["Ta bort"]);
+  const { container: elsewhere } = await render({ recordings: [{ ...silent("c", "stopped"), exportOnly: true }] });
+  assert.deepEqual(labels(rowsOf(elsewhere)[0]), [], "another tab's: nothing to save either");
+});
+
 test("without Web Locks, another tab's recording is offered only as a file to save, and says why", async () => {
   const elsewhere = { ...recording("a", 60_000, at(23, 10, 12)), state: "paused" as const, exportOnly: true };
   const { container } = await render({ recordings: [elsewhere, recording("b", 60_000, at(23, 9, 0))], onContinue: () => {} });
@@ -123,7 +138,7 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   const cutOff = (id: string) => ({ ...recording(id, 60_000, at(23, 10, 12)), state: "recording" as const });
   const one = await render({ recordings: [cutOff("a")], onContinue: () => {} });
   assert.equal(one.container.querySelector("h2")?.textContent, "Inspelningen avbröts");
-  assert.match(one.container.textContent!, /Välj Fortsätt spela in så fortsätter den i samma inspelning\./);
+  assert.match(one.container.textContent!, /Den fortsätter i samma inspelning när du väljer Fortsätt spela in\./, "the button by its whole name");
   assert.deepEqual(filled(one.container), ["Fortsätt spela in"]);
   await one.unmount();
 
@@ -176,24 +191,24 @@ test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to 
 });
 
 test("a recording that cannot be saved or removed says so in an alert, and a removal that failed closes the question", async (t) => {
-  const saving = await import("../components/save-recording");
   const store = await import("./recording-store");
   const { container, act } = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))] });
   const row = rowsOf(container)[0];
   const alert = () => [...row.querySelectorAll('[role="alert"]')].map((a) => a.textContent?.trim());
   assert.deepEqual(alert(), [], "nothing is said before something fails");
 
-  t.mock.method(saving, "saveRecordingAsFiles", async () => {
-    throw new Error("disk");
-  });
-  await act(async () => button(row, "Spara som fil")!.click());
-  assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
-
+  // The device reads nothing back, and refuses the deletion: another tab holds the recording.
   t.mock.method(store, "recordingStore", async () => ({
+    readParts: async () => {
+      throw new Error("disk");
+    },
     remove: async () => {
       throw new Error(IN_USE_ELSEWHERE);
     },
   }));
+  await act(async () => button(row, "Spara som fil")!.click());
+  assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
+
   await act(async () => button(row, "Ta bort")!.click());
   await act(async () => button(row.querySelector('[role="group"]')!, "Ta bort")!.click());
   assert.deepEqual(alert(), [IN_USE_ELSEWHERE]);

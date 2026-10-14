@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -9,14 +10,20 @@ import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { saveRecordingAsFiles } from "@/components/save-recording";
+import { useSaveRecording } from "@/components/save-recording";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
   continuable,
+  filesIn,
+  hasAudio,
   IN_USE_ELSEWHERE,
   recordingStore,
   type StoredRecording,
 } from "@/lib/recording-store";
+
+// Wide enough for the longest action ("Skapa dokument av inspelningen"); "fill" keeps a row's empty columns, so every
+// row of actions has the same column width.
+const ACTION_COLUMNS = { minWidth: 240, repeat: "fill" } as const;
 
 /** An unsent recording as listed: `exportOnly` when this tab may only save it as a file. */
 export type UnsentRecording = StoredRecording & { exportOnly?: boolean };
@@ -143,7 +150,7 @@ export function UnsentRecordings({
         </Heading>
         <Text as="p" color="secondary">
           {cutOff
-            ? "Välj Fortsätt spela in så fortsätter den i samma inspelning."
+            ? "Den fortsätter i samma inspelning när du väljer Fortsätt spela in."
             : recordings.length === 1
               ? evictable
                 ? "Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
@@ -194,6 +201,9 @@ function UnsentRecordingRow({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
   const wasConfirming = useRef(false);
+  // No audio reached the device: nothing to send or save, only going on with it and deleting it.
+  const audio = hasAudio(recording);
+  const saving = useSaveRecording(recording.id, filesIn(recording));
 
   // Focus follows the question: to "Avbryt" when it opens, back to "Ta bort" when it closes.
   useEffect(() => {
@@ -204,11 +214,7 @@ function UnsentRecordingRow({
 
   async function save() {
     setProblem(null);
-    try {
-      await saveRecordingAsFiles(recording.id);
-    } catch {
-      setProblem("Inspelningen kunde inte sparas som fil. Försök igen.");
-    }
+    if (!(await saving.save())) setProblem("Inspelningen kunde inte sparas som fil. Försök igen.");
   }
 
   async function remove() {
@@ -238,16 +244,19 @@ function UnsentRecordingRow({
               <Text as="p" color="secondary">
                 {recordingDetails(recording, { withFlowName })}
               </Text>
+              {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
             </VStack>
           </HStack>
           {recording.exportOnly ? (
-            // Without Web Locks another tab may still hold it: here it is only read.
-            <VStack gap={2} hAlign="start">
-              <Text as="p" color="secondary">
-                I den här webbläsaren kan den bara sparas som fil.
-              </Text>
-              <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
-            </VStack>
+            // Without Web Locks another tab may still hold it: here it is only read, as a file when it has audio.
+            audio && (
+              <VStack gap={2} hAlign="start">
+                <Text as="p" color="secondary">
+                  I den här webbläsaren kan den bara sparas som fil.
+                </Text>
+                <Button label={saving.label} aria-describedby={summaryId} onClick={() => void save()} />
+              </VStack>
+            )
           ) : confirming ? (
             <VStack role="group" aria-labelledby={questionId} gap={2} hAlign="start">
               <Text as="p" id={questionId}>
@@ -259,27 +268,35 @@ function UnsentRecordingRow({
               </HStack>
             </VStack>
           ) : (
-            <VStack gap={2} hAlign="start">
-              <HStack gap={3} wrap="wrap">
+            // The actions in columns of one width, so they share their edges however they wrap (one column on a phone);
+            // deleting stands apart on a line of its own, in the same width.
+            <VStack gap={3}>
+              <Grid columns={ACTION_COLUMNS} gap={3}>
                 {onContinue && (
                   <Button
                     label="Fortsätt spela in"
                     variant={primary ? "primary" : "secondary"}
+                    width="100%"
                     aria-describedby={summaryId}
                     onClick={() => onContinue(recording)}
                   />
                 )}
-                {onSend && <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />}
-                <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
-              </HStack>
-              <Button
-                ref={deleteRef}
-                label="Ta bort"
-                variant="ghost"
-                icon={<Icon icon={Trash2} size="sm" />}
-                aria-describedby={summaryId}
-                onClick={() => setConfirming(true)}
-              />
+                {onSend && audio && (
+                  <Button label={sendLabel} width="100%" aria-describedby={summaryId} onClick={() => onSend(recording)} />
+                )}
+                {audio && <Button label={saving.label} width="100%" aria-describedby={summaryId} onClick={() => void save()} />}
+              </Grid>
+              <Grid columns={ACTION_COLUMNS}>
+                <Button
+                  ref={deleteRef}
+                  label="Ta bort"
+                  variant="ghost"
+                  width="100%"
+                  icon={<Icon icon={Trash2} size="sm" />}
+                  aria-describedby={summaryId}
+                  onClick={() => setConfirming(true)}
+                />
+              </Grid>
             </VStack>
           )}
           {problem && <Banner status="error" title={problem} collapsible={false} />}

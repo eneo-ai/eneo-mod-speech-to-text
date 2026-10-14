@@ -1,3 +1,4 @@
+import { keepRunning } from "@/components/flow/LevelMeter";
 import type { LiveClient, LiveSession } from "@/lib/flow-session";
 import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveDeps } from "@/lib/live-transcriber";
 import { loginState } from "@/lib/login-state";
@@ -60,9 +61,16 @@ function load(context: AudioContext): Promise<void> {
 export function liveClient(env: LiveEnv): LiveClient {
   return {
     open(stepId, recordingId, earlier): LiveSession {
+      // Each context is resumed whenever the browser suspends or interrupts it, until it is let go.
+      let stopResuming = () => {};
+      const newContext = () => {
+        const made = env.audioContext();
+        stopResuming = keepRunning(made);
+        return made;
+      };
       // Made first, in the start gesture, so the browser lets it run; if it
       // cannot be made, nothing else has been set up.
-      let context: AudioContext | null = env.audioContext();
+      let context: AudioContext | null = newContext();
       let loaded: Promise<void> | null = load(context);
       // The worklet has loaded into this context: audio can reach live text without a wait.
       let moduleReady = false;
@@ -104,6 +112,7 @@ export function liveClient(env: LiveEnv): LiveClient {
       // Lets all audio go; the next wiring starts from a new context.
       const release = () => {
         unwire();
+        stopResuming();
         void context?.close().catch(() => undefined);
         context = null;
         loaded = null;
@@ -116,7 +125,7 @@ export function liveClient(env: LiveEnv): LiveClient {
         const mine = attempt;
         const heard = stream;
         void (async () => {
-          const audio = (context ??= env.audioContext());
+          const audio = (context ??= newContext());
           await (loaded ??= load(audio));
           if (mine !== attempt) return;
           encoder ??= new Pcm16Encoder(audio.sampleRate, (frame) => transcriber.pushFrame(frame));

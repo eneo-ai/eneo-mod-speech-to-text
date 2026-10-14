@@ -146,6 +146,52 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   ]);
 });
 
+test("the bar says when no audio is kept, when the microphone stays muted, how long it was muted, and what went wrong in keeping the recording", () => {
+  const base = {
+    phase: "recording" as const,
+    silent: false,
+    lowSpace: false,
+    persistent: true,
+    refused: null,
+    remainingMs: null,
+    muted: false,
+    wakeLock: true,
+  };
+  const stalled = {
+    title: "Ljudet sparas inte just nu.",
+    detail: "Kontrollera mikrofonen. Står varningen kvar, välj Stoppa: det som hunnit spelas in sparas, och du kan spela in vidare.",
+  };
+  assert.deepEqual(recordingNotices({ ...base, stalled: true }).warnings, [stalled]);
+  assert.deepEqual(recordingNotices({ ...base, phase: "paused", stalled: true }).warnings, [], "paused, no audio is due");
+  const muted = { title: "Mikrofonen är tillfälligt borta.", detail: "Inspelningen fortsätter av sig själv när den är tillbaka." };
+  assert.deepEqual(
+    recordingNotices({ ...base, muted: true, stalled: true, silent: true }).warnings,
+    [muted],
+    "a muted microphone is the cause of the rest, and said alone",
+  );
+  assert.deepEqual(recordingNotices({ ...base, muted: true, mutedLong: true }).warnings, [
+    {
+      title: "Mikrofonen är fortfarande avstängd.",
+      detail: "Kontrollera att ingen annan app använder den, till exempel ett samtal. Kommer ljudet inte tillbaka, välj Stoppa och spela in vidare.",
+    },
+  ]);
+  const lost = "Det som sades då kom inte med i inspelningen.";
+  assert.deepEqual(recordingNotices({ ...base, mutedGap: { ms: 40_000, away: true } }), {
+    warnings: [],
+    notes: [`Mikrofonen var avstängd i 40 s medan sidan låg i bakgrunden. ${lost}`],
+  });
+  assert.deepEqual(recordingNotices({ ...base, mutedGap: { ms: 4 * 60_000, away: false } }).notes, [`Mikrofonen var avstängd i 4 min. ${lost}`]);
+
+  // What went wrong in keeping the recording is said while it goes on, and in place of the promise that a pause kept it.
+  assert.deepEqual(recordingNotices({ ...base, error: "Inspelningen finns inte längre på enheten." }).warnings, [
+    { title: "Inspelningen finns inte längre på enheten." },
+  ]);
+  const unconfirmed = "Det gick inte att bekräfta att inspelningen sparades på enheten.";
+  assert.deepEqual(recordingNotices({ ...base, phase: "interrupted", error: unconfirmed }).warnings, [
+    { title: "Inspelningen pausades när mikrofonen försvann.", detail: unconfirmed },
+  ]);
+});
+
 test("recording state changes are announced once, never the timer", () => {
   assert.equal(recordingAnnouncement("setup"), "");
   assert.equal(recordingAnnouncement("starting"), "");
@@ -218,6 +264,7 @@ test("pause excludes time: the timer counts only recorded time", async () => {
   session.togglePause();
   tick(3_000);
   assert.equal(session.capture.elapsedMs(), 8_000);
+  session.dispose();
 });
 
 test("a recording is named for people", () => {
