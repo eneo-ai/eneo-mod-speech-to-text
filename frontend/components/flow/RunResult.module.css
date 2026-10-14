@@ -4,6 +4,12 @@
   min-inline-size: 0;
 }
 
+/* The spans own the grid items' automatic minimum, above the panels. A wide table must scroll inside its panel. */
+.columns > * {
+  min-inline-size: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* The transcript keeps in view while the document scrolls past it, from where it starts. Its column is as tall as the
    document's, so the panel must not stretch to it. */
 .sticky {

@@ -396,6 +396,12 @@
     min-inline-size: var(--size-element-md);
     margin-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
   }
+
+  /* A wrapped heading has separate rows of controls. Reserve their touch height instead of overlapping the row
+     above or the passage below it with the inline text's negative margin. */
+  .head .inline {
+    margin-block: 0;
+  }
 }
 
 .name {

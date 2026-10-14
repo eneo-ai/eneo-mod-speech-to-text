@@ -192,7 +192,7 @@ export function RunResult({
     // the window before the page is scrolled. Below it a hidden panel is an empty span, which takes no room between
     // rows because the grid has no row gap.
     <VStack paddingBlockStart={2} data-workspace={showTranscript || undefined}>
-      <Grid columns={sideBySide ? 13 : 1} columnGap={8}>
+      <Grid columns={sideBySide ? 13 : 1} columnGap={8} className={styles.columns}>
         <GridSpan columns={sideBySide ? 7 : "full"}>
           <VStack gap={6}>
             <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>

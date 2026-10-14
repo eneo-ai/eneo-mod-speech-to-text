@@ -120,15 +120,15 @@ test("audio that cannot be played says so, and Försök igen tries it again", as
   sentinel.expect({ console: /status of 404.*\/input-files\/.*\/audio/ });
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
   await run(page, ids.runs.review, ids.flows.flow2);
-  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  await expect(page.getByText("Ljudet kunde inte spelas upp.")).toBeVisible();
   // The press that asked for the audio is not left spinning, and the message is an alert beside the player's controls.
   const player = page.locator("[data-docked-player]");
   await player.getByRole("button", { name: "Spela upp", exact: true }).click();
-  await expect(player.getByRole("alert").filter({ hasText: "Ljudet kunde inte spelas." })).toBeVisible();
+  await expect(player.getByRole("alert").filter({ hasText: "Ljudet kunde inte spelas upp." })).toBeVisible();
   await expect(player.getByRole("button", { name: "Spela upp", exact: true }), "no spinner labelled as playing").toBeVisible();
   await page.unroute("**/input-files/*/audio");
   await player.getByRole("button", { name: "Försök igen" }).click();
-  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
+  await expect(page.getByText("Ljudet kunde inte spelas upp.")).toBeHidden();
 });
 
 test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page, sentinel }, info) => {
@@ -398,7 +398,7 @@ test("a review says it waits for the person and, on a line of its own, when it m
     await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
     const main = page.getByRole("main");
-    await expect.soft(main.getByText("Väntar på din granskning", { exact: true })).toBeVisible();
+    await expect.soft(main.getByText(/ · Väntar på din granskning$/, { exact: true })).toBeVisible();
     await expect.soft(main.getByText(`Granska senast ${deadline}. Därefter avbryts körningen.`, { exact: true })).toBeVisible();
   }
 });
