@@ -41,6 +41,17 @@ function widthOf(t: TestContext, pixels: number, { touch = false } = {}) {
   };
 }
 
+/**
+ * A row of actions laid out as a browser lays it out, which jsdom does not: `row` px wide (a phone's, 358, by default),
+ * every action in it `action` px.
+ */
+function laidOut(t: TestContext, row = 358, action = 150) {
+  t.mock.method(window.HTMLElement.prototype, "getBoundingClientRect", function (this: HTMLElement) {
+    const width = this.matches("button, a") ? action : [...this.children].some((child) => child.matches("button, a")) ? row : 0;
+    return { x: 0, y: 0, top: 0, left: 0, right: width, bottom: 0, width, height: 0, toJSON: () => ({}) } as DOMRect;
+  });
+}
+
 // What the module answers for a run's file when a person asks for it: the first byte, or why not.
 const INLINE = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
 const ATTACHMENT = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
@@ -295,7 +306,7 @@ test("on a narrower screen the one more action beside the download is a button, 
   assert.ok(!buttons.includes("Fler alternativ"), "no menu for a single action");
 });
 
-test("Dela only where the browser can share, and then the file itself when the device takes its type", async () => {
+test("Dela only where the browser can share, and then the file itself when the device takes its type", async (t) => {
   const without = await document_({ text: null, file: pdf });
   assert.ok(![...without.container.querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Fler alternativ"), "nothing more to offer, no menu");
   await without.unmount();
@@ -316,7 +327,17 @@ test("Dela only where the browser can share, and then the file itself when the d
     assert.ok(names.includes("Dela") && !names.includes("Fler alternativ"), `Dela is a button and no menu holds it (${names})`);
     await alone.unmount();
 
-    // Beside Kopiera texten there are two: a menu.
+    // Beside the download there are two: in the row where it has room for them,
+    laidOut(t, 800);
+    const roomy = await document_({ text, file: pdf });
+    await roomy.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    const inRow = [...roomy.container.querySelectorAll("button")].map(nameOf);
+    assert.ok(inRow.includes("Kopiera texten") && inRow.includes("Dela") && !inRow.includes("Fler alternativ"), `both in the row (${inRow})`);
+    await roomy.unmount();
+    t.mock.restoreAll();
+
+    // and in a menu where it has not.
+    laidOut(t);
     const view = await document_({ text, file: pdf });
     await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     const more = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;
@@ -773,7 +794,8 @@ test("Dela reads a file ahead only when its size is known and under the cap, and
     globalThis.fetch = realFetch;
   });
 
-  // Size unknown: nothing is read ahead; Dela shares the text.
+  // Size unknown: nothing is read ahead; Dela, in the menu on a phone, shares the text.
+  laidOut(t);
   const unknown = await document_({ text, file: { ...pdf, sizeBytes: null } });
   await unknown.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   assert.equal(fetched.length, 0, "no read ahead of a file of unknown size");
@@ -1192,6 +1214,55 @@ test("a screen left while its file is asked for starts no download", async (t) =
   answer();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(started, []);
+});
+
+/** Safari's engine, which every browser on an iPhone and an iPad has, on an iPad (it says it is a Mac's, with a touch screen) or on a Mac. */
+function safariOn(t: TestContext, device: "an iPad" | "a Mac") {
+  const own = {
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    maxTouchPoints: device === "an iPad" ? 5 : 0,
+  };
+  for (const [name, value] of Object.entries(own)) {
+    Object.defineProperty(navigator, name, { value, configurable: true });
+    t.after(() => void Reflect.deleteProperty(navigator, name));
+  }
+}
+
+test("on an iPhone or an iPad a PDF is saved from a tab of its own, which Safari shows it in: the page is never replaced by it", async (t) => {
+  safariOn(t, "an iPad");
+  let answer!: () => void;
+  const answered = new Promise<Response>((resolve) => (answer = () => resolve(present())));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => answered) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  const started = downloads(t);
+  const opened = tabs(t);
+  const view = await document_({ text, file: pdf });
+  const link = [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => nameOf(a)!.startsWith("Ladda ner PDF"))!;
+
+  await view.act(async () => void press(link));
+  assert.equal(opened.length, 1, "the tab opens at the press itself");
+  assert.equal(link.getAttribute("aria-busy"), "true", "and the pressed download says it waits");
+  await view.act(async () => answer());
+  assert.deepEqual(opened.map(({ url, opener }) => ({ url, opener })), [{ url: INLINE, opener: null }], "sent to the PDF, with no way back to the page");
+  assert.deepEqual(started, [], "nothing in the page's own tab");
+  await view.unmount();
+
+  // A file Safari does not show in place downloads, and so does a PDF on a Mac.
+  globalThis.fetch = (async () => present()) as typeof fetch;
+  const docx: ResultFileView = { ...pdf, fileId: "file-2", name: "Protokoll.docx", kind: "word", typeLabel: "Word", previewable: false };
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const files = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [docx] }));
+  const word = ATTACHMENT.replace("file-1", "file-2");
+  await files.act(async () => void press(files.container.querySelector(`a[href="${word}"]`)!));
+  assert.deepEqual(started, [`${word} (download)`]);
+  await files.unmount();
+  safariOn(t, "a Mac");
+  const mac = await document_({ text, file: pdf });
+  await mac.act(async () => void press([...mac.container.querySelectorAll(`a[href="${ATTACHMENT}"]`)].find((a) => nameOf(a)!.startsWith("Ladda ner PDF"))!));
+  assert.deepEqual(started.slice(1), [`${ATTACHMENT} (download)`]);
+  assert.equal(opened.length, 1, "no tab");
 });
 
 test("narrower than a laptop the tab opens at the press and goes to the file once it is there; a file that is not closes it again", async (t) => {

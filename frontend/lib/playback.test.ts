@@ -521,7 +521,9 @@ test("every player says when its audio cannot be played, beside its controls, an
   await view.act(async () => playback.onError());
   const alert = view.container.querySelector('[role="alert"]')!;
   assert.match(alert.textContent ?? "", /^Ljudet kunde inte spelas upp\.Försök igen$/);
-  await view.act(async () => [...alert.querySelectorAll("button")].find((b) => b.textContent === "Försök igen")!.click());
+  const again = [...alert.querySelectorAll("button")].find((b) => b.textContent === "Försök igen")!;
+  assert.equal(again.dataset.variant, "secondary", "a button that looks like one, not a word beside the alert");
+  await view.act(async () => again.click());
   assert.equal(playback.getSnapshot().unavailable, false, "the part is loaded again");
   assert.equal(view.container.querySelector('[role="alert"]'), null);
 });

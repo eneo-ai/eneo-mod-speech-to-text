@@ -108,7 +108,7 @@ export function AudioPlayer({
           <Text type="supporting" color="primary">
             Ljudet kunde inte spelas upp.
           </Text>
-          <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
+          <Button size="sm" label="Försök igen" onClick={() => playback.reload()} />
         </HStack>
       )}
     <HStack role="group" aria-label={`Uppspelning: ${label}`} gap={3} align="center">

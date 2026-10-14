@@ -31,6 +31,18 @@ function save(url: string) {
 }
 
 /**
+ * How a file is saved: downloaded with the page left as it is, but a PDF on an iPhone or an iPad from a tab of its own.
+ * Safari's engine, which every browser there has, shows a PDF in the tab it was asked from even when the module sends it
+ * to be saved, and the page would be gone; in a tab of its own it is shown, and saved from there to Filer.
+ */
+export function savingWay(file: { kind: string }): "download" | "tab" {
+  const agent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  if (file.kind !== "pdf" || !/AppleWebKit/.test(agent) || /Chrome\//.test(agent)) return "download";
+  // A touch screen: an iPad, which says it is a Mac, counts its touch points; a touch screen's pointer is coarse.
+  return navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches ? "tab" : "download";
+}
+
+/**
  * The one way a result's file reaches a person: asked for before they are sent to it, so that a file Eneo no longer
  * has is said in words, never shown as the module's raw answer in a viewer, a tab or a download under the file's
  * name. A tab is opened by the press itself (a blocker stops one that opens later) and sent to the file once it is

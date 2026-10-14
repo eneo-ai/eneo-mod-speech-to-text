@@ -26,7 +26,7 @@ import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
 import { ProblemAlert } from "./ProblemAlert";
 import styles from "./ResultFiles.module.css";
-import { pressing, useFileAccess, waiting, type FileAccess } from "./useFileAccess";
+import { pressing, savingWay, useFileAccess, waiting, type FileAccess } from "./useFileAccess";
 
 export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   pdf: FileText,
@@ -116,8 +116,8 @@ export function ResultFiles({
                       href={download}
                       icon={<Icon icon={Download} />}
                       label={`Ladda ner ${file.name}`}
-                      onClick={pressing(access, file.fileId, "download")}
-                      {...waiting(access, file.fileId, "download")}
+                      onClick={pressing(access, file.fileId, savingWay(file))}
+                      {...waiting(access, file.fileId, savingWay(file))}
                     >
                       Ladda ner
                     </Button>
@@ -238,8 +238,8 @@ export function OpenFile({
                     href={download}
                     icon={<Icon icon={Download} />}
                     label="Ladda ner"
-                    onClick={pressing(access, file.fileId, "download")}
-                    {...waiting(access, file.fileId, "download")}
+                    onClick={pressing(access, file.fileId, savingWay(file))}
+                    {...waiting(access, file.fileId, savingWay(file))}
                   />
                 </>
               }
