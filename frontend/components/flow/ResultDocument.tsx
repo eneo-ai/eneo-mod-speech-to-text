@@ -250,6 +250,8 @@ export function ResultDocument({
     </Button>
   );
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
+  // A copy is confirmed where it was asked for: the button's check, or the menu's own button when it came from there.
+  const copyIcon = <Icon icon={copyState === "copied" ? "check" : "copy"} />;
   const copyName = textIsPreview ? "Kopiera början" : "Kopiera texten";
   const shareName = textIsPreview && share?.kind === "text" ? "Dela början" : "Dela";
   // Copying the text is one of the more actions when the file is the filled one above it.
@@ -268,7 +270,7 @@ export function ResultDocument({
   ) : (
     saveText && <DropdownMenuItem icon={Download} label="Ladda ner" onClick={saveText} />
   );
-  const moreButton = copyMore ? <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} /> : saveButton("secondary");
+  const moreButton = copyMore ? <Button icon={copyIcon} label={copyLabel ?? copyName} onClick={copy} /> : saveButton("secondary");
   // Dela wherever the device has a share sheet, at every width.
   const shareButton = (variant: "ghost" | "secondary") =>
     share && (
@@ -283,13 +285,13 @@ export function ResultDocument({
         <HStack ref={room.ref} wrap="wrap" vAlign="center" gap={2}>
           {primaryDownload}
           {text && !file && (
-            <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
+            <Button variant="primary" icon={copyIcon} label={copyLabel ?? copyName} onClick={copy} />
           )}
           {/* Two more actions stand beside it where the row has room for them, and fold into a menu where it has not.
               One is a button of its own, never a menu of one. */}
           {moreItem && share && !room.fits ? (
             <DropdownMenu
-              button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
+              button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon={copyState === "copied" ? "check" : "moreHorizontal"} /> }}
               hasChevron={false}
               alignment="center"
             >
@@ -318,7 +320,7 @@ export function ResultDocument({
               {text && (
                 <Button
                   variant={file ? "ghost" : "primary"}
-                  icon={<Icon icon="copy" />}
+                  icon={copyIcon}
                   label={copyLabel ?? copyName}
                   onClick={copy}
                 >

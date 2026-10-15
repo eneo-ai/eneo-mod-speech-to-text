@@ -96,9 +96,13 @@ export function RunProgress({
               {wait}
             </Text>
           </VStack>
+          {/* There from the start, empty: a region that arrives with its words is not reliably read out. */}
+          <VisuallyHidden as="p" role="status">
+            {retrying ? "Försöker igen. Körningen fortsätter i Eneo." : ""}
+          </VisuallyHidden>
           {retrying && (
             <VStack gap={3}>
-              <Text as="p" role="status">
+              <Text as="p" aria-hidden>
                 Försöker igen. Körningen fortsätter i Eneo.
               </Text>
               <SlowWait onRetry={retrying.onRetry} />
@@ -150,8 +154,11 @@ export function RunOpening({ onRetry, retrying = false }: { onRetry: () => void;
         <VisuallyHidden as="p" role="status">
           Hämtar körningen…
         </VisuallyHidden>
+        <VisuallyHidden as="p" role="status">
+          {retrying ? "Försöker igen." : ""}
+        </VisuallyHidden>
         {retrying && (
-          <Text as="p" role="status">
+          <Text as="p" aria-hidden>
             Försöker igen.
           </Text>
         )}

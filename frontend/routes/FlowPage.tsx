@@ -25,6 +25,7 @@ import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
   cancelRun,
   editReviewCheckpoint,
+  ApiError,
   getActiveReviewCheckpoint,
   getPublishedFlow,
   getRun,
@@ -99,6 +100,8 @@ type RunState =
 
 // The run's id is kept in the address (?run=), so a reload or a shared link resumes the same run.
 const RUN_QUERY_PARAM = "run";
+/** A run asked for by its address or the list that Eneo no longer has; the setup below it starts a new one. */
+const RUN_GONE = "Körningen finns inte längre. Du kan starta en ny här.";
 
 function readRunIdFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
@@ -301,7 +304,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         online: onlineStatus,
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
-          setSubmission({ kind: "uploading", ...progress, wait: null }),
+          setSubmission({ kind: "uploading", ...progress, recording: runInput?.kind === "recording", wait: null }),
         onStarting: () =>
           setSubmission({
             kind: "starting",
@@ -401,7 +404,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
     } catch (err) {
       if (signal.aborted) return;
       setPollTrouble(false);
-      setRunError(friendlyError(err));
+      // A run that no longer exists (an old link, a run removed in Eneo) leaves the address too, so a reload does not
+      // ask for it again.
+      const gone = err instanceof ApiError && (err.status === 404 || err.status === 410);
+      if (gone) writeRunIdToUrl(null);
+      setRunError(gone ? RUN_GONE : friendlyError(err));
       setRun({ kind: "idle" });
     }
   }

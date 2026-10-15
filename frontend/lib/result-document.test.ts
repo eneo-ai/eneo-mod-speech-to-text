@@ -653,7 +653,7 @@ test("a save refused as stale reads the saved corrections again, says so, and of
   await view.act(async () => button(document.body, "Spara")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
   assert.equal(reads, 2, "the saved corrections are read again");
-  assert.match(view.container.textContent ?? "", /har laddats om/);
+  assert.match(view.container.textContent ?? "", /Den senaste versionen visas nu/);
   assert.ok(!button(view.container, "Försök spara igen"), "nothing is left to retry: the correction is to be made again");
   assert.ok(!(view.container.textContent ?? "").includes("osparade rättningar finns kvar"));
 });
@@ -743,7 +743,7 @@ test("a save refused as stale keeps what the person corrected, to take with them
   const { view, correct } = await correcting(t, async () => Response.json({ code: "flow_transcript_corrections_stale_revision" }, { status: 409 }));
   await correct();
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
-  assert.match(view.container.textContent ?? "", /har laddats om/);
+  assert.match(view.container.textContent ?? "", /Den senaste versionen visas nu/);
   assert.equal(asksBeforeLeaving(), true, "what the person typed is not kept anywhere else");
   await view.act(async () => button(view.container, "Hämta dina rättningar")!.click());
   const saved = JSON.parse(await kept[0].text());

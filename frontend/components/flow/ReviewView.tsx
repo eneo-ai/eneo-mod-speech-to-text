@@ -62,6 +62,7 @@ import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
+import { useDock } from "@/lib/dock";
 import styles from "./ReviewView.module.css";
 
 type ReviewEdit = { text?: string; speakerRows?: SpeakerMappingRow[] };
@@ -259,6 +260,8 @@ export function ReviewView({
   const listening = sounds ? sample : null;
 
   const { corrections, saveState, localError, hasDropped, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
+  // The text review's decision, docked at the window's bottom: focus scrolls stop above it (lib/dock.ts).
+  const [, decisionDock] = useDock();
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
@@ -406,7 +409,7 @@ export function ReviewView({
         ref={reasonField}
         label="Avvisa körningen"
         description="Ange en kort motivering. Körningen kommer att avbrytas."
-        placeholder="Skäl …"
+        placeholder="Skäl…"
         rows={3}
         value={rejectReason}
         onChange={setRejectReason}
@@ -740,8 +743,13 @@ export function ReviewView({
         {runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>
-      {/* The decision stays in reach at the window's bottom edge however long the text is. */}
-      <div className={styles.dock}>{actions}</div>
+      {/* The decision stays in reach at the window's bottom edge however long the text is. While the reason for a
+          rejection is written there is no decision to dock, and no empty bar either. */}
+      {actions && (
+        <div ref={decisionDock} data-docked-action="" className={styles.dock}>
+          {actions}
+        </div>
+      )}
     </VStack>
   );
 }

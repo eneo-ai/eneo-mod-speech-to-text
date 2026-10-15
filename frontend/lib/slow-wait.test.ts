@@ -24,12 +24,15 @@ test("a wait that goes on says so after 15 seconds, with a way on; before that i
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { container, act, status } = await slowWait();
   assert.equal(container.textContent, "", "nothing before the wait is long");
+  const region = container.querySelector('[role="status"]');
+  assert.ok(region, "the status region is there before its words, so they are read out when they come");
 
   await act(async () => t.mock.timers.tick(SLOW_WAIT_MS - 1));
   assert.equal(container.textContent, "");
 
   await act(async () => t.mock.timers.tick(1));
   assert.deepEqual(status(), [SLOW], "said once, in a status region");
+  assert.equal(region.textContent, SLOW, "in the region that was there from the start");
   assert.ok(button(container, "Försök igen"));
   assert.equal(container.querySelector('a[href="/flows"]')?.textContent, "Alla flöden");
 });

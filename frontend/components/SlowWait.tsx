@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 
@@ -27,24 +28,36 @@ export function SlowWait({
     const timer = setTimeout(() => setStage("slow"), SLOW_WAIT_MS);
     return () => clearTimeout(timer);
   }, [round]);
-  if (stage === "quiet") return null;
+  const said = stage === "quiet" ? "" : stage === "slow" ? "Det tar längre tid än vanligt." : "Försöker igen.";
+  // The status region is there from the start, empty: a region that arrives with its words is not reliably read out.
+  const status = (
+    <VisuallyHidden as="p" role="status">
+      {said}
+    </VisuallyHidden>
+  );
   return (
-    <VStack gap={3}>
-      <Text as="p" role="status">
-        {stage === "slow" ? "Det tar längre tid än vanligt." : "Försöker igen."}
-      </Text>
-      <HStack gap={3} wrap="wrap">
-        <Button
-          label="Försök igen"
-          variant="primary"
-          onClick={() => {
-            setStage("retrying");
-            setRound((n) => n + 1);
-            onRetry();
-          }}
-        />
-        {flows && <BackToFlows size="md" />}
-      </HStack>
-    </VStack>
+    <>
+      {status}
+      {stage !== "quiet" && (
+        <VStack gap={3}>
+          {/* Read once, by the region above. */}
+          <Text as="p" aria-hidden>
+            {said}
+          </Text>
+          <HStack gap={3} wrap="wrap">
+            <Button
+              label="Försök igen"
+              variant="primary"
+              onClick={() => {
+                setStage("retrying");
+                setRound((n) => n + 1);
+                onRetry();
+              }}
+            />
+            {flows && <BackToFlows size="md" />}
+          </HStack>
+        </VStack>
+      )}
+    </>
   );
 }

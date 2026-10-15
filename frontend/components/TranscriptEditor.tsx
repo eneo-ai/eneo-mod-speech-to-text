@@ -314,7 +314,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         </HStack>} />
       </HStack>
       {selection.length > 0 && <div className={styles.marked} role="group" aria-label="Markerade ord">
-        <div className={styles.selected}><span className={styles.quote} title={selectedText}>“{selectedText}”</span><span className={styles.count}>{wordCount} ord</span>
+        <div className={styles.selected}><span className={styles.quote} title={selectedText}>”{selectedText}”</span><span className={styles.count}>{wordCount} ord</span>
           <Button size="sm" variant="ghost" isIconOnly icon={<Icon icon={X} />} label="Avmarkera" onClick={() => { setSelection([]); setEditing(false); window.getSelection()?.removeAllRanges(); body.current?.focus({ preventScroll: true }); }} /></div>
         <Toolbar label="Åtgärder för markerade ord" size="sm" className={styles.actionBar} startContent={<HStack wrap="wrap" gap={1} className={styles.tools}>
           <Button variant="ghost" icon={<Icon icon={Play} />} isDisabled={!audioAvailable} onClick={replay} label="Lyssna" />
@@ -367,7 +367,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
       {selection.flatMap((span) => (raw[span.segmentIndex].words ?? []).filter((w) => w.uncertain && w.charStart < span.end && w.charEnd > span.start &&
         !corrections.occurrences.some((o) => o.segment_index === span.segmentIndex && w.charStart < o.char_end && w.charEnd > o.char_start)).map((w) => {
           const key = wordKey(span.segmentIndex, w);
-          return <p key={key}>Ordet “{w.word}” kunde inte hittas säkert i ljudet. {onToggleConfirmed && <button type="button" className={styles.inline} onClick={() => onToggleConfirmed(key)}>{confirmedWords.has(key) ? "Ångra ordbekräftelse" : "Bekräfta att ordet stämmer"}</button>}</p>;
+          return <p key={key}>Ordet ”{w.word}” kunde inte hittas säkert i ljudet. {onToggleConfirmed && <button type="button" className={styles.inline} onClick={() => onToggleConfirmed(key)}>{confirmedWords.has(key) ? "Ångra ordbekräftelse" : "Bekräfta att ordet stämmer"}</button>}</p>;
         }))}
       <details><summary>Överlapp i inspelningen</summary><ul>{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><button type="button" className={styles.inline} disabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }}>Del {o.fileIndex + 1}, {formatClock(o.start * 1_000)}–{formatClock(o.end * 1_000)}</button> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
     </VStack>

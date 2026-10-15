@@ -7,6 +7,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { axe, blocking } from "./checks";
+import ids from "../fixtures/ids.json";
 import { backLink, flows, NO_CONFIRMED_WORDS, record, setup } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
@@ -286,4 +287,11 @@ test("a dialog that gives the focus back is not a navigation: nothing is said an
   expect(await said(page), "staying is no navigation").toEqual([]);
   expect(await page.title()).toMatch(titled);
   expect(await focused(page), "the focus went back to the link").toMatchObject({ tag: "a" });
+});
+
+test("a run that no longer exists leaves the address and says so above a new start, so a reload does not ask again", async ({ page }) => {
+  await page.goto(`/flows/${ids.flows.flow1}?run=00000000-0000-4000-8000-00000000dead`);
+  await expect(page.getByRole("alert").filter({ hasText: "Körningen finns inte längre. Du kan starta en ny här." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("run")).toBe(false);
 });

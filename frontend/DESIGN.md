@@ -166,7 +166,10 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 Calm and quick, on the design system's tokens: `--duration-fast` (175 ms) with `--ease-standard`. A view of the flow
 that takes another's place fades in (opacity only: the recording's bar is sticky), and so does what a disclosure
 opens; a dialog opens over `--duration-fast-max`. The step under way shows the spinner, and a paused timer turns to
-the secondary colour. With reduced motion nothing fades and spinners stand still.
+the secondary colour. A page's loading spinner shows only after `--module-wait-delay` (300 ms), so an answer within it
+leaves no blink. A search hit is brought into view at once, as a browser's own find does. Hover styles apply only where
+a pointer hovers (`@media (hover: hover)`): on a touch screen a tapped control would keep them. With reduced motion
+nothing fades and spinners stand still.
 
 ## Do's and Don'ts
 

@@ -129,15 +129,15 @@ test("a waiting send says it in one sentence in the live region, and the countdo
   const { container, act } = await mount(createElement(RetryNotice, { wait: wait(1_000_000 + 5_000, () => void now++) }));
   const [status] = container.querySelectorAll('[role="status"]');
   assert.equal(status.textContent, "Det gick inte att skicka just nu. Försöker igen automatiskt.");
-  const countdown = [...container.querySelectorAll("p")].find((p) => p.textContent?.includes(" s."));
-  assert.equal(countdown?.textContent?.trim(), "Det gick inte att skicka just nu. Försöker igen om 5 s.");
+  const countdown = [...container.querySelectorAll("p")].find((p) => p.textContent?.includes("\u00a0s."));
+  assert.equal(countdown?.textContent?.trim(), "Det gick inte att skicka just nu. Försöker igen om 5\u00a0s.");
   assert.equal(status.contains(countdown ?? null), false, "the live region does not tick");
 
   await act(async () => t.mock.timers.tick(2_000));
-  assert.match(countdown?.textContent ?? "", /om 3 s\./);
+  assert.match(countdown?.textContent ?? "", /om 3\u00a0s\./);
   // Past the time it only says 0: never a negative number.
   await act(async () => t.mock.timers.tick(10_000));
-  assert.match(countdown?.textContent ?? "", /om 0 s\./);
+  assert.match(countdown?.textContent ?? "", /om 0\u00a0s\./);
 
   await act(async () => button(container, "Försök nu")!.click());
   assert.equal(now, 1, "Försök nu tries at once");

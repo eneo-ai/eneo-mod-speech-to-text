@@ -18,6 +18,7 @@ import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { INCOMPLETE_ON_DEVICE, openRecordingStore, type NewRecording, type RecordingStore, type StoredRecording } from "./recording-store";
 import {
   retryFailedRun,
+  INPUT_GONE,
   startAgain,
   startAgainRequest,
   submitRecording,
@@ -1723,6 +1724,31 @@ test("Starta en ny körning is asked against the flow as published now, and a ch
     assert.match(review?.kind === "review" ? review.message : "", /Flödet har ändrats sedan körningen/, what);
     assert.equal(posts, 0, `${what}: nothing is sent`);
   }
+});
+
+test("Starta en ny körning whose audio Eneo no longer keeps goes back to a new recording or file, not the same button", async () => {
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed", input_payload_json: { motesnamn: "KS" } };
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  const outcome = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+    getContract: async () => contract,
+    startRun: async () => {
+      throw new ApiError(404, "Input file not found", null, "flow_run_input_file_not_found");
+    },
+  });
+  assert.equal(outcome?.kind, "review");
+  assert.equal(outcome?.kind === "review" ? outcome.message : "", INPUT_GONE);
+  // Any other refusal is the page's to show on the failed run, as before.
+  await assert.rejects(
+    startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+      getContract: async () => contract,
+      startRun: async () => {
+        throw new ApiError(409, "Conflict", null, "flow_run_stale_version");
+      },
+    }),
+    { code: "flow_run_stale_version" },
+  );
 });
 
 test("details a run left empty, as Eneo keeps them, count as missing once the flow requires them", async () => {

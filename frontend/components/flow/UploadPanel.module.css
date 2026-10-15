@@ -5,6 +5,13 @@
   text-align: center;
 }
 
+/* With a mouse the edge firms up under the pointer: the whole zone is something to click. */
+@media (hover: hover) {
+  .zone:hover {
+    border-color: var(--color-border-emphasized);
+  }
+}
+
 /* The invitation to drag a file is only for a screen wide enough to have the file manager beside it, and a mouse. */
 .fineOnly {
   display: none;

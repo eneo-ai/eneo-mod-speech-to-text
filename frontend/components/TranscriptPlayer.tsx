@@ -507,7 +507,7 @@ export function TranscriptPlayer(
     if (!action) return;
     const target = e.target as HTMLElement;
     // The position slider moves by its own keys; controls and text fields keep theirs.
-    if (target.closest("button, a, input, select, textarea, [role=button], [role=slider], [role=menuitemradio], [role=radio], [contenteditable]")) return;
+    if (target.closest("button, a, input, select, textarea, summary, [role=button], [role=slider], [role=menuitemradio], [role=radio], [role=listbox], [role=option], [contenteditable]")) return;
     if (!hasAudio || playback.getSnapshot().unavailable) return;
     if (action.preventDefault) e.preventDefault();
     if (action.skipMs === 0) playback.toggle();
@@ -533,14 +533,15 @@ export function TranscriptPlayer(
     if (at >= 0) keepInView(at);
   }, [follow, editingIndex, playheadAt, keepInView]);
 
-  // The search's current hit is brought into view, and playback stops pulling the text away from it.
+  // The search's current hit is brought into view, and playback stops pulling the text away from it. At once, as a
+  // browser's own find does: a glide restarted by every typed letter or step lags behind the hit it goes to.
   useEffect(() => {
     if (currentHit < 0 || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>('[data-hit="current"]');
     if (!el) return;
     programmaticScrollUntil.current = Date.now() + 800;
     setFollow(false);
-    el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    el.scrollIntoView({ block: "center", behavior: "instant" });
   }, [currentHit, query]);
 
   function onUserScroll() {
@@ -1164,8 +1165,8 @@ function TurnBlock({
                             aria-pressed={confirmed}
                             aria-label={
                               confirmed
-                                ? `Ångra bekräftelse av "${piece.word?.word}"`
-                                : `Bekräfta att "${piece.word?.word}" stämmer`
+                                ? `Ångra bekräftelse av ”${piece.word?.word}”`
+                                : `Bekräfta att ”${piece.word?.word}” stämmer`
                             }
                             title={confirmed ? "Bekräftat – välj igen för att ångra" : "Ordet stämmer"}
                           >

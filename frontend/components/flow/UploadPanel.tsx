@@ -48,7 +48,10 @@ export function UploadPanel({
       event.preventDefault();
       setDragging(true);
     },
-    onDragLeave: () => setDragging(false),
+    // Leaving for one of the zone's own children (its icon, its words) is not leaving the zone: the tint holds.
+    onDragLeave: (event: DragEvent) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+    },
     onDrop: (event: DragEvent) => {
       event.preventDefault();
       setDragging(false);
