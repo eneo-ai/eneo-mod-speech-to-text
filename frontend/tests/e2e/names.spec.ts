@@ -524,3 +524,42 @@ test("one long word in the live text wraps inside the sheet instead of widening 
   const { scrollWidth, clientWidth } = await log.evaluate((element) => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }));
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 });
+
+test("a speaker split off in saved corrections is in the list from the first draw, and is named only once the transcript has read them", async ({ page }, info) => {
+  test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths");
+  // The transcript's last read is held: the corrections read with the pause are there, not yet checked.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/transcript-words/**", async (route) => (await held, route.fallback()));
+  await run(page, ids.runs.review, ids.flows.flow2);
+  const speakers = page.getByRole("list", { name: "Talare" });
+  await expect(speakers.getByText("Talare 3")).toBeVisible();
+  const name = page.getByRole("button", { name: "Namnge talarna" });
+  await expect(name).toBeDisabled();
+  release();
+  await expect(name).toBeEnabled();
+  await expect(speakers.getByText("Talare 3")).toBeVisible();
+});
+
+test("saved corrections that Eneo marks stale reserve no speaker in the list, so nothing under it moves when they are read", async ({ page }, info) => {
+  test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths");
+  await page.route("**/transcript-corrections/", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const sets = (await (await route.fetch()).json()) as { stale?: boolean }[];
+    return route.fulfill({ json: sets.map((set) => ({ ...set, stale: true })) });
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/transcript-words/**", async (route) => (await held, route.fallback()));
+  await run(page, ids.runs.review, ids.flows.flow2);
+  const name = page.getByRole("button", { name: "Namnge talarna" });
+  await expect(name).toBeDisabled();
+  await expect(page.getByRole("list", { name: "Talare" }).getByText("Talare 3")).toHaveCount(0);
+  const top = () => name.evaluate((element) => Math.round(element.getBoundingClientRect().top));
+  const before = await top();
+  release();
+  // Read: naming opens, and the list is as it was drawn.
+  await expect(name).toBeEnabled();
+  await expect(page.getByRole("list", { name: "Talare" }).getByText("Talare 3")).toHaveCount(0);
+  expect(await top(), "the speakers' actions stay where they were drawn").toBe(before);
+});

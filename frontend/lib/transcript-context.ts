@@ -5,8 +5,10 @@ import {
   getTranscriptSource,
   getTranscriptWords,
   listTranscriptCorrections,
+  type TranscriptCorrectionsPublic,
   type FlowRunStep,
 } from "./api";
+import type { SavedCorrections } from "./follow-run";
 import {
   carriesTranscript,
   speakerReviewsFromTranscription,
@@ -179,7 +181,20 @@ async function withSourceSegments(flowId: string, runId: string, step: FlowRunSt
  * `source` pekar ut transkriberingssteget (från checkpointens
  * `speaker_mapping.source_step_*`); saknas det väljs första steget med
  * transkriptionsmetadata. `fallbackText` parsas om steget saknar segment.
+ * `savedCorrections` är de sparade rättningarna som sidan redan har läst tillsammans med körningen (SavedCorrections):
+ * de används i stället för en ny läsning och valideras här som om de hade lästs nu, se savedRead.
  */
+/**
+ * The saved corrections for this read: the page's own read when it made one, never a second read beside it. Sets read in
+ * time are used as they are; a read still under way is waited for; a read that failed is a failure here too, not a new
+ * read, since what came later would move what already stands on the page (the transcript's reload reads anew).
+ */
+function savedRead(flowId: string, runId: string, saved: SavedCorrections): Promise<TranscriptCorrectionsPublic[]> {
+  if (saved === undefined) return listTranscriptCorrections(flowId, runId);
+  const sets = saved !== null && "reading" in saved ? saved.reading : Promise.resolve(saved);
+  return sets.then((answer) => answer ?? Promise.reject(new Error("The saved corrections could not be read with the run.")));
+}
+
 export async function loadTranscriptContext({
   flowId,
   runId,
@@ -187,6 +202,7 @@ export async function loadTranscriptContext({
   source,
   fallbackText,
   labelFor,
+  savedCorrections,
 }: {
   flowId: string;
   runId: string;
@@ -194,6 +210,7 @@ export async function loadTranscriptContext({
   source?: { stepId: string | null; stepOrder: number | null };
   fallbackText?: string;
   labelFor?: (speaker: string) => string;
+  savedCorrections?: SavedCorrections;
 }): Promise<TranscriptContext> {
   let segments: TranscriptSegment[] | null = null;
   let speakerReviews: FileSpeakerReview[] = [];
@@ -247,7 +264,7 @@ export async function loadTranscriptContext({
           }
           return null;
         }),
-        listTranscriptCorrections(flowId, runId).catch(() => {
+        savedRead(flowId, runId, savedCorrections).catch(() => {
           correctionProblem = "Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.";
           return [];
         }),

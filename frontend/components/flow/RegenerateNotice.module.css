@@ -1,0 +1,12 @@
+/* Two ways one place can read, stacked: the place is as large as the larger of them, and only one is seen. */
+.oneOf {
+  display: inline-grid;
+}
+
+.oneOf > * {
+  grid-area: 1 / 1;
+}
+
+.oneOf > [data-shown="false"] {
+  visibility: hidden;
+}

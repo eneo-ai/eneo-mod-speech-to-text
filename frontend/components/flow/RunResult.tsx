@@ -9,6 +9,7 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
+import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
@@ -18,7 +19,7 @@ import { fileText, runFileName, transcriptFileName, type ResultFileView } from "
 import type { StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
-import { regenerationOffer } from "@/lib/regenerate";
+import { correctionsNewerThanDocument, regenerationOffer } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
 import { LAPTOP, ResultFiles, useMediaMatch } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
@@ -45,6 +46,7 @@ export function RunResult({
   run,
   steps,
   stepResults,
+  savedCorrections,
   files,
   showTranscript = true,
   audio = true,
@@ -59,6 +61,8 @@ export function RunResult({
   steps: readonly StepView[];
   /** The step results, read once when the run ended. */
   stepResults: readonly FlowRunStep[];
+  /** The transcript's saved corrections, as read with the run (readFinishedRun, SavedCorrections). */
+  savedCorrections?: SavedCorrections;
   files: readonly ResultFileView[];
   showTranscript?: boolean;
   /** The flow takes audio, so a new run starts with a new recording. */
@@ -87,7 +91,8 @@ export function RunResult({
   const others = files.filter((file) => file !== primary);
   // A document that is only its file shows what the file says under it.
   const preview = !text && primary ? fileText(primary, stepResults) : null;
-  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript);
+  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript, savedCorrections);
+  const hasDocument = Boolean(text || files.length);
   const offer =
     // Whether the document is older than the saved corrections does not depend on the latest save.
     showTranscript && !delivered
@@ -97,9 +102,12 @@ export function RunResult({
           stepId: transcript.stepId,
           fromMetadata: transcript.fromMetadata,
           corrections: editing.corrections,
-          hasDocument: Boolean(text || files.length),
+          hasDocument,
         })
       : null;
+  // Known from the run's own read, before the transcript is: the notice has its place from the first draw, so the
+  // document under it does not move when the transcript arrives. It can act once the transcript is read.
+  const olderThanCorrections = showTranscript && !delivered && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaMatch(LAPTOP);
@@ -146,8 +154,15 @@ export function RunResult({
           )}
         </VStack>
       )}
-      {offer && (
-        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
+      {(offer || olderThanCorrections) && (
+        <RegenerateNotice
+          offer={offer}
+          reading={transcript.pending}
+          saveState={editing.saveState}
+          onStarted={onRegenerated}
+          onReload={reload}
+          thing={words.thing}
+        />
       )}
       {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} downloadName={runFileName(flowName, run.created_at)} />}
       {others.length > 0 && (

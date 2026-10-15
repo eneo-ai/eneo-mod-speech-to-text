@@ -10,7 +10,6 @@ import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
 import type { LivePiece } from "@/lib/live-transcriber";
 import type { CaptureStatus } from "@/lib/recording-session";
-import { scrollBehavior } from "@/lib/motion";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
 import styles from "./LiveSheet.module.css";
 import { useSettledLiveStatus } from "./recording-hooks";
@@ -68,7 +67,8 @@ export function LiveSheet({
   function showLatest() {
     const element = scroller.current;
     if (!element) return;
-    element.scrollTo({ top: element.scrollHeight, behavior: scrollBehavior() });
+    // Following again brings the newest line into view (the layout effect above), at once: a glide would be cut short
+    // by it, and every line that arrives meanwhile moves the end it glides to.
     setFollowing(true);
     // The button goes away; the text it showed takes the focus.
     element.focus();

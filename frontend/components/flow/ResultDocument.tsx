@@ -164,7 +164,7 @@ async function runShare(share: Share, title: string, text: string | null): Promi
 /**
  * Whether a row's actions fit on one line, measured before the row is drawn: while they stand in it, their widths and
  * the gaps between them against the row's width; while they are folded, the width they took when they last stood in it.
- * Measured again whenever the row or one of its actions changes size: a tablet turned, a label that says Kopierat, the
+ * Measured again whenever the row or one of its actions changes size: a tablet turned, a copy that could not be made, the
  * font arriving. `ref` goes on the row.
  */
 function useRoomInRow() {
@@ -249,8 +249,10 @@ export function ResultDocument({
       {downloadLabel}
     </Button>
   );
-  const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
-  // A copy is confirmed where it was asked for: the button's check, or the menu's own button when it came from there.
+  // A copy is confirmed where it was asked for: the button's check in place of its icon, or the menu's own button when
+  // it came from there, and "Kopierat" to a screen reader. The words stay, so nothing in the row moves or folds; only a
+  // copy that fails says so in words.
+  const copyLabel = copyState === "failed" ? "Kunde inte kopiera" : null;
   const copyIcon = <Icon icon={copyState === "copied" ? "check" : "copy"} />;
   const copyName = textIsPreview ? "Kopiera början" : "Kopiera texten";
   const shareName = textIsPreview && share?.kind === "text" ? "Dela början" : "Dela";

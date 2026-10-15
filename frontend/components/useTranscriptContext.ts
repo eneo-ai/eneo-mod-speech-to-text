@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FlowRunStep } from "@/lib/api";
+import type { SavedCorrections } from "@/lib/follow-run";
 import { INITIAL_TRANSCRIPT, loadTranscriptContext, type TranscriptContext } from "@/lib/transcript-context";
 
 /** The transcript context for a run (see loadTranscriptContext), read again by `reload`. */
@@ -11,6 +12,7 @@ export function useTranscriptContext({
   source,
   fallbackText,
   labelFor,
+  savedCorrections,
 }: {
   flowId: string;
   runId: string;
@@ -19,6 +21,8 @@ export function useTranscriptContext({
   source?: { stepId: string | null; stepOrder: number | null };
   fallbackText?: string;
   labelFor?: (speaker: string) => string;
+  /** The saved corrections as the page read them with the run: the first read uses them; a reload reads them anew. */
+  savedCorrections?: SavedCorrections;
 }): [TranscriptContext, () => void] {
   const [ctx, setCtx] = useState<TranscriptContext>({ ...INITIAL_TRANSCRIPT, pending: enabled });
   const [attempt, setAttempt] = useState(0);
@@ -26,7 +30,9 @@ export function useTranscriptContext({
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    void loadTranscriptContext({ flowId, runId, steps, source, fallbackText, labelFor }).then((next) => {
+    // The page's own read is this first read's; a reload reads them anew.
+    const saved = attempt === 0 ? savedCorrections : undefined;
+    void loadTranscriptContext({ flowId, runId, steps, source, fallbackText, labelFor, savedCorrections: saved }).then((next) => {
       if (!cancelled) setCtx(next);
     });
     return () => {

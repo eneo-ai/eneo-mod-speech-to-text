@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { ApiError, type FlowRunPublic } from "./api";
-import { regenerate, regenerationOffer, regenerationRefusal } from "./regenerate";
+import { ApiError, type FlowRunPublic, type FlowRunStep, type TranscriptCorrectionsPublic } from "./api";
+import { correctionsNewerThanDocument, regenerate, regenerationOffer, regenerationRefusal } from "./regenerate";
 import { button, cleanup, installDom, mount } from "./test-dom";
 import type { CorrectionSet } from "./transcript-corrections";
 
@@ -104,8 +104,14 @@ test("the notice starts the new run only when asked, and shows a refusal with th
     }),
   );
   assert.equal(calls, 0, "never on its own");
+  // What is seen: the other way each place can read is kept, inert and hidden, only for its size.
+  const seenText = () => {
+    const copy = view.container.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("[inert]").forEach((layer) => layer.remove());
+    return copy.textContent ?? "";
+  };
   assert.match(
-    view.container.textContent ?? "",
+    seenText(),
     /^Dokumentet skapades före dina rättningarDen nya versionen görs från den rättade transkriberingen\.Skapa dokumentet igen med rättningarna$/,
     "a title, one short line and the button",
   );
@@ -131,4 +137,42 @@ test("while corrections are being saved, the new document waits for them", async
     createElement(RegenerateNotice, { offer: regenerationOffer(base)!, saveState: "saving", onStarted: () => undefined, onReload: () => undefined }),
   );
   assert.equal(button(view.container, "Sparar rättningarna…")!.disabled, true);
+});
+
+test("whether saved corrections are newer than the document is known from the run's own read, before the transcript", () => {
+  const steps = [
+    { id: "r1", step_id: "step-1", step_order: 1, status: "completed", input_payload_json: { transcription: { text: "Hej." } } },
+  ] as unknown as FlowRunStep[];
+  const set = (updated_at: string | undefined, step_id = "step-1") => [{ step_id, updated_at }] as unknown as TranscriptCorrectionsPublic[];
+  assert.equal(correctionsNewerThanDocument(run, steps, set("2026-09-24T10:00:00Z")), true);
+  assert.equal(correctionsNewerThanDocument(run, steps, set("2026-09-24T09:00:00Z")), false, "older than the document");
+  assert.equal(correctionsNewerThanDocument(run, steps, set("2026-09-24T10:00:00Z", "another-step")), false, "another step's");
+  assert.equal(correctionsNewerThanDocument(run, steps, set(undefined)), false, "nothing saved");
+  assert.equal(correctionsNewerThanDocument(run, steps, null), false, "the read failed: the transcript decides, as before");
+});
+
+test("the notice stands while the transcript is read, its button waiting, and says in the same places if the corrections cannot make a new document", async () => {
+  const { createElement } = await import("react");
+  const { RegenerateNotice } = await import("../components/flow/RegenerateNotice");
+  const props = { offer: null, saveState: "idle" as const, onStarted: () => undefined, onReload: () => undefined };
+  // What is seen: what no inert layer holds (the other way the same place reads is kept, hidden, for its size).
+  const seen = (element: Element | null | undefined) => Boolean(element) && !element!.closest("[inert]");
+  const words = (container: HTMLElement, text: string) => [...container.querySelectorAll("span")].find((span) => span.textContent === text);
+
+  const reading = await mount(createElement(RegenerateNotice, { ...props, reading: true }));
+  const make = button(reading.container, "Skapa dokumentet igen med rättningarna")!;
+  assert.ok(seen(make) && make.disabled, "waits for the transcript");
+  assert.ok(seen(words(reading.container, "Den nya versionen görs från den rättade transkriberingen.")));
+  assert.ok(!seen(button(reading.container, "Läs in igen")));
+  await reading.unmount();
+
+  let reloads = 0;
+  const settled = await mount(createElement(RegenerateNotice, { ...props, onReload: () => void reloads++ }));
+  assert.ok(seen(words(settled.container, "Rättningarna kunde inte läsas just nu.")), "in the description's place");
+  assert.ok(!seen(words(settled.container, "Den nya versionen görs från den rättade transkriberingen.")));
+  assert.ok(!seen(button(settled.container, "Skapa dokumentet igen med rättningarna")));
+  const again = button(settled.container, "Läs in igen")!;
+  assert.ok(seen(again), "in the button's place");
+  await settled.act(async () => again.click());
+  assert.equal(reloads, 1);
 });

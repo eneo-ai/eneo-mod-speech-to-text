@@ -40,6 +40,7 @@ import {
   type Json,
   type ReviewEditedValue,
 } from "@/lib/api";
+import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import {
   buildEditedMapping,
   buildSpeakerRows,
@@ -93,6 +94,7 @@ export function ReviewView({
   flowName,
   checkpoint,
   runState,
+  savedCorrections,
   runError,
   onContinue,
   onSaveEdit,
@@ -102,6 +104,8 @@ export function ReviewView({
   flowName: string;
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
+  /** The transcript's saved corrections, as read with the pause (readActivePause, SavedCorrections). */
+  savedCorrections?: SavedCorrections;
   runError: string | null;
   /** Saves the edit (when the pause does not hold it yet), approves and resumes; returns why not, or null. */
   onContinue: (
@@ -231,13 +235,15 @@ export function ReviewView({
   // korrigeringar för spelaren.
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
+  const source = getSpeakerMappingSourceStep(payload);
   const [transcript, reloadTranscript] = useTranscriptContext({
     flowId,
     runId,
     enabled: isSpeakerMapping,
-    source: getSpeakerMappingSourceStep(payload),
+    source,
     fallbackText: initialText,
     labelFor: (speaker) => reverseNames[speaker] ?? speaker,
+    savedCorrections,
   });
   // Bekräftade osäkra ord lagras lokalt per steg (ryms inte i Eneos modell).
   const [confirmedWords, toggleConfirmed] = useConfirmedWords(
@@ -305,12 +311,19 @@ export function ReviewView({
     setSample(null);
   }
 
-  // The speakers to name: the inventory, and any speaker split off in this review's corrections.
+  // The speakers to name: the inventory, and any speaker split off in this review's corrections. While the transcript
+  // is read, the corrections as read with the pause say who those are, so the list has its rows from the first draw and
+  // the actions under it stay where they are; a set Eneo marks stale is not the transcript's and reserves no row.
   const shownSegments = useMemo(() => applyCorrections(transcript.segments, corrections).segments, [transcript.segments, corrections]);
-  const namingRows = useMemo(
-    () => withSplitLabels(speakerRows, corrections.speaker_edits.map((edit) => edit.speaker)),
-    [speakerRows, corrections.speaker_edits],
+  const splitSpeakers = useMemo(
+    () =>
+      (transcript.pending
+        ? (savedSets(savedCorrections)?.find((set) => set.step_id === source.stepId && !set.stale)?.speaker_edits ?? [])
+        : corrections.speaker_edits
+      ).map((edit) => edit.speaker),
+    [transcript.pending, savedCorrections, source.stepId, corrections.speaker_edits],
   );
+  const namingRows = useMemo(() => withSplitLabels(speakerRows, splitSpeakers), [speakerRows, splitSpeakers]);
   const passageCounts = useMemo(
     () => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s.passages])),
     [shownSegments],
@@ -340,6 +353,9 @@ export function ReviewView({
     }
   }
   function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
+    // The speakers that saved corrections add are only a place in the list until the transcript has read and checked
+    // those corrections: no name is saved for one before then.
+    if (transcript.pending) return Promise.resolve("Transkriberingen läses fortfarande in. Försök igen om en stund.");
     return exclusively("save", async () => {
       const sent = keepNames(rows);
       const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
@@ -519,7 +535,7 @@ export function ReviewView({
               namingRows.find((row) => row.label === label)?.samples[0] ??
               null
             }
-            disabled={busy}
+            disabled={busy || transcript.pending}
             onListen={hasAudio ? listenTo : undefined}
             listening={listening}
             onStopListening={stopListening}
@@ -529,7 +545,14 @@ export function ReviewView({
             draftKey={namesDraftKey}
           >
             {/* The card's own action: across the card on a phone, at its start where there is room. */}
-            <Button variant="secondary" size="lg" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.cardAction} />
+            <Button
+              variant="secondary"
+              size="lg"
+              icon={<UsersRound aria-hidden />}
+              label="Namnge talarna"
+              isDisabled={busy || transcript.pending}
+              className={styles.cardAction}
+            />
           </SpeakerNamingDialog>
         </VStack>
       );

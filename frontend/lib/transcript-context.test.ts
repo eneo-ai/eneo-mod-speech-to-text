@@ -225,3 +225,73 @@ test("several recordings in text without named parts offer no seeks that could l
   assert.deepEqual(parts.segments.map((s) => s.fileIndex), [0, 1]);
   assert.deepEqual(parts.fileIds, ["file-a", "file-b"], "named parts seek into their own file");
 });
+
+test("corrections the page read with the run are used, not asked for again, and are read as if read now", async (t) => {
+  const step = structuredClone(realSteps[0]);
+  const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
+    .transcription;
+  Object.assign(transcription.source.bounds, { segments_count: 1, segments_omitted_reason: null });
+  const urls = stubEneo(t, {
+    0: {
+      status: "present",
+      source_hash: HASH,
+      next_segment_index: null,
+      segments: [{ segment_index: 0, file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." }],
+    },
+  });
+  const saved = [
+    {
+      flow_run_id: RUN, step_id: step.step_id, schema_version: 3, segments_hash: HASH, occurrences: [], speaker_edits: [],
+      revision: 7, stale: false, updated_at: "2026-09-24T10:00:00Z",
+    },
+  ];
+  const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step], savedCorrections: saved });
+  assert.equal(ctx.corrections.revision, 7, "the saved set, as read with the run");
+  assert.equal(ctx.correctionProblem, null);
+  assert.deepEqual(urls.filter((url) => url.includes("transcript-corrections")), [], "not read again");
+});
+
+test("corrections that could not be read with the run are a failure here too, not a read that comes later", async (t) => {
+  const step = structuredClone(realSteps[0]);
+  const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
+    .transcription;
+  Object.assign(transcription.source.bounds, { segments_count: 1, segments_omitted_reason: null });
+  const urls = stubEneo(t, {
+    0: {
+      status: "present",
+      source_hash: HASH,
+      next_segment_index: null,
+      segments: [{ segment_index: 0, file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." }],
+    },
+  });
+  const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step], savedCorrections: null });
+  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa sparade rättningar/);
+  assert.deepEqual(urls.filter((url) => url.includes("transcript-corrections")), [], "not read again: what came later would move the page");
+  assert.equal(ctx.segments.length, 1, "the text is there to read");
+});
+
+test("corrections the page's read had not answered in time are waited for, not asked for again", async (t) => {
+  const step = structuredClone(realSteps[0]);
+  const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
+    .transcription;
+  Object.assign(transcription.source.bounds, { segments_count: 1, segments_omitted_reason: null });
+  const urls = stubEneo(t, {
+    0: {
+      status: "present",
+      source_hash: HASH,
+      next_segment_index: null,
+      segments: [{ segment_index: 0, file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." }],
+    },
+  });
+  const saved = [
+    {
+      flow_run_id: RUN, step_id: step.step_id, schema_version: 3, segments_hash: HASH, occurrences: [], speaker_edits: [],
+      revision: 9, stale: false, updated_at: "2026-09-24T10:00:00Z",
+    },
+  ];
+  const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step], savedCorrections: { reading: Promise.resolve(saved) } });
+  assert.equal(ctx.corrections.revision, 9);
+  assert.deepEqual(urls.filter((url) => url.includes("transcript-corrections")), [], "the same read, not a second");
+  const failed = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step], savedCorrections: { reading: Promise.resolve(null) } });
+  assert.match(failed.correctionProblem ?? "", /^Kunde inte läsa sparade rättningar/, "a late read that failed is a failure");
+});

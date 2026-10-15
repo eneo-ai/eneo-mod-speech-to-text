@@ -61,7 +61,10 @@ export function useCopy(text: string, html?: () => string | null): [CopyState, (
   return [state, copy];
 }
 
-/** Copies text and confirms "Kopierat" on the button and, once, to a screen reader. */
+/**
+ * Copies text and confirms it with a check in place of the copy icon and, once, "Kopierat" to a screen reader. The words
+ * stay, so the button keeps its width and its neighbours stay where they are; a copy that fails says so in words.
+ */
 export function CopyButton({
   text,
   label,
@@ -80,14 +83,14 @@ export function CopyButton({
   isDisabled?: boolean;
 }) {
   const [state, copy] = useCopy(text);
-  const words = state === "copied" ? "Kopierat" : state === "failed" ? "Kunde inte kopiera" : label;
+  const words = state === "failed" ? "Kunde inte kopiera" : label;
   return (
     <Button
       variant={variant}
       size={size}
       isDisabled={isDisabled}
       icon={<Icon icon={state === "copied" ? "check" : "copy"} />}
-      label={state === "idle" ? (name ?? label) : words}
+      label={state === "failed" ? words : (name ?? label)}
       onClick={copy}
     >
       {words}

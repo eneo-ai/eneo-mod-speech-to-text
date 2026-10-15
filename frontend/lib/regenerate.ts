@@ -5,8 +5,9 @@
  * change; nothing happens unless the user asks.
  */
 
-import { ApiError, regenerateTranscript, type FlowRunPublic } from "./api";
+import { ApiError, regenerateTranscript, type FlowRunPublic, type FlowRunStep, type TranscriptCorrectionsPublic } from "./api";
 import { friendlyError } from "./errors";
+import { carriesTranscript } from "./speaker-review";
 import { isSegmentsHash, type CorrectionSet } from "./transcript-corrections";
 
 export interface RegenerationRequest {
@@ -16,6 +17,22 @@ export interface RegenerationRequest {
   runRevision: number;
   correctionRevision: number;
   segmentsHash: string;
+}
+
+/**
+ * Whether the transcript's saved corrections, as read with the finished run, are newer than its document: known before
+ * the transcript itself is read, so the page gives the offer its place from the first draw (RunResult). Whether a new
+ * document can be made from them is regenerationOffer's to say, once the transcript is read.
+ */
+export function correctionsNewerThanDocument(
+  run: Pick<FlowRunPublic, "finished_at">,
+  steps: readonly FlowRunStep[],
+  saved: readonly TranscriptCorrectionsPublic[] | null | undefined,
+): boolean {
+  const stepId = steps.find(carriesTranscript)?.step_id;
+  const set = stepId ? saved?.find((candidate) => candidate.step_id === stepId) : undefined;
+  if (!set?.updated_at || !run.finished_at) return false;
+  return Date.parse(set.updated_at) > Date.parse(run.finished_at);
 }
 
 /**

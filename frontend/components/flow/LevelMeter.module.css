@@ -35,8 +35,9 @@
   background: var(--color-accent);
   transform: scaleY(0.12);
   transform-origin: center;
-  /* A little over the 66 ms between two readings, so a bar is still moving when the next one comes. */
-  transition: transform 75ms;
+  /* A little over the 66 ms between two readings, so a bar is still moving when the next one comes; at an even pace, as a
+     signal moves, so a new reading does not restart a slow start each time. */
+  transition: transform 75ms linear;
 }
 
 @media (prefers-reduced-motion: reduce) {

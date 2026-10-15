@@ -1206,7 +1206,7 @@ export function runArtifactUrl(flowId: string, runId: string, fileId: string, in
 
 // --- Transkriptkorrigeringar ---
 
-interface TranscriptCorrectionsPublic {
+export interface TranscriptCorrectionsPublic {
   schema_version?: number;
   segments_hash?: string | null;
   flow_run_id: string;

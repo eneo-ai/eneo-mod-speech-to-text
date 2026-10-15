@@ -46,7 +46,7 @@ import { friendlyError, reviewPauseEnded } from "@/lib/errors";
 import { CONTINUE_QUERY_PARAM, RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
-import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
+import { followRun, readActivePause, readFinishedRun, VISIBLE_POLL_MS, type SavedCorrections } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { filesIn, recordingStore } from "@/lib/recording-store";
 import { leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
@@ -95,8 +95,17 @@ type RunState =
       run: FlowRunPublic;
       steps: FlowRunStep[];
       checkpoint: FlowRunReviewCheckpointPublic;
+      /** The saved transcript corrections, as read with the pause (readActivePause). */
+      corrections: SavedCorrections;
     }
-  | { kind: "done"; run: FlowRunPublic; steps: FlowRunStep[]; graph: FlowGraph | null };
+  | {
+      kind: "done";
+      run: FlowRunPublic;
+      steps: FlowRunStep[];
+      graph: FlowGraph | null;
+      /** The saved transcript corrections, as read with the run (readFinishedRun). */
+      corrections: SavedCorrections;
+    };
 
 // The run's id is kept in the address (?run=), so a reload or a shared link resumes the same run.
 const RUN_QUERY_PARAM = "run";
@@ -381,11 +390,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
       if (!last || signal.aborted) return;
       if (last.run.status === "awaiting_review") {
         // Eneo answers null while the pause is not visible yet; an error is not that, and ends the following below.
-        const checkpoint = await getActiveReviewCheckpoint(flowId, runId);
+        const { checkpoint, corrections } = await readActivePause(flowId, runId);
         if (signal.aborted) return;
         if (checkpoint) {
           // Paused until the person has acted; the review view starts the following again.
-          setRun({ kind: "awaiting_review", run: last.run as FlowRunPublic, steps: [], checkpoint });
+          setRun({ kind: "awaiting_review", run: last.run as FlowRunPublic, steps: [], checkpoint, corrections });
         } else {
           // The checkpoint shows a moment after the status does: read again shortly.
           setTimeout(() => !signal.aborted && void follow(runId), VISIBLE_POLL_MS);
@@ -400,7 +409,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         return;
       }
       if (signal.aborted) return;
-      setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph });
+      setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph, corrections: finished.corrections });
     } catch (err) {
       if (signal.aborted) return;
       setPollTrouble(false);
@@ -677,6 +686,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
                 flowName={published.name}
                 checkpoint={run.checkpoint}
                 runState={{ run: run.run, steps: run.steps }}
+                savedCorrections={run.corrections}
                 runError={runError}
                 onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
                 onSaveEdit={onSaveEdit}
@@ -739,6 +749,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
                 run={run.run}
                 steps={steps}
                 stepResults={run.steps}
+                savedCorrections={run.corrections}
                 files={files}
                 showTranscript={transcribed}
                 contract={contract}
