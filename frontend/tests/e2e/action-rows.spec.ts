@@ -1,8 +1,8 @@
 /**
  * A step's decision is one row with one rule (components/ActionRow.tsx, as the design system's alert dialog has it): up to
  * 640 px wide its buttons stack across the whole row, the main one on top and first for the keyboard; wider, they stand
- * in one row at its end, the main one last. An editor's own buttons are no decision: small, at the field's start, right
- * under it, and Spara ändring only while there is a change to save.
+ * in one row at its end, the main one last. An editor's own buttons are no decision: small, in the text's header above
+ * it, and Spara ändring only while there is a change to save. A long text keeps the header and the decision in view.
  */
 import { type Locator } from "@playwright/test";
 import ids from "../fixtures/ids.json";
@@ -89,7 +89,7 @@ test("an unsent recording's actions stack across its card on a phone and stand i
   followsTheRule(await layout(card.getByRole("button", { name: "Ta bort" }), card.getByRole("button", { name: "Avbryt" })), stacked);
 });
 
-test("the text review's editor: its buttons stand small at the field's start, Spara ändring only with a change", async ({ page }) => {
+test("the text review's editor: its buttons stand small in the text's header, Spara ändring only with a change", async ({ page }) => {
   await run(page, ids.runs.reviewText);
   await page.getByRole("button", { name: "Redigera" }).click();
   const field = page.getByRole("textbox", { name: "Innehåll för granskning" });
@@ -100,16 +100,47 @@ test("the text review's editor: its buttons stand small at the field's start, Sp
   await field.fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
   await expect(save).toBeVisible();
   const [fieldBox, cancelBox, saveBox] = await Promise.all([field, cancel, save].map((element) => element.boundingBox()));
-  const gap = Math.round(cancelBox!.y - (fieldBox!.y + fieldBox!.height));
   expect(
     {
-      // The text box sits inside the field's one-pixel border.
-      atTheFieldsStart: Math.abs(cancelBox!.x - fieldBox!.x) <= 1,
-      underTheField: gap >= 0 && gap <= 16,
+      aboveTheField: cancelBox!.y + cancelBox!.height <= fieldBox!.y,
+      // Beside the text's name where the row has room, under it on a phone; within the field's width either way.
+      withinTheField: cancelBox!.x >= fieldBox!.x - 2 && saveBox!.x + saveBox!.width <= fieldBox!.x + fieldBox!.width + 2,
       saveBeside: Math.round(saveBox!.y) === Math.round(cancelBox!.y) && saveBox!.x > cancelBox!.x + cancelBox!.width,
     },
     JSON.stringify({ field: fieldBox, cancel: cancelBox, save: saveBox }),
-  ).toEqual({ atTheFieldsStart: true, underTheField: true, saveBeside: true });
+  ).toEqual({ aboveTheField: true, withinTheField: true, saveBeside: true });
   await expect(cancel).toHaveAttribute("data-size", "sm");
   await expect(save).toHaveAttribute("data-size", "sm");
+});
+
+test("a long text under review keeps Redigera and the decision in view, and opens for editing where it is read", async ({ page }) => {
+  const short = "Kommunstyrelsen beslutade att höja budgetramen med två procent.";
+  const long = Array.from({ length: 24 }, (_, i) => `## Punkt ${i + 1}\n\n${short} Förvaltningen återkommer i oktober med en plan.`).join("\n\n");
+  await page.route("**/api/eneo/**", async (route) => {
+    const response = await route.fetch();
+    if (!(response.headers()["content-type"] ?? "").includes("json")) return route.fulfill({ response });
+    const body = JSON.stringify(JSON.parse(await response.text()), (_, value) => (value === short ? long : value));
+    return route.fulfill({ response, body });
+  });
+  await run(page, ids.runs.reviewText);
+  const edit = page.getByRole("button", { name: "Redigera" });
+  const approve = page.getByRole("button", { name: "Godkänn och fortsätt" });
+  const inView = (locator: Locator) =>
+    locator.evaluate((element) => {
+      const { top, bottom } = element.getBoundingClientRect();
+      return top >= 0 && bottom <= innerHeight;
+    });
+  await expect(edit).toBeVisible();
+  expect({ edit: await inView(edit), approve: await inView(approve) }, "at the text's start").toEqual({ edit: true, approve: true });
+
+  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight / 2));
+  const reading = await page.evaluate(() => scrollY);
+  expect({ edit: await inView(edit), approve: await inView(approve) }, "half way through the text").toEqual({ edit: true, approve: true });
+
+  await edit.click();
+  const field = page.getByRole("textbox", { name: "Innehåll för granskning" });
+  await expect(field).toBeFocused();
+  const box = await field.evaluate((element) => ({ scroll: element.scrollHeight - element.clientHeight, at: scrollY }));
+  expect({ oneScroll: box.scroll <= 1, stays: Math.abs(box.at - reading) <= 2 }, JSON.stringify({ ...box, reading })).toEqual({ oneScroll: true, stays: true });
+  expect(await inView(page.getByRole("button", { name: "Avbryt", exact: true })), "Avbryt in view").toBe(true);
 });

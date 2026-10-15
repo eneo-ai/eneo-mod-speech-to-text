@@ -4,12 +4,12 @@
   - paragraph: Du kan ändra texten innan du godkänner och fortsätter.
   - paragraph: /Granska senast 3 jan \d+ \d+:\d+\. Därefter avbryts körningen\./
   - text: Innehåll för granskning
-  - article:
-    - document:
-      - paragraph: Kommunstyrelsen beslutade att höja budgetramen med två procent.
   - button "Redigera":
     - text: ""
     - status
+  - article:
+    - document:
+      - paragraph: Kommunstyrelsen beslutade att höja budgetramen med två procent.
   - alert:
     - text: Din ändring sparades inte Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.
     - button "Använd din version":

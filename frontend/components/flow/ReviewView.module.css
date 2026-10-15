@@ -12,12 +12,49 @@
   }
 }
 
-/* The editing field grows with the text, from four lines, and with its focus frame fits short and zoomed windows. */
+/* The editing field grows with the text, from four lines: a long text is one page to scroll, not a box inside it. Its
+   focus frame keeps clear of the header above and the docked decision below. */
 .reviewText textarea {
   field-sizing: content;
   min-block-size: 4lh;
-  max-block-size: 50dvh;
-  scroll-margin-block: var(--spacing-3);
+  scroll-margin-block: var(--spacing-12);
+}
+
+/* The text as it is read: a line a reader follows, as a result's document keeps it. */
+.text {
+  max-inline-size: 75ch;
+}
+
+/* The text's name and the editor's buttons: at the top of the window while a long text scrolls past, on the card. */
+.cardHead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  margin: calc(var(--spacing-4) * -1) calc(var(--spacing-4) * -1) 0;
+  padding: var(--spacing-4) var(--spacing-4) var(--spacing-2);
+  border-start-start-radius: var(--radius-container);
+  border-start-end-radius: var(--radius-container);
+  border-block-end: var(--border-width) solid var(--color-border);
+  background: var(--color-background-card);
+}
+
+/* The decision: in the page after the text, and at the window's bottom edge while a long text is above it. A short
+   window (a phone on its side, 200 % zoom) keeps it in the page, where docking would leave the text no room. */
+.dock {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  margin-inline: calc(var(--spacing-4) * -1);
+  padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));
+  border-block-start: var(--border-width) solid var(--color-border);
+  background: var(--color-background-surface);
+}
+
+@media (max-height: 480px) {
+  .cardHead,
+  .dock {
+    position: static;
+  }
 }
 
 /* A section with its own box: what the text review and its rejection are held in. */

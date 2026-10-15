@@ -4,6 +4,7 @@ import { CheckCircle2, Pencil, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -163,14 +164,31 @@ export function ReviewView({
   const reasonField = useRef<HTMLTextAreaElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const textField = useRef<HTMLTextAreaElement>(null);
+  // Swapping the text for its editor (and back) changes the page's height for a moment, and the browser would pull a
+  // reader halfway through a long text back to its top: the place they read at is kept, before the swap is painted.
+  const readAt = useRef<number | null>(null);
+  // Read while rendering, before the swap is committed.
+  readAt.current = typeof window === "undefined" ? null : window.scrollY;
+  useLayoutEffect(() => {
+    const at = readAt.current;
+    if (at !== null && window.scrollY !== at) window.scrollTo({ top: at, behavior: "instant" });
+  }, [editing]);
+
   useEffect(() => {
     const target = handOff.current?.current;
     // Not there yet, or still disabled while a request ends: a later render hands it on.
     if (!target || (target as HTMLButtonElement).disabled) return;
     handOff.current = null;
-    target.focus();
-    // The text opens for more at its end, where a reviewer adds; Safari and Firefox put the caret at its start.
-    if (target === textField.current) textField.current.setSelectionRange(textField.current.value.length, textField.current.value.length);
+    if (target !== textField.current) {
+      target.focus();
+      return;
+    }
+    // The text opens where it is read, never scrolled away from it; one the window shows whole opens for more at its
+    // end, where a reviewer adds (Safari and Firefox put the caret at the start).
+    const field = textField.current;
+    field.focus({ preventScroll: true });
+    const { top, bottom } = field.getBoundingClientRect();
+    if (top >= 0 && bottom <= window.innerHeight) field.setSelectionRange(field.value.length, field.value.length);
   });
 
   // A kept edit the approved pause holds is saved, so it is no draft any more (and no reason to ask before leaving).
@@ -617,10 +635,51 @@ export function ReviewView({
       </VStack>
 
       <VStack as="section" gap={3} className={styles.card}>
-        <VStack gap={1}>
-          <Text weight="semibold">Innehåll för granskning</Text>
-          {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
-        </VStack>
+        {/* The text's name and the editor's buttons stay at the top of the window while a long text is read or edited. */}
+        <HStack gap={2} wrap="wrap" hAlign="between" vAlign="center" className={styles.cardHead}>
+          <VStack gap={1}>
+            <Text weight="semibold">Innehåll för granskning</Text>
+            {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
+          </VStack>
+          {/* The editor's own buttons, no decision: small, beside the text's name. Spara ändring keeps a change in Eneo
+              without going on, and is there only while there is one; Avbryt stays where it is when it comes. */}
+          {editable && (
+            <HStack gap={2} wrap="wrap">
+              {editing ? (
+                <>
+                  <Button
+                    key="avbryt"
+                    variant="ghost"
+                    size="sm"
+                    label="Avbryt"
+                    isDisabled={busy}
+                    onClick={() => {
+                      handOff.current = editButton;
+                      setText(initialText);
+                      setEditing(false);
+                      draft.drop();
+                    }}
+                  />
+                  {dirty && <Button key="spara" variant="secondary" size="sm" label="Spara ändring" isLoading={saving} isDisabled={busy} onClick={saveOnly} />}
+                </>
+              ) : (
+                <Button
+                  key="redigera"
+                  ref={editButton}
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil aria-hidden />}
+                  label="Redigera"
+                  isDisabled={busy}
+                  onClick={() => {
+                    handOff.current = textField;
+                    setEditing(true);
+                  }}
+                />
+              )}
+            </HStack>
+          )}
+        </HStack>
 
         {editable && editing ? (
           <TextArea
@@ -631,54 +690,19 @@ export function ReviewView({
             value={text}
             isReadOnly={busy}
             onChange={editText}
-            onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+            // A field the window holds whole is brought into it with its focus frame; a longer one stays where it is read.
+            onFocus={(event) => {
+              const field = event.currentTarget;
+              if (field.getBoundingClientRect().height <= window.innerHeight) field.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }}
             // Where the field cannot size itself to the text (ReviewView.module.css), a height from its lines.
             rows={Math.min(24, Math.max(4, text.split("\n").length + 1))}
           />
         ) : (
-          <article>
+          <article className={styles.text}>
             {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
             <Markdown>{decided ? initialText : text}</Markdown>
           </article>
-        )}
-
-        {/* The editor's own buttons, no decision: small, at the field's start. Spara ändring keeps a change in Eneo
-            without going on, and is there only while there is one; Avbryt stays where it is when it comes. */}
-        {editable && (
-          <HStack gap={2} wrap="wrap">
-            {editing ? (
-              <>
-                <Button
-                  key="avbryt"
-                  variant="ghost"
-                  size="sm"
-                  label="Avbryt"
-                  isDisabled={busy}
-                  onClick={() => {
-                    handOff.current = editButton;
-                    setText(initialText);
-                    setEditing(false);
-                    draft.drop();
-                  }}
-                />
-                {dirty && <Button key="spara" variant="secondary" size="sm" label="Spara ändring" isLoading={saving} isDisabled={busy} onClick={saveOnly} />}
-              </>
-            ) : (
-              <Button
-                key="redigera"
-                ref={editButton}
-                variant="secondary"
-                size="sm"
-                icon={<Pencil aria-hidden />}
-                label="Redigera"
-                isDisabled={busy}
-                onClick={() => {
-                  handOff.current = textField;
-                  setEditing(true);
-                }}
-              />
-            )}
-          </HStack>
         )}
       </VStack>
 
@@ -716,7 +740,8 @@ export function ReviewView({
         {runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>
-      {actions}
+      {/* The decision stays in reach at the window's bottom edge however long the text is. */}
+      <div className={styles.dock}>{actions}</div>
     </VStack>
   );
 }
