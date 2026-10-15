@@ -439,9 +439,12 @@
   gap: var(--spacing-1);
 }
 
-.speakerName:hover {
-  text-decoration: underline dotted;
-  text-underline-offset: 0.25em;
+/* Hover only where a pointer hovers: on a touch screen a tapped control would keep the look until the next tap. */
+@media (hover: hover) {
+  .speakerName:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 0.25em;
+  }
 }
 
 .chevron {
@@ -462,9 +465,11 @@
   color: var(--color-text-primary);
 }
 
-.clock:hover {
-  color: var(--color-text-primary);
-  text-decoration: underline;
+@media (hover: hover) {
+  .clock:hover {
+    color: var(--color-text-primary);
+    text-decoration: underline;
+  }
 }
 
 /* The ghost button lays itself over its neighbours as the plain controls do. */
@@ -504,10 +509,16 @@
   background-clip: content-box;
 }
 
-.choosable:hover,
 .choosable:focus-visible {
   background: color-mix(in srgb, var(--color-accent) 20%, transparent);
   background-clip: content-box;
+}
+
+@media (hover: hover) {
+  .choosable:hover {
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    background-clip: content-box;
+  }
 }
 
 @media (pointer: coarse) {
@@ -659,9 +670,11 @@
   block-size: var(--font-size-2xs);
 }
 
-.confirmButton:hover .confirmMark {
-  background: var(--module-color-review);
-  color: var(--color-background-surface);
+@media (hover: hover) {
+  .confirmButton:hover .confirmMark {
+    background: var(--module-color-review);
+    color: var(--color-background-surface);
+  }
 }
 
 .confirmMarkDone {
@@ -670,9 +683,11 @@
   color: var(--color-background-surface);
 }
 
-.confirmButton:hover .confirmMarkDone {
-  background: color-mix(in srgb, var(--module-color-ok) 80%, transparent);
-  color: var(--color-background-surface);
+@media (hover: hover) {
+  .confirmButton:hover .confirmMarkDone {
+    background: color-mix(in srgb, var(--module-color-ok) 80%, transparent);
+    color: var(--color-background-surface);
+  }
 }
 
 /* "Rätta": at the end of the passage's head row, the same place on every passage; never mid-sentence, always there. */
@@ -684,9 +699,11 @@
   color: var(--color-text-secondary);
 }
 
-.correct:hover {
-  background: var(--color-overlay-hover);
-  color: var(--color-text-primary);
+@media (hover: hover) {
+  .correct:hover {
+    background: var(--color-overlay-hover);
+    color: var(--color-text-primary);
+  }
 }
 
 .correct svg {

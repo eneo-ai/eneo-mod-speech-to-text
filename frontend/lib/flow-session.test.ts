@@ -771,8 +771,8 @@ test("a denied or missing microphone says what happened and what to do next, and
   await denied.session.start();
   assert.equal(denied.session.getSnapshot().phase, "setup");
   assert.deepEqual(denied.session.getSnapshot().problem, {
-    title: "Appen fick inte använda mikrofonen.",
-    detail: "Tillåt mikrofonen i webbläsarens inställningar och försök igen.",
+    title: "Mikrofonen är blockerad.",
+    detail: "Tillåt mikrofonen för den här sidan i webbläsaren, till exempel via symbolen vid adressfältet, och försök igen.",
     retry: true,
   });
   assert.deepEqual(await denied.store.listUnsent("user-1"), []);
@@ -1328,7 +1328,7 @@ test("a send that fails keeps the recording and the details, and says why", asyn
   const { session, recorders, store } = await setup();
   session.setHandlers({
     submit: async () => {
-      throw new Error("Anslutningen avbröts. Kontrollera nätverket och försök igen.");
+      throw new TypeError("Failed to fetch");
     },
   });
   session.setContract(audioContract());
@@ -1345,8 +1345,39 @@ test("a send that fails keeps the recording and the details, and says why", asyn
   assert.equal(after.phase, "ready");
   assert.equal(after.recording?.id, recording.id);
   assert.deepEqual(after.details.deltagare, ["Anna Berg"]);
-  assert.deepEqual(after.problem, { title: "Anslutningen avbröts. Kontrollera nätverket och försök igen." });
+  assert.deepEqual(after.problem, {
+    title: "Anslutningen avbröts. Kontrollera nätverket och försök igen.",
+    detail: "Inspelningen finns kvar på enheten. Välj Skapa dokument när du vill försöka igen.",
+  });
   assert.ok(await store.get(recording.id), "the audio is still on the device");
+});
+
+test("a recording Eneo refuses for its size or format is kept, and the page does not ask to send the same again", async () => {
+  for (const [what, error, title] of [
+    ["too large", new ApiError(400, "Too large", null, "flow_run_step_input_file_too_large"), "Inspelningen är större än flödet tar emot (högst 50\u00a0MB)."],
+    ["wrong type", new ApiError(415, "Unsupported", null, "unsupported_media_type"), "Flödet tar inte emot inspelningens format."],
+  ] as const) {
+    const { session, recorders, store } = await setup();
+    session.setHandlers({
+      submit: async () => {
+        throw error;
+      },
+    });
+    session.setContract(audioContract());
+    session.selectMode("spela-in");
+    await session.start();
+    recorders[0].emit("audio");
+    await session.stop();
+    await until(() => session.getSnapshot().phase === "ready");
+    const recording = session.getSnapshot().recording!;
+
+    assert.equal(await session.createDocument(), false, what);
+    const problem = session.getSnapshot().problem;
+    assert.equal(problem?.title, title, what);
+    assert.equal(problem?.detail, "Inspelningen finns kvar. Spara den som fil om du vill behålla den.", what);
+    assert.doesNotMatch(problem?.detail ?? "", /försöka igen/, `${what}: the same would be refused again`);
+    assert.ok(await store.get(recording.id), `${what}: the audio is still on the device`);
+  }
 });
 
 test("the flow list offers the flow this user last recorded or uploaded with first", async () => {
@@ -1541,6 +1572,11 @@ test("Fortsätt spela in keeps every word of the live draft: words that came aft
   await session.continueStopped(); // the microphone is refused
   assert.equal(session.getSnapshot().phase, "ready");
   assert.deepEqual(draft(), ["Första delen.", "Sista orden", "Andra delen."], "a refused continuation keeps the draft");
+  // What to do, as on a first start; trying again is the recording's own Fortsätt spela in, not a new recording.
+  const problem = session.getSnapshot().problem;
+  assert.equal(problem?.title, "Mikrofonen är blockerad.");
+  assert.match(problem?.detail ?? "", /Tillåt mikrofonen/);
+  assert.equal(problem?.retry, false);
 });
 
 test("when live text cannot be set up again on Fortsätt spela in, the recording goes on and the earlier draft stays", async () => {

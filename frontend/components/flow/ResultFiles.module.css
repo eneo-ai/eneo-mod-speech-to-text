@@ -35,3 +35,24 @@
   block-size: min(calc(90dvh - 7rem), 56rem);
   border: 0;
 }
+
+/* The viewer and, under it until the file is drawn, its spinner in one cell: the browser's viewer paints over it. */
+.viewerArea {
+  display: grid;
+}
+
+.viewerArea > * {
+  grid-area: 1 / 1;
+}
+
+.viewerWait {
+  place-self: center;
+  /* Most files are drawn within a moment: the spinner waits that long before it shows. */
+  animation: viewer-wait-hidden 0s var(--module-wait-delay) backwards;
+}
+
+@keyframes viewer-wait-hidden {
+  from {
+    visibility: hidden;
+  }
+}

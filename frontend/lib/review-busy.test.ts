@@ -203,7 +203,7 @@ test("a rejection cannot start while Spara och fortsätt is under way, nor end i
     avvisa.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
-  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl …"]'), "no reason form opens");
+  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl…"]'), "no reason form opens");
   assert.deepEqual(rejected, [], "the rejection did not start");
   assert.equal(field().readOnly, true, "still locked: only the save's own end unlocks it");
   await view.act(async () => type(field(), "Newer text."));
@@ -240,7 +240,7 @@ test("a control that removes or disables itself hands the focus on, never to the
     });
   const focused = () => document.activeElement;
   await press("Avvisa");
-  assert.ok(focused()?.matches('textarea[placeholder="Skäl …"]'), `Avvisa: the reason, not ${focused()?.tagName}`);
+  assert.ok(focused()?.matches('textarea[placeholder="Skäl…"]'), `Avvisa: the reason, not ${focused()?.tagName}`);
   await press("Avbryt");
   assert.ok(focused() === button(view.container, "Avvisa"), `Avbryt: back on Avvisa, not ${focused()?.tagName}`);
 
@@ -293,11 +293,11 @@ test("an approved pause is final: a reason typed before the approval reached the
   const server = eneo(t, { approves: true });
   const view = await review();
   await view.act(async () => button(view.container, "Avvisa")!.click());
-  await view.act(async () => type(view.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Skäl …"]')!, "Fel möte."));
+  await view.act(async () => type(view.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Skäl…"]')!, "Fel möte."));
   await view.act(async () => showPause({ ...pause, state: "approved", revision: 2 }));
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
   assert.ok(!button(view.container, "Bekräfta avvisning"), "no rejection of an approved pause");
-  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl …"]'), "no reason form");
+  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl…"]'), "no reason form");
   assert.ok(!button(view.container, "Avvisa"), "no Avvisa");
   await view.act(async () => {
     button(view.container, "Fortsätt")!.click();

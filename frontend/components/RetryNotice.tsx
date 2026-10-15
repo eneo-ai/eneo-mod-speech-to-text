@@ -27,10 +27,11 @@ export function RetryNotice({ wait }: { wait: RetryWait | null }) {
       </VisuallyHidden>
       {wait && (
         <HStack gap={3} wrap="wrap" align="center" justify="between">
-          <Text as="p" type="supporting">
+          {/* Tabular figures and the unit kept with its number: the counting seconds do not shake the line. */}
+          <Text as="p" type="supporting" hasTabularNumbers>
             {wait.retryAt === null
               ? "Det går fortfarande inte att skicka. Försök igen när du vill."
-              : `Det gick inte att skicka just nu. Försöker igen om ${seconds} s.`}
+              : `Det gick inte att skicka just nu. Försöker igen om ${seconds}\u00a0s.`}
           </Text>
           <Button label={wait.retryAt === null ? "Försök igen" : "Försök nu"} size="sm" onClick={wait.retryNow} />
         </HStack>

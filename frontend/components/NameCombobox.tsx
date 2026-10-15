@@ -224,7 +224,7 @@ export function NameCombobox({
                   <span className={styles.optionText}>
                     {option.kind === "add" ? (
                       <>
-                        Lägg till <strong>“{option.name}”</strong>
+                        Lägg till <strong>”{option.name}”</strong>
                       </>
                     ) : option.kind === "none" ? (
                       noneLabel

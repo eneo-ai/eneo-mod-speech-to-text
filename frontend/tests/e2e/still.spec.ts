@@ -70,18 +70,7 @@ const ARRIVALS: Arrival[] = [
  * Moves that are left, each one answer on one page: why it is left and the bead that owns it. An entry must still
  * happen: when the page stands still, the line goes.
  */
-const KNOWN: { page: string; when: RegExp; why: string }[] = [
-  {
-    page: "review",
-    when: /moved \d+ px down .* when GET \S+\/transcript-corrections\/ answered$/,
-    why: "the speakers' list is drawn before the saved corrections that add a speaker to it are read (bead stt-5db.1)",
-  },
-  {
-    page: "result-regenerate",
-    when: /moved \d+ px down .* when GET \S+\/transcript-corrections\/ answered$/,
-    why: "the notice that the document is older than the corrections arrives above the document (bead stt-5db.2)",
-  },
-];
+const KNOWN: { page: string; when: RegExp; why: string }[] = [];
 
 type Anchor = { id: number; name: string; x: number; y: number; height: number; onScreen: boolean };
 type Measure = { anchors: Anchor[]; presses: number };

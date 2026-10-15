@@ -16,7 +16,7 @@ import {
 } from "./api";
 import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { isRecord } from "./is-record";
-import { errorAdvice, friendlyError } from "./errors";
+import { errorAdvice } from "./errors";
 import { splitNames } from "./participants";
 import { END_UNCONFIRMED, RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
@@ -197,12 +197,25 @@ function submitProblem(
     }
     const advice = errorAdvice(error);
     if (advice.ownerMustFix) return { title: advice.message, detail: kept, back: true };
-    if ((error.status === 413 || error.code === "file_too_large") && step?.max_file_size_bytes) {
-      return oversized(step.max_file_size_bytes, step.input_format);
+    // Refused for its size or type, as this module says it or as Eneo does: the flow's limit or what it takes, and for
+    // a recording that it is kept. Sending the same again would be refused again, so neither asks for it.
+    const tooLarge = error.status === 413 || error.code === "file_too_large" || error.code === "flow_run_step_input_file_too_large";
+    if (tooLarge && step?.max_file_size_bytes) {
+      return inputKind === "recording"
+        ? { title: `Inspelningen är större än flödet tar emot (högst ${formatBytes(step.max_file_size_bytes)}).`, detail: kept }
+        : oversized(step.max_file_size_bytes, step.input_format);
     }
-    if (error.status === 415 || error.code === "unsupported_media_type") return unsupported(step?.accepted_mimetypes);
+    const wrongType =
+      error.status === 415 || error.code === "unsupported_media_type" || error.code === "flow_run_step_input_mimetype_rejected";
+    if (wrongType) {
+      return inputKind === "recording" ? { title: "Flödet tar inte emot inspelningens format.", detail: kept } : unsupported(step?.accepted_mimetypes);
+    }
   }
-  return { title: friendlyError(error) };
+  // What the person has is still here, and, where trying again can help, the button that sends it again.
+  const { message, retry } = errorAdvice(error);
+  const again = retry ? `Välj ${createLabel} när du vill försöka igen.` : "";
+  const kept = inputKind === "recording" ? "Inspelningen finns kvar på enheten." : inputKind === "file" ? "Filen finns kvar." : "";
+  return { title: message, detail: [kept, again].filter(Boolean).join(" ") || undefined };
 }
 
 interface SessionSnapshot {
@@ -375,8 +388,8 @@ export function microphoneProblem(errorName: string | null): Problem {
     case "NotAllowedError":
     case "SecurityError":
       return {
-        title: "Appen fick inte använda mikrofonen.",
-        detail: "Tillåt mikrofonen i webbläsarens inställningar och försök igen.",
+        title: "Mikrofonen är blockerad.",
+        detail: "Tillåt mikrofonen för den här sidan i webbläsaren, till exempel via symbolen vid adressfältet, och försök igen.",
         retry: true,
       };
     case "NotFoundError":
@@ -1052,6 +1065,7 @@ export class FlowSession {
     const live = recording.inputMode === "stream" && this.modes.includes("stromma");
     this.mode = live ? "stromma" : "spela-in";
     this.problem = null;
+    this.microphoneError = null;
     // After Stoppa, the live text so far goes on above the new part's. Closed first, so words still arriving
     // after Stoppa are part of it.
     const earlier = this.live;
@@ -1062,9 +1076,10 @@ export class FlowSession {
     const { status, error } = this.capture.getSnapshot();
     if (status === "recording") return;
     this.closeLive();
-    // Refused: the draft stays with the stopped recording.
+    // Refused: the draft stays with the stopped recording. A refused microphone says what to do, as on a first start;
+    // trying again is the recording's own Fortsätt spela in, not a new recording.
     this.live = earlier;
-    if (error) this.problem = { title: error };
+    if (error) this.problem = this.microphoneError ? { ...microphoneProblem(this.microphoneError), retry: false } : { title: error };
     this.emit();
   }
 

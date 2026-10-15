@@ -30,7 +30,9 @@ import type { StepView } from "./run-progress";
 const markup = (element: import("react").ReactElement) => renderToStaticMarkup(inStaticRouter(element));
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 // The words of every status region (a paragraph) in the markup, in order: what a screen reader is told when they change.
-const statuses = (html: string) => [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner));
+// A region waiting for its words is there from the start, empty; it says nothing yet.
+const statuses = (html: string) =>
+  [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner)).filter(Boolean);
 
 const running: StepView[] = [
   { order: 1, label: "Transkribera mötet", state: "done", transcribes: true, note: null },
@@ -117,7 +119,15 @@ test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt
   const words = text(html);
   assert.match(words, /möte\.wav Avbryt/);
   assert.match(words, /512 B av 2 kB 33 %/);
-  assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen"], "the stage once, first");
+  assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen…"], "the stage once, first");
+});
+
+test("once every byte has left, the stage says Eneo is taking the file, and a recording is called a recording", () => {
+  assert.equal(statuses(uploading({ loaded: 2048, total: 2048, percent: 100 }))[0], "Eneo tar emot filen…");
+  assert.equal(statuses(uploading({ loaded: 2047, total: 2048, percent: 100 }))[0], "Laddar upp filen…", "a rounded 100 % is not the end");
+  assert.equal(statuses(uploading({ recording: true }))[0], "Laddar upp inspelningen…");
+  assert.equal(statuses(uploading({ recording: true, loaded: 2048, total: 2048, percent: 100 }))[0], "Eneo tar emot inspelningen…");
+  assert.equal(statuses(uploading({ percent: null, total: null, loaded: 4096 }))[0], "Laddar upp filen…", "an unknown size never ends early");
 });
 
 test("the counting bytes and percent hold still: tabular figures, and the percent sign kept with its number", () => {
@@ -151,7 +161,7 @@ test("a percent outside 0 to 100 is held to it, in the bar and in the words besi
 });
 
 test("every quarter of an upload is said once, and the counting percent never is", () => {
-  const said = (percent: number | null) => statuses(uploading({ percent }))[1];
+  const said = (percent: number | null) => statuses(uploading({ percent }))[1] ?? "";
   assert.equal(said(null), "");
   assert.equal(said(24), "", "before the first quarter");
   assert.equal(said(25), "25 % uppladdat.");
@@ -165,16 +175,16 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   const send = (submission: SubmissionState) =>
     markup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
   const idle = send({ kind: "idle" });
-  assert.deepEqual(statuses(idle), ["Skickar"]);
+  assert.deepEqual(statuses(idle), ["Skickar…"]);
   assert.doesNotMatch(idle, /progressbar|Avbryt/);
 
   const starting = send({ kind: "starting", wait: null });
-  assert.equal(statuses(starting)[0], "Startar flödet");
+  assert.equal(statuses(starting)[0], "Startar flödet…");
   assert.match(text(starting), /Avbryt/, "a way out from the first moment: the answer may never come");
   assert.doesNotMatch(text(starting), /uppladdad|Spara som fil/, "nothing has gone wrong yet to explain");
 
   const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
-  assert.equal(statuses(waiting)[0], "Startar flödet");
+  assert.equal(statuses(waiting)[0], "Startar flödet…");
   assert.match(text(waiting), /Filen är uppladdad\. Vi försöker starta flödet igen\./);
   assert.match(text(waiting), /Försöker igen om \d+ s\. Försök nu Avbryt/);
   assert.doesNotMatch(waiting, /progressbar/);

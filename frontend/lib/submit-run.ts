@@ -508,6 +508,8 @@ export function startAgainRequest(
   return { body, idempotencyKey: `flow-run-again:${failed.id}` };
 }
 
+export const INPUT_GONE = "Ljudet från den förra körningen finns inte kvar hos Eneo. Gör en ny inspelning eller välj en fil.";
+
 type StartAgainOutcome =
   | { kind: "started"; run: FlowRunPublic; contract: RunContract }
   | { kind: "review"; message: string; contract: RunContract };
@@ -535,8 +537,17 @@ export async function startAgain(
     const request = startAgainRequest(failed, steps, contract);
     if (!request) return null;
     if ("review" in request) return { kind: "review", message: request.review, contract };
-    const run = await askRun(() => deps.startRun(flowId, request.body, request.idempotencyKey, opts.signal), opts);
-    return opts.signal?.aborted ? null : { kind: "started", run, contract };
+    try {
+      const run = await askRun(() => deps.startRun(flowId, request.body, request.idempotencyKey, opts.signal), opts);
+      return opts.signal?.aborted ? null : { kind: "started", run, contract };
+    } catch (error) {
+      // Eneo no longer keeps the run's audio: starting again cannot work, so the page goes back to a new recording or
+      // file rather than offer the same button again.
+      if (error instanceof ApiError && error.code === "flow_run_input_file_not_found" && !opts.signal?.aborted) {
+        return { kind: "review", message: INPUT_GONE, contract };
+      }
+      throw error;
+    }
   } catch (error) {
     if (opts.signal?.aborted) return null;
     throw error;

@@ -281,8 +281,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-.clock:hover {
-  color: var(--color-text-primary);
+/* Hover only where a pointer hovers: on a touch screen a tapped word would keep the tint until the next tap. */
+@media (hover: hover) {
+  .clock:hover {
+    color: var(--color-text-primary);
+  }
 }
 
 .speakerName {
@@ -373,9 +376,14 @@
   }
 }
 
-.span[data-seekable]:hover {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+.span[data-seekable] {
   cursor: pointer;
+}
+
+@media (hover: hover) {
+  .span[data-seekable]:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
 }
 
 .span[data-review] {
@@ -387,8 +395,10 @@
   cursor: pointer;
 }
 
-.span[data-uncertain]:hover {
-  background: color-mix(in srgb, var(--module-color-review) 10%, transparent);
+@media (hover: hover) {
+  .span[data-uncertain]:hover {
+    background: color-mix(in srgb, var(--module-color-review) 10%, transparent);
+  }
 }
 
 /* A word, in the order of what it is told about: unsure, played now, marked, being said. */

@@ -85,7 +85,9 @@ test("a copied text keeps its headings and bold where it is pasted, and is the t
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await fileBackedText(page);
   await page.getByRole("button", { name: "Kopiera början", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Kopierat", exact: true })).toBeVisible();
+  // The button keeps its words; the copy is said to a screen reader.
+  await expect(page.locator('[data-astryx-live-region="polite"]')).toHaveText("Kopierat");
+  await expect(page.getByRole("button", { name: "Kopiera början", exact: true })).toBeVisible();
   const copied = await page.evaluate(async () => {
     const [item] = await navigator.clipboard.read();
     return { html: await (await item.getType("text/html")).text(), plain: await (await item.getType("text/plain")).text() };
@@ -94,4 +96,22 @@ test("a copied text keeps its headings and bold where it is pasted, and is the t
   expect(copied.html).toContain("<strong>höja budgetramen</strong>");
   expect(copied.html).not.toMatch(/class=|style=/);
   expect(copied.plain).toMatch(/^## Protokoll\n\nKommunstyrelsen beslutade att \*\*höja budgetramen\*\*/);
+});
+
+test("the PDF dialog says the file is coming while the browser's viewer loads it, and not once it is drawn", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "the PDF opens in a dialog with a mouse on a laptop");
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/artifacts/**", async (route) => {
+    if (route.request().resourceType() === "document") await held;
+    return route.fallback();
+  });
+  await result(page);
+  await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+  const dialog = page.getByRole("dialog");
+  const loading = dialog.getByRole("status", { name: "Laddar filen" }).or(dialog.getByLabel("Laddar filen"));
+  await expect(loading).toBeVisible();
+  release();
+  await expect(loading).toHaveCount(0);
+  await expect(dialog.locator("iframe")).toBeVisible();
 });

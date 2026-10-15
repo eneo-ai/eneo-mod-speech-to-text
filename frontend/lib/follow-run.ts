@@ -6,30 +6,87 @@
  */
 
 import {
+  getActiveReviewCheckpoint,
   getRun,
   getRunGraph,
   getRunStatus,
   getRunSteps,
+  listTranscriptCorrections,
   type FlowGraph,
   type FlowRunPublic,
+  type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
   type FlowRunSummary,
+  type TranscriptCorrectionsPublic,
 } from "./api";
 import { onlineStatus, type OnlineStatus } from "./online-status";
 import { runOutcome } from "./run-progress";
+import { isSpeakerMappingCheckpoint } from "./speaker-mapping";
+import { carriesTranscript } from "./speaker-review";
 import { withRetry } from "./submit-run";
+
+/**
+ * The transcript's saved corrections as a page read them beside what it needs first: the sets; null when the read
+ * failed; `{ reading }` when it had not answered within CORRECTIONS_WAIT_MS, and the transcript waits for that same read
+ * rather than ask again; undefined when they were not read. The transcript takes them from there (loadTranscriptContext).
+ */
+export type SavedCorrections =
+  | TranscriptCorrectionsPublic[]
+  | null
+  | { reading: Promise<TranscriptCorrectionsPublic[] | null> }
+  | undefined;
+
+/** The saved corrections when they were read in time, for what the page draws first: no sets otherwise. */
+export const savedSets = (saved: SavedCorrections): TranscriptCorrectionsPublic[] | null => (Array.isArray(saved) ? saved : null);
+
+/** How long a page waits for the saved corrections before it is drawn without them. */
+export const CORRECTIONS_WAIT_MS = 3_000;
+
+/** Starts reading the saved corrections at once; the returned function waits for them, at most CORRECTIONS_WAIT_MS. */
+function readSavedCorrections(flowId: string, runId: string): () => Promise<SavedCorrections> {
+  const reading = listTranscriptCorrections(flowId, runId).then(
+    (sets) => sets,
+    () => null,
+  );
+  return () => {
+    let late!: (value: { reading: typeof reading }) => void;
+    const lateness = new Promise<{ reading: typeof reading }>((resolve) => (late = resolve));
+    const timer = setTimeout(() => late({ reading }), CORRECTIONS_WAIT_MS);
+    return Promise.race([reading, lateness]).finally(() => clearTimeout(timer));
+  };
+}
 
 /**
  * A finished run's detail (its result) and step results, read once at the
  * end. Either read failing fails the whole: an empty stand-in would show a
  * finished run without its document or transcript.
+ *
+ * A result that shows a transcript also waits for its saved corrections, read beside them, so it knows from its first
+ * draw whether the document is older than they are (RunResult); any other run is drawn as soon as it is read.
  */
 export async function readFinishedRun(
   flowId: string,
   last: FlowRunSummary,
-): Promise<{ run: FlowRunPublic; steps: FlowRunStep[] }> {
+): Promise<{ run: FlowRunPublic; steps: FlowRunStep[]; corrections: SavedCorrections }> {
+  const corrections = readSavedCorrections(flowId, last.id);
   const [run, steps] = await Promise.all([getRun(flowId, last.id), getRunSteps(flowId, last.id)]);
-  return { run, steps };
+  const showsTranscript = runOutcome(run.status) === "succeeded" && steps.some(carriesTranscript);
+  return { run, steps, corrections: showsTranscript ? await corrections() : undefined };
+}
+
+/**
+ * The run's active review pause, or null while Eneo does not show it yet. Naming the speakers also waits for the saved
+ * corrections, read beside it, so the speakers they add are in the review's list from its first draw; a text review is
+ * drawn as soon as the pause is read.
+ */
+export async function readActivePause(
+  flowId: string,
+  runId: string,
+): Promise<{ checkpoint: FlowRunReviewCheckpointPublic | null; corrections: SavedCorrections }> {
+  const corrections = readSavedCorrections(flowId, runId);
+  const checkpoint = await getActiveReviewCheckpoint(flowId, runId);
+  const naming = checkpoint !== null && isSpeakerMappingCheckpoint(checkpoint.current_payload_json ?? null);
+  return { checkpoint, corrections: naming ? await corrections() : undefined };
 }
 
 export const VISIBLE_POLL_MS = 2_000;

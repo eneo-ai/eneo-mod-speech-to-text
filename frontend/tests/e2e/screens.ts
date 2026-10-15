@@ -293,7 +293,8 @@ export async function sending(page: Page) {
   await setup(page);
   await chooseFile(page, "langsam-uppladdning.wav");
   await page.getByRole("button", { name: "Skapa dokument" }).click();
-  await expect(page.getByText("Laddar upp filen")).toBeVisible();
+  // The stub holds its answer once every byte has arrived: the stage says Eneo is taking the file.
+  await expect(page.getByRole("status").filter({ hasText: "Eneo tar emot filen…" })).toBeVisible();
 }
 
 /**
@@ -320,7 +321,11 @@ export async function hold(page: Page, url: string | RegExp) {
 
 /** The page's own clock, past the point where a wait that has no answer says so (components/SlowWait). */
 export const pastSlowWait = (page: Page) => page.clock.fastForward(15_000);
-const slowWaitSays = (page: Page) => expect(page.getByRole("status").filter({ hasText: /^Det tar längre tid än vanligt\.$/ })).toBeVisible();
+const slowWaitSays = async (page: Page) => {
+  // Said by the status region that was there from the start, and shown beside it.
+  await expect(page.getByRole("status").filter({ hasText: /^Det tar längre tid än vanligt\.$/ })).toBeAttached();
+  await expect(page.locator("p[aria-hidden]").filter({ hasText: /^Det tar längre tid än vanligt\.$/ })).toBeVisible();
+};
 
 /** A flow's page whose reads of the flow get no answer, for more than 15 s. */
 export async function flowSlow(page: Page) {
@@ -371,7 +376,9 @@ export async function runReconnecting(page: Page) {
   failing = true;
   // The next poll is two seconds on, and fails.
   await page.clock.fastForward(2_000);
-  await expect(page.getByText("Försöker igen. Körningen fortsätter i Eneo.")).toBeVisible();
+  // Said by the status region that was there from the start, and shown beside it.
+  await expect(page.getByRole("status").filter({ hasText: "Försöker igen. Körningen fortsätter i Eneo." })).toBeAttached();
+  await expect(page.locator("p[aria-hidden]").filter({ hasText: "Försöker igen. Körningen fortsätter i Eneo." })).toBeVisible();
   await pastSlowWait(page);
   await slowWaitSays(page);
   return { mend: () => void (failing = false) };

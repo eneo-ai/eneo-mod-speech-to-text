@@ -19,6 +19,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Item } from "@astryxdesign/core/Item";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { List } from "@astryxdesign/core/List";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useSignedOut } from "@/components/AuthGate";
@@ -163,6 +164,9 @@ export function OpenFile({
 }) {
   const roomy = useMediaMatch(`${name ? LAPTOP : TABLET} and ${WITH_A_MOUSE}`);
   const [open, setOpen] = useState(false);
+  // Whether the viewer has drawn the file: until then the dialog's empty viewer says that it is coming.
+  const [shown, setShown] = useState(false);
+  if (!open && shown) setShown(false);
   // While the login has ended the page is covered and the dialog, which a cover does not reach, is closed; it is
   // back when the login is, with its viewer and where it was.
   const covered = useSignedOut();
@@ -247,7 +251,14 @@ export function OpenFile({
           }
           content={
             <LayoutContent padding={0}>
-              {open && <iframe src={url} title={file.name} tabIndex={-1} className={styles.viewer} />}
+              {/* The file is fetched and drawn by the browser's own viewer, which can take a moment for a long PDF: a
+                  spinner behind the viewer, covered by the file once it is drawn and gone when the viewer has loaded. */}
+              {open && (
+                <div className={styles.viewerArea}>
+                  {!shown && <Spinner size="lg" aria-label="Laddar filen" className={styles.viewerWait} />}
+                  <iframe src={url} title={file.name} tabIndex={-1} className={styles.viewer} onLoad={() => setShown(true)} />
+                </div>
+              )}
             </LayoutContent>
           }
         />

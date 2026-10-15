@@ -23,6 +23,8 @@ export type SubmissionState =
       loaded: number;
       total: number | null;
       percent: number | null;
+      /** A recording, not a chosen file: the page says which is on its way. */
+      recording?: boolean;
       wait: RetryWait | null;
     }
   | {
@@ -62,7 +64,7 @@ export function SubmittingView({
           <HStack gap={2} align="center">
             <Spinner size="sm" aria-hidden />
             <Text as="p" role="status">
-              {isUploading ? "Laddar upp filen" : submission.kind === "starting" ? "Startar flödet" : "Skickar"}
+              {stage(submission)}
             </Text>
           </HStack>
         </VStack>
@@ -74,6 +76,18 @@ export function SubmittingView({
       </VStack>
     </StateCard>
   );
+}
+
+/**
+ * What is under way, in words. Once every byte has left, the module hands the file on to Eneo, which can take a while
+ * for a long meeting: the page says so rather than stand at "Laddar upp" with a full bar.
+ */
+function stage(submission: SubmissionState): string {
+  if (submission.kind === "starting") return "Startar flödet…";
+  if (submission.kind !== "uploading") return "Skickar…";
+  const what = submission.recording ? "inspelningen" : "filen";
+  const sent = submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
+  return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
 
 /**

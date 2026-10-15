@@ -169,7 +169,8 @@ test("the live sheet's jump button shows when the reader has scrolled up, and gi
   await view.act(async () => log.dispatchEvent(new window.Event("scroll")));
   assert.ok(jump(), "scrolled up to read: the way back to the newest text is offered");
   await view.act(async () => jump()!.click());
-  assert.deepEqual(scrolls.map((options) => options.top), [1_000], "scrolls to the end");
+  assert.equal(top, 1_000, "at once at the end: following again brings the newest line into view");
+  assert.deepEqual(scrolls, [], "no glide that the follow would cut short");
   assert.equal(jump(), undefined, "and the button goes away");
   assert.equal(document.activeElement, log, "leaving the focus on the text, not on the page");
   await view.act(async () => log.dispatchEvent(new window.Event("scroll")));

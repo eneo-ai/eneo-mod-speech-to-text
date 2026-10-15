@@ -105,7 +105,7 @@ const CODES: Record<string, string> = {
   invalid_json_response: "Servern svarade med något som inte gick att läsa. Försök igen om en stund.",
   // Review pauses (among them, confirming who is who).
   flow_review_stale_revision:
-    "Granskningen har ändrats sedan du laddade sidan. Formuläret har uppdaterats — kontrollera och försök igen.",
+    "Granskningen har ändrats sedan du laddade sidan. Formuläret har uppdaterats. Kontrollera det och försök igen.",
   flow_review_expired: REVIEW_EXPIRED,
   flow_review_not_active: "Granskningen är inte längre aktiv.",
   flow_review_already_resumed: "Flödet har redan återupptagits.",
@@ -125,7 +125,7 @@ const CODES: Record<string, string> = {
   typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget. Rätta det och försök igen.",
   // Correcting a transcript.
   flow_transcript_corrections_stale_revision:
-    "Transkriberingen har ändrats av någon annan. Ändringarna har laddats om — gör om din rättning.",
+    "Transkriberingen har ändrats av någon annan, så din rättning sparades inte. Den senaste versionen visas nu. Gör om rättningen där.",
   flow_transcript_corrections_invalid_occurrence:
     "Rättningen kunde inte förankras i transkriberingen. Ladda om sidan och försök igen.",
   flow_transcript_corrections_invalid_speaker_edit: "Talarbytet kunde inte sparas. Ladda om sidan och försök igen.",

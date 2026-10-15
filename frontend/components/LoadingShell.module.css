@@ -1,0 +1,11 @@
+/* The wait's spinner: hidden for its first moment (--module-wait-delay), then there, so an answer within that moment
+   leaves no blink of a spinner. Not motion, so also with reduced motion. */
+.wait {
+  animation: wait-hidden 0s var(--module-wait-delay) backwards;
+}
+
+@keyframes wait-hidden {
+  from {
+    visibility: hidden;
+  }
+}

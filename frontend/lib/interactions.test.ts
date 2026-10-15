@@ -369,7 +369,7 @@ test("a request that failed after Sluta testa says nothing", async () => {
   await view.act(async () => button(view.container, "Sluta testa")!.click());
   await view.act(async () => grants[0].fail(new DOMException("denied", "NotAllowedError")));
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  assert.doesNotMatch(view.container.textContent ?? "", /Appen fick inte använda mikrofonen/, "a test that was ended has no error to show");
+  assert.doesNotMatch(view.container.textContent ?? "", /Mikrofonen är blockerad/, "a test that was ended has no error to show");
   await view.unmount();
 });
 
@@ -384,7 +384,7 @@ test("a microphone the browser refuses is said with what to do, and Försök ige
   const view = await mount(createElement(MicrophoneCheck, { active: true }));
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  assert.match(view.container.textContent ?? "", /Appen fick inte använda mikrofonen\.Tillåt mikrofonen i webbläsarens inställningar/);
+  assert.match(view.container.textContent ?? "", /Mikrofonen är blockerad\.Tillåt mikrofonen för den här sidan i webbläsaren/);
   assert.equal(button(view.container, "Testa mikrofonen") !== null, true, "no test is running");
   await view.act(async () => button(view.container, "Försök igen")!.click());
   assert.equal(asked, 2);

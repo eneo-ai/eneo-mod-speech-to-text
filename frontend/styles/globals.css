@@ -5,6 +5,8 @@
 :root {
   --module-duration-quick: 150ms;
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* How long a wait goes on before its spinner shows: an answer within it leaves no blink of a spinner. */
+  --module-wait-delay: 300ms;
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
   --module-page-width: 1180px;
   /* What the review's transcript card is at least as tall as, and the placeholder that stands for its editor. */
@@ -145,6 +147,15 @@ a.astryx-top-nav-heading:focus-visible,
   .astryx-slider-track { background: ButtonText; }
   .astryx-slider-control > [aria-hidden="true"]:not(.astryx-slider-track) { background: Highlight; }
   .astryx-slider-thumb { background: ButtonText; border: 2px solid Canvas; }
+}
+
+/* The upload's progress bar is drawn with backgrounds only as well: in forced colours its track and filled part are
+   gone. The track takes the system's edge and the filled part the highlight, so the bar still shows how far it is. */
+@media (forced-colors: active) {
+  .astryx-progress-bar-track,
+  .astryx-progress-bar-fill { forced-color-adjust: none; }
+  .astryx-progress-bar-track { background: Canvas; outline: var(--border-width) solid ButtonText; }
+  .astryx-progress-bar-fill { background: Highlight; }
 }
 
 /* The brand lockup's mark (components/Brand.tsx). Any organisation's logo has the same height and a wide one

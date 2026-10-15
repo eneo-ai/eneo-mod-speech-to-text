@@ -87,7 +87,8 @@ test("the commit opens its page on GitHub in a new tab, and Kopiera supportinfor
   await press(button("Kopiera supportinformation")!);
   await new Promise(requestAnimationFrame);
   assert.deepEqual(written, [["Tal till text", "Utgåva: v0.1.0", `Commit: ${REVISION}`, `Byggd: ${BUILT}`, "Adress: http://localhost"].join("\n")]);
-  assert.ok(button("Kopierat"), "and says so");
+  assert.ok(button("Kopiera supportinformation"), "the button keeps its words");
+  assert.equal(document.querySelector('[data-astryx-live-region="polite"]')?.textContent, "Kopierat", "and says so");
 });
 
 test("a build with nothing known names no release, says Okänd, and links to no commit", async (t) => {

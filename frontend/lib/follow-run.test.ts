@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ApiError, type FlowGraph, type FlowRunSummary } from "./api";
-import { HIDDEN_POLL_MS, VISIBLE_POLL_MS, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
+import { CORRECTIONS_WAIT_MS, HIDDEN_POLL_MS, VISIBLE_POLL_MS, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
 import { createOnlineStatus } from "./online-status";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -147,6 +147,7 @@ test("a failed graph read keeps the last graph; the status still moves on", asyn
 
 const DETAIL = "/api/eneo/flows/flow-1/runs/run-1/";
 const STEPS = "/api/eneo/flows/flow-1/runs/run-1/steps/";
+const CORRECTIONS = "/api/eneo/flows/flow-1/runs/run-1/transcript-corrections/";
 
 /** Eneo answering the end-of-run reads, with exactly `failing` (one endpoint) answering 500. */
 function endOfRunReads(t: { after: (fn: () => void) => void }, failing: string | null) {
@@ -178,13 +179,68 @@ test("a finished run reads its detail and its step results", async (t) => {
 test("a finished run whose detail cannot be read fails, never shows 'klart' without the document", async (t) => {
   const answered = endOfRunReads(t, DETAIL);
   await assert.rejects(readFinishedRun("flow-1", run("completed")));
-  assert.deepEqual(new Map(answered), new Map([[DETAIL, 500], [STEPS, 200]]), "only the detail failed");
+  assert.deepEqual(new Map(answered), new Map([[DETAIL, 500], [STEPS, 200], [CORRECTIONS, 200]]), "only the detail failed");
 });
 
 test("a finished run whose step results cannot be read fails, never hides the transcript and steps", async (t) => {
   const answered = endOfRunReads(t, STEPS);
   await assert.rejects(readFinishedRun("flow-1", run("completed")));
-  assert.deepEqual(new Map(answered), new Map([[DETAIL, 200], [STEPS, 500]]), "only the steps failed");
+  assert.deepEqual(new Map(answered), new Map([[DETAIL, 200], [STEPS, 500], [CORRECTIONS, 200]]), "only the steps failed");
+});
+
+test("a finished run without a transcript is drawn as soon as it is read, without waiting for saved corrections", async (t) => {
+  endOfRunReads(t, null);
+  const read = await readFinishedRun("flow-1", run("completed"));
+  assert.equal(read.run.result?.kind, "inline_text");
+  assert.equal(read.corrections, undefined, "not waited for");
+});
+
+test("a result with a transcript waits for its saved corrections, and a read that fails is said as failed", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const transcribed = [{ id: "r1", step_id: "s1", step_order: 1, status: "completed", input_payload_json: { transcription: { text: "Hej." } } }];
+  const answer = (corrections: () => Response) =>
+    (globalThis.fetch = (async (url: string | URL | Request) => {
+      const path = new URL(String(url), "http://module.test").pathname;
+      if (path === STEPS) return json(transcribed);
+      if (path === CORRECTIONS) return corrections();
+      return json({ id: "run-1", flow_id: "flow-1", status: "completed", result: { kind: "inline_text", text: "Klart" } });
+    }) as typeof fetch);
+  answer(() => json([{ step_id: "s1", revision: 3 }]));
+  assert.deepEqual((await readFinishedRun("flow-1", run("completed"))).corrections, [{ step_id: "s1", revision: 3 }]);
+  answer(() => json({ detail: "fel" }, 404));
+  assert.equal((await readFinishedRun("flow-1", run("completed"))).corrections, null, "failed: the transcript says so, it does not read again");
+});
+
+test("saved corrections that do not answer in time leave the result to be drawn, and hand the same read to the transcript", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  const transcribed = [{ id: "r1", step_id: "s1", step_order: 1, status: "completed", input_payload_json: { transcription: { text: "Hej." } } }];
+  let corrections = 0;
+  let answer = () => undefined as void;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = new URL(String(url), "http://module.test").pathname;
+    if (path === CORRECTIONS) {
+      corrections += 1;
+      return new Promise<Response>((resolve) => (answer = () => resolve(json([{ step_id: "s1", revision: 3 }]))));
+    }
+    return json(path === STEPS ? transcribed : { id: "run-1", flow_id: "flow-1", status: "completed", result: { kind: "inline_text", text: "Klart" } });
+  }) as typeof fetch;
+  let read: Awaited<ReturnType<typeof readFinishedRun>> | null = null;
+  void readFinishedRun("flow-1", run("completed")).then((answer) => (read = answer));
+  // The wait starts once the run and its steps are read; each turn lets the time pass.
+  await until(() => {
+    t.mock.timers.tick(CORRECTIONS_WAIT_MS);
+    return read !== null;
+  });
+  const late = read!.corrections;
+  assert.ok(late && !Array.isArray(late) && "reading" in late, "drawn without them, the read still under way");
+  answer();
+  assert.deepEqual(await late.reading, [{ step_id: "s1", revision: 3 }], "and the transcript gets that same read");
+  assert.equal(corrections, 1, "asked once");
 });
 
 test("reads that keep failing stop being retried once the page tears the follow down", async (t) => {

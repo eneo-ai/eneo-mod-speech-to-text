@@ -100,7 +100,8 @@ export function RouteError() {
   const error = useRouteError();
   useEffect(() => console.error("A page could not be shown:", error), [error]);
   return (
-    <StandIn heading="Sidan kunde inte visas." text="Ladda om sidan.">
+    // What a reload gives back, said where the person decides: what the device keeps is not lost by it.
+    <StandIn heading="Sidan kunde inte visas." text="Tal till text kan ha uppdaterats sedan sidan öppnades. Ladda om sidan. Inspelningar som finns på enheten ligger kvar.">
       <Button label="Ladda om sidan" variant="primary" onClick={() => window.location.reload()} />
       <Button label="Till startsidan" variant="secondary" href="/" />
     </StandIn>
