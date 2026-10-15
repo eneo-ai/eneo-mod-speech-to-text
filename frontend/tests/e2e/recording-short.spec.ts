@@ -8,7 +8,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { longLiveText } from "./live-relay";
-import { record, setup } from "./screens";
+import { mutedMicrophone, record, setup } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "phone-390-light", "the window is set below"));
 
@@ -73,20 +73,8 @@ const seen = (page: Page) =>
     };
   });
 
-const silent = (page: Page) =>
-  page.addInitScript(() => {
-    // A muted input: the stream carries digital silence, and the bar warns of it.
-    navigator.mediaDevices.getUserMedia = async () => {
-      // Zeros that flow, as a muted microphone gives them: a destination with nothing feeding it gives the recorder no audio at all.
-      const context = new AudioContext();
-      const out = context.createMediaStreamDestination();
-      const zero = context.createConstantSource();
-      zero.offset.value = 0;
-      zero.connect(out);
-      zero.start();
-      return out.stream;
-    };
-  });
+// A muted input: the stream carries digital silence, and the bar warns of it.
+const silent = (page: Page) => page.addInitScript(mutedMicrophone);
 
 const lowOnSpace = (page: Page) =>
   page.addInitScript(() => {

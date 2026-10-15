@@ -6,6 +6,23 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import ids from "../fixtures/ids.json";
 import { declare, REAL, type Expectation } from "./sentinel";
 
+/**
+ * A muted microphone for an init script: digital silence that flows, as a muted input gives it (a destination with
+ * nothing feeding it gives a recorder no audio at all, which is a different state). Set on the prototype: WebKit lets go
+ * of the object that `navigator.mediaDevices` gives once nothing holds it, and a method set on that object goes with it.
+ */
+export function mutedMicrophone() {
+  MediaDevices.prototype.getUserMedia = async () => {
+    const context = new AudioContext();
+    const out = context.createMediaStreamDestination();
+    const zero = context.createConstantSource();
+    zero.offset.value = 0;
+    zero.connect(out);
+    zero.start();
+    return out.stream;
+  };
+}
+
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
 /** A PDF opens in a dialog from a laptop's width with a mouse; on a touch screen in a tab of its own at every width. */
@@ -884,20 +901,7 @@ export const STATES: State[] = [
   {
     name: "silent-microphone",
     go: async (page) => {
-      // A muted input: the stream carries digital silence. Set on the prototype: WebKit lets go of the object that
-      // `navigator.mediaDevices` gives once nothing holds it, and a method set on that object goes with it.
-      await page.addInitScript(() => {
-        MediaDevices.prototype.getUserMedia = async () => {
-          // Zeros that flow, as a muted microphone gives them: a destination with nothing feeding it gives the recorder no audio at all.
-          const context = new AudioContext();
-          const out = context.createMediaStreamDestination();
-          const zero = context.createConstantSource();
-          zero.offset.value = 0;
-          zero.connect(out);
-          zero.start();
-          return out.stream;
-        };
-      });
+      await page.addInitScript(mutedMicrophone);
       await recordingSays(page, "Vi hör inget från mikrofonen.");
     },
   },
