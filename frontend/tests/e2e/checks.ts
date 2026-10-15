@@ -341,7 +341,10 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
   const stop = await probeFocus(page);
   if (!stop) return null;
   const { owner, perimeter, ...rest } = stop;
-  const area = owner === null ? 0 : await seenChange(page, owner);
+  let area = owner === null ? 0 : await seenChange(page, owner);
+  // Firefox can take two identical screenshots of a ring its styles show, so a miss is measured once more: a ring
+  // that is missing is missing both times.
+  if (owner !== null && area < perimeter) area = await seenChange(page, owner);
   return { ...rest, indicator: area >= perimeter, indicatorArea: Math.round(area), perimeter: Math.round(perimeter) };
 }
 
