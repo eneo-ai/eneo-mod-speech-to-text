@@ -1,61 +1,81 @@
 # Inspelaren
 
-## Format
-
-Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus när flödet accepterar det (en webbläsare utan WebM-inspelning: `audio/mp4`), i mono och med en bithastighet som passar tal. Den ber `MediaRecorder` om korta delar (2 sekunder), så att långa möten inte bygger upp en enda stor intern buffer: ett möte på fem timmar blir i Chrome ungefär 72 MB. Eneo-körningen startar först när hela ljudfilen har laddats upp och ett `file_id` finns. Strömma strömmar bara en förhandstext, se [Eneo-integration](eneo-integration.md#live-text-strömma).
-
-Innan en del laddas upp får WebM-filen det en spelare behöver. Chrome skriver ingen längd i filen, så den skrivs in (`frontend/lib/webm-duration.ts`). Safari markerar inga ljudblock som keyframes, och utan den markeringen kan Chrome och Edge inte spola i filen och spelar den inte alls. Därför markeras varje block (`frontend/lib/webm-keyframes.ts`). Ändringen är en byte per block, och resten av filen är oförändrad. Chromes och Firefox filer är redan markerade och lämnas som de är.
+Inspelaren sparar mötet på enheten medan det spelas in, säger till direkt när något hindrar det och skickar inspelningen till Eneo först när du väljer det. Den här sidan beskriver vad som händer och vad användaren ser, i den ordning det sker.
 
 ## Inspelningen sparas på enheten
 
-Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). Varje skrivning ligger på disken innan den räknas som klar (IndexedDB:s `durability: "strict"`; en webbläsare utan det alternativet använder sitt eget standardläge). När lagringen fungerar finns de sparade bitarna kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session; den senaste biten kan gå förlorad.
+Varannan sekund skrivs en ljudbit till webbläsarens IndexedDB (`frontend/lib/recording-store.ts`), och skrivningen räknas som klar först när den ligger på disken (`durability: "strict"` där webbläsaren har det). Inspelningen finns därför kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session; bara den senaste biten kan gå förlorad.
 
-- Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**, och för en inspelning som avbröts utan stopp **Fortsätt spela in** (se [Fortsätta en inspelning](#fortsätta-en-inspelning)). Med flera osända inspelningar visar flödeslistan en av dem, den senaste som avbröts utan stopp eller annars den senaste; de andra ligger under till exempel **2 inspelningar till**, stängt från början, så att de inte trycker undan flödena.
-- **Spara som fil** sparar en fil per del av inspelningen, en fil för varje tryck: en webbläsare startar en nedladdning per tryck utan att fråga, men kan stoppa fler. En inspelning i flera delar säger hur många filer den blir (**Spara som 2 filer**) och sedan vilken som är nästa (**Spara fil 2 av 2**). Knappen visar att den arbetar medan filen läses, ett tryck under tiden gör ingenting, och nästa fil blir nästa först när filen har sparats.
-- En inspelning där inget ljud nådde enheten säger **Inget ljud sparades i den här inspelningen.** Den kan inte skickas eller sparas som fil; den har bara **Fortsätt spela in**, när den går att fortsätta, och **Ta bort**.
-- Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**; efter **Ta bort** säger sidan **Inspelningen togs bort.** till skärmläsare, utan att något på sidan flyttas. Fokus går till rubriken där en ny inspelning börjar, eller, för en osänd inspelning, till listans rubrik och till sidans rubrik när listan är tom. Appen har ingen automatisk tidsgräns för osända inspelningar.
-- Utan IndexedDB (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
+- **Utloggning tar inte bort inspelningar.** Logga in med samma konto i samma webbläsarprofil för att fortsätta; inloggningssidan säger det efter utloggning. Ljudet ligger i profilen, så den som delar dator bör ha en egen profil.
+- **Utan IndexedDB** (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
+- **Ingen automatisk rensning.** Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**.
 
-Utloggning tar inte bort sparade inspelningar. Inloggningssidan förklarar detta efter utloggning (`frontend/routes/LoginPage.tsx`); logga in med samma konto i samma webbläsarprofil för att fortsätta. Använd en egen webbläsarprofil om du delar dator med andra. Ljudet ligger i profilen, och modulens inloggning skyddar inte mot någon som kan läsa profilens lokala lagring.
+## Varningar under inspelningen
 
-Om enheten blir full under inspelningen visas varningen **Enheten är full.** Inspelningen fortsätter i flikens minne och finns bara där tills det finns plats, så fliken ska inte stängas. Frigör utrymme, till exempel genom att tömma Hämtade filer och papperskorgen. Appen försöker spara på enheten igen var 20:e sekund, och direkt när webbläsarens uppskattning av lagringen visar att det finns plats igen. Det gäller också efter **Stoppa**. När enheten tar emot det som bara fanns i fliken skrivs allt i en enda skrivning, i ordning, och flikens kopia släpps; en skrivning som inte får plats lämnar enhetens kopia som den var. Inspelningsfältet säger en kort stund att inspelningen sparas på enheten igen.
+Inspelningen fortsätter i alla lägen nedan utom när ljudspåret avslutas. Texterna står i inspelningsfältet (`frontend/lib/recording-view.ts`).
 
-Om en skrivning misslyckas av något annat skäl försöker appen en gång till på en ny anslutning till databasen. Misslyckas även den visas varningen **Enheten kan inte spara mer av inspelningen.** Inspelningen fortsätter i fliken, och appen försöker spara på enheten igen var 20:e sekund, som när enheten är full. När det går skrivs det som bara fanns i fliken till enheten och varningen försvinner. Står varningen kvar när du stoppar: välj **Spara som fil**.
+| Meddelande | Vad som har hänt | Vad du gör |
+|---|---|---|
+| **Mikrofonen är tillfälligt borta.** | Ljudspåret finns kvar men ger inget ljud, till exempel under ett samtal. | Inget; ljudet kommer tillbaka av sig själv. Efter 15 s blir det **Mikrofonen är fortfarande avstängd.** med råd. |
+| **Inspelningen pausades när mikrofonen försvann.** | Ljudspåret avslutades, eller inspelaren stannade utan att säga det. | **Fortsätt spela in** startar en ny del av samma inspelning. |
+| **Ljudet sparas inte just nu.** | Inget ljud har kommit på sex sekunder, inte heller när webbläsaren ombads om det. | Kontrollera mikrofonen. Står varningen kvar: **Stoppa**, och spela in vidare. |
+| **Vi hör inget från mikrofonen.** | Digital tystnad i 15 s. | Kontrollera att mikrofonen inte är avstängd. |
+| **Enheten är full.** | Diskskrivningen nekades. Ljudet hålls i flikens minne. | Frigör utrymme och stäng inte fliken. |
+| **Enheten kan inte spara mer av inspelningen.** | En skrivning misslyckades två gånger av annat skäl. | Välj **Spara som fil** efter **Stoppa** om varningen står kvar. |
+| **Inspelningen kan inte längre sparas på enheten.** | Webbplatsdata rensades. Tidigare ljud kan vara borta och går inte att återställa. | **Spara som fil** efter **Stoppa**. |
+| **Det finns lite lagringsutrymme kvar på enheten.** | Webbläsarens uppskattning av lagringen är låg. | Frigör utrymme före ett långt möte. |
+| **Mindre än 5 minuter kvar till flödets maxlängd.** | En notis från 15 minuter, en varning från 5. Vid gränsen stoppas och sparas inspelningen. | Inget. |
+| **Låt skärmen vara tänd under inspelningen.** | Webbläsaren saknar, nekar eller släppte Screen Wake Lock. | Håll skärmen tänd. |
 
-Om webbplatsdata rensas under inspelningen visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
+Efteråt står det hur länge ljud saknades: **Mikrofonen var avstängd i …** (med "medan sidan låg i bakgrunden" när så var fallet), eller, när en telefon tog mikrofonen utan att säga det (Android, minst sex sekunder utan ljud i bakgrunden), **Sidan låg i bakgrunden i … Ljud från den tiden kan saknas.**
 
-## Fortsätta en inspelning
+**Full eller nekande disk.** Appen försöker spara på enheten igen var 20:e sekund, och direkt när det finns plats, också efter **Stoppa**. Det som bara fanns i fliken skrivs då i en enda skrivning, i ordning, och fältet säger en kort stund att inspelningen sparas på enheten igen.
 
-Om mikrofonens ljud tillfälligt försvinner men dess ljudspår finns kvar, visar inspelaren en varning. Ljudet kommer tillbaka automatiskt när mikrofonen är tillgänglig igen. Är mikrofonen fortfarande avstängd efter 15 sekunder medan sidan visas, säger varningen vad du kan göra. När ljudet är tillbaka och sidan visas står det i inspelningsfältet hur länge mikrofonen var avstängd medan det spelades in (tid i paus räknas inte), och om det var medan sidan låg i bakgrunden: en telefon kan stänga av mikrofonen för en sida i bakgrunden. Det som sades under tiden finns inte i inspelningen. En telefon kan också ta mikrofonen utan att säga det (Android): har sidan legat i bakgrunden i minst sex sekunder utan att inspelaren lämnat över något ljud, står det hur länge, och att ljud från den tiden kan saknas. Om ljudspåret avslutas avbryts inspelningen; **Fortsätt spela in** öppnar då mikrofonen och startar en ny del av samma inspelning.
+**Vakthunden.** Medan sidan visas kontrolleras ljudflödet varannan sekund. Tystnadsvarningen och tiden mikrofonen var borta räknas bara medan sidan visas. Nivåmätaren och livetexten startar om av sig själva när webbläsaren har stängt av deras ljud, till exempel efter Siri på en iPhone.
 
-Medan sidan visas kontrollerar inspelaren varannan sekund att ljudet kommer fram. Har inget ljud kommit på sex sekunder ber den webbläsaren om det, och kommer inget då heller visas varningen **Ljudet sparas inte just nu.** tills ljudet kommer igen. Tiden i inspelningsfältet räknas ändå, men ljud som aldrig kommer fram finns inte i inspelningen; **Stoppa** sparar det som webbläsaren har hållit kvar. En inspelare som har stannat utan att säga det behandlas som en mikrofon som försvunnit: inspelningen pausas och kan fortsätta med **Fortsätt spela in**. När en del av inspelningen avslutas väntar appen på att webbläsaren bekräftar slutet, men högst fyra sekunder efter det senaste ljudet, också efter **Stoppa**; ljud som webbläsaren lämnar över senare sparas ändå. Kommer bekräftelsen inte efter **Stoppa** står det att webbläsaren inte bekräftade att de sista sekunderna sparades. Då kan inspelningen inte skickas förrän bekräftelsen kommer: spara ljudet med **Spara som fil** och ladda upp filen i en ny inspelning om webbläsaren aldrig bekräftar stoppet. Ljud som kommer senare uppdaterar både spelaren och knapparna i klarvyn; väntan räknas inte som inspelad tid. Varningen **Vi hör inget från mikrofonen.** (digital tystnad i 15 sekunder) räknas också bara medan sidan visas, och inte medan mikrofonen är avstängd; när sidan visas igen börjar den räkna om. Nivåmätaren och livetexten startar igen av sig själva när webbläsaren har stängt av deras ljud, till exempel efter ett samtal eller Siri på en iPhone.
+## Pausa, stoppa och fortsätta
 
-- Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida, och **Fortsätt spela in** spelar in i en ny del av samma inspelning. Där flödet och arbetet står i en kolumn (telefon, surfplatta) står den först, under flödets namn. I flödeslistan öppnar samma knapp flödets sida och fortsätter inspelningen där. Efter **Stoppa** finns knappen också bredvid **Skapa dokument**, tills inspelningen har börjat skickas och så länge flödet tar emot ytterligare en del.
-- **Stoppa** stoppar direkt, eftersom ett stopp kan ångras med **Fortsätt spela in**. När flödet inte tar emot fler delar av inspelningen, till exempel i ett flöde som tar emot en fil, går stoppet inte att ångra; då frågar **Stoppa** först (**Stoppa inspelningen?**, `frontend/components/flow/FlowInput.tsx`), och **Fortsätt spela in** är det förvalda svaret.
-- **Pausa** och **Stoppa** gör ingenting de första 0,7 sekunderna efter att de visats, i inspelningsfältet och i dialogen för ny inloggning, så att ett tryck som var menat för något annat inte avslutar mötet.
-- Medan inspelningen sparas efter **Stoppa** står **Sparar…** på knappen. Ett nytt tryck gör ingenting, och **Pausa** går inte att välja.
-- Kan enheten inte bekräfta att en inspelning som pausades när mikrofonen försvann sparades, eller finns inspelningen inte längre på enheten, står det i inspelningsfältet direkt, inte först efter **Stoppa**. Nekas **Fortsätt spela in**, till exempel för att flödet inte tar emot fler delar, står skälet i varningen.
-- En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
-- Inspelaren (`frontend/lib/recording-session.ts`) ber webbläsaren hålla skärmen tänd (Screen Wake Lock). Om webbläsaren saknar det, nekar det eller släpper det medan sidan visas står **Låt skärmen vara tänd under inspelningen.** i inspelningsfältet, tills en senare begäran beviljas.
+- **Stoppa** stoppar direkt, eftersom **Fortsätt spela in** ångrar det. Tar flödet inte emot fler delar, till exempel ett flöde för en fil, frågar **Stoppa** först (**Stoppa inspelningen?**), och **Fortsätt spela in** är förvalt.
+- **Pausa** och **Stoppa** gör ingenting de första 0,7 sekunderna efter att de visats, så att ett tryck som var menat för något annat inte avslutar mötet. Medan inspelningen sparas står **Sparar…** på knappen.
+- Efter **Stoppa** väntar appen högst fyra sekunder på att webbläsaren bekräftar slutet. Ljud som kommer senare sparas ändå. Utan bekräftelse visas **Webbläsaren har inte bekräftat inspelningens stopp.**, och inspelningen kan inte skickas: spara den med **Spara som fil** och ladda upp filen.
+- **Fortsätt spela in** fungerar också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd och fortsätter i en ny del. På telefon och surfplatta står den först, under flödets namn. Efter **Stoppa** finns knappen bredvid **Skapa dokument** tills inspelningen börjar skickas.
+- En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
 
-## Delar och filgränser
+## Osända inspelningar
 
-Innan en del når flödets största filstorlek startar nästa del på samma mikrofon, och när flödets sista fil är full stoppas inspelningen med ett meddelande. Allt som spelats in finns kvar. Delarna skickas i ordning som filer i samma körning, med inspelningens egen idempotensnyckel, så att Eneo gör en körning per inspelning även om två flikar skickar den.
+En inspelning som inte har skickats visas i flödeslistan och på flödets sida, bara för den som spelade in den.
 
-## En flik i taget
+- **Knapparna:** **Skapa text** eller **Skapa dokument** (efter flödets resultat), **Spara som fil**, **Ta bort**, och för en avbruten inspelning **Fortsätt spela in**. Upp till 640 px bredd står de i en stapel över hela kortet, bredare i en rad, med **Ta bort** sist.
+- **Flera osända:** flödeslistan visar den senaste avbrutna, eller annars den senaste. De andra ligger under till exempel **2 inspelningar till**, stängt från början.
+- **Spara som fil** sparar en fil per del och per tryck, eftersom webbläsare stoppar flera nedladdningar på ett tryck. En inspelning i delar säger **Spara som 2 filer** och sedan **Spara fil 2 av 2**.
+- **Inget ljud sparades i den här inspelningen.** En sådan inspelning kan bara fortsättas eller tas bort.
+- **Ta bort** säger **Inspelningen togs bort.** till skärmläsare. Fokus går till rubriken där en ny inspelning börjar, eller i listan till listans rubrik, och till sidans rubrik när listan är tom.
 
-En inspelning används av en flik i taget. Den flik som spelar in den, skickar den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när fliken stängs eller kraschar. Andra flikar visar den så länge i listan över osända inspelningar med **Inspelningen används i en annan flik.** och utan knappar, och läser om listan när sidan visas igen. Om en annan flik hinner ta låset innan en åtgärd sker nekas åtgärden med ett meddelande. Utan Web Locks (Safari före 15.4) kan bara fliken som spelade in en inspelning skicka, fortsätta eller ta bort den; andra flikar kan spara den som fil.
+### En flik i taget
 
-## Uppladdning och nya försök
+Den flik som spelar in, skickar eller tar bort en inspelning håller ett lås (Web Locks), och webbläsaren släpper låset när fliken stängs eller kraschar. Andra flikar visar inspelningen med **Inspelningen används i en annan flik.** och utan knappar, och läser om listan när de visas igen. Utan Web Locks (Safari före 15.4) kan bara fliken som spelade in skicka, fortsätta eller ta bort; andra flikar kan spara som fil.
 
-Uppladdning och start av körning försöker igen vid tillfälliga fel (nätverksfel, 408, 429 och 5xx) och när anslutningen är tillbaka. Andra 4xx-fel stoppar med Eneos felmeddelande (`frontend/lib/submit-run.ts`).
+## Skicka inspelningen
 
-Under uppladdningen väntas nätavbrott ut tills anslutningen är tillbaka eller användaren väljer **Avbryt**. Efter fyra uppladdningsförsök som ger 408 eller 5xx visas ett fel. Inspelningen ligger kvar och kan skickas igen med **Försök igen**.
+### Delar och filgränser
 
-Filer över 4 MiB skickas i delar. Efter ett nätavbrott fortsätter överföringen från senast bekräftade del så länge backendprocessen finns kvar och gränserna för mottagning och uppehåll inte har passerats. [Driftguiden](operations.md#uppladdningens-tillfälliga-lagring) beskriver tidsgränserna och kvittensen. En vald fil fortsätter bara medan sidan finns kvar. En inspelning fortsätter också efter en omladdning, en stängd flik eller en krasch: enheten sparar vilken uppladdning varje del har hos modulen, och när inspelningen skickas igen frågar appen modulen hur långt den kom, skickar resten och visar förloppet därifrån. Har modulen inte kvar uppladdningen börjar delen om från början. **Avbryt** under överföringen, eller att lämna sidan inom appen, ber modulen ta bort det den hunnit ta emot; då börjar nästa sändning om delen. Mindre filer skickas om hela.
+Innan en del når flödets största filstorlek startar nästa del på samma mikrofon. När flödets sista fil är full stoppas inspelningen med ett meddelande, och allt som spelats in finns kvar. Delarna skickas i ordning som filer i samma körning, med inspelningens egen idempotensnyckel, så att två flikar som skickar samma inspelning ger en enda körning.
 
-När hela filen är skickad lämnar modulen den vidare till Eneo; för en inspelning sparar enheten först att det har begärts. Har appen inte fått modulens svar läser den modulens kvittens och använder filens id utan att skicka filen igen, för en inspelning också efter en omladdning eller en krasch. Om Eneos svar till modulen eller modulens kvittens saknas gör appen inget automatiskt nytt försök: den visar att mottagandet inte kunde bekräftas och låter användaren välja **Försök igen**. Det nya försöket skickar filen på nytt, och en fil som Eneo redan hade tagit emot ligger då kvar där utan körning. Inget flöde startas utan ett bekräftat fil-id. Beteendet finns i `frontend/lib/api.ts`, `frontend/lib/submit-run.ts` och `frontend/lib/recording-store.ts`.
+### Uppladdning och nya försök
 
-När filen är uppladdad visas **Startar flödet**. **Avbryt** finns från början och behåller filen för ett nytt försök. Starten får tio automatiska försök under ungefär fem minuter. Därefter visas **Försök igen** och **Avbryt**. Ett nytt försök använder den redan uppladdade filen och samma idempotensnyckel, så att det inte skapar dubbla körningar. För inspelningar finns också **Spara som fil**.
+| Läge | Vad appen gör |
+|---|---|
+| Nätavbrott | Väntar tills anslutningen är tillbaka eller du väljer **Avbryt**. |
+| 408, 429 eller 5xx | Försöker igen. Efter fyra försök med 408 eller 5xx visas ett fel och **Försök igen**. |
+| Annat 4xx | Stoppar med Eneos felmeddelande. |
+| Fil över 4 MiB | Skickas i delar och fortsätter från den senast bekräftade delen. En inspelning fortsätter också efter en omladdning eller krasch; en vald fil bara medan sidan finns kvar. [Tidsgränserna](operations.md#uppladdningens-tillfälliga-lagring). |
+| Kvittensen saknas | Appen läser modulens kvittens och skickar inte filen igen. Saknas även den visas **Försök igen**. Inget flöde startas utan ett bekräftat fil-id. |
+| **Startar flödet** | Tio automatiska försök under ungefär fem minuter, sedan **Försök igen** och **Avbryt**, med samma fil och idempotensnyckel. |
 
-En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Filen finns kvar på datorn.
+**Avbryt** under överföringen, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
+
+## Format
+
+WebM/Opus när flödet tar emot det, annars `audio/mp4`, i mono och med en bithastighet för tal. `MediaRecorder` lämnar delar om 2 sekunder, så att ett långt möte inte samlas i en enda buffert; fem timmar blir i Chrome ungefär 72 MB. Eneo-körningen startar först när hela filen är uppladdad. Livetexten är bara en förhandstext ([Eneo-integration](eneo-integration.md#live-text-strömma)).
+
+Före uppladdningen får en WebM-fil det en spelare behöver. Chrome skriver ingen längd, så den skrivs in (`frontend/lib/webm-duration.ts`). Safari markerar inga ljudblock som keyframes, och då kan Chrome och Edge inte spela filen, så varje block markeras med en byte (`frontend/lib/webm-keyframes.ts`).
