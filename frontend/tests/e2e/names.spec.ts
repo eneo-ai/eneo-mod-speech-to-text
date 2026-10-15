@@ -6,7 +6,7 @@
 import { type Route } from "@playwright/test";
 import { expect, test } from "./gate";
 import { axNode } from "./checks";
-import { addParticipants, backLink, chooseMode, isLaptop, result, run, sending, setup, STATES } from "./screens";
+import { addParticipants, backLink, chooseMode, isLaptop, pdfInDialog, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
@@ -120,15 +120,15 @@ test("audio that cannot be played says so, and Försök igen tries it again", as
   sentinel.expect({ console: /status of 404.*\/input-files\/.*\/audio/ });
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
   await run(page, ids.runs.review, ids.flows.flow2);
-  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  await expect(page.getByText("Ljudet kunde inte spelas upp.")).toBeVisible();
   // The press that asked for the audio is not left spinning, and the message is an alert beside the player's controls.
   const player = page.locator("[data-docked-player]");
   await player.getByRole("button", { name: "Spela upp", exact: true }).click();
-  await expect(player.getByRole("alert").filter({ hasText: "Ljudet kunde inte spelas." })).toBeVisible();
+  await expect(player.getByRole("alert").filter({ hasText: "Ljudet kunde inte spelas upp." })).toBeVisible();
   await expect(player.getByRole("button", { name: "Spela upp", exact: true }), "no spinner labelled as playing").toBeVisible();
   await page.unroute("**/input-files/*/audio");
   await player.getByRole("button", { name: "Försök igen" }).click();
-  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
+  await expect(page.getByText("Ljudet kunde inte spelas upp.")).toBeHidden();
 });
 
 test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page, sentinel }, info) => {
@@ -382,10 +382,10 @@ test("an old status answer that arrives after the renewal's moves neither the en
   await expect(warning).toBeHidden();
 });
 
-test("below a laptop's width the document's PDF opens in a new tab, and says so", async ({ page }, info) => {
-  test.skip(isLaptop(info), "from a laptop's width the PDF opens in a dialog");
+test("below a laptop's width, and on a touch screen, the document's PDF opens in a new tab from its name, and says so", async ({ page }, info) => {
+  test.skip(pdfInDialog(info), "from a laptop's width with a mouse the PDF opens in a dialog");
   await result(page);
-  const link = page.getByRole("link", { name: "Öppna PDF i en ny flik" });
+  const link = page.getByRole("link", { name: /^Öppna Protokoll .*\.pdf i en ny flik$/ });
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("href", /disposition=inline/);
 });
@@ -398,7 +398,7 @@ test("a review says it waits for the person and, on a line of its own, when it m
     await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
     const main = page.getByRole("main");
-    await expect.soft(main.getByText("Väntar på din granskning", { exact: true })).toBeVisible();
+    await expect.soft(main.getByText(/ · Väntar på din granskning$/, { exact: true })).toBeVisible();
     await expect.soft(main.getByText(`Granska senast ${deadline}. Därefter avbryts körningen.`, { exact: true })).toBeVisible();
   }
 });

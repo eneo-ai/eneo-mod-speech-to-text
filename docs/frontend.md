@@ -6,11 +6,11 @@ Gränssnittet är en React-app med Vite, react-router och designsystemet Astryx.
 
 | Sökväg | Innehåll |
 |---|---|
-| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar) och sidorna. Varje sidas kod hämtas när routen först besöks. `routes/dev/` är utvecklingssidor. |
+| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar, varje annan adress "Sidan finns inte.") och sidorna. Varje sidas kod hämtas när routen först besöks. På `/flows/:id` hämtas en körnings resultat, granskning och felvy (`components/flow/run-views.tsx`) först när en körning öppnas, medan körningen läses. `routes/dev/` är utvecklingssidor. |
 | `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. |
 | `frontend/kit/` | Tema, providers och skal (`ModuleShell`, `ColorModeProvider`). Importerar inget från `routes/`, `components/` eller `lib/`. |
 | `frontend/lib/` | Logik utan gränssnitt, ett ansvar per fil, med testerna bredvid. Importerar ingen UI-kod. |
-| `frontend/styles/`, `frontend/public/` | Skiktordningen och modulens egna stilar; filer som kopieras oförändrade (live-ljudets AudioWorklet och skriptet för första målningen). |
+| `frontend/styles/`, `frontend/public/` | Skiktordningen och modulens egna stilar; filer som kopieras oförändrade (live-ljudets AudioWorklet, skriptet för första målningen och ikonerna för fliken och hemskärmen). |
 
 `routes/` och `components/` får importera `kit/`, `lib/` och Astryx; `kit/` bara Astryx; `lib/` ingen UI.
 
@@ -26,10 +26,11 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 
 ## Routing, titlar och fokus
 
-- Routern är en data-router utan loaders och utan serverrendering. Varje sida som kräver inloggning lägger en egen `AuthGate`, så ett routebyte nollställer sidans tillstånd.
+- Routern är en data-router utan loaders och utan serverrendering. Varje sida som kräver inloggning lägger en egen `AuthGate`, så ett routebyte nollställer sidans tillstånd. Den som inte är inloggad skickas till inloggningen och därifrån tillbaka till adressen den öppnade, med `?run=` ([Inloggning och session](auth-and-session.md#eneo-sso)).
 - Efter en navigering sätts routens titel direkt, och när sidan säger att den har sitt innehåll (`useRouteReady`) läses titeln upp, fokus flyttas till sidans rubrik och sidan scrollas. Ingen annan kod scrollar efter en navigering (`routes/RouteEffects.tsx`).
 - En sida med osparat arbete frågar i sin egen dialog innan den lämnas: länk, märket, Bakåt och Framåt. Webbläsarens egen fråga täcker omladdning och att stänga fliken.
 - En kod som inte går att hämta (en flik som stått öppen över en ny version) ersätts av "Sidan kunde inte visas." med åtgärden "Ladda om sidan", på personens eget val: inget laddas om av sig självt och inget som håller en inspelning eller en redigering monteras av.
+- En adress som inte är någon av appens sidor visar "Sidan finns inte." med vägen till startsidan; adressen står kvar som den skrevs. Den och "Sidan kunde inte visas." (`routes/Root.tsx`) har egna titlar, och efter en navigering läses de upp och deras rubrik får fokus som på andra sidor.
 
 ## Konventioner
 
@@ -37,6 +38,8 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 - **Inga Tailwind-klasser, ingen `<div>` för layout.** Stilning går via komponentens egna props, annars via en CSS-modul med Astryx-tokens (`var(--color-*)`, `var(--spacing-*)`, `var(--radius-*)`): inga hexvärden eller pixelavstånd förutom strukturella bredder. CSS-moduler är till för ytor som saknar motsvarighet i designsystemet (text med ordspann, nivåmätare, den fastlåsta spelaren, resultatets arbetsyta). Skriv inte om en sådan yta till komponenter för att slippa modulen.
 - **Sidans ram renderas av varje route.** `ModuleShell` ger toppfält, hoppa-till-innehåll-länk och huvudregion, utan tillstånd. En sida renderar aldrig egen `<main>` eller egen hoppa-länk.
 - **Innehållets bredd** begränsas med `Layout contentWidth`, och handlingar justeras med `hAlign="start"` eller en `HStack` (en `VStack` sträcker sina barn över hela bredden).
+- **Ett beslut** (granskningens Avvisa och godkännandet, en dialogs Avbryt och Spara) läggs i `components/ActionRow.tsx`: en rad i slutet av ytan med huvudåtgärden sist, och upp till 640 px bredd en stapel över hela bredden med huvudåtgärden överst och först för tangentbordet, som designsystemets `AlertDialog` gör. Barnen skrivs i radens ordning. Ett fälts egna knappar är inget beslut: små, i textens rubrikrad ovanför fältet (granskningens Redigera, Avbryt och Spara ändring). I textgranskningen stannar rubrikraden överst i fönstret och beslutet nederst medan en lång text läses eller redigeras, och fältet växer med texten så att sidan har en enda scroll; ett lågt fönster (en telefon på sidan, 200 % zoom) håller båda i sidan. En osänd inspelnings handlingar (`components/UnsentRecordings.tsx`) står upp till samma 640 px i en stapel över hela kortet, och bredare i en rad med knapparnas egna bredder som bryts vid behov, med **Ta bort** sist; dess fråga om att ta bort är ett beslut.
+- **Rörelse** tar designsystemets `--duration-fast` och `--ease-standard`. En vy av flödet som ersätter en annan tonar in (`components/flow/FlowFrame.module.css`), liksom det en utfällning visar (`styles/globals.css`); bara opacitet. Med reducerad rörelse tonar inget.
 - **Färgläget** (`light`, `dark`, `system`) ägs av `kit/ColorModeProvider.tsx`: valet ligger i `localStorage` under nyckeln `theme`, och `<html>` får `data-theme`. Ett litet skript från samma origin (`public/color-mode.js`) sätter attributet före första målningen. Lägg inget lägestillstånd någon annanstans.
 - **Inga andra origins:** inga typsnitt, skript eller CDN.
 - **Sidtitel och rubrik:** routen har en titel; en tillståndsvy sätter en närmare titel och flyttar fokus till sin rubrik när den visas, aldrig vid senare uppdateringar.
@@ -57,8 +60,9 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` ([Inspelaren](recording.md)) |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) |
 | Det man skrivit men inte skickat | `lib/drafts.ts` (`sessionStorage`, per person) |
+| Var uppspelningen av en körning stannade | `lib/playback-position.ts` (`localStorage`, de 50 senast lyssnade körningarna) |
 | Körningens tillstånd | `run` i `routes/FlowPage.tsx`; uppföljningen i `lib/follow-run.ts` |
-| Om vi är uppkopplade | `lib/online-status.ts` |
+| Om vi är uppkopplade, och vad sidan säger när vi inte är det: "Ingen anslutning." när enheten saknar nät, annars "Tal till text svarar inte just nu." | `lib/online-status.ts` |
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
 | Mikrofonval | `lib/microphone.ts` |
 

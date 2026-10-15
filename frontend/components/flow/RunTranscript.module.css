@@ -11,10 +11,12 @@
 }
 
 /* From a laptop's width the card keeps to the window (the column is sticky, one gutter from its top) and its text
-   scrolls inside it, the player docked below. */
+   scrolls inside it, the player docked below. It starts at the result's top, beside its heading, and is as tall as the
+   window below that (FlowFrame's --view-fit-height, less the result's own top padding) less a gutter: the player is in
+   view before the page is scrolled. */
 @media (min-width: 1024px) {
   .card {
-    max-height: calc(100dvh - 2 * var(--spacing-6));
+    max-height: calc(var(--view-fit-height, 100dvh) - var(--spacing-2) - var(--spacing-6));
     overflow: hidden;
   }
 }

@@ -24,9 +24,11 @@ const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter", spellCheck:
  * Enter (a phone's return key) or a comma adds it too, a pasted list is split
  * on commas, semicolons and line breaks,
  * Backspace in the empty input removes the last chip, and each chip has its
- * own remove button. Earlier names are offered as the browser's own
- * suggestions. Text left in the input becomes a chip when the field loses
- * focus, so a typed name is never lost.
+ * own remove button, which hands the focus back to the input, except after a
+ * finger's press: there that would open the phone's keyboard for nothing.
+ * Earlier names are offered as the browser's own suggestions. Text left in
+ * the input becomes a chip when the field loses focus, so a typed name is
+ * never lost.
  */
 export function ParticipantsInput({
   label,
@@ -59,6 +61,8 @@ export function ParticipantsInput({
   const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  // How the last press in the chips was made. Read from the press itself: WebKit says a tap's click is a mouse's.
+  const pressedWith = useRef("");
 
   function add(added: string[]) {
     const next = addNames(names, added);
@@ -160,14 +164,23 @@ export function ParticipantsInput({
         </InputGroup>
       </VStack>
       {names.length > 0 && (
-        <HStack as="ul" aria-label="Tillagda namn" role="list" wrap="wrap" gap={2} className={styles.names}>
+        <HStack
+          as="ul"
+          aria-label="Tillagda namn"
+          role="list"
+          wrap="wrap"
+          gap={2}
+          className={styles.names}
+          onPointerDown={(event) => (pressedWith.current = event.pointerType)}
+          onKeyDown={() => (pressedWith.current = "")}
+        >
           {names.map((name) => (
             <li key={name}>
               <Token
                 label={name}
                 onRemove={() => {
                   remove(name);
-                  input.current?.focus();
+                  if (pressedWith.current !== "touch") input.current?.focus();
                 }}
               />
             </li>

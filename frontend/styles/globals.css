@@ -7,8 +7,6 @@
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
   --module-page-width: 1180px;
-  /* A form's measure (the flow's setup): a control stays beside its label and the action is not a bar across the screen. */
-  --module-form-width: 40rem;
   /* What the review's transcript card is at least as tall as, and the placeholder that stands for its editor. */
   --module-transcript-min-height: 28rem;
 
@@ -26,6 +24,13 @@
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
+/* A workspace (`data-workspace`: a result with its transcript beside it, the speakers' review): the page's column grows
+   with a wide window, from 1180 px at a 1686 px window to 1600 px, so the transcript beside the text has room. The bar
+   reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
+:root:has([data-workspace]) {
+  --module-page-width: clamp(1180px, 70vw, 1600px);
+}
+
 /* A speaker's colour as the stylesheets read it: data-speaker-color is the speaker's index, from lib/transcript. */
 [data-speaker-color="0"] { --tint: var(--module-speaker-0); }
 [data-speaker-color="1"] { --tint: var(--module-speaker-1); }
@@ -37,6 +42,17 @@
 /* What the page rests on, in the layer of the design system's reset (after it, so these win over it, and below the
    system's own layers). */
 @layer reset {
+  /* On an iPhone or iPad the text follows the size set in iOS (Settings, Display & Brightness, Text Size), as apps do:
+     Safari gives a page that size only through this font, 17 px at the default size, and every size in the theme is in
+     rem. Only touch WebKit knows both conditions; a Mac's Safari would get the Mac's smaller system size. The family and
+     line height stay the page's own (below). */
+  @supports (font: -apple-system-body) and (-webkit-touch-callout: none) {
+    html {
+      font: -apple-system-body;
+      line-height: normal;
+    }
+  }
+
   html,
   body {
     /* The design system's page colours, as it declares them for the document (its default theme; the module's own
@@ -69,9 +85,28 @@
    keyboard focus (WCAG 2.4.11): focus scrolls stop above it. The height is the dock's own, kept in --dock-block-size by
    lib/dock.ts, so a longer note or the text spacing a reader sets cannot outgrow it; with no dock stuck to the window's
    edge (a laptop, a short screen) the variable is unset and only the margin is left. */
+/* A dock that would cover more than a third of the window (large text) stands at the page's end instead (lib/dock.ts). */
+:root [data-dock-too-tall] {
+  position: static;
+}
+
 html:has([data-docked-action], [data-docked-player]) {
   /* Focus can sit on a field's inner control while its ring surrounds the padded field. Keep that whole edge clear. */
   scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
+}
+
+/* A disclosure shows what it opens at once: it fades in instead, so the eye follows what appeared. With reduced motion
+   it appears as it is. */
+@media (prefers-reduced-motion: no-preference) {
+  .astryx-collapsible-content > * {
+    animation: module-reveal var(--duration-fast) var(--ease-standard);
+  }
+}
+
+@keyframes module-reveal {
+  from {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

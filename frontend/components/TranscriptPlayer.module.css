@@ -51,11 +51,11 @@
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
-/* Firefox stops on a box that scrolls on its own: the transcript's, from a laptop's width. Its ring is drawn inside too,
-   where the card does not clip it. */
+/* Firefox stops on a box that scrolls on its own: the transcript's, from a laptop's width. Its own border carries the
+   ring, where the card does not clip it. */
 .scrollport:focus-visible {
-  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-  outline-offset: calc(var(--focus-outline-width) * -1);
+  border-color: var(--focus-outline-color);
+  outline: none;
 }
 
 .loading {
@@ -231,6 +231,9 @@
 .scrollport {
   flex: 1;
   min-block-size: 0;
+  /* Firefox can paint a scroller's outline around its overflowing contents, outside the clipping card. Reserve the
+     ring on the scrollport's own border instead, so it stays visible without changing the text on focus. */
+  border: var(--focus-outline-width) solid transparent;
 }
 
 @media (min-width: 1024px) {
@@ -297,7 +300,7 @@
   outline: none;
 }
 
-@media (min-width: 1024px), (max-height: 480px) {
+@media (min-width: 1024px), (max-height: 600px) {
   .dock {
     position: static;
     padding-block-end: var(--spacing-2);
@@ -309,6 +312,18 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--spacing-1);
+}
+
+/* The player's keys: one quiet line where there is a keyboard to press them, with a mouse; never on a touch screen. */
+.keys {
+  display: none;
+  margin-inline-end: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .keys {
+    display: block;
+  }
 }
 
 /* Speed: in the player's row from 640 px, above it below. */
@@ -335,7 +350,8 @@
 }
 
 @media (pointer: coarse) {
-  .rate {
+  .rate,
+  .rateBelow {
     min-inline-size: var(--size-element-md);
   }
 }
@@ -382,6 +398,29 @@
     min-block-size: var(--size-element-md);
     min-inline-size: var(--size-element-md);
     margin-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
+  }
+
+  /* Keep the visible text's 24 px row; its touch area extends into the passage's padding. Wrapped rows and the
+     text below leave enough room for that area, so neighbouring controls never share a hit target. */
+  .head {
+    row-gap: var(--spacing-6);
+  }
+
+  .head .inline {
+    position: relative;
+    min-block-size: var(--spacing-6);
+    margin-block: 0;
+  }
+
+  .head .inline::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
+  }
+
+  .head + .text {
+    margin-block-start: var(--spacing-3);
   }
 }
 
@@ -636,10 +675,10 @@
   color: var(--color-background-surface);
 }
 
-/* "Rätta": after the passage, never mid-sentence, always there. */
+/* "Rätta": at the end of the passage's head row, the same place on every passage; never mid-sentence, always there. */
 .correct {
   gap: var(--spacing-1);
-  margin-inline-start: var(--spacing-0-5);
+  margin-inline-start: auto;
   padding-inline: var(--spacing-1-5);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);

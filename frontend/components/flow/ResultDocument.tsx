@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -10,12 +10,13 @@ import { Item } from "@astryxdesign/core/Item";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import type { ResultFileView } from "@/lib/run-files";
-import { useCopy } from "./CopyButton";
+import { copyableHtml, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
-import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
-import { pressing, useFileAccess } from "./useFileAccess";
+import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
+import { pressing, savingWay, useFileAccess, waiting } from "./useFileAccess";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -161,6 +162,35 @@ async function runShare(share: Share, title: string, text: string | null): Promi
 }
 
 /**
+ * Whether a row's actions fit on one line, measured before the row is drawn: while they stand in it, their widths and
+ * the gaps between them against the row's width; while they are folded, the width they took when they last stood in it.
+ * Measured again whenever the row or one of its actions changes size: a tablet turned, a label that says Kopierat, the
+ * font arriving. `ref` goes on the row.
+ */
+function useRoomInRow() {
+  const [row, ref] = useState<HTMLElement | null>(null);
+  const [fits, setFits] = useState(true);
+  const needs = useRef(0);
+  useLayoutEffect(() => {
+    if (!row) return;
+    const measure = () => {
+      if (fits) {
+        const actions = [...row.children];
+        const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
+        needs.current = actions.reduce((sum, action) => sum + action.getBoundingClientRect().width, gap * (actions.length - 1));
+      }
+      setFits(needs.current <= row.getBoundingClientRect().width);
+    };
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    for (const element of [row, ...row.children]) observer.observe(element);
+    return () => observer.disconnect();
+  }, [row, fits]);
+  return { ref, fits };
+}
+
+/**
  * What the flow produced, first on the page: the text as a readable page and
  * its file, with one filled action (the file's download, or copying the text
  * when there is no file) and never a second download of the same file.
@@ -174,6 +204,7 @@ export function ResultDocument({
   preview = null,
   textIsPreview = false,
   label = "Dokumentet",
+  downloadName,
 }: {
   flowId: string;
   runId: string;
@@ -189,15 +220,20 @@ export function ResultDocument({
   textIsPreview?: boolean;
   /** What the run makes, named ("Dokumentet", "Texten"; `outputWords`). */
   label?: string;
+  /** What a text without a file of its own downloads as (`runFileName`). */
+  downloadName?: string;
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
   const share = useShare(file, download, text);
   const access = useFileAccess(flowId, runId);
-  const [copyState, copy] = useCopy(text ?? "");
+  // The text as it is drawn, for a copy that keeps its headings, lists and bold.
+  const article = useRef<HTMLElement | null>(null);
+  const [copyState, copy] = useCopy(text ?? "", () => article.current && copyableHtml(article.current));
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
   const wide = useMediaMatch(LAPTOP);
+  const room = useRoomInRow();
 
   const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
   const primaryDownload = file && download && (
@@ -207,7 +243,8 @@ export function ResultDocument({
       variant="primary"
       icon={<Icon icon={Download} />}
       label={`${downloadLabel}, ${file.name}`}
-      onClick={pressing(access, file.fileId, "download")}
+      onClick={pressing(access, file.fileId, savingWay(file))}
+      {...waiting(access, file.fileId, savingWay(file))}
     >
       {downloadLabel}
     </Button>
@@ -217,44 +254,53 @@ export function ResultDocument({
   const shareName = textIsPreview && share?.kind === "text" ? "Dela början" : "Dela";
   // Copying the text is one of the more actions when the file is the filled one above it.
   const copyMore = Boolean(text && file);
+  // A text with no file of its own is saved as one, as it is written.
+  const saveText = text && !file && downloadName ? () => downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), downloadName) : null;
+  const saveButton = (variant: "ghost" | "secondary") =>
+    saveText && (
+      <Button variant={variant} icon={<Icon icon={Download} />} label={`Ladda ner ${downloadName}`} onClick={saveText}>
+        Ladda ner
+      </Button>
+    );
+  // The one more action beside Dela: copying where the file is the filled action, else saving the text.
+  const moreItem = copyMore ? (
+    <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
+  ) : (
+    saveText && <DropdownMenuItem icon={Download} label="Ladda ner" onClick={saveText} />
+  );
+  const moreButton = copyMore ? <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} /> : saveButton("secondary");
+  // Dela wherever the device has a share sheet, at every width.
+  const shareButton = (variant: "ghost" | "secondary") =>
+    share && (
+      <Button variant={variant} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
+    );
 
   return (
     <>
-      {/* Narrower: above the document, the download first, opening the file beside it, then the more actions. */}
+      {/* Narrower: above the document, the download first, then the more actions. The file opens from its name, on its
+          row in the document. */}
       {!wide && (
-        <HStack wrap="wrap" vAlign="center" gap={2}>
+        <HStack ref={room.ref} wrap="wrap" vAlign="center" gap={2}>
           {primaryDownload}
-          {file?.previewable && inline && (
-            <Button
-              href={inline}
-              target="_blank"
-              rel="noopener noreferrer"
-              icon={<Icon icon="externalLink" />}
-              label={`Öppna ${file.typeLabel} i en ny flik`}
-              onClick={pressing(access, file.fileId, "tab")}
-            >
-              {`Öppna ${file.typeLabel}`}
-            </Button>
-          )}
           {text && !file && (
             <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           )}
-          {/* Two more actions fold into a menu; one is a button of its own, not a menu of one. */}
-          {copyMore && share ? (
+          {/* Two more actions stand beside it where the row has room for them, and fold into a menu where it has not.
+              One is a button of its own, never a menu of one. */}
+          {moreItem && share && !room.fits ? (
             <DropdownMenu
               button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
               hasChevron={false}
-              alignment="end"
+              alignment="center"
             >
-              <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
+              {moreItem}
               <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
-          ) : copyMore ? (
-            <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           ) : (
-            share && (
-              <Button icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
-            )
+            <>
+              {moreButton}
+              {shareButton("secondary")}
+            </>
           )}
         </HStack>
       )}
@@ -262,11 +308,13 @@ export function ResultDocument({
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>
-        {/* From a laptop's width: Kopiera and the one download on the document's top edge, above its text. A file
-            without text of its own has the download on its row, as the files under it have theirs. */}
+        {/* From a laptop's width: Dela, Kopiera and the one download on the document's top edge, above its text. A file
+            without text of its own has Dela and the download on its row, as the files under it have theirs. */}
         {wide && text && (
           <>
             <HStack hAlign="end" vAlign="center" gap={1} padding={2}>
+              {shareButton("ghost")}
+              {saveButton("ghost")}
               {text && (
                 <Button
                   variant={file ? "ghost" : "primary"}
@@ -284,7 +332,7 @@ export function ResultDocument({
         )}
 
         {text && (
-          <VStack as="article" padding={6}>
+          <VStack as="article" ref={article} padding={6}>
             <Markdown>{text}</Markdown>
           </VStack>
         )}
@@ -297,9 +345,16 @@ export function ResultDocument({
             <Item
               data-file-row
               startContent={<Icon icon={Kind} />}
-              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text>{file.name}</Text>}
+              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
               description={file.meta}
-              endContent={wide && !text ? primaryDownload : undefined}
+              endContent={
+                wide && !text ? (
+                  <HStack vAlign="center" gap={1}>
+                    {shareButton("ghost")}
+                    {primaryDownload}
+                  </HStack>
+                ) : undefined
+              }
             />
           </>
         )}

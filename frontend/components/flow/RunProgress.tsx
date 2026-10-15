@@ -110,11 +110,12 @@ export function RunProgress({
             <StepList steps={steps} />
           </VStack>
         )}
-        {/* Reassurance for a page closed by mistake, not a request to close it. */}
+        {/* Reassurance for a page closed by mistake, not a request to close it, and where to find the result then: the
+            flow's page lists it under Tidigare körningar (EarlierRuns). */}
         <Text as="p" type="supporting">
           {makesText
-            ? "Texten blir klar även om du stänger sidan. Du hittar den här sedan."
-            : "Dokumentet blir klart även om du stänger sidan. Du hittar det här sedan."}
+            ? "Texten blir klar även om du stänger sidan. Du hittar den sedan under Tidigare körningar i flödet."
+            : "Dokumentet blir klart även om du stänger sidan. Du hittar det sedan under Tidigare körningar i flödet."}
         </Text>
         {error && <Banner status="error" title={error} collapsible={false} />}
         <HStack>

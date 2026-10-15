@@ -22,11 +22,16 @@
   text-align: start;
 }
 
+/* A date in a file's name is one word: the name breaks before it, never at its hyphens. */
+.date {
+  white-space: nowrap;
+}
+
 /* The PDF viewer fills the dialog, which is as tall as the window allows less its header, and no taller than 56rem: past
    that the dialog is taller than a page is read, and on a very tall screen its header lands on the page's own header controls. */
 .viewer {
   display: block;
   inline-size: 100%;
-  block-size: min(calc(85dvh - 7rem), 56rem);
+  block-size: min(calc(90dvh - 7rem), 56rem);
   border: 0;
 }

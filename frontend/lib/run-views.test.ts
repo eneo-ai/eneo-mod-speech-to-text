@@ -51,7 +51,7 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
-  assert.match(words, /Dokumentet blir klart även om du stänger sidan\. Du hittar det här sedan\./);
+  assert.match(words, /Dokumentet blir klart även om du stänger sidan\. Du hittar det sedan under Tidigare körningar i flödet\./);
   assert.doesNotMatch(words, /Du kan stänga sidan/, "reassurance, not an instruction to close");
   assert.match(words, /Avbryt körningen/);
   // The step list is an ordered list, so a screen reader hears position and state.
@@ -64,7 +64,7 @@ test("a flow that makes text says the text will be ready, as its action says Ska
       createElement(RunProgress, { flowName: "Intervju", steps: running, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
     ),
   );
-  assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den här sedan\./);
+  assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den sedan under Tidigare körningar i flödet\./);
   assert.doesNotMatch(words, /Dokumentet blir klart/);
   assert.match(words, /^Texten skapas /, "the heading");
   assert.doesNotMatch(words, /[Dd]okument/);
@@ -183,7 +183,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   assert.match(text(stopped), /Filen är uppladdad\. Flödet startar inte just nu\./);
   assert.match(text(stopped), /Det går fortfarande inte att skicka\. Försök igen när du vill\. Försök igen Avbryt/);
 
-  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recordingId: "rec-1" });
+  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recording: { id: "rec-1", files: 1 } });
   assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
   assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
 });

@@ -54,3 +54,17 @@ test("a dock that stops being stuck when the window changes is measured again", 
   stop();
   bar.remove();
 });
+
+test("a dock taller than a third of the window stands in the page instead of covering it", async () => {
+  const { observeDock } = await import("./dock");
+  const bar = dock(Math.ceil(window.innerHeight / 3) + 1);
+  const stop = observeDock(bar);
+  assert.equal(size(), "", "large text made the bar too tall to keep over the page");
+  assert.ok(bar.hasAttribute("data-dock-too-tall"));
+  Object.defineProperty(bar, "offsetHeight", { configurable: true, get: () => 120 });
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(size(), "120px", "smaller text: docked again");
+  assert.ok(!bar.hasAttribute("data-dock-too-tall"));
+  stop();
+  bar.remove();
+});

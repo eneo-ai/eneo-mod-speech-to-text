@@ -1,5 +1,6 @@
-import { Pause, Play } from "lucide-react";
+import { AlertTriangle, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
@@ -77,14 +78,18 @@ function useLivePosition(playback: Playback, state: PlaybackSnapshot): number {
  * (arrow keys move a second, Page Up and Page Down ten) and "0:03 / 0:06".
  * Never the browser's own controls, whose timeline runs wrong on a WebM file
  * without a length. `children` join the row, as the transcript's speed does.
+ * Audio that cannot be played says so above the row, with Försök igen.
  */
 export function AudioPlayer({
   playback,
   label,
+  playKey,
   children,
 }: {
   playback: Playback;
   label: string;
+  /** The key that plays and pauses where the player sits (the transcript's K): named on the button. */
+  playKey?: string;
   children?: ReactNode;
 }) {
   const state = usePlaybackState(playback);
@@ -92,8 +97,20 @@ export function AudioPlayer({
   const attach = useCallback((element: HTMLAudioElement | null) => playback.attach(element), [playback]);
   // A start that waits for the audio is paused by the same button, as toggle() does.
   const pauses = state.playing || state.starting;
+  const playLabel = pauses ? "Pausa uppspelningen" : "Spela upp";
 
   return (
+    <>
+      {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
+      {state.unavailable && (
+        <HStack role="alert" gap={2} vAlign="center" wrap="wrap">
+          <Icon icon={AlertTriangle} color="error" size="sm" />
+          <Text type="supporting" color="primary">
+            Ljudet kunde inte spelas upp.
+          </Text>
+          <Button size="sm" label="Försök igen" onClick={() => playback.reload()} />
+        </HStack>
+      )}
     <HStack role="group" aria-label={`Uppspelning: ${label}`} gap={3} align="center">
       <audio
         ref={attach}
@@ -109,8 +126,9 @@ export function AudioPlayer({
       />
       {/* Not isLoading, which disables the button: a press while the audio loads pauses that start. */}
       <IconButton
-        label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+        label={playLabel}
         variant="secondary"
+        aria-keyshortcuts={playKey}
         data-loading={state.starting || undefined}
         icon={
           state.starting ? (
@@ -146,5 +164,6 @@ export function AudioPlayer({
       </Text>
       {children}
     </HStack>
+    </>
   );
 }

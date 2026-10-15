@@ -603,7 +603,15 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
  */
 async function mountAudioSetup(
   speaker_labels: Record<string, unknown>,
-  { step = {}, parts = [] }: { step?: Record<string, unknown>; parts?: import("./recording-store").StoredRecording["parts"] } = {},
+  {
+    step = {},
+    parts = [{ index: 0, startedAt: 0, durationMs: 60_000, bytes: 240_000, chunks: 30, fileId: null }],
+    state = "stopped",
+  }: {
+    step?: Record<string, unknown>;
+    parts?: import("./recording-store").StoredRecording["parts"];
+    state?: import("./recording-store").StoredRecording["state"];
+  } = {},
 ) {
   const { createElement, useState } = await import("react");
   const { FlowInput } = await import("../components/flow/FlowInput");
@@ -614,7 +622,7 @@ async function mountAudioSetup(
       steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", ...step }],
       transcription: { live: { available: false, reason: null }, speaker_labels: labels },
     }) as unknown as import("./api").RunContract;
-  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state: "stopped", parts, runId: null } as import("./recording-store").StoredRecording;
+  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state, parts, runId: null } as import("./recording-store").StoredRecording;
   let publish: (labels: Record<string, unknown>) => void = () => undefined;
   let makeReady = () => {};
   function Setup() {
@@ -730,6 +738,62 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   } finally {
     store.remove = remove;
     await view.unmount();
+    delete (window as { MediaRecorder?: unknown }).MediaRecorder;
+    delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
+    if (microphones) Object.defineProperty(navigator, "mediaDevices", microphones);
+    else delete (navigator as { mediaDevices?: unknown }).mediaDevices;
+  }
+});
+
+test("Ta bort on a ready recording says it was removed without moving the page, and the focus goes to the setup's heading", async () => {
+  // The device deletes it (here the fixture's recording is not this tab's own, which a browser without Web Locks refuses).
+  const store = await (await import("./recording-store")).recordingStore();
+  const remove = store.remove;
+  store.remove = async () => undefined;
+  const { view, audio, makeReady } = await mountAudioSetup({ selectable: true, required: false, default: true });
+  try {
+    await view.act(async () => makeReady());
+    await view.act(async () => button(audio, "Ta bort")!.click());
+    await view.act(async () => button(audio.querySelector('dialog[role="alertdialog"]')!, "Ta bort")!.click());
+    await view.act(async () => undefined);
+    const said = [...view.container.querySelectorAll('[role="status"]')].map((region) => region.textContent);
+    assert.ok(said.includes("Inspelningen togs bort."), `said once it is gone: ${said.join(" | ")}`);
+    assert.doesNotMatch(audio.textContent ?? "", /Inspelningen togs bort\./, "said, not shown: nothing pushes the setup down");
+    assert.ok(document.activeElement?.matches("[data-phase-heading]"), "with the focus on the setup's heading");
+  } finally {
+    store.remove = remove;
+    await view.unmount();
+  }
+});
+
+test("a recording a reload cut off stands first on the page in one column, under the flow's name, and in the work beside it in two", async () => {
+  // A browser that records, so the cut-off recording's Fortsätt spela in is the page's filled action.
+  const microphones = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { addEventListener() {}, removeEventListener() {}, enumerateDevices: async () => [] } });
+  const recorder = { isTypeSupported: () => true };
+  Object.assign(window, { MediaRecorder: recorder });
+  Object.assign(globalThis, { MediaRecorder: recorder });
+  const matchMedia = window.matchMedia;
+  try {
+    for (const twoColumns of [false, true]) {
+      window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: twoColumns && query === "(min-width: 1024px)" })) as typeof window.matchMedia;
+      const { view, audio } = await mountAudioSetup({ selectable: true, required: false, default: true }, { state: "recording" });
+      try {
+        const recovery = [...view.container.querySelectorAll('[role="region"]')].find((region) => region.textContent?.includes("Inspelningen avbröts"))!;
+        const details = view.container.querySelector("[data-detail-field]")!;
+        const filled = [...view.container.querySelectorAll("button")].filter((b) => b.getAttribute("data-variant") === "primary").map((b) => b.textContent?.trim());
+        assert.deepEqual(filled, ["Fortsätt spela in"], "the page's one filled action");
+        if (twoColumns) assert.ok(audio.contains(recovery), "in the work, beside the flow");
+        else {
+          assert.ok(!audio.contains(recovery) && recovery.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING, "above the details, under the flow's name");
+          assert.equal(recovery.previousElementSibling?.tagName, "H1");
+        }
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
+    window.matchMedia = matchMedia;
     delete (window as { MediaRecorder?: unknown }).MediaRecorder;
     delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
     if (microphones) Object.defineProperty(navigator, "mediaDevices", microphones);
@@ -970,7 +1034,7 @@ test("the way back: a link to the flow list named Alla flöden, a router link", 
 test("the phone top bar's back chevron is named like every other way back", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount((await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }))).tree);
+  const view = await mount((await signedIn(createElement(FlowFrame, { children: null }))).tree);
   const chevron = view.container.querySelector('[role="banner"] a[aria-label="Alla flöden"]');
   assert.ok(chevron, "the arrow in the bar is named like every other way back");
   assert.equal(chevron.getAttribute("href"), "/flows");
@@ -1116,7 +1180,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     return createElement(
       LeaveContext.Provider,
       { value: leaving },
-      createElement(FlowFrame, { title: "Sammanfattning", titleIsHeading: false, children: null }),
+      createElement(FlowFrame, { children: null }),
       leaving.question,
     );
   }
@@ -1255,7 +1319,7 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
   const { useSilence } = await import("../components/flow/recording-hooks");
   // What the microphone gives: the loudest sample of each read.
   let peak = 0;
-  class FakeAudioContext {
+  class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
     close = async () => undefined;
@@ -1265,6 +1329,8 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
   const page = window as unknown as { AudioContext?: unknown };
   const browserAudio = page.AudioContext;
   page.AudioContext = FakeAudioContext;
+  let visibility: DocumentVisibilityState = "visible";
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
   t.mock.timers.enable({ apis: ["setInterval", "Date"] });
   let silent = false;
   const microphone = {} as MediaStream;
@@ -1291,9 +1357,30 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
       await listen(60_000);
       assert.equal(silent, false, `a quiet room, minute ${minute + 1}`);
     }
+    // A phone gives a page in the background none of the microphone: its zeros there are no muted microphone.
+    peak = 0;
+    visibility = "hidden";
+    await listen(20_000);
+    assert.equal(silent, false, "not said for a page in the background");
+    visibility = "visible";
+    await listen(14_800);
+    assert.equal(silent, false, "counted from when it is in view");
+    await listen(400);
+    assert.equal(silent, true);
+    // A phone that froze the page in the background read nothing there, not even that it was hidden.
+    visibility = "hidden";
+    await view.act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    t.mock.timers.setTime(Date.now() + 12_000);
+    visibility = "visible";
+    await view.act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    await listen(14_800);
+    assert.equal(silent, false, "back from a frozen background, counted from when it is in view");
+    await listen(400);
+    assert.equal(silent, true);
   } finally {
     await view.unmount();
     page.AudioContext = browserAudio;
+    delete (document as { visibilityState?: unknown }).visibilityState;
   }
 });
 
@@ -1339,7 +1426,7 @@ test("with reduced motion, the level meter still shows the microphone's level, w
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
   let peak = 0.5;
-  class FakeAudioContext {
+  class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
     close = async () => undefined;
@@ -1367,30 +1454,40 @@ test("with reduced motion, the level meter still shows the microphone's level, w
   }
 });
 
-/** A stream the meter listens to, a microphone that hears `peak`, and the audio context of a browser that has one. */
-function listening(t: import("node:test").TestContext, peak: { value: number } | null) {
-  class FakeAudioContext {
+/**
+ * A stream the meter listens to, a microphone that hears `peak`, and the audio context of a browser that has one (the
+ * ones made are in `contexts`); "refuses": a browser that throws instead, as one with too many open does.
+ */
+function listening(t: import("node:test").TestContext, peak: { value: number } | null | "refuses") {
+  const contexts: Array<EventTarget & { state: string }> = [];
+  class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
-    resume = async () => undefined;
-    close = async () => undefined;
+    constructor() {
+      super();
+      if (peak === "refuses") throw new DOMException("Too many audio contexts", "NotSupportedError");
+      contexts.push(this);
+    }
+    resume = async () => void (this.state = "running");
+    close = async () => void (this.state = "closed");
     createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
-    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak?.value ?? 0) });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(typeof peak === "object" ? (peak?.value ?? 0) : 0) });
   }
   const page = window as unknown as { AudioContext?: unknown; webkitAudioContext?: unknown };
   const before = { audio: page.AudioContext, webkit: page.webkitAudioContext };
   page.AudioContext = peak ? FakeAudioContext : undefined;
   page.webkitAudioContext = undefined;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  return () => {
+  const restore = () => {
     page.AudioContext = before.audio;
     page.webkitAudioContext = before.webkit;
   };
+  return { restore, contexts };
 }
 
 test("the level meter goes quiet when the stream ends, whichever way it is drawn", async (t) => {
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
-  const restore = listening(t, { value: 0.5 });
+  const { restore } = listening(t, { value: 0.5 });
   const stream = {} as MediaStream;
   try {
     for (const variant of ["steps", "wave"] as const) {
@@ -1409,23 +1506,47 @@ test("the level meter goes quiet when the stream ends, whichever way it is drawn
   }
 });
 
-test("a browser without an audio context still gets a level meter, at rest", async (t) => {
+test("the level's audio is resumed when the system suspends or interrupts it, and when the page is shown again", async (t) => {
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
-  const restore = listening(t, null);
+  const { restore, contexts } = listening(t, { value: 0.5 });
   try {
-    for (const variant of ["steps", "wave"] as const) {
-      const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant }));
-      await view.act(async () => t.mock.timers.tick(500));
-      const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
-      assert.equal(bars.length, 8, `${variant}: the bars are there`);
-      assert.ok(bars.every((bar) => bar.dataset.lit !== "true" && (variant === "steps" || bar.style.transform === "")), `${variant}: at rest`);
-      await view.unmount();
-    }
+    const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant: "steps" }));
+    const [context] = contexts;
+    context.state = "interrupted"; // a call on the phone, or Siri
+    context.dispatchEvent(new Event("statechange"));
+    assert.equal(context.state, "running", "resumed as it changes");
+    context.state = "suspended";
+    document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(context.state, "running", "and when the page is shown again");
+    await view.unmount();
+    context.state = "suspended";
+    document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(context.state, "suspended", "a meter that is gone leaves it alone");
   } finally {
     restore();
   }
 });
+
+for (const [browser, audio] of [["without an audio context", null], ["that refuses one (too many open)", "refuses"]] as const) {
+  test(`a browser ${browser} still gets a level meter, at rest`, async (t) => {
+    const { createElement } = await import("react");
+    const { LevelMeter } = await import("../components/flow/LevelMeter");
+    const { restore } = listening(t, audio);
+    try {
+      for (const variant of ["steps", "wave"] as const) {
+        const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant }));
+        await view.act(async () => t.mock.timers.tick(500));
+        const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
+        assert.equal(bars.length, 8, `${variant}: the bars are there`);
+        assert.ok(bars.every((bar) => bar.dataset.lit !== "true" && (variant === "steps" || bar.style.transform === "")), `${variant}: at rest`);
+        await view.unmount();
+      }
+    } finally {
+      restore();
+    }
+  });
+}
 
 test("a kept review edit comes back only in the shape the review reads: any other, and any din version of another shape, is dropped from the storage and counts as none", async (t) => {
   t.after(() => window.sessionStorage.clear());

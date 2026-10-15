@@ -1,9 +1,10 @@
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
-import { CheckCircle2, UsersRound } from "lucide-react";
+import { CheckCircle2, Pencil, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,13 +16,14 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
+import { useAnnounce } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { List, ListItem } from "@astryxdesign/core/List";
-import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { ActionRow } from "@/components/ActionRow";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
@@ -87,6 +89,7 @@ const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klar
 /** A review pause: the step's output (the speakers' names, or text) to look over, change and approve, or reject. */
 export function ReviewView({
   flowId,
+  flowName,
   checkpoint,
   runState,
   runError,
@@ -95,6 +98,7 @@ export function ReviewView({
   onReject,
 }: {
   flowId: string;
+  flowName: string;
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
   runError: string | null;
@@ -119,6 +123,7 @@ export function ReviewView({
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
   const heading = usePhaseHeading(title);
+  const announce = useAnnounce();
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
@@ -159,12 +164,31 @@ export function ReviewView({
   const reasonField = useRef<HTMLTextAreaElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const textField = useRef<HTMLTextAreaElement>(null);
+  // Swapping the text for its editor (and back) changes the page's height for a moment, and the browser would pull a
+  // reader halfway through a long text back to its top: the place they read at is kept, before the swap is painted.
+  const readAt = useRef<number | null>(null);
+  // Read while rendering, before the swap is committed.
+  readAt.current = typeof window === "undefined" ? null : window.scrollY;
+  useLayoutEffect(() => {
+    const at = readAt.current;
+    if (at !== null && window.scrollY !== at) window.scrollTo({ top: at, behavior: "instant" });
+  }, [editing]);
+
   useEffect(() => {
     const target = handOff.current?.current;
     // Not there yet, or still disabled while a request ends: a later render hands it on.
     if (!target || (target as HTMLButtonElement).disabled) return;
     handOff.current = null;
-    target.focus();
+    if (target !== textField.current) {
+      target.focus();
+      return;
+    }
+    // The text opens where it is read, never scrolled away from it; one the window shows whole opens for more at its
+    // end, where a reviewer adds (Safari and Firefox put the caret at the start).
+    const field = textField.current;
+    field.focus({ preventScroll: true });
+    const { top, bottom } = field.getBoundingClientRect();
+    if (top >= 0 && bottom <= window.innerHeight) field.setSelectionRange(field.value.length, field.value.length);
   });
 
   // A kept edit the approved pause holds is saved, so it is no draft any more (and no reason to ask before leaving).
@@ -355,6 +379,8 @@ export function ReviewView({
       handOff.current = editButton;
       setEditing(false);
       draft.drop(sent);
+      // The editor closing shows it; a screen reader hears it.
+      announce("Ändringen är sparad.");
     }, undefined);
   }
 
@@ -385,7 +411,7 @@ export function ReviewView({
         value={rejectReason}
         onChange={setRejectReason}
       />
-      <HStack gap={2} hAlign="end">
+      <ActionRow>
         <Button
           variant="ghost"
           label="Avbryt"
@@ -397,42 +423,43 @@ export function ReviewView({
           }}
         />
         <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
-      </HStack>
+      </ActionRow>
     </VStack>
   ) : null;
 
-  // The choice as a pair at the end of the bar, of one height: Avvisa, then the action the page exists for.
+  // The choice as a pair of one height: Avvisa, then the action the page exists for (ActionRow places them).
   const actions = rejecting ? null : (
-    <HStack gap={3} hAlign="end" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
-      {decided ? (
-        <StackItem size="fill">
-          <Text as="p" type="supporting">
-            {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-          </Text>
-        </StackItem>
-      ) : (
-        <Button
-          ref={rejectButton}
-          variant="secondary"
-          size="lg"
-          label="Avvisa"
-          isDisabled={busy}
-          onClick={() => {
-            handOff.current = reasonField;
-            setShowReject(true);
-          }}
-        />
+    <VStack gap={3}>
+      {decided && (
+        <Text as="p" type="supporting">
+          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+        </Text>
       )}
-      <Button
-        variant="primary"
-        size="lg"
-        icon={<CheckCircle2 aria-hidden />}
-        label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
-        isLoading={working === "approve"}
-        isDisabled={busy || continueBlocked}
-        onClick={() => void saveAndApprove()}
-      />
-    </HStack>
+      <ActionRow>
+        {!decided && (
+          <Button
+            ref={rejectButton}
+            variant="secondary"
+            size="lg"
+            label="Avvisa"
+            isDisabled={busy}
+            onClick={() => {
+              handOff.current = reasonField;
+              setShowReject(true);
+            }}
+          />
+        )}
+        <Button
+          variant="primary"
+          size="lg"
+          icon={<CheckCircle2 aria-hidden />}
+          label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
+          isLoading={working === "approve"}
+          isDisabled={busy || continueBlocked}
+          onClick={() => void saveAndApprove()}
+        />
+      </ActionRow>
+    </VStack>
   );
 
   // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
@@ -452,9 +479,10 @@ export function ReviewView({
     </VStack>
   );
 
+  // The flow's name stands here at every width, as on the result's line: the top bar holds no name.
   const paused = (
     <Text as="p" type="supporting">
-      Väntar på din granskning
+      {flowName} · Väntar på din granskning
     </Text>
   );
 
@@ -466,14 +494,15 @@ export function ReviewView({
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        <VStack gap={3}>
+        <VStack gap={4}>
+          {/* Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. */}
           <List aria-label="Talare" density="compact" hasDividers>
             {namingRows.map((row) => (
               <ListItem
                 key={row.label}
-                label={speakerDisplayLabel(row.label)}
+                label={row.name ?? speakerDisplayLabel(row.label)}
                 startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-                description={<Text color={row.name ? undefined : "secondary"}>{row.name ?? "Inget namn"}</Text>}
+                description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
               />
             ))}
           </List>
@@ -496,7 +525,8 @@ export function ReviewView({
             decided={decided}
             draftKey={namesDraftKey}
           >
-            <Button variant="secondary" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.selfStart} />
+            {/* The card's own action: across the card on a phone, at its start where there is room. */}
+            <Button variant="secondary" size="lg" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.cardAction} />
           </SpeakerNamingDialog>
         </VStack>
       );
@@ -506,21 +536,27 @@ export function ReviewView({
       </Text>
     );
 
-    return (
-      <VStack gap={0}>
-        <VStack gap={1} className={styles.intro}>
-          {paused}
-          <Heading level={1} ref={heading} tabIndex={-1}>
-            {title}
-          </Heading>
-          <Text as="p" type="supporting" className={styles.description}>
-            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
-          </Text>
-          {deadline}
-        </VStack>
+    const intro = (
+      <VStack gap={1}>
+        {paused}
+        <Heading level={1} ref={heading} tabIndex={-1}>
+          {title}
+        </Heading>
+        <Text as="p" type="supporting" className={styles.description}>
+          {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
+        </Text>
+        {deadline}
+      </VStack>
+    );
 
-        {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
-        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
+    return (
+      <VStack gap={6}>
+        {SPEAKER_REVIEW_ENABLED && intro}
+
+        {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. Split
+            from a laptop's width, the heading stands over the speakers, so the transcript beside them starts at the
+            page's top and ends in the window; a workspace, whose column grows with a wide window (styles/globals.css). */}
+        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit} data-workspace={SPEAKER_REVIEW_ENABLED ? undefined : true}>
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
               {/* Folded, unless names typed earlier bring the dialog back: it is in this card, and opens by itself. */}
@@ -541,13 +577,16 @@ export function ReviewView({
               </Collapsible>
             </Card>
           ) : (
-            <Card padding={4} role="group" aria-label="Talare">
-              <VStack gap={3}>
-                {speakers}
-                {unmappedNote}
-              </VStack>
-              {decision}
-            </Card>
+            <VStack gap={6}>
+              {intro}
+              <Card padding={4} role="group" aria-label="Talare">
+                <VStack gap={3}>
+                  {speakers}
+                  {unmappedNote}
+                </VStack>
+                {decision}
+              </Card>
+            </VStack>
           )}
           {/* There the card folds away, so the decision follows it instead. */}
           {SPEAKER_REVIEW_ENABLED && decision}
@@ -581,8 +620,8 @@ export function ReviewView({
   }
 
   return (
-    <VStack gap={0} className={styles.reading}>
-      <VStack gap={1} className={styles.intro}>
+    <VStack gap={6} className={styles.reading}>
+      <VStack gap={1}>
         {paused}
         <Heading level={1} ref={heading} tabIndex={-1}>
           {title}
@@ -596,9 +635,50 @@ export function ReviewView({
       </VStack>
 
       <VStack as="section" gap={3} className={styles.card}>
-        <HStack hAlign="between" vAlign="center">
-          <Text weight="semibold">Innehåll för granskning</Text>
-          <Text type="supporting">{editable ? "Redigerbart" : "Skrivskyddat"}</Text>
+        {/* The text's name and the editor's buttons stay at the top of the window while a long text is read or edited. */}
+        <HStack gap={2} wrap="wrap" hAlign="between" vAlign="center" className={styles.cardHead}>
+          <VStack gap={1}>
+            <Text weight="semibold">Innehåll för granskning</Text>
+            {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
+          </VStack>
+          {/* The editor's own buttons, no decision: small, beside the text's name. Spara ändring keeps a change in Eneo
+              without going on, and is there only while there is one; Avbryt stays where it is when it comes. */}
+          {editable && (
+            <HStack gap={2} wrap="wrap">
+              {editing ? (
+                <>
+                  <Button
+                    key="avbryt"
+                    variant="ghost"
+                    size="sm"
+                    label="Avbryt"
+                    isDisabled={busy}
+                    onClick={() => {
+                      handOff.current = editButton;
+                      setText(initialText);
+                      setEditing(false);
+                      draft.drop();
+                    }}
+                  />
+                  {dirty && <Button key="spara" variant="secondary" size="sm" label="Spara ändring" isLoading={saving} isDisabled={busy} onClick={saveOnly} />}
+                </>
+              ) : (
+                <Button
+                  key="redigera"
+                  ref={editButton}
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil aria-hidden />}
+                  label="Redigera"
+                  isDisabled={busy}
+                  onClick={() => {
+                    handOff.current = textField;
+                    setEditing(true);
+                  }}
+                />
+              )}
+            </HStack>
+          )}
         </HStack>
 
         {editable && editing ? (
@@ -610,48 +690,19 @@ export function ReviewView({
             value={text}
             isReadOnly={busy}
             onChange={editText}
-            onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
-            rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
+            // A field the window holds whole is brought into it with its focus frame; a longer one stays where it is read.
+            onFocus={(event) => {
+              const field = event.currentTarget;
+              if (field.getBoundingClientRect().height <= window.innerHeight) field.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }}
+            // Where the field cannot size itself to the text (ReviewView.module.css), a height from its lines.
+            rows={Math.min(24, Math.max(4, text.split("\n").length + 1))}
           />
         ) : (
-          <article>
+          <article className={styles.text}>
             {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
             <Markdown>{decided ? initialText : text}</Markdown>
           </article>
-        )}
-
-        {editable && (
-          <HStack gap={2} hAlign="end">
-            {editing ? (
-              <>
-                <Button
-                  key="avbryt"
-                  variant="ghost"
-                  label="Avbryt"
-                  isDisabled={busy}
-                  onClick={() => {
-                    handOff.current = editButton;
-                    setText(initialText);
-                    setEditing(false);
-                    draft.drop();
-                  }}
-                />
-                <Button key="spara" variant="secondary" label="Spara ändring" isLoading={saving} isDisabled={!dirty || busy} onClick={saveOnly} />
-              </>
-            ) : (
-              <Button
-                key="redigera"
-                ref={editButton}
-                variant="ghost"
-                label="Redigera"
-                isDisabled={busy}
-                onClick={() => {
-                  handOff.current = textField;
-                  setEditing(true);
-                }}
-              />
-            )}
-          </HStack>
         )}
       </VStack>
 
@@ -689,7 +740,8 @@ export function ReviewView({
         {runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>
-      {actions}
+      {/* The decision stays in reach at the window's bottom edge however long the text is. */}
+      <div className={styles.dock}>{actions}</div>
     </VStack>
   );
 }

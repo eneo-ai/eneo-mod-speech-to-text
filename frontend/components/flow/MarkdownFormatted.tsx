@@ -36,10 +36,13 @@ const topHeadingFirst = createMarkdownPlugin({
 });
 const PLUGINS = [topHeadingFirst];
 
-/** What Markdown loads on demand: the formatting itself (see Markdown). */
+/**
+ * What Markdown loads on demand: the formatting itself (see Markdown). Its prose keeps a reading measure of 75 characters
+ * in a wide column (tables and code may be wider), as the text drawn before it does (Markdown.module.css).
+ */
 export default function MarkdownFormatted({ children }: { children: string }) {
   return (
-    <Markdown headingLevelStart={2} autolink="gfm" plugins={PLUGINS}>
+    <Markdown headingLevelStart={2} autolink="gfm" plugins={PLUGINS} contentWidth="75ch">
       {children}
     </Markdown>
   );

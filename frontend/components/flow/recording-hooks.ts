@@ -21,8 +21,9 @@ export function useSilence(stream: MediaStream | null, recording: boolean): bool
   const [silent, setSilent] = useState(false);
   const watch = useRef(new SilenceWatch());
   useInputLevel(stream, (_level, running, peak) => {
-    // A suspended audio context reads as silence; say nothing then.
-    if (!recording || !running) {
+    // A suspended audio context reads as silence, and a phone gives a page in the background none of the microphone
+    // (the recorder tells of that gap when the page is back): say nothing then, and count from when it is in view.
+    if (!recording || !running || document.visibilityState === "hidden") {
       watch.current.reset();
       setSilent(false);
       return;
@@ -32,6 +33,15 @@ export function useSilence(stream: MediaStream | null, recording: boolean): bool
   useEffect(() => {
     if (!recording) setSilent(false);
   }, [recording]);
+  // Away and back, the count starts over: a phone may freeze a page in the background, where nothing was read at all.
+  useEffect(() => {
+    const startOver = () => {
+      watch.current.reset();
+      setSilent(false);
+    };
+    document.addEventListener("visibilitychange", startOver);
+    return () => document.removeEventListener("visibilitychange", startOver);
+  }, []);
   return silent;
 }
 

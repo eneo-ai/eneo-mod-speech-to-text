@@ -81,3 +81,14 @@ export function createOnlineStatus(target?: OnlineTarget, now: () => number = ()
 export const onlineStatus = createOnlineStatus(
   typeof window === "undefined" ? undefined : window,
 );
+
+/** What a page says of each cause, in the same words wherever it says it. */
+export const CONNECTION_LOST = {
+  offline: "Ingen anslutning.",
+  unreachable: "Tal till text svarar inte just nu.",
+} as const;
+
+/** Why a request did not reach the module, as a page says it: the device has no network, else the module does not answer. */
+export function connectionLost(status: Pick<OnlineStatus, "connection"> = onlineStatus): string {
+  return CONNECTION_LOST[status.connection === "offline" ? "offline" : "unreachable"];
+}

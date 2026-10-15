@@ -1,39 +1,68 @@
 /* The review page's layout: what the design system's stacks do not say. The frame (FlowFrame) gives the page its width. */
 
-.intro {
-  margin-block-end: var(--spacing-5);
-}
-
 .description {
   max-inline-size: 65ch;
 }
 
-/* The text review is a reading column. */
-.reading {
-  max-inline-size: 42rem;
+/* The text review is a reading column from a laptop's width; below it, it has the whole column, as the speaker review
+   and every result do. */
+@media (min-width: 1024px) {
+  .reading {
+    max-inline-size: 42rem;
+  }
 }
 
-/* The editing field and its focus frame fit short and zoomed windows. */
+/* The editing field grows with the text, from four lines: a long text is one page to scroll, not a box inside it. Its
+   focus frame keeps clear of the header above and the docked decision below. */
 .reviewText textarea {
-  max-block-size: 50dvh;
-  scroll-margin-block: var(--spacing-3);
+  field-sizing: content;
+  min-block-size: 4lh;
+  scroll-margin-block: var(--spacing-12);
+}
+
+/* The text as it is read: a line a reader follows, as a result's document keeps it. */
+.text {
+  max-inline-size: 75ch;
+}
+
+/* The text's name and the editor's buttons: at the top of the window while a long text scrolls past, on the card. */
+.cardHead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  margin: calc(var(--spacing-4) * -1) calc(var(--spacing-4) * -1) 0;
+  padding: var(--spacing-4) var(--spacing-4) var(--spacing-2);
+  border-start-start-radius: var(--radius-container);
+  border-start-end-radius: var(--radius-container);
+  border-block-end: var(--border-width) solid var(--color-border);
+  background: var(--color-background-card);
+}
+
+/* The decision: in the page after the text, and at the window's bottom edge while a long text is above it. A short
+   window (a phone on its side, 200 % zoom) keeps it in the page, where docking would leave the text no room. */
+.dock {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  margin-inline: calc(var(--spacing-4) * -1);
+  padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));
+  border-block-start: var(--border-width) solid var(--color-border);
+  background: var(--color-background-surface);
+}
+
+@media (max-height: 480px) {
+  .cardHead,
+  .dock {
+    position: static;
+  }
 }
 
 /* A section with its own box: what the text review and its rejection are held in. */
 .card {
-  margin-block-end: var(--spacing-5);
   padding: var(--spacing-4);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
   background: var(--color-background-card);
-}
-
-.textActions {
-  padding-block-start: var(--spacing-4);
-}
-
-.notices {
-  margin-block-end: var(--spacing-3);
 }
 
 .notices:empty {
@@ -57,7 +86,7 @@
 .reviewSplit {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--spacing-5);
+  gap: var(--spacing-6);
 }
 
 @media (min-width: 1024px) {
@@ -73,8 +102,11 @@
   }
 }
 
-.selfStart {
-  align-self: flex-start;
+/* The speakers' card's own action spans it up to 640 px wide, where the decision under it stacks too (ActionRow). */
+@media (width > 640px) {
+  .cardAction {
+    align-self: flex-start;
+  }
 }
 
 /* The decision and what stops it, under Namnge talarna: set apart by a rule. */
@@ -84,7 +116,9 @@
   border-block-start: var(--border-width) solid var(--color-border);
 }
 
-/* The transcript's card. From a laptop's width it has a height of its own, within the screen's, and scrolls inside. */
+/* The transcript's card. From a laptop's width it keeps to the window, one gutter from its top, and its text scrolls
+   inside it, the player docked below. Beside the speakers it starts at the page's top: as tall as the window below that
+   (FlowFrame's --view-fit-height) less a gutter, it ends in the window before the page is scrolled. */
 .transcriptCard {
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
@@ -93,8 +127,10 @@
 
 @media (min-width: 1024px) {
   .transcriptCard {
+    position: sticky;
+    inset-block-start: var(--spacing-6);
     min-block-size: var(--module-transcript-min-height);
-    max-block-size: calc(100dvh - 14rem);
+    max-block-size: calc(var(--view-fit-height, 100dvh) - var(--spacing-6));
     overflow: hidden;
   }
 }

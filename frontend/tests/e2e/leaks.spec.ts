@@ -138,6 +138,13 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("dialog"),
     hide: (page) => page.keyboard.press("Escape"),
   },
+  // The transcript's speed, chosen from a menu in its docked player.
+  "speed menu": {
+    go: (page) => result(page),
+    show: (page) => page.getByRole("button", { name: /^Hastighet/ }).click(),
+    shown: (page) => page.getByRole("menuitemradio", { name: "1×" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
   // File-backed text has both copy and share in Fler alternativ; inline text has its share button directly. Headless Chromium has no
   // share sheet, so a stand-in is defined before the page loads).
   "more options": {

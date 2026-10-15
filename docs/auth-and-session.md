@@ -29,6 +29,7 @@ sequenceDiagram
 - `state` är oförutsägbart och kortlivat, bundet till en HttpOnly-cookie och förbrukat vid callbacken (cookien raderas).
 - Varje proxat Eneo-anrop skickar både servicenyckeln och modultoken som BFF:en hämtar ur sessionen.
 - När halva tokenens livslängd har gått förnyar BFF:en den. Nekar Eneo förnyelsen, till exempel när Eneos sessionstak har passerats, avslutas sessionen och användaren loggar in igen.
+- Den som öppnar en sida i modulen utan att vara inloggad (ett bokmärke till en körning, `/flows/<id>?run=<id>`) skickas till inloggningssidan, som ger adressen till `GET /api/auth/login` som `next`. Callbacken skickar webbläsaren dit. Bara en sökväg i modulen godtas (den börjar med ett `/`, inte med `//`, och har inget `\`); allt annat blir flödeslistan, `/flows`.
 
 Callbacken redirectar alltid till en ren URL och svarar med `Referrer-Policy: no-referrer` och `Cache-Control: no-store`. Uvicorns accesslogg är avstängd så att callbackens ticket och state inte hamnar i containerloggar.
 

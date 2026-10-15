@@ -4,12 +4,24 @@
   min-inline-size: 0;
 }
 
+/* The spans own the grid items' automatic minimum, above the panels. A wide table must scroll inside its panel. */
+.columns > * {
+  min-inline-size: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* The transcript keeps in view while the document scrolls past it, from where it starts. Its column is as tall as the
    document's, so the panel must not stretch to it. */
 .sticky {
   position: sticky;
   inset-block-start: var(--spacing-6);
   align-self: start;
+}
+
+/* Below a laptop's width the transcript is the second tab's panel, in the span after the tabs' own: as far from them
+   as the first. */
+.afterTabs {
+  margin-block-start: var(--spacing-4);
 }
 
 /* On a phone's Dokument tab, once the recording has played: its pause and time docked at the bottom, edge to edge

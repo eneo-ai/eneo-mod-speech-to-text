@@ -13,10 +13,8 @@ import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { preloadMarkdown } from "@/components/flow/Markdown";
-import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
-import { RunResult } from "@/components/flow/RunResult";
-import { ReviewView } from "@/components/flow/ReviewView";
+import { preloadRunViews, WithRunViews } from "@/components/flow/run-views";
 import { FlowRunPage } from "@/components/flow/FlowRunPage";
 import type { OfflineWaiting } from "@/components/OfflineBanner";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
@@ -49,7 +47,7 @@ import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
-import { recordingStore } from "@/lib/recording-store";
+import { filesIn, recordingStore } from "@/lib/recording-store";
 import { leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import {
@@ -305,7 +303,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
         onStarting: () =>
-          setSubmission({ kind: "starting", wait: null, recordingId: runInput?.kind === "recording" ? runInput.recording.id : null }),
+          setSubmission({
+            kind: "starting",
+            wait: null,
+            recording: runInput?.kind === "recording" ? { id: runInput.recording.id, files: filesIn(runInput.recording) } : null,
+          }),
         onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       };
@@ -358,6 +360,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function follow(runId: string) {
     // The run's text is formatted when it is first drawn (components/flow/Markdown).
     preloadMarkdown();
+    preloadRunViews();
     followAbortRef.current?.abort();
     const controller = new AbortController();
     followAbortRef.current = controller;
@@ -658,17 +661,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
     if (run.kind === "awaiting_review") {
       return (
-        // The review's own heading names the state, so the flow's name is not the heading.
-        <FlowFrame title={published.name} titleIsHeading={false}>
-          <ReviewView
-            flowId={flowId}
-            checkpoint={run.checkpoint}
-            runState={{ run: run.run, steps: run.steps }}
-            runError={runError}
-            onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
-            onSaveEdit={onSaveEdit}
-            onReject={(cp, reason) => onReject(cp, run.run.id, reason)}
-          />
+        // The review's own heading names the state, and its first line the flow.
+        <FlowFrame>
+          <WithRunViews>
+            {({ ReviewView }) => (
+              <ReviewView
+                flowId={flowId}
+                flowName={published.name}
+                checkpoint={run.checkpoint}
+                runState={{ run: run.run, steps: run.steps }}
+                runError={runError}
+                onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
+                onSaveEdit={onSaveEdit}
+                onReject={(cp, reason) => onReject(cp, run.run.id, reason)}
+              />
+            )}
+          </WithRunViews>
         </FlowFrame>
       );
     }
@@ -714,53 +722,61 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const inputStep = selectRuntimeInputStep(contract);
     if (runOutcome(run.run.status) === "succeeded") {
       return (
-        // The result has its own layout; its heading names the state, so the flow's name is not the heading.
-        <FlowFrame title={published.name} titleIsHeading={false}>
-          <RunResult
-            flowId={flowId}
-            flowName={published.name}
-            run={run.run}
-            steps={steps}
-            stepResults={run.steps}
-            files={files}
-            showTranscript={transcribed}
-            contract={contract}
-            audio={inputStep?.input_format?.toLowerCase() === "audio"}
-            onNewRecording={onRunAgain}
-            onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
-            onRegenerated={(regenerated) => {
-              // The new run is followed like any other, from its progress to its own result.
-              setRunError(null);
-              writeRunIdToUrl(regenerated.id);
-              setRun({ kind: "running", run: regenerated, graph: null });
-              void follow(regenerated.id);
-            }}
-          />
+        // The result has its own layout; its heading names the state, and the line under it the flow.
+        <FlowFrame>
+          <WithRunViews>
+            {({ RunResult }) => (
+              <RunResult
+                flowId={flowId}
+                flowName={published.name}
+                run={run.run}
+                steps={steps}
+                stepResults={run.steps}
+                files={files}
+                showTranscript={transcribed}
+                contract={contract}
+                audio={inputStep?.input_format?.toLowerCase() === "audio"}
+                onNewRecording={onRunAgain}
+                onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
+                onRegenerated={(regenerated) => {
+                  // The new run is followed like any other, from its progress to its own result.
+                  setRunError(null);
+                  writeRunIdToUrl(regenerated.id);
+                  setRun({ kind: "running", run: regenerated, graph: null });
+                  void follow(regenerated.id);
+                }}
+              />
+            )}
+          </WithRunViews>
         </FlowFrame>
       );
     }
-    const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;
+    const failure = run.run.error ? runErrorView(run.run.error, stepLabels, ofContractVersion(run.run, contract) ? inputStep : null) : null;
     // The same audio cannot help when the input itself has to change.
     const sameInputHelps = !failure?.inputMustChange;
     const cancelled = runOutcome(run.run.status) === "cancelled";
     const startAgainOffered = sameInputHelps && startAgainRequest(run.run, run.steps, contract) !== null;
     return flowPage(
-      <RunFailure
-        flowId={flowId}
-        flowName={published.name}
-        run={run.run}
-        failure={failure}
-        steps={steps}
-        stepResults={run.steps}
-        files={files}
-        showTranscript={transcribed}
-        contract={contract}
-        error={runError}
-        refusal={retryRefusal}
-        onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
-        onChooseInput={onRunAgain}
-      />,
+      <WithRunViews>
+        {({ RunFailure }) => (
+          <RunFailure
+            flowId={flowId}
+            flowName={published.name}
+            run={run.run}
+            failure={failure}
+            steps={steps}
+            stepResults={run.steps}
+            files={files}
+            showTranscript={transcribed}
+            contract={contract}
+            error={runError}
+            refusal={retryRefusal}
+            onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+            onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+            onChooseInput={onRunAgain}
+          />
+        )}
+      </WithRunViews>,
       { input: run.run.input_payload_json, version: run.run.flow_version },
     );
   };

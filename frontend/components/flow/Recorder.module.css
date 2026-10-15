@@ -44,6 +44,11 @@
   }
 }
 
+/* The time's colour follows the recorder: secondary while it is stopped. */
+.clock {
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
 .timer {
   font-size: calc(var(--font-size-5xl) * 4 / 3);
   font-weight: var(--font-weight-semibold);

@@ -18,7 +18,7 @@ import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { isRecord } from "./is-record";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
-import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
+import { END_UNCONFIRMED, RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes, formatDuration } from "./format";
 import type { LivePiece, LiveSnapshot } from "./live-transcriber";
@@ -260,7 +260,7 @@ export function missingModesNote(
 ): string | null {
   const step = selectRuntimeInputStep(contract);
   if (step?.input_format?.toLowerCase() !== "audio") return null;
-  if (!canRecord) return "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.";
+  if (!canRecord) return "Inspelning fungerar inte här. Öppna sidan via en säker adress (https) i en uppdaterad webbläsare, eller ladda upp en fil i stället.";
   const live = contract?.transcription?.live;
   if ((live?.available && !liveClient) || live?.reason === "model_unavailable") {
     return "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.";
@@ -779,10 +779,10 @@ export class FlowSession {
     this.emit();
   }
 
-  /** "Ta bort": the recording leaves the device for good; the details stay. */
-  async discard(): Promise<void> {
+  /** "Ta bort": the recording leaves the device for good; the details stay. True once it is gone. */
+  async discard(): Promise<boolean> {
     const recording = this.ready;
-    if (!recording || this.snapshot.phase !== "ready") return;
+    if (!recording || this.snapshot.phase !== "ready") return false;
     try {
       await (await this.options.openStore()).remove(recording.id);
     } catch (error) {
@@ -791,13 +791,14 @@ export class FlowSession {
           ? { title: IN_USE_ELSEWHERE }
           : { title: "Inspelningen kunde inte tas bort.", detail: "Försök igen." };
       this.emit();
-      return;
+      return false;
     }
     this.ready = null;
     this.problem = null;
     this.capture.reset();
     this.closeLive();
     this.emit();
+    return true;
   }
 
   /** An unsent recording from the list, made ready to become a document. */
@@ -929,11 +930,16 @@ export class FlowSession {
   /** "Fortsätt spela in" after the microphone went away: a new part of the same recording. */
   async continueRecording(): Promise<void> {
     this.microphoneError = null;
+    // What the last press answered is old once this one tries again.
+    this.problem = null;
+    this.emit();
     await this.capture.continueRecording();
-    if (this.capture.getSnapshot().status === "interrupted") {
-      this.problem = microphoneProblem(this.microphoneError);
-      this.emit();
-    }
+    const { status, error } = this.capture.getSnapshot();
+    // No reason: nothing new was tried (a press while the first still waits for the microphone).
+    if (status !== "interrupted" || !error) return;
+    // The browser's reason for a refused microphone says what to do; any other is the recorder's own (the flow's limits).
+    this.problem = this.microphoneError ? microphoneProblem(this.microphoneError) : { title: error };
+    this.emit();
   }
 
   /** The page goes away: what was recorded stays on the device for recovery. */
@@ -1171,6 +1177,7 @@ export class FlowSession {
       this.ready = recording;
       // A stop at the flow's size limit says so; what was recorded is kept.
       if (error) this.problem = { title: error };
+      else if (this.problem?.title === END_UNCONFIRMED) this.problem = null;
     }
     if (status === "recording") this.problem = null;
     this.emit();

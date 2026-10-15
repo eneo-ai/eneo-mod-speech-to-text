@@ -2,8 +2,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import { HStack, Layout, LayoutContent, VStack } from "@astryxdesign/core/Layout";
+import { Layout, LayoutContent, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
+import { ActionRow } from "@/components/ActionRow";
 import styles from "@/components/SessionEndWarning.module.css";
 import type { AuthenticatedUser } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
@@ -170,9 +171,9 @@ export function SessionEndWarning({
               </Text>
               {signedOut && <div ref={controlsRef} />}
               {problem && <Banner status="error" title={problem} collapsible={false} />}
-              <HStack gap={2} hAlign="end">
+              <ActionRow>
                 <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
-              </HStack>
+              </ActionRow>
             </VStack>
           </LayoutContent>
         }

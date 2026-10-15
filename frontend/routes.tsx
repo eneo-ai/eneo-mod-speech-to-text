@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
-import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
-import { Root, RootHydrateFallback, RouteError } from "@/routes/Root";
+import { createBrowserRouter, type RouteObject } from "react-router";
+import { NotFound, Root, RootHydrateFallback, RouteError } from "@/routes/Root";
 import type { RouteHandle } from "@/routes/RouteEffects";
 import { documentTitle } from "@/lib/product";
 
@@ -42,7 +42,8 @@ export const router = createBrowserRouter([
           page({ path: "flows/:id" }, documentTitle(), async () => (await import("./routes/FlowPage")).default),
           page({ path: "inloggad" }, documentTitle("Inloggad igen"), async () => (await import("./routes/SignedInAgain")).default),
           ...fixtures,
-          { path: "*", element: <Navigate to="/" replace /> },
+          // Any other address: the page says it does not exist, with the way to the start.
+          { path: "*", handle: { title: documentTitle("Sidan finns inte") } satisfies RouteHandle, Component: NotFound },
         ],
       },
     ],

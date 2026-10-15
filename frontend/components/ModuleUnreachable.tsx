@@ -7,14 +7,13 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Brand } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
+import { connectionLost } from "@/lib/online-status";
 import { PRODUCT_NAME } from "@/lib/product";
 
-/** What a page says when the module could not be asked who is signed in. */
-export const UNREACHABLE = "Tal till text kan inte nås just nu.";
-
 /**
- * The page where the session's answer did not come (the module is down, the connection dropped): it says so and offers
- * another try, at the address the person opened, so a link into a run is still there when the module is back.
+ * The page where the session's answer did not come (the device has no network, the module is down): it says which, in
+ * the words of the page's connection notice, and offers another try, at the address the person opened, so a link into a
+ * run is still there when the module is back.
  */
 export function ModuleUnreachable({ onRetry, retried = false }: { onRetry: () => void; retried?: boolean }) {
   // Shown again after a Försök igen that failed: the new page's Försök igen takes the focus the pressed one had.
@@ -28,7 +27,7 @@ export function ModuleUnreachable({ onRetry, retried = false }: { onRetry: () =>
         <LayoutContent isScrollable={false}>
           <VStack gap={4} paddingBlockStart={6}>
             <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-            <Banner status="error" title={UNREACHABLE} collapsible={false} />
+            <Banner status="error" title={connectionLost()} collapsible={false} />
             <HStack>
               <Button ref={retry} label="Försök igen" onClick={onRetry} />
             </HStack>

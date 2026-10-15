@@ -234,6 +234,265 @@ test("back on a page whose microphone went quiet while hidden, the recording goe
   assert.equal(capture.getSnapshot().muted, false);
 });
 
+/** The intervals set and not yet cleared: a capture's watch must not outlive it. */
+function liveIntervals(t: import("node:test").TestContext) {
+  const live = new Set<unknown>();
+  const set = globalThis.setInterval;
+  const clear = globalThis.clearInterval;
+  globalThis.setInterval = ((run: () => void, ms?: number) => {
+    const id = set(run, ms);
+    live.add(id);
+    return id;
+  }) as typeof setInterval;
+  globalThis.clearInterval = ((id?: Parameters<typeof clearInterval>[0]) => {
+    live.delete(id);
+    clear(id);
+  }) as typeof clearInterval;
+  t.after(() => {
+    globalThis.setInterval = set;
+    globalThis.clearInterval = clear;
+  });
+  return live;
+}
+
+test("a recorder that hands over no audio is asked for it once, then the page says nothing is kept, until audio comes again", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const intervals = liveIntervals(t);
+  const { page, show } = fakePage();
+  const { capture, recorders } = await setup({ page });
+  await capture.start(meeting);
+  const look = (times = 1) => t.mock.timers.tick(2_000 * times);
+  look(2);
+  assert.equal(recorders[0].flushes, 0, "a chunk may still be on its way");
+  look();
+  assert.equal(recorders[0].flushes, 1, "six seconds without audio: the recorder is asked for it");
+  assert.equal(capture.getSnapshot().stalled, false);
+  look();
+  assert.equal(capture.getSnapshot().stalled, true, "still nothing: said");
+  look(5);
+  assert.equal(recorders[0].flushes, 1, "asked once");
+  recorders[0].emit("a");
+  assert.equal(capture.getSnapshot().stalled, false, "audio again: the warning goes");
+
+  // A page in the background is not watched (a phone holds its recorder's audio back); in view again it starts over.
+  show("hidden");
+  const flushes = recorders[0].flushes;
+  look(10);
+  show("visible");
+  look(2);
+  assert.deepEqual([recorders[0].flushes, capture.getSnapshot().stalled], [flushes, false]);
+  // Paused, the recorder has nothing to hand over; going on starts the count over.
+  capture.togglePause();
+  look(10);
+  capture.togglePause();
+  look(2);
+  assert.deepEqual([recorders[0].flushes, capture.getSnapshot().stalled], [flushes, false]);
+
+  assert.equal(intervals.size, 1, "one watch");
+  await capture.stop();
+  assert.equal(intervals.size, 0, "it ends with Stoppa");
+  look(10);
+  assert.equal(recorders[0].flushes, flushes);
+  await capture.start(meeting);
+  capture.dispose();
+  assert.equal(intervals.size, 0, "and when the page goes");
+});
+
+test("a recorder that stops without saying so is a lost microphone: the recording pauses with what it has, and keeps audio handed over late", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  recorders[0].state = "inactive"; // no last data, no stop event yet (WebKit after an interruption)
+  t.mock.timers.tick(2_000); // the look that finds it stopped
+  assert.equal(capture.getSnapshot().status, "recording", "its last audio and its stop event may still be on their way");
+  t.mock.timers.tick(2_000);
+  recorders[0].emit("b"); // its last audio, late
+  t.mock.timers.tick(3_000);
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.equal(capture.getSnapshot().status, "recording", "audio came: its stop event may still come too");
+  t.mock.timers.tick(1_000);
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause, without a stop event");
+  recorders[0].emit("c"); // later still
+  const { id } = capture.getSnapshot().recording!;
+  await until(async () => (await texts(await store.readParts(id)))[0] === "abc", "every chunk the recorder handed over is kept");
+});
+
+test("a recorder that never confirms its end holds neither Stoppa nor a page that goes: the part ends unconfirmed after a while, and audio still kept", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const silentStop = (recorder: FakeRecorder) => (recorder.stop = () => void (recorder.state = "inactive"));
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  silentStop(recorders[0]);
+  const stopping = capture.stop();
+  assert.equal(streams[0].track.readyState, "ended", "the microphone goes at once");
+  t.mock.timers.tick(3_000);
+  await settle();
+  assert.equal(capture.getSnapshot().stopping, true, "its last audio may still come");
+  t.mock.timers.tick(1_000);
+  await until(() => capture.getSnapshot().status === "stopped", "Stoppa ends without the recorder's word");
+  const stopped = await stopping;
+  assert.equal(stopped?.state, "stopped");
+  assert.equal(capture.getSnapshot().stopping, false);
+  assert.equal(capture.getSnapshot().error, "Inspelningen stoppades, men webbläsaren bekräftade inte att de sista sekunderna sparades.");
+  recorders[0].emit("b"); // its last audio after all
+  await until(async () => (await texts(await store.readParts(stopped!.id)))[0] === "ab", "audio handed over after the end is kept");
+
+  const left = await setup();
+  await left.capture.start(meeting);
+  left.recorders[0].emit("a");
+  silentStop(left.recorders[0]);
+  const { id } = left.capture.getSnapshot().recording!;
+  left.capture.dispose();
+  t.mock.timers.tick(4_000);
+  await until(async () => (await left.store.get(id))?.state === "paused", "the page that went leaves it paused, for recovery");
+});
+
+test("an unconfirmed stop keeps its time, follows late-only audio, and cannot submit until the recorder confirms", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  let now = 0;
+  const { capture, store, recorders } = await setup({ now: () => now });
+  await capture.start(meeting);
+  now = 60_000;
+  recorders[0].stop = () => void (recorders[0].state = "inactive");
+  const stopping = capture.stop();
+  now = 64_000;
+  t.mock.timers.tick(4_000);
+  const stopped = (await stopping)!;
+  await assert.rejects(store.readPartsToSend(stopped.id), /bekräfta.*stopp|bekräftat.*stopp/);
+  recorders[0].emit("late-only");
+  await until(() => capture.getSnapshot().recording?.parts[0]?.bytes === 9, "ready metadata follows late audio");
+  assert.equal(capture.getSnapshot().recording?.durationMs, 60_000);
+  await store.accept(stopped.id, "run-must-not-delete");
+  assert.ok(await store.get(stopped.id), "unconfirmed audio survives acceptance");
+  recorders[0].dispatchEvent(new Event("stop"));
+  await until(async () => {
+    try { return (await store.readPartsToSend(stopped.id)).length === 1; } catch { return false; }
+  }, "confirmed audio can be submitted");
+  assert.deepEqual(await texts(await store.readPartsToSend(stopped.id)), ["late-only"]);
+});
+
+test("an unconfirmed interruption is still warned about after Stoppa", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  recorders[0].state = "inactive";
+  t.mock.timers.tick(2_000);
+  t.mock.timers.tick(4_000);
+  await until(() => capture.getSnapshot().status === "interrupted");
+  assert.match(capture.getSnapshot().error ?? "", /bekräftade inte/);
+  await capture.stop();
+  assert.match(capture.getSnapshot().error ?? "", /bekräftade inte/);
+});
+
+test("late callbacks from a deleted recording cannot report errors against a new capture", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].stop = () => void (recorders[0].state = "inactive");
+  const stopping = capture.stop();
+  t.mock.timers.tick(4_000);
+  const old = (await stopping)!;
+  capture.reset();
+  await store.discard(old.id);
+  await capture.start(meeting);
+  recorders[0].emit("old audio");
+  for (let i = 0; i < 20; i += 1) await settle();
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(capture.getSnapshot().error, null);
+  recorders[1].emit("new audio");
+  await until(async () => (await texts(await store.readParts(capture.getSnapshot().recording!.id)))[0] === "new audio");
+});
+
+test("a microphone muted while the page was away is told with how long once the page is back; muted long in view, the page says to act", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let now = 0;
+  const { page, show } = fakePage();
+  const { capture, streams } = await setup({ page, now: () => now });
+  await capture.start(meeting);
+  show("hidden");
+  streams[0].track.lose("mute"); // the phone takes the microphone from a page in the background
+  now = 40_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedGap, null, "not told to a page nobody sees");
+  show("visible");
+  assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 40_000, away: true });
+  show("hidden");
+  assert.equal(capture.getSnapshot().mutedGap, null, "told until the page goes away again");
+  show("visible");
+
+  streams[0].track.lose("mute");
+  now += 1_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedGap, null, "a second's route change is not told");
+  streams[0].track.lose("mute");
+  t.mock.timers.tick(14_000);
+  assert.equal(capture.getSnapshot().mutedLong, false);
+  t.mock.timers.tick(2_000);
+  assert.equal(capture.getSnapshot().mutedLong, true, "muted 15 s in view");
+  assert.equal(capture.getSnapshot().stalled, false, "a muted microphone is not a stalled recorder");
+  now += 20_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedLong, false);
+  assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 20_000, away: false });
+});
+
+test("a page back from the background, where the recorder handed over no audio, is told how long it was away; with audio meanwhile nothing is said", async () => {
+  let now = 0;
+  const { page, show } = fakePage();
+  const { capture, streams, recorders } = await setup({ page, now: () => now });
+  await capture.start(meeting);
+  // A phone takes the microphone from a page in the background without a word (Android: no mute).
+  show("hidden");
+  recorders[0].emit("a"); // what the page asked for as it went
+  now = 12_000;
+  show("visible");
+  assert.equal(capture.getSnapshot().hiddenGap, 12_000);
+  show("hidden");
+  assert.equal(capture.getSnapshot().hiddenGap, null, "told until the page goes away again");
+
+  // A laptop's background tab records on: its chunks come, and there is nothing to tell.
+  for (const text of ["b", "c", "d"]) recorders[0].emit(text);
+  now += 12_000;
+  show("visible");
+  assert.equal(capture.getSnapshot().hiddenGap, null);
+  show("hidden");
+  now += 3_000;
+  show("visible");
+  assert.equal(capture.getSnapshot().hiddenGap, null, "a moment away is no gap");
+
+  // Muted meanwhile: the muted microphone is told, once.
+  show("hidden");
+  streams[0].track.lose("mute");
+  now += 10_000;
+  streams[0].track.regain();
+  show("visible");
+  assert.deepEqual([capture.getSnapshot().mutedGap, capture.getSnapshot().hiddenGap], [{ ms: 10_000, away: true }, null]);
+});
+
+test("a muted microphone misses only recorded time: a mute within Pausa is not told, and one across it counts the recording on either side", async () => {
+  let now = 0;
+  const { capture, streams } = await setup({ now: () => now });
+  await capture.start(meeting);
+  capture.togglePause();
+  streams[0].track.lose("mute");
+  now = 20_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedGap, null, "paused, nothing was missed");
+
+  capture.togglePause();
+  streams[0].track.lose("mute");
+  now = 25_000; // five recorded seconds muted
+  capture.togglePause();
+  now = 45_000;
+  capture.togglePause();
+  now = 48_000; // and three more
+  streams[0].track.regain();
+  assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 8_000, away: false });
+});
+
 test("a microphone that ends, or a recorder that stops or fails by itself, pauses the recording too", async () => {
   const losses: Array<[string, (stream: FakeStream, recorder: FakeRecorder) => void]> = [
     ["the track ended", (stream) => stream.track.lose("ended")],
@@ -735,6 +994,7 @@ test("Stoppa lets the microphone go without waiting for the database, and the la
   await settle();
   await settle();
   assert.equal(streams[0].track.readyState, "ended", "the hardware is released while the storage is still pending");
+  assert.equal(await capture.stop(), null, "a second Stoppa while it is stored does nothing");
   release();
   const stopped = await stopping;
   assert.equal(stopped?.state, "stopped");
@@ -777,7 +1037,8 @@ test("a microphone lost while the device cannot confirm the pause leaves the rec
   await until(() => capture.getSnapshot().status === "interrupted", "the recording interrupted");
   const { stream, error } = capture.getSnapshot();
   assert.equal(stream, null);
-  assert.equal(error, "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.");
+  // Said under the pause's own warning, which names the pause (recordingNotices).
+  assert.equal(error, "Det gick inte att bekräfta att inspelningen sparades på enheten.");
   assert.equal(await capture.stop(), null);
   assert.equal(capture.getSnapshot().status, "stopped");
 });
@@ -1730,4 +1991,40 @@ test("a stop can be taken back with Fortsätt spela in only while the flow takes
   assert.equal(timed.capture.continuesAfterStop(), true, "time for a part after this one");
   now = 59 * 60_000;
   assert.equal(timed.capture.continuesAfterStop(), false, "no time left for another part before the longest recording");
+});
+
+test("an unconfirmed recorder keeps its writer lease through disposal and letGo, then permits another tab after its real stop", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  for (const how of ["dispose", "reset"] as const) {
+    const env = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+    const store = await openRecordingStore(env);
+    const tab = await openRecordingStore(env);
+    const { capture, recorders } = await setup({ store });
+    await capture.start(meeting);
+    recorders[0].emit("OLD_PREFIX");
+    recorders[0].stop = () => void (recorders[0].state = "inactive");
+    const id = capture.getSnapshot().recording!.id;
+    if (how === "dispose") {
+      capture.dispose();
+      t.mock.timers.tick(4_000);
+    } else {
+      const stopped = capture.stop();
+      t.mock.timers.tick(4_000);
+      await stopped;
+      capture.reset();
+    }
+    await until(async () => (await store.get(id))?.state === (how === "dispose" ? "paused" : "stopped"));
+    store.letGo(id);
+    assert.equal(await tab.lease(id), false, "the old recorder still owns final audio");
+    recorders[0].emit("OLD_FINAL");
+    await until(async () => (await texts(await store.readParts(id)))[0] === "OLD_PREFIXOLD_FINAL");
+    assert.equal(await tab.lease(id), false, "delayed audio does not release ownership");
+    recorders[0].dispatchEvent(new Event("stop"));
+    await until(() => tab.lease(id), "the next tab acquires only once the writer ends");
+    const part = await tab.startPart(id);
+    await tab.append(id, part, new Blob(["NEW_1"]), 1_000);
+    await tab.append(id, part, new Blob(["NEW_2"]), 2_000);
+    assert.deepEqual(await texts(await tab.readParts(id)), ["OLD_PREFIXOLD_FINAL", "NEW_1NEW_2"]);
+    tab.release(id);
+  }
 });

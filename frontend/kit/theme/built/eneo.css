@@ -430,6 +430,10 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-step-bar:is([data-progress="completed"] > *)::before {
+    background-color: transparent;
+  }
+
   .astryx-token {
     overflow: visible;
     height: auto;
@@ -447,6 +451,14 @@
 
   .astryx-toggle-button-group {
     flex-wrap: wrap;
+  }
+
+  .astryx-toggle-button {
+    box-shadow: inset 0 0 0 var(--border-width) var(--color-border-emphasized);
+  }
+
+  .astryx-toggle-button:is([aria-pressed="true"]) {
+    box-shadow: inset 0 0 0 var(--border-width) var(--color-accent);
   }
 
   .astryx-radio-list-item {
@@ -494,6 +506,10 @@
 
   .astryx-switch {
     --color-background-gray: var(--color-border-emphasized);
+  }
+
+  .astryx-dialog {
+    animation-duration: var(--duration-fast-max);
   }
 
   .astryx-collapsible-trigger {

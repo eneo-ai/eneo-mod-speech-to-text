@@ -64,7 +64,10 @@ test("a download of a file that is gone starts nothing, and starts when the file
 
   files.gone = false;
   const saved = page.waitForEvent("download");
+  const url = page.url();
   await page.getByRole("button", { name: "Försök igen" }).click();
+  // The browser streams the module's attachment to a file; the page stays where it is.
   expect((await saved).url()).toMatch(/disposition=attachment/);
+  expect(page.url()).toBe(url);
   await expect(gone(page)).toHaveCount(0);
 });

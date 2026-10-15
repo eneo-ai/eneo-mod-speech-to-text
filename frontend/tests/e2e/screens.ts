@@ -6,8 +6,27 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import ids from "../fixtures/ids.json";
 import { declare, REAL, type Expectation } from "./sentinel";
 
+/**
+ * A muted microphone for an init script: digital silence that flows, as a muted input gives it (a destination with
+ * nothing feeding it gives a recorder no audio at all, which is a different state). Set on the prototype: WebKit lets go
+ * of the object that `navigator.mediaDevices` gives once nothing holds it, and a method set on that object goes with it.
+ */
+export function mutedMicrophone() {
+  MediaDevices.prototype.getUserMedia = async () => {
+    const context = new AudioContext();
+    const out = context.createMediaStreamDestination();
+    const zero = context.createConstantSource();
+    zero.offset.value = 0;
+    zero.connect(out);
+    zero.start();
+    return out.stream;
+  };
+}
+
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
+/** A PDF opens in a dialog from a laptop's width with a mouse; on a touch screen in a tab of its own at every width. */
+export const pdfInDialog = (info: TestInfo) => isLaptop(info) && !info.project.use.hasTouch;
 
 /**
  * Whether a project's browser can record. Every one the gate has can, but Playwright's WebKit for Linux: it is built
@@ -205,6 +224,42 @@ export async function leaveRecording(page: Page) {
   await backLink(page).click();
   await page.getByRole("alertdialog", { name: "Lämna sidan?" }).getByRole("button", { name: "Lämna sidan" }).click();
   await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+}
+
+/**
+ * A recording of `bytes` bytes for flow 1, kept on this device as the recorder keeps one (lib/recording-store.ts): stopped,
+ * or cut off by a reload ("recording"). The page must be on the app's origin, whose database it is.
+ */
+export async function keptRecording(page: Page, bytes: number, state: "stopped" | "recording" = "stopped"): Promise<string> {
+  return page.evaluate(
+    async ({ bytes, flowId, stepId, state }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const opening = indexedDB.open("tal-till-text", 1);
+        opening.onupgradeneeded = () => {
+          opening.result.createObjectStore("recordings", { keyPath: "id" });
+          opening.result.createObjectStore("chunks", { keyPath: ["recordingId", "part", "seq"] });
+        };
+        opening.onsuccess = () => resolve(opening.result);
+        opening.onerror = () => reject(opening.error);
+      });
+      const id = crypto.randomUUID();
+      const startedAt = Date.now();
+      const writing = db.transaction(["recordings", "chunks"], "readwrite");
+      writing.objectStore("recordings").put({
+        id, ownerId: "user-1", flowId, flowName: "Nämndmöte till rapport", stepId, inputMode: "record", mimeType: "audio/wav",
+        startedAt, durationMs: 280_000, state, runId: null,
+        parts: [{ index: 0, startedAt, durationMs: 280_000, bytes, chunks: 1, fileId: null }],
+      });
+      writing.objectStore("chunks").put({ recordingId: id, part: 0, seq: 0, data: new ArrayBuffer(bytes) });
+      await new Promise((resolve, reject) => {
+        writing.oncomplete = resolve;
+        writing.onerror = () => reject(writing.error);
+      });
+      db.close();
+      return id;
+    },
+    { bytes, flowId: ids.flows.flow1, stepId: ids.steps.audio, state },
+  );
 }
 
 /** A short silent WAV file. */
@@ -457,7 +512,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/");
-      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text svarar inte just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
   },
@@ -469,11 +524,13 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/flows");
-      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text svarar inte just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
       await expect(page).toHaveURL(/\/flows$/);
     },
   },
+  // An address that is no page of the module.
+  { name: "not-found", go: async (page) => (await page.goto("/finns-inte"), heading(page, "Sidan finns inte.")) },
   // The sign-in page and a signed-in page while the session is still being asked for.
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },
@@ -571,7 +628,7 @@ export const STATES: State[] = [
     only: (info) => !records(info),
     go: async (page) => {
       await setup(page);
-      await expect(page.getByText("Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.")).toBeVisible();
+      await expect(page.getByText("Inspelning fungerar inte här. Öppna sidan via en säker adress (https) i en uppdaterad webbläsare, eller ladda upp en fil i stället.")).toBeVisible();
       await expect(page.getByRole("radio"), "no choice of ways in").toHaveCount(0);
       await expect(page.getByRole("button", { name: "Välj ljudfil" })).toBeVisible();
     },
@@ -833,6 +890,9 @@ export const STATES: State[] = [
       // The recorder hands its audio over in real time, a chunk every 2 s: some audio first, then the lid.
       await page.waitForTimeout(3_000);
       await page.clock.fastForward("02:00");
+      // The new part's first chunk, so the recording has its two files on every machine: a part stopped the moment it
+      // began may have handed over nothing, and be no file.
+      await page.waitForTimeout(2_500);
       await stop(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
       await expect(page.getByText(/Inspelningen är för lång för en fil/)).toBeVisible();
@@ -841,11 +901,7 @@ export const STATES: State[] = [
   {
     name: "silent-microphone",
     go: async (page) => {
-      // A muted input: the stream carries digital silence. Set on the prototype: WebKit lets go of the object that
-      // `navigator.mediaDevices` gives once nothing holds it, and a method set on that object goes with it.
-      await page.addInitScript(() => {
-        MediaDevices.prototype.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
-      });
+      await page.addInitScript(mutedMicrophone);
       await recordingSays(page, "Vi hör inget från mikrofonen.");
     },
   },
@@ -972,8 +1028,8 @@ export const STATES: State[] = [
   },
   {
     name: "result-pdf-dialog",
-    // Below a laptop's width the document's PDF opens in a new tab instead.
-    only: isLaptop,
+    // Below a laptop's width, and on a touch screen, the document's PDF opens in a new tab instead.
+    only: pdfInDialog,
     go: async (page) => {
       await result(page);
       await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
@@ -1121,6 +1177,17 @@ export const STATES: State[] = [
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
       await expect(page.getByRole("main").locator("textarea")).toBeVisible();
+    },
+  },
+  {
+    // A change in the editor: Spara ändring is there only now, and the decision says Spara och fortsätt.
+    name: "review-text-changed",
+    go: async (page) => {
+      await run(page, ids.runs.reviewText);
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      await expect(page.getByRole("button", { name: "Spara ändring" })).toBeVisible();
     },
   },
   {

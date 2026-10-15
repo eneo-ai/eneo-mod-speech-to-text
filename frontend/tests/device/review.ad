@@ -1,0 +1,16 @@
+context platform=ios
+open com.apple.mobilesafari "${ORIGIN}/flows/e05f8fd7-95fd-44e5-aa1d-2597881e71b9?run=825173ab-5cc4-4404-8a05-34274414d71b"
+wait text "Vem är vem?" 20000
+wait 'role="button" label="Godkänn och fortsätt"' 10000
+wait 'role="button" label="Avvisa"' 5000
+press 'label="Namnge talarna"'
+wait 'role="button" label="Spara namnen"' 10000
+press 'role="button" label="Avbryt"'
+wait 'label="Namnge talarna"' 5000
+open com.apple.mobilesafari "${ORIGIN}/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78?run=4177edbe-47f7-4612-85b4-8f6bd1fe9ca4"
+wait text "Sammanfattning" 20000
+press 'role="button" label="Redigera"'
+wait 'role="button" label="Avbryt"' 5000
+wait 'role="button" label="Godkänn och fortsätt"' 5000
+press 'role="button" label="Avbryt"'
+wait 'role="button" label="Redigera"' 5000

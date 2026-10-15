@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowRunStep, ResultFile } from "./api";
-import { fileText, resultFileViews, transcriptFileName } from "./run-files";
+import { fileText, resultFileViews, runFileName, transcriptFileName } from "./run-files";
 
 const pdf: ResultFile = {
   file_id: "f1",
@@ -44,10 +44,12 @@ test("a purged file stays listed but offers nothing to open", () => {
   assert.equal(file.meta, "Filen har tagits bort.");
 });
 
-test("the module's own transcript export is named the way Eneo names documents", () => {
-  assert.equal(transcriptFileName('Möte: "budget" 2/3?', "2026-09-23T14:02:01Z"), "Möte budget 2 3 2026-09-23 transkribering.txt");
-  // Eneo dates a document by the run's day in UTC, so the export keeps that day too.
-  assert.equal(transcriptFileName("Nämndmöte", "2026-09-23T23:30:00+00:00"), "Nämndmöte 2026-09-23 transkribering.txt");
+test("a file the page itself makes is named by the flow and the run's local day and time, as the person saw it", () => {
+  // A zone where the day and the hour differ from UTC's, whatever the machine running the test uses.
+  process.env.TZ = "Europe/Stockholm";
+  assert.equal(transcriptFileName('Möte: "budget" 2/3?', "2026-09-23T14:02:01Z"), "Möte budget 2 3 2026-09-23 16.02 transkribering.txt");
+  // Half past eleven at night in UTC is already the next day here.
+  assert.equal(runFileName("Nämndmöte", "2026-09-23T23:30:00+00:00"), "Nämndmöte 2026-09-24 01.30.txt");
   assert.equal(transcriptFileName("", undefined), "transkribering.txt");
 });
 

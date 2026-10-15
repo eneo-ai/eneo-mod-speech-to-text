@@ -23,7 +23,7 @@ const recording = (id: string, durationMs: number, startedAt: number): StoredRec
   startedAt,
   durationMs,
   state: "stopped",
-  parts: [],
+  parts: [{ index: 0, startedAt, durationMs, bytes: 32_000, chunks: 8, fileId: null }],
   runId: null,
 });
 
@@ -109,6 +109,21 @@ test("the actions call back with their recording, and Fortsätt spela in only wh
   assert.equal(button(list, "Fortsätt spela in"), null, "where nothing can take it over (a flow that cannot run now), it is not offered");
 });
 
+test("a recording with no audio says so plainly, and offers neither a document nor a file: only going on with it and deleting it", async () => {
+  const silent = (id: string, state: "stopped" | "recording") => ({
+    ...recording(id, 0, at(23, 10, 12)),
+    state,
+    parts: [{ index: 0, startedAt: 0, durationMs: 0, bytes: 0, chunks: 0, fileId: null }],
+  });
+  const { container } = await render({ recordings: [silent("a", "recording"), silent("b", "stopped")], onContinue: () => {} });
+  const [cutOff, stopped] = rowsOf(container);
+  for (const row of [cutOff, stopped]) assert.match(row.textContent!, /Inget ljud sparades i den här inspelningen\./);
+  assert.deepEqual(labels(cutOff), ["Fortsätt spela in", "Ta bort"]);
+  assert.deepEqual(labels(stopped), ["Ta bort"]);
+  const { container: elsewhere } = await render({ recordings: [{ ...silent("c", "stopped"), exportOnly: true }] });
+  assert.deepEqual(labels(rowsOf(elsewhere)[0]), [], "another tab's: nothing to save either");
+});
+
 test("without Web Locks, another tab's recording is offered only as a file to save, and says why", async () => {
   const elsewhere = { ...recording("a", 60_000, at(23, 10, 12)), state: "paused" as const, exportOnly: true };
   const { container } = await render({ recordings: [elsewhere, recording("b", 60_000, at(23, 9, 0))], onContinue: () => {} });
@@ -123,7 +138,7 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   const cutOff = (id: string) => ({ ...recording(id, 60_000, at(23, 10, 12)), state: "recording" as const });
   const one = await render({ recordings: [cutOff("a")], onContinue: () => {} });
   assert.equal(one.container.querySelector("h2")?.textContent, "Inspelningen avbröts");
-  assert.match(one.container.textContent!, /Välj Fortsätt spela in så fortsätter den i samma inspelning\./);
+  assert.match(one.container.textContent!, /Den fortsätter i samma inspelning när du väljer Fortsätt spela in\./, "the button by its whole name");
   assert.deepEqual(filled(one.container), ["Fortsätt spela in"]);
   await one.unmount();
 
@@ -146,6 +161,28 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   const stopped = await render({ recordings: [recording("c", 60_000, at(23, 9, 0))], onContinue: () => {} });
   assert.deepEqual(filled(stopped.container), [], "the setup's own action stays the filled one");
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");
+});
+
+test("folded, the list shows one recording, the latest a reload cut off before the newest, and the rest under a closed fold", async () => {
+  const cutOff = (id: string, startedAt: number) => ({ ...recording(id, 60_000, startedAt), state: "recording" as const });
+  const newest = recording("new", 60_000, at(23, 11, 0));
+  const listed = [newest, cutOff("cut", at(23, 10, 0)), recording("old", 60_000, at(23, 9, 0))];
+  const { container } = await render({ recordings: listed, onContinue: () => {}, folded: true });
+  assert.equal(container.querySelector("h2")?.textContent, "3 inspelningar har inte skickats");
+  const fold = button(container, "2 inspelningar till")!;
+  assert.equal(fold.getAttribute("aria-expanded"), "false", "closed until opened");
+  const folded = document.getElementById(fold.getAttribute("aria-controls")!)!;
+  const shown = rowsOf(container).filter((row) => !folded.contains(row));
+  assert.equal(shown.length, 1);
+  assert.ok(button(shown[0], "Fortsätt spela in"), "the one to go on with stands in view");
+  assert.equal(rowsOf(folded).length, 2);
+
+  const { container: none } = await render({ recordings: [newest, recording("old", 60_000, at(23, 9, 0))], onContinue: () => {}, folded: true });
+  const [first] = rowsOf(none);
+  assert.match(first.textContent!, /Inspelning 23 sep 11:00/, "without one cut off, the newest");
+  assert.ok(button(none, "En inspelning till"));
+  const { container: page } = await render({ recordings: listed, onContinue: () => {} });
+  assert.equal(button(page, "2 inspelningar till"), null, "on a flow's page every one is in view");
 });
 
 test("once the person chooses another way on the page, a cut-off recording's Fortsätt spela in is no longer the filled action", async () => {
@@ -175,25 +212,61 @@ test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to 
   assert.equal(focused(), "Ta bort");
 });
 
+test("a removed recording is said gone, and the focus goes to the list's heading, saying what is left, or with none left to the page's", async (t) => {
+  const store = await import("./recording-store");
+  t.mock.method(store, "recordingStore", async () => ({ remove: async () => {} }));
+  // The page around the list, as the flow list has it; the list itself is the device's, read again after a removal.
+  const page = (recordings: UnsentRecording[]) =>
+    createElement(
+      "main",
+      null,
+      createElement("h1", null, "Välj ett flöde"),
+      createElement(UnsentRecordings, { list: { recordings, unreadable: false, retry: () => {} }, onSend: () => {}, sendLabel: () => "Skapa dokument" }),
+    );
+  const first = recording("a", 60_000, at(23, 10, 12));
+  const second = recording("b", 60_000, at(23, 9, 0));
+  const view = await mount(page([first, second]));
+  const remove = async () => {
+    const row = rowsOf(view.container)[0];
+    await view.act(async () => button(row, "Ta bort")!.click());
+    await view.act(async () => button(row.querySelector('[role="group"]')!, "Ta bort")!.click());
+  };
+  const said = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50)); // the announcer speaks in the next frame
+    return document.querySelector('[data-astryx-live-region="polite"]')?.textContent;
+  };
+
+  await remove();
+  await view.act(async () => view.rerender(page([second])));
+  const focused = () => [document.activeElement?.tagName, document.activeElement?.textContent];
+  assert.deepEqual(focused(), ["H2", "En inspelning har inte skickats"], "the list's heading, with what is left");
+  assert.equal(await said(), "Inspelningen togs bort.");
+
+  await remove();
+  await view.act(async () => view.rerender(page([])));
+  assert.deepEqual(focused(), ["H1", "Välj ett flöde"], "with none left, the page's heading");
+  await view.unmount();
+});
+
 test("a recording that cannot be saved or removed says so in an alert, and a removal that failed closes the question", async (t) => {
-  const saving = await import("../components/save-recording");
   const store = await import("./recording-store");
   const { container, act } = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))] });
   const row = rowsOf(container)[0];
   const alert = () => [...row.querySelectorAll('[role="alert"]')].map((a) => a.textContent?.trim());
   assert.deepEqual(alert(), [], "nothing is said before something fails");
 
-  t.mock.method(saving, "saveRecordingAsFiles", async () => {
-    throw new Error("disk");
-  });
-  await act(async () => button(row, "Spara som fil")!.click());
-  assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
-
+  // The device reads nothing back, and refuses the deletion: another tab holds the recording.
   t.mock.method(store, "recordingStore", async () => ({
+    readFile: async () => {
+      throw new Error("disk");
+    },
     remove: async () => {
       throw new Error(IN_USE_ELSEWHERE);
     },
   }));
+  await act(async () => button(row, "Spara som fil")!.click());
+  assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
+
   await act(async () => button(row, "Ta bort")!.click());
   await act(async () => button(row.querySelector('[role="group"]')!, "Ta bort")!.click());
   assert.deepEqual(alert(), [IN_USE_ELSEWHERE]);
@@ -201,15 +274,50 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
   assert.equal(focused(), "Ta bort", "and the focus is back where it was");
 });
 
+test("a recording another tab holds is listed with why nothing can be done with it here, and the list is read again when the page is back in view", async () => {
+  const { useUnsentRecordings } = await import("../components/UnsentRecordings");
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const { listUnsentGroups, mayChange } = store;
+  const mine = recording("a", 60_000, at(23, 10, 12));
+  const recordedElsewhere = { ...recording("b", 60_000, at(23, 11, 0)), state: "recording" as const };
+  let elsewhere = [recordedElsewhere];
+  let offered = [mine];
+  store.listUnsentGroups = async () => ({ offered, elsewhere });
+  store.mayChange = () => true;
+  function Unsent() {
+    return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, onContinue: () => {}, sendLabel: () => "Skapa dokument" });
+  }
+  try {
+    const { container, act } = await mount(createElement(Unsent));
+    await act(async () => undefined);
+    assert.equal(container.querySelector("h2")?.textContent, "2 inspelningar har inte skickats");
+    const [held, own] = rowsOf(container);
+    assert.match(held.textContent!, /Inspelningen används i en annan flik\./);
+    assert.deepEqual(labels(held), [], "nothing here that the other tab would have to undo");
+    assert.deepEqual(labels(own), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+
+    // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
+    elsewhere = [];
+    offered = [recordedElsewhere, mine];
+    await act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    await act(async () => undefined);
+    assert.deepEqual(labels(rowsOf(container)[0]), ["Fortsätt spela in", "Skapa dokument", "Spara som fil", "Ta bort"]);
+  } finally {
+    store.listUnsentGroups = listUnsentGroups;
+    store.mayChange = mayChange;
+  }
+});
+
 test("recordings the device's store cannot list are not passed over: a notice stands in the list's place, and Försök igen reads again", async () => {
   const { useUnsentRecordings } = await import("../components/UnsentRecordings");
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const listUnsent = store.listUnsent;
+  const listUnsentGroups = store.listUnsentGroups;
   let readable = false;
-  store.listUnsent = async () => {
+  store.listUnsentGroups = async () => {
     if (!readable) throw new Error("the database is not readable");
-    return [recording("a", 60_000, at(23, 10, 12))];
+    return { offered: [recording("a", 60_000, at(23, 10, 12))], elsewhere: [] };
   };
   function Unsent() {
     return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, sendLabel: () => "Skapa dokument" });
@@ -225,6 +333,6 @@ test("recordings the device's store cannot list are not passed over: a notice st
     assert.doesNotMatch(container.textContent!, /Kunde inte läsa/);
     assert.equal(rowsOf(container).length, 1, "the recording is listed once the store can be read");
   } finally {
-    store.listUnsent = listUnsent;
+    store.listUnsentGroups = listUnsentGroups;
   }
 });

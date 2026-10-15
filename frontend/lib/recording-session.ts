@@ -19,6 +19,7 @@
 import { formatBytes, formatDuration } from "./format";
 import {
   continuable,
+  filesIn,
   IN_USE_ELSEWHERE,
   NOT_ON_DEVICE,
   sealed,
@@ -29,6 +30,21 @@ import {
 } from "./recording-store";
 
 const CHUNK_MS = 2_000;
+// The recorder is looked at every CHUNK_MS while the page is in view. After this many looks without audio from it, it is
+// asked for its audio once; one more without, and the page says that nothing is being kept.
+const QUIET_LOOKS = 3;
+// A microphone muted this long in view is no passing route change: the page says what to do.
+const MUTED_LONG_MS = 15_000;
+// The shortest muted stretch the page tells of afterwards.
+const MUTED_GAP_MS = 2_000;
+// A recorder hands over a chunk every CHUNK_MS, in the background too. A page away this long that got at most one (the
+// chunk flush asked for as it went) may have had no microphone: a phone takes it from a page in the background, and
+// Android says nothing of it (no mute).
+const HIDDEN_GAP_MS = 3 * CHUNK_MS;
+// A recorder that stops hands over its last audio and then its stop event at once. One still without its stop event this
+// long after its part began to end, and after its latest audio, will not give it (WebKit after an interruption): the part
+// ends unconfirmed, and audio it hands over later is still kept.
+const END_WAIT_MS = 2 * CHUNK_MS;
 
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
@@ -84,6 +100,14 @@ interface CaptureSnapshot {
   limitReached: boolean;
   /** The microphone's track is muted for now; the recording goes on, and the same track's sound comes back. */
   muted: boolean;
+  /** Muted for MUTED_LONG_MS in view: it is not coming back by itself. */
+  mutedLong: boolean;
+  /** How long the microphone was muted, told once the page is in view with it back; `away`: the page was in the background. */
+  mutedGap: { ms: number; away: boolean } | null;
+  /** How long the page was in the background while recording with no audio from the recorder, told once it is back. */
+  hiddenGap: number | null;
+  /** The recorder records but hands over no audio, not even when asked: what is said now is not kept. */
+  stalled: boolean;
   /** Stoppa: the recorder has stopped and the recording is being stored; what follows its audio stops now too. */
   stopping: boolean;
 }
@@ -141,12 +165,11 @@ type EndReason = "stop" | "interrupt" | "leave";
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
-const PAUSE_UNCONFIRMED = "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.";
+export const END_UNCONFIRMED = "Inspelningen stoppades, men webbläsaren bekräftade inte att de sista sekunderna sparades.";
+// Said under the pause's own warning (recordingNotices), which names the pause.
+const PAUSE_UNCONFIRMED = "Det gick inte att bekräfta att inspelningen sparades på enheten.";
 
 const notOnDevice = (error: unknown) => error instanceof Error && error.message === NOT_ON_DEVICE;
-
-// A recording's files: its parts with audio.
-const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
 
 const noMoreFiles = (maxFiles: number) =>
   `Flödet tar emot högst ${maxFiles} ${maxFiles === 1 ? "fil" : "filer"}, och inspelningen har redan så många delar.`;
@@ -182,6 +205,7 @@ function microphoneError(error: unknown): string {
 
 /** One MediaRecorder run and the file it makes. */
 interface Part {
+  recordingId: string;
   recorder: MediaRecorder;
   /** Its index in the store; its chunks wait for it. */
   index: Promise<number>;
@@ -190,7 +214,10 @@ interface Part {
   ms: number;
   since: number | null;
   ending: EndReason | null;
-  ended: Promise<void>;
+  /** Resolves once the part has ended: true when its recorder confirmed it (its stop event, after its last audio). */
+  ended: Promise<boolean>;
+  /** Called as the part ends (endPart): without its stop event, the part ends unconfirmed after END_WAIT_MS. */
+  waitForStop(): void;
   /** Its recorded time has joined that of the earlier parts. */
   counted: boolean;
 }
@@ -209,6 +236,10 @@ export class RecordingCapture {
     remainingMs: null,
     limitReached: false,
     muted: false,
+    mutedLong: false,
+    mutedGap: null,
+    hiddenGap: null,
+    stalled: false,
     stopping: false,
   };
   private listeners = new Set<() => void>();
@@ -237,6 +268,18 @@ export class RecordingCapture {
   // Recorded time of the parts before the running one, on a monotonic clock:
   // never by counting timer ticks, which hidden tabs throttle.
   private earlierPartsMs = 0;
+  // The watch over the running part (`watch`, in view only), and its looks without audio and with the microphone muted.
+  private watching: ReturnType<typeof setInterval> | null = null;
+  private quietLooks = 0;
+  private mutedLooks = 0;
+  // Since when the microphone is muted, on the recorded clock (elapsedMs: a pause misses nothing), muted time not yet told
+  // (`mutedGap`), and whether the page was away meanwhile.
+  private mutedSince: number | null = null;
+  private untoldMutedMs = 0;
+  private mutedAway = false;
+  // Since when, on the recorded clock, the page is in the background, and the chunks with audio that came meanwhile.
+  private hiddenSince: number | null = null;
+  private hiddenChunks = 0;
 
   /** `openStore` is called on the first start, never while rendering. */
   constructor(
@@ -349,12 +392,16 @@ export class RecordingCapture {
     } else if (part?.recorder.state === "paused") {
       part.recorder.resume();
       part.since = this.now();
+      // Paused, it had nothing to hand over: the watch counts from here.
+      this.quietLooks = 0;
       this.scheduleHandover(part);
       this.set({ status: "recording" });
     }
   }
 
   async stop(): Promise<StoredRecording | null> {
+    // Stopping already: the first stop gives the recording.
+    if (this.snapshot.stopping) return null;
     this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
@@ -371,8 +418,9 @@ export class RecordingCapture {
     this.set({ stopping: true });
     let stopped: StoredRecording | null = null;
     let failure: string | null = null;
+    let confirmed = true;
     try {
-      await ended;
+      confirmed = await ended;
       await store.setState(recording.id, "stopped");
       stopped = await store.get(recording.id);
     } catch (error) {
@@ -381,10 +429,14 @@ export class RecordingCapture {
     // The stopped recording is on the page's screen: no other tab offers or deletes it until the page lets it go.
     if (stopped) store.hold(recording.id);
     this.finish();
-    // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed.
+    // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed. A reason
+    // given before (the flow's limit) is said rather than a recorder that did not confirm its end.
+    const unconfirmed = confirmed && !stopped?.parts.some((part) => part.endConfirmed === false)
+      ? {}
+      : { error: this.snapshot.error ?? END_UNCONFIRMED };
     this.set(
       failure === null
-        ? { status: "stopped", recording: stopped, stream: null, stopping: false }
+        ? { status: "stopped", recording: stopped, stream: null, stopping: false, ...unconfirmed }
         : { status: "stopped", stream: null, stopping: false, error: failure },
     );
     return stopped;
@@ -488,17 +540,24 @@ export class RecordingCapture {
     this.part = null;
   }
 
-  /** Records a part on the opened microphone, listening for it to go away. */
+  /** Records a part on the opened microphone, listening for it to go away, and watching that its audio comes. */
   private record(stream: MediaStream) {
     stream.getAudioTracks().forEach((track) => {
       track.addEventListener("ended", this.onMicrophoneLost);
       track.addEventListener("mute", this.onMuteChange);
       track.addEventListener("unmute", this.onMuteChange);
     });
+    // A new microphone: nothing muted or quiet of the one before carries over.
+    this.mutedSince = null;
+    this.untoldMutedMs = 0;
+    this.mutedAway = false;
+    this.hiddenSince = null;
+    this.set({ stalled: false, mutedGap: null, hiddenGap: null });
     this.onMuteChange();
     this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
     this.deps.window?.addEventListener("pagehide", this.flush);
     this.beginPart(stream);
+    this.watching ??= setInterval(this.watch, CHUNK_MS);
   }
 
   /** Records a new part on `stream`; throws when the browser will not start a recorder. */
@@ -509,8 +568,17 @@ export class RecordingCapture {
       mimeType,
       audioBitsPerSecond: SPEECH_RECORDING.audioBitsPerSecond,
     });
-    let ended = () => {};
+    let ended = (_confirmed: boolean) => {};
+    let finished = false;
+    let releaseWriter: (() => void) | null = null;
+    // The wait for its stop event, once its end has begun (and again after each audio that comes then).
+    let waiting: ReturnType<typeof setTimeout> | null = null;
+    const wait = () => {
+      if (waiting !== null) clearTimeout(waiting);
+      waiting = setTimeout(() => void finish(false), END_WAIT_MS);
+    };
     const part: Part = {
+      recordingId: id,
       recorder,
       // Queued before any of the part's chunks.
       index: store.startPart(id),
@@ -518,13 +586,28 @@ export class RecordingCapture {
       ms: 0,
       since: null,
       ending: null,
-      ended: new Promise<void>((resolve) => (ended = resolve)),
+      ended: new Promise<boolean>((resolve) => (ended = resolve)),
+      waitForStop: () => {
+        if (!finished && waiting === null) {
+          releaseWriter ??= store.retainWriter(id);
+          wait();
+        }
+      },
       counted: false,
     };
 
     const onData = (event: Event) => {
       const data = (event as BlobEvent).data;
       if (!data || data.size === 0) return;
+      // Audio from a recorder whose part is ending: its stop event may come after it.
+      if (waiting !== null) wait();
+      // Audio: the recorder is alive, in the background too.
+      const current = this.snapshot.recording?.id === id;
+      if (current) {
+        this.quietLooks = 0;
+        if (this.hiddenSince !== null) this.hiddenChunks += 1;
+        if (this.snapshot.stalled) this.set({ stalled: false });
+      }
       part.bytes += data.size;
       const durationMs = this.partElapsed(part);
       void part.index
@@ -532,11 +615,12 @@ export class RecordingCapture {
         .then(this.followStore)
         .catch((error) => {
           // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
-          if (notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
+          if (this.snapshot.recording?.id === id && notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
         });
+      if (!current) return;
       this.chunks += 1;
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
-        void store.lowOnSpace().then((lowSpace) => lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
+        void store.lowOnSpace().then((lowSpace) => this.snapshot.recording?.id === id && lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
       }
       // A full part's overlap belongs to its own file, not to the running one.
       if (part !== this.part) return;
@@ -547,20 +631,36 @@ export class RecordingCapture {
 
     const onError = () => void this.endPart(part, "interrupt");
 
-    const onStop = async () => {
-      recorder.removeEventListener("dataavailable", onData);
-      recorder.removeEventListener("error", onError);
-      recorder.removeEventListener("stop", onStop);
-      this.countTime(part);
+    // The part's end: confirmed by its stop event, or not (waitForStop). Unconfirmed, it still takes the audio that comes.
+    const finish = async (confirmed: boolean) => {
+      if (finished) return;
+      finished = true;
+      if (waiting !== null) clearTimeout(waiting);
+      waiting = null;
+      // Its time stands still from here, also for audio that comes later.
+      part.ms = this.partElapsed(part);
       part.since = null;
+      this.countTime(part);
       // A full part ending its overlap has handed over; only the running part's end counts.
       if (this.part === part) {
         this.part = null;
         this.clearHandover();
         // A stop nobody asked for means the microphone went away.
-        if ((part.ending ?? "interrupt") === "interrupt") await this.interrupt();
+        if ((part.ending ?? "interrupt") === "interrupt") {
+          if (!confirmed) this.set({ error: this.snapshot.error ?? END_UNCONFIRMED });
+          await this.interrupt();
+        }
       }
-      ended();
+      ended(confirmed);
+    };
+
+    // After its last audio: the recorder has handed over all it had.
+    const onStop = () => {
+      recorder.removeEventListener("dataavailable", onData);
+      recorder.removeEventListener("error", onError);
+      recorder.removeEventListener("stop", onStop);
+      void part.index.then((index) => store.setPartEndConfirmed(id, index, true)).catch(() => undefined).finally(() => releaseWriter?.());
+      void finish(true);
     };
 
     recorder.addEventListener("dataavailable", onData);
@@ -569,6 +669,7 @@ export class RecordingCapture {
     recorder.start(CHUNK_MS);
     part.since = this.now();
     this.part = part;
+    this.quietLooks = 0;
     // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
     this.scheduleHandover(part);
@@ -704,26 +805,34 @@ export class RecordingCapture {
     return Math.floor(Math.min(running + later, left));
   }
 
-  /** Ends the running parts, a full part still overlapping first; resolves once both have stopped. */
-  private endParts(reason: EndReason): Promise<void> {
+  /** Ends the running parts, a full part still overlapping first; true once both have stopped and their recorders said so. */
+  private endParts(reason: EndReason): Promise<boolean> {
     const ended = [this.endOverlap()];
     if (this.part) ended.push(this.endPart(this.part, reason));
-    return Promise.all(ended).then(() => undefined);
+    return Promise.all(ended).then((confirmed) => confirmed.every(Boolean));
   }
 
   /** Ends a full part's overlap now. */
-  private endOverlap(): Promise<void> {
+  private endOverlap(): Promise<boolean> {
     const overlap = this.overlapping;
     this.overlapping = null;
-    if (!overlap) return Promise.resolve();
+    if (!overlap) return Promise.resolve(true);
     clearTimeout(overlap.timer);
     return this.endPart(overlap.part, "stop");
   }
 
-  private endPart(part: Part, reason: EndReason): Promise<void> {
+  /** Every end of a part goes through here: Stoppa, a page that goes, a lost microphone, a handover. */
+  private endPart(part: Part, reason: EndReason): Promise<boolean> {
+    if (part.ending === null) {
+      // Event delivery can take seconds after capture ends; it adds no recorded time.
+      part.ms = this.partElapsed(part);
+      part.since = null;
+      void part.index.then((index) => this.store!.setPartEndConfirmed(part.recordingId, index, false)).catch(() => undefined);
+    }
     part.ending ??= reason;
     // Its deadline goes as its end begins, not at the stop event after it.
     if (part === this.part) this.clearHandover();
+    part.waitForStop();
     try {
       if (part.recorder.state !== "inactive") part.recorder.stop();
     } catch {
@@ -765,8 +874,18 @@ export class RecordingCapture {
     const { recording, refused: was, status } = this.snapshot;
     if (!store || !recording) return;
     const refused = store.refused(recording.id);
-    if (refused === was && store.persistent === this.snapshot.persistent) return;
-    this.set({ persistent: store.persistent, refused });
+    if (refused !== was || store.persistent !== this.snapshot.persistent) {
+      this.set({ persistent: store.persistent, refused });
+    }
+    // Stopped recorders may deliver their last audio after the UI's wait ended. Publish its metadata too, so the
+    // ready view's audio, export and send decisions follow the stored recording rather than the timeout's snapshot.
+    if (status === "stopped" || status === "interrupted") {
+      void store.get(recording.id).then((latest) => {
+        if (!latest || this.snapshot.recording?.id !== recording.id || this.snapshot.status !== status) return;
+        const confirmed = !latest.parts.some((part) => part.endConfirmed === false);
+        this.set({ recording: latest, ...(confirmed && this.snapshot.error === END_UNCONFIRMED ? { error: null } : {}) });
+      }).catch(() => undefined);
+    }
     const capturing = status === "recording" || status === "paused" || status === "interrupted";
     if (refused !== was) this.sayBackOnDevice(capturing && was === "full" && refused === null);
   };
@@ -781,7 +900,45 @@ export class RecordingCapture {
 
   private onMuteChange = () => {
     const muted = !!this.microphone?.getAudioTracks().some((track) => track.muted);
-    if (muted !== this.snapshot.muted) this.set({ muted });
+    const hidden = this.deps.page?.visibilityState === "hidden";
+    if (muted && this.mutedSince === null) {
+      this.mutedSince = this.elapsedMs();
+      this.mutedAway ||= hidden;
+    } else if (!muted && this.mutedSince !== null) {
+      this.untoldMutedMs += this.elapsedMs() - this.mutedSince;
+      this.mutedSince = null;
+    }
+    if (muted !== this.snapshot.muted) {
+      // A muted microphone explains the missing audio; once back, the watch starts over.
+      this.quietLooks = this.mutedLooks = 0;
+      this.set({ muted, mutedLong: false, stalled: false, mutedGap: null });
+    }
+    // In view with the microphone back: how long it was muted since the page last told.
+    if (muted || hidden) return;
+    if (this.untoldMutedMs >= MUTED_GAP_MS) this.set({ mutedGap: { ms: this.untoldMutedMs, away: this.mutedAway } });
+    this.untoldMutedMs = 0;
+    this.mutedAway = false;
+  };
+
+  /**
+   * Every CHUNK_MS while a part records in view. A recorder that stopped by itself is a lost microphone, whether or not
+   * its stop event comes (endPart waits for it a while). One that hands over no audio is asked for it once, and then said
+   * to keep nothing: the timer runs on the clock, and audio that never reaches the store is not in the recording (a
+   * recorder that gives its audio only at its stop, a stalled encoder). A page in the background is not watched: a phone
+   * holds its recorder's audio back, and slows its timers.
+   */
+  private watch = () => {
+    const part = this.part;
+    if (!part || part.ending || this.snapshot.status !== "recording" || this.deps.page?.visibilityState === "hidden") return;
+    if (part.recorder.state === "inactive") return void this.endPart(part, "interrupt");
+    if (this.snapshot.muted) {
+      this.mutedLooks += 1;
+      if (this.mutedLooks * CHUNK_MS >= MUTED_LONG_MS && !this.snapshot.mutedLong) this.set({ mutedLong: true });
+      return;
+    }
+    this.quietLooks += 1;
+    if (this.quietLooks === QUIET_LOOKS) this.flush();
+    else if (this.quietLooks > QUIET_LOOKS && !this.snapshot.stalled) this.set({ stalled: true });
   };
 
   /** True, with the microphone let go, when the page went away during a start. */
@@ -829,6 +986,9 @@ export class RecordingCapture {
       track.removeEventListener("unmute", this.onMuteChange);
     });
     stream?.getTracks().forEach((track) => track.stop());
+    // Nothing records without it: the watch goes with it.
+    if (this.watching !== null) clearInterval(this.watching);
+    this.watching = null;
   }
 
   /** A phone may freeze or kill a hidden page, and a tab may close: store what is recorded so far. */
@@ -843,15 +1003,34 @@ export class RecordingCapture {
   private onVisibilityChange = () => {
     const { status } = this.snapshot;
     if (status !== "recording" && status !== "paused") return;
-    if (this.deps.page?.visibilityState === "hidden") return this.flush();
+    if (this.deps.page?.visibilityState === "hidden") {
+      // Muted from here, it was muted while the page was away; a gap told before is old news when it is back.
+      if (this.mutedSince !== null) this.mutedAway = true;
+      if (this.snapshot.mutedGap || this.snapshot.hiddenGap !== null) this.set({ mutedGap: null, hiddenGap: null });
+      this.hiddenSince ??= this.elapsedMs();
+      this.hiddenChunks = 0;
+      return this.flush();
+    }
+    // In view again: the watch counts from here.
+    this.quietLooks = this.mutedLooks = 0;
     // The wake lock ended with the hidden page; the microphone may have too, or be muted for now.
     void this.takeWakeLock();
     this.onMuteChange();
+    this.tellHidden();
     const lost =
       this.part?.recorder.state === "inactive" ||
       this.microphone?.getAudioTracks().some((track) => track.readyState === "ended");
     if (lost) this.onMicrophoneLost();
   };
+
+  /** Back in view: how long the page was away with no audio from the recorder, unless a muted microphone says why. */
+  private tellHidden() {
+    const since = this.hiddenSince;
+    this.hiddenSince = null;
+    if (since === null || this.snapshot.muted || this.snapshot.mutedGap) return;
+    const ms = this.elapsedMs() - since;
+    if (ms >= HIDDEN_GAP_MS && this.hiddenChunks < 2) this.set({ hiddenGap: ms });
+  }
 
   private async takeWakeLock() {
     this.releaseWakeLock();

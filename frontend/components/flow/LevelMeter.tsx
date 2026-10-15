@@ -9,10 +9,43 @@ function levelFromRms(rms: number): number {
 }
 
 /**
+ * Resumes an audio context that the browser suspends or interrupts after it has run (iOS after a call or Siri, a page in
+ * the background): when its state changes, and when the page is shown again. Returns what stops it.
+ */
+export function keepRunning(
+  context: AudioContext,
+  page: Pick<Document, "addEventListener" | "removeEventListener"> | undefined = globalThis.document,
+): () => void {
+  const resume = () => {
+    if (context.state !== "running" && context.state !== "closed") void context.resume().catch(() => undefined);
+  };
+  context.addEventListener("statechange", resume);
+  page?.addEventListener("visibilitychange", resume);
+  return () => {
+    context.removeEventListener("statechange", resume);
+    page?.removeEventListener("visibilitychange", resume);
+  };
+}
+
+/** The input through an analyser, or null where the browser gives no audio for it (too many contexts, no audio track). */
+function analyse(AudioCtor: typeof AudioContext, stream: MediaStream) {
+  let context: AudioContext | null = null;
+  try {
+    context = new AudioCtor();
+    const source = context.createMediaStreamSource(stream);
+    return { context, source, analyser: context.createAnalyser() };
+  } catch {
+    void context?.close().catch(() => undefined);
+    return null;
+  }
+}
+
+/**
  * Calls `onLevel` about fifteen times a second with the input's level, which
  * rises at once and falls slowly so the display stays calm, and the read's
  * loudest sample as it is. `running` is false while the browser keeps the
- * audio context suspended and the level means nothing.
+ * audio context suspended and the level means nothing. Without audio for it,
+ * there is no level, and the recording goes on.
  */
 export function useInputLevel(
   stream: MediaStream | null,
@@ -23,11 +56,11 @@ export function useInputLevel(
 
   useEffect(() => {
     const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!stream || !AudioCtor) return;
-    const context = new AudioCtor();
+    const audio = stream && AudioCtor ? analyse(AudioCtor, stream) : null;
+    if (!audio) return;
+    const { context, source, analyser } = audio;
     void context.resume().catch(() => undefined);
-    const source = context.createMediaStreamSource(stream);
-    const analyser = context.createAnalyser();
+    const stopResuming = keepRunning(context);
     analyser.fftSize = 1024;
     source.connect(analyser);
     const samples = new Float32Array(analyser.fftSize);
@@ -45,6 +78,7 @@ export function useInputLevel(
     }, 66);
     return () => {
       clearInterval(timer);
+      stopResuming();
       source.disconnect();
       void context.close().catch(() => undefined);
       // Paused or gone: the display settles instead of freezing mid-word.

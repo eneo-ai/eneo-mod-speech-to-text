@@ -5,8 +5,8 @@
  * order. A crash, reload, power cut or expired session therefore loses at most
  * the latest chunk. Without IndexedDB, or when the device refuses a write, the
  * audio is kept in memory and `persistent` turns false: the recording then
- * lives only in this tab. A device that refused for want of room is tried again
- * until it takes what this tab holds, and the recording is kept on it again.
+ * lives only in this tab. A device that refused (full, or failing) is tried
+ * again until it takes what this tab holds, and the recording is kept on it again.
  */
 
 import type { Json, UploadHandle } from "./api";
@@ -31,6 +31,8 @@ interface RecordingPart {
   durationMs: number;
   bytes: number;
   chunks: number;
+  /** False while the recorder may still deliver final audio. Absent on recordings made before this field existed. */
+  endConfirmed?: boolean;
   /** Eneo's file id once this part is uploaded. */
   fileId: string | null;
   /** The module's resource for this part's upload in parts, until the file id is known: a later send continues it. */
@@ -89,7 +91,7 @@ export interface StoreEnv {
   storage?: Pick<StorageManager, "estimate" | "persist"> & Partial<Pick<StorageManager, "persisted">>;
   locks?: Pick<LockManager, "request" | "query">;
   now?: () => number;
-  /** Runs `run` after `ms`: how a full device is tried again. Without it only an estimate that shows room tries it. */
+  /** Runs `run` after `ms`: how a device that refused is tried again. Without it only an estimate that shows room tries it. */
   timer?: (run: () => void, ms: number) => void;
 }
 
@@ -99,8 +101,8 @@ const RECORDINGS = "recordings";
 const CHUNKS = "chunks";
 // 100 MiB: about 7 hours of speech at the recorder's 32 kbit/s (about 4 at the 54 kbit/s WebKit gives); below this the recorder warns.
 const LOW_SPACE_BYTES = 100 * 1024 * 1024;
-// How often a device that refused audio for want of room is tried again.
-const RETRY_FULL_MS = 20_000;
+// How often a device that refused audio (full, or failing) is tried again.
+const RETRY_MS = 20_000;
 
 interface Chunk {
   recordingId: string;
@@ -147,28 +149,34 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
   });
 }
 
-/** The browser closed the connection (it may, to free memory or clean a profile): the next transaction throws this. */
-function connectionClosed(error: unknown): boolean {
-  return (error as { name?: string } | null)?.name === "InvalidStateError";
+/** The device has no room: a new connection gives it none. */
+function quotaExceeded(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === "QuotaExceededError";
 }
 
 /**
- * The database, over a connection that is reopened when the browser has closed it. A call that finds it closed reopens it
- * once (one reopening for every call that finds it at the same time) and tries again; every call here can be repeated,
- * and a reopening that fails is the call's own failure, never an empty answer.
+ * The database, over a connection that is reopened when a call on it fails for any reason but a full device: the browser
+ * may have closed it (to free memory or clean a profile) or lost it (WebKit's "Connection to Indexed Database server
+ * lost"). A failed call reopens it once (one reopening for every call that fails on the same connection) and tries again;
+ * every call here can be repeated, and a reopening that fails is the call's own failure, never an empty answer.
  */
 function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: () => Promise<IDBDatabase>): Backend {
   let db = initial;
   let reopening: Promise<IDBDatabase> | null = null;
   async function use<T>(work: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    const used = db;
     try {
-      return await work(db);
+      return await work(used);
     } catch (error) {
-      if (!connectionClosed(error)) throw error;
-      reopening ??= reopen().finally(() => {
-        reopening = null;
-      });
-      db = await reopening;
+      if (quotaExceeded(error)) throw error;
+      if (db === used) {
+        reopening ??= reopen().finally(() => {
+          reopening = null;
+        });
+        db = await reopening;
+        // It may still be open: what runs on it finishes, and nothing new starts there.
+        used.close();
+      }
       return work(db);
     }
   }
@@ -262,6 +270,12 @@ export function continuable(recording: StoredRecording): boolean {
   return recording.state === "recording" || recording.state === "paused";
 }
 
+/** A recording's files: its parts with audio. */
+export const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
+
+/** Whether any audio reached the device: a recording without is nothing to send or save, only to go on with or delete. */
+export const hasAudio = (recording: StoredRecording) => filesIn(recording) > 0;
+
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
 function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);
@@ -299,11 +313,13 @@ export class RecordingStore {
   // Stopped recordings this page still shows: their lease stays with this tab between its operations, so no other tab
   // offers or deletes one that is on this tab's screen (`hold`, until `letGo`).
   private held = new Set<string>();
+  // Recorders that can still deliver final audio, including after the page stopped waiting or left the view.
+  private writers = new Map<string, number>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
   private overflowed = new Map<string, DeviceRefusal>();
-  // A try of the full device is waiting on the timer.
+  // A try of the device that refused is waiting on the timer.
   private retrying = false;
   // The first chunk of the part being recorded, which holds its header: all that is left to play of a part
   // when the device's copy goes (the browser's data is cleared), together with what is recorded after it.
@@ -408,6 +424,13 @@ export class RecordingStore {
     }));
   }
 
+  setPartEndConfirmed(id: string, part: number, endConfirmed: boolean): Promise<void> {
+    return this.update(id, (recording) => ({
+      ...recording,
+      parts: recording.parts.map((p) => p.index === part ? { ...p, endConfirmed } : p),
+    }));
+  }
+
   /** The part's upload in parts was made or asked to complete; null once it is gone. */
   setPartUpload(id: string, part: number, upload: UploadHandle | null): Promise<void> {
     return this.update(id, (recording) => ({
@@ -470,19 +493,34 @@ export class RecordingStore {
 
   /** Recordings Eneo has not accepted as a run, newest first, except those being captured. */
   listUnsent(ownerId: string): Promise<StoredRecording[]> {
+    return this.listUnsentGroups(ownerId).then(({ offered }) => offered);
+  }
+
+  /** Unsent recordings another tab holds now (it records, shows, sends or deletes one): told of, never offered here. */
+  listHeldElsewhere(ownerId: string): Promise<StoredRecording[]> {
+    return this.listUnsentGroups(ownerId).then(({ elsewhere }) => elsewhere);
+  }
+
+  /** One recording and lock snapshot, so a lease moving between tabs cannot put a recording into both groups. */
+  listUnsentGroups(ownerId: string): Promise<{ offered: StoredRecording[]; elsewhere: StoredRecording[] }> {
     return this.serial(async () => {
       const locks = await this.env.locks?.query().catch(() => null);
       const held = new Set(locks?.held?.map((lock) => lock.name) ?? []);
-      return (await this.all())
+      const recordings = (await this.all())
         .filter(
           (r) =>
             r.ownerId === ownerId &&
             r.state !== "submitted" &&
-            !this.inUse.has(r.id) &&
-            // A lock this tab keeps is its own; any other held lock is another tab's.
-            (this.leases.has(r.id) || !held.has(lockName(r.id))),
+            !this.inUse.has(r.id),
         )
         .sort((a, b) => b.startedAt - a.startedAt);
+      const groups: { offered: StoredRecording[]; elsewhere: StoredRecording[] } = { offered: [], elsewhere: [] };
+      for (const recording of recordings) {
+        // A lock this tab keeps is its own; any other held lock is another tab's.
+        const elsewhere = !this.leases.has(recording.id) && held.has(lockName(recording.id));
+        groups[elsewhere ? "elsewhere" : "offered"].push(recording);
+      }
+      return groups;
     });
   }
 
@@ -492,12 +530,30 @@ export class RecordingStore {
   }
 
   /**
+   * The recording's file at `nth` of its files (its parts with audio, filesIn), read alone: Spara som fil saves one a
+   * press. Null when the recording has no such file, or its audio is gone from the device.
+   */
+  readFile(id: string, nth: number): Promise<RecordingFile | null> {
+    return this.serial(async () => {
+      const recording = await this.load(id);
+      const part = recording?.parts.filter((p) => p.bytes > 0)[nth];
+      if (!recording || !part) return null;
+      const file = await this.readPart(recording, part);
+      return file.blob.size > 0 ? file : null;
+    });
+  }
+
+  /**
    * The parts to send: each part with every chunk the recording counted (sequence 0 up to its last, and as many bytes),
    * or the integrity error, so that what is left on the device never goes to Eneo as if it were all of it, and the local
    * copy is never deleted for it. A part with no chunk left is a gap too, not a part to leave out.
    */
   readPartsToSend(id: string): Promise<RecordingFile[]> {
     return this.serial(async () => {
+      const recording = await this.load(id);
+      if (recording?.parts.some((part) => part.endConfirmed === false)) {
+        throw new Error("Webbläsaren har inte bekräftat inspelningens stopp. Spara ljudet som fil för att behålla det och ladda upp filen i en ny inspelning.");
+      }
       const files = await this.readEach(id);
       if (files.some((file) => !file.whole)) throw new Error(INCOMPLETE_ON_DEVICE);
       return files.filter((file) => file.blob.size > 0);
@@ -507,39 +563,40 @@ export class RecordingStore {
   private async readEach(id: string): Promise<Array<RecordingFile & { whole: boolean }>> {
     const recording = await this.load(id);
     if (!recording) return [];
+    const files: Array<RecordingFile & { whole: boolean }> = [];
+    // One part at a time: only one part's audio is in memory while it becomes a file (hours of a meeting, on a phone).
+    for (const part of recording.parts) files.push(await this.readPart(recording, part));
+    return files;
+  }
+
+  /** One part as a file, whole or as far as it survived. */
+  private async readPart(recording: StoredRecording, part: RecordingPart): Promise<RecordingFile & { whole: boolean }> {
     const type = baseMimetype(recording.mimeType);
-    return Promise.all(
-      recording.parts.map(async (part) => {
-        // What this tab holds follows what the database has (it goes back onto the device only whole). The database's
-        // are read first and an unreadable database is the read's failure: audio held in this tab is never taken for all
-        // there is, and both copies stay.
-        const stored = await this.backend.chunks(id, part.index);
-        const here = await this.overflow.chunks(id, part.index);
-        // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
-        const bySeq = new Map<number, Chunk>();
-        for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
-        const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
-        const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
-        const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
-        // Safari's WebM is made seekable in Chromium; a WebM file's first chunk holds its whole header; MP4 carries its own duration.
-        const data = await withKeyframes(chunks.map((chunk) => chunk.data), type);
-        if (data.length > 0) {
-          data[0] = await withRecordedDuration(data[0], part.durationMs, type);
-        }
-        return {
-          index: part.index,
-          blob: new Blob(data, { type }),
-          filename: recordingFilename(recording, part.index),
-          whole,
-        };
-      }),
-    );
+    // What this tab holds follows what the database has (it goes back onto the device only whole). The database's
+    // are read first and an unreadable database is the read's failure: audio held in this tab is never taken for all
+    // there is, and both copies stay.
+    const stored = await this.backend.chunks(recording.id, part.index);
+    const here = await this.overflow.chunks(recording.id, part.index);
+    // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
+    const bySeq = new Map<number, Chunk>();
+    for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
+    const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+    const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
+    const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
+    // Safari's WebM is made seekable in Chromium; a WebM file's first chunk holds its whole header; MP4 carries its own duration.
+    const data = await withKeyframes(chunks.map((chunk) => chunk.data), type);
+    if (data.length > 0) {
+      data[0] = await withRecordedDuration(data[0], part.durationMs, type);
+    }
+    return { index: part.index, blob: new Blob(data, { type }), filename: recordingFilename(recording, part.index), whole };
   }
 
   /** Eneo accepted the run: the local copy is no longer needed. */
   accept(id: string, runId: string): Promise<void> {
     return this.change(async () => {
       const recording = await this.load(id);
+      // The UI may have stopped waiting, but this recorder still owns audio that could arrive after an upload.
+      if (recording?.parts.some((part) => part.endConfirmed === false)) return;
       // The device's copy says "submitted": what this tab holds is no longer needed.
       let marked = false;
       if (recording) {
@@ -622,7 +679,7 @@ export class RecordingStore {
     if (!this.inUse.delete(id)) return;
     // Part of its audio is only in this tab: no other tab may send or delete it without that part. A held recording is
     // on this tab's screen.
-    if (!this.overflowed.has(id) && !this.held.has(id)) this.dropLease(id);
+    this.releaseUnusedLease(id);
     this.notify();
   }
 
@@ -634,8 +691,27 @@ export class RecordingStore {
   /** The page no longer shows the recording: its lease ends, unless an operation is using it or part of it is only here. */
   letGo(id: string): void {
     if (!this.held.delete(id)) return;
-    if (!this.inUse.has(id) && !this.overflowed.has(id)) this.dropLease(id);
+    this.releaseUnusedLease(id);
     this.notify();
+  }
+
+  /** A recorder owns late writes until its real stop event and queued storage writes have ended. */
+  retainWriter(id: string): () => void {
+    this.writers.set(id, (this.writers.get(id) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = (this.writers.get(id) ?? 1) - 1;
+      if (left > 0) this.writers.set(id, left);
+      else this.writers.delete(id);
+      this.releaseUnusedLease(id);
+      this.notify();
+    };
+  }
+
+  private releaseUnusedLease(id: string): void {
+    if (!this.inUse.has(id) && !this.overflowed.has(id) && !this.held.has(id) && !this.writers.has(id)) this.dropLease(id);
   }
 
   private dropLease(id: string): void {
@@ -665,7 +741,7 @@ export class RecordingStore {
     }
   }
 
-  /** Whether the browser's estimate leaves little room; an estimate with room tries a full device again at once. */
+  /** Whether the browser's estimate leaves little room; an estimate with room tries a device that refused again at once. */
   async lowOnSpace(): Promise<boolean> {
     let room: number | null = null;
     try {
@@ -674,7 +750,7 @@ export class RecordingStore {
     } catch {
       // Not said: not low.
     }
-    if (room !== null && room >= LOW_SPACE_BYTES && this.full().length > 0) void this.retryFull();
+    if (room !== null && room >= LOW_SPACE_BYTES && this.retriable().length > 0) void this.retryRefused();
     return room !== null && room < LOW_SPACE_BYTES;
   }
 
@@ -760,35 +836,35 @@ export class RecordingStore {
         await this.backend.put(recording, chunks);
         return;
       } catch (error) {
-        // Full disk or a lost database connection: keep the rest in this tab.
-        const full = error instanceof DOMException && error.name === "QuotaExceededError";
-        this.overflowed.set(recording.id, full ? "full" : "failed");
-        if (full) this.retryLater();
+        // A full disk, or a database that failed on a new connection too: the rest is kept in this tab until the device
+        // takes it again.
+        this.overflowed.set(recording.id, quotaExceeded(error) ? "full" : "failed");
+        this.retryLater();
       }
     }
     await this.overflow.put(recording, chunks);
   }
 
-  /** The recordings the device refused for want of room. */
-  private full(): string[] {
-    return [...this.overflowed].filter(([, why]) => why === "full").map(([id]) => id);
+  /** The recordings the device refused (full, or failed) and may take again; never one whose copy there is gone. */
+  private retriable(): string[] {
+    return [...this.overflowed].filter(([, why]) => why !== "lost").map(([id]) => id);
   }
 
-  /** A full device is tried again in RETRY_FULL_MS: one timer, however many chunks it refuses meanwhile. */
+  /** A device that refused is tried again in RETRY_MS: one timer, however many chunks it refuses meanwhile. */
   private retryLater(): void {
     if (this.retrying || !this.env.timer) return;
     this.retrying = true;
     this.env.timer(() => {
       this.retrying = false;
-      void this.retryFull();
-    }, RETRY_FULL_MS);
+      void this.retryRefused();
+    }, RETRY_MS);
   }
 
-  /** In the queue, so no chunk comes between: what the full device refused goes onto it, and is tried again while it has no room. */
-  private retryFull(): Promise<void> {
+  /** In the queue, so no chunk comes between: what the device refused goes onto it, and is tried again while it refuses. */
+  private retryRefused(): Promise<void> {
     return this.change(async () => {
-      for (const id of this.full()) await this.flush(id);
-      if (this.full().length > 0) this.retryLater();
+      for (const id of this.retriable()) await this.flush(id);
+      if (this.retriable().length > 0) this.retryLater();
     });
   }
 
@@ -810,7 +886,7 @@ export class RecordingStore {
     }
     this.overflowed.delete(id);
     await this.overflow.delete(id);
-    if (!this.inUse.has(id) && !this.held.has(id)) this.dropLease(id);
+    this.releaseUnusedLease(id);
   }
 
   private async delete(id: string): Promise<void> {

@@ -15,10 +15,18 @@ function publish() {
   else root.removeProperty("--dock-block-size");
 }
 
+/**
+ * The most of the window's height a dock may cover. Large text (the reader's own size, iOS's text size) can make a dock
+ * half the screen; past this share it stands in the page's flow at its end (`data-dock-too-tall`, styles/globals.css).
+ */
+const MOST_OF_WINDOW = 1 / 3;
+
 /** Keeps a dock's height in `--dock-block-size` while it is on the page and covers it (stuck to the window's edge). */
 export function observeDock(dock: HTMLElement): () => void {
   const measure = () => {
-    const covers = dock.offsetHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
+    const tooTall = dock.offsetHeight > window.innerHeight * MOST_OF_WINDOW;
+    dock.toggleAttribute("data-dock-too-tall", tooTall);
+    const covers = !tooTall && dock.offsetHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
     docks.set(dock, covers ? dock.offsetHeight : 0);
     publish();
   };

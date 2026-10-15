@@ -41,19 +41,10 @@ test("the way back is one link named Alla flöden in the bar at every width, the
   assert.deepEqual(exits(locked.container), { back: 0, links: 0, account: 0 });
 });
 
-test("a view with no aside names the flow in the bar, as a heading only where the view has none of its own", async () => {
+test("the bar holds no flow name, so it stays one line: a view with no aside names the flow in its own first lines", async () => {
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const named = async (titleIsHeading: boolean) => {
-    const view = await mount(await signedIn(createElement(FlowFrame, { title: "Nämndmöte", titleIsHeading, children: null })));
-    const bar = view.container.querySelector('[role="banner"]')!;
-    const found = { heading: bar.querySelectorAll("h1").length, paragraph: [...bar.querySelectorAll("p")].filter((p) => p.textContent === "Nämndmöte").length };
-    await view.unmount();
-    return found;
-  };
-  assert.deepEqual(await named(true), { heading: 1, paragraph: 0 });
-  assert.deepEqual(await named(false), { heading: 0, paragraph: 1 });
-  const none = await mount(await signedIn(createElement(FlowFrame, { children: null })));
-  assert.equal(none.container.querySelector('[role="banner"]')!.querySelectorAll("h1, p").length, 0, "no title, no text in the bar");
+  const view = await mount(await signedIn(createElement(FlowFrame, { children: null })));
+  assert.equal(view.container.querySelector('[role="banner"]')!.querySelectorAll("h1, p").length, 0, "no heading, no text in the bar");
 });
 
 test("the flow's page keeps one h1: the flow's name on setup, the state's own heading on a run's states", async () => {
@@ -123,11 +114,13 @@ test("the page that loads says so, in one status region, and is busy", async () 
   assert.deepEqual([...view.container.querySelectorAll("h1")].map((h) => h.textContent), ["Tal till text"], "a page has its h1 while it loads too");
 });
 
-test("the page for a flow that cannot be opened has one h1, and Försök igen only where trying again can help", async () => {
+test("the page for a flow that cannot be opened has one h1, one way back (the bar's), and Försök igen only where trying again can help", async () => {
   const { FlowUnavailable } = await import("../components/flow/FlowPageStates");
   const { ApiError } = await import("./api");
   const gone = await mount(await signedIn(createElement(FlowUnavailable, { error: new ApiError(404, "Flow not found.", null, "not_found") })));
   assert.deepEqual([...gone.container.querySelectorAll("h1")].map((h) => h.textContent), ["Flödet är inte längre tillgängligt."]);
+  const back = [...gone.container.querySelectorAll('a[href="/flows"]')].filter((a) => a.textContent?.trim() === "Alla flöden");
+  assert.deepEqual(back.map((a) => Boolean(a.closest('[role="banner"]'))), [true]);
   assert.ok(![...gone.container.querySelectorAll("button")].some((b) => b.textContent === "Försök igen"));
   await gone.unmount();
   const down = await mount(await signedIn(createElement(FlowUnavailable, { error: new ApiError(503, "Service Unavailable", null) })));

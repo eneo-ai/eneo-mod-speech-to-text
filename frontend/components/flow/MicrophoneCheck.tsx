@@ -20,6 +20,8 @@ import {
 
 // The picker takes no empty value; Standard is "" everywhere else.
 const STANDARD = "standard";
+const TEST = "Testa mikrofonen";
+const STOP = "Sluta testa";
 
 /**
  * The microphone and "Testa mikrofonen", an optional check before recording.
@@ -120,23 +122,33 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
           width="var(--microphone-picker-width, min(100%, 24rem))"
         />
-        <Button
-          label={stream ? "Sluta testa" : "Testa mikrofonen"}
-          variant="secondary"
-          icon={<Icon icon="microphone" />}
-          onClick={() => (stream ? stopTest() : void test())}
-        />
+        <Button label={stream ? STOP : TEST} variant="secondary" onClick={() => (stream ? stopTest() : void test())}>
+          {/* As wide with either word, so it does not shrink under the finger that pressed it: the icon and the word
+              shown, centred together, over the other word's, hidden. */}
+          <span className={styles.sameWidth}>
+            <span>
+              <Icon icon="microphone" />
+              {stream ? STOP : TEST}
+            </span>
+            <span aria-hidden>
+              <Icon icon="microphone" />
+              {stream ? TEST : STOP}
+            </span>
+          </span>
+        </Button>
       </HStack>
-      {/* The bars take their height from the row they stand in. */}
-      {stream && (
+      {/* The level and what it says have their place from the first draw, so a test that starts moves nothing under
+          them (the start's button on a tablet or a laptop); the bars rest until it does. The bars take their height
+          from the row they stand in. */}
+      <HStack gap={3} vAlign="center" wrap="wrap">
         <HStack height={24}>
           <LevelMeter stream={stream} bars={24} variant="steps" />
         </HStack>
-      )}
-      {/* Always rendered, so a screen reader hears the change once. */}
-      <Text as="p" role="status" type="supporting">
-        {stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : ""}
-      </Text>
+        {/* Always rendered, so a screen reader hears the change once. */}
+        <Text as="p" role="status" type="supporting">
+          {stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : ""}
+        </Text>
+      </HStack>
       {problem && <ProblemAlert problem={problem} onRetry={() => void test()} />}
     </VStack>
   );

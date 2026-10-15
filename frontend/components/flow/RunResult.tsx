@@ -1,4 +1,4 @@
-import { useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
@@ -9,10 +9,12 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
+import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
-import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { rememberPosition } from "@/lib/playback-position";
+import { fileText, runFileName, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
@@ -107,6 +109,8 @@ export function RunResult({
     [flowId, run.id, transcript.fileIds],
   );
   const playback = usePlayback(sources);
+  // Where this run's recording was left in this browser: put back once its parts are known, and kept from there.
+  useEffect(() => (sources.length ? rememberPosition(playback, run.id, browserStorage()) : undefined), [playback, run.id, sources]);
   const tabs = !wide && showTranscript;
   const sideBySide = wide && showTranscript;
   const [view, setView] = useState<View>("document");
@@ -145,7 +149,7 @@ export function RunResult({
       {offer && (
         <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
       )}
-      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} />}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} downloadName={runFileName(flowName, run.created_at)} />}
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
@@ -180,56 +184,59 @@ export function RunResult({
   );
 
   return (
-    // The frame gives the page its width and edges; a document alone is a reading column on its left edge.
-    <VStack gap={6} paddingBlockStart={2} maxWidth={showTranscript ? undefined : 672}>
-      <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
-        <VStack gap={1}>
-          <Heading level={1} ref={heading} tabIndex={-1}>
-            {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
-          </Heading>
-          {finished && (
-            <Text as="p" type="supporting">
-              {/* On a phone the top bar already names the flow. */}
-              {wide && `${flowName} · `}
-              Skapad {formatRelativeDate(finished)}
-              {fromReviewed && " från den rättade transkriberingen"}
-            </Text>
-          )}
-        </VStack>
-        <HStack vAlign="center" gap={2}>
-          <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
-        </HStack>
-      </HStack>
-
-      {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
-          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it, the document
-          7 columns of 13 and the transcript 6. Below it each panel spans the one column; a hidden panel is an empty
-          span, which takes no room between rows because the grid has no row gap. */}
-      <VStack gap={4}>
-        {tabs && (
-          <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
-            <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
-            <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkribering" />
-          </TabList>
-        )}
-        <Grid columns={sideBySide ? 13 : 1} columnGap={8}>
-          <GridSpan columns={sideBySide ? 7 : "full"}>
-            {panel(
-              "document",
-              view === "document",
-              <VStack gap={6}>
-                {documentColumn}
-                {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
-              </VStack>,
-            )}
+    // The frame gives the page its width and edges, and every result has the whole column; its text keeps a reading
+    // measure in it (Markdown). With the transcript beside the text it is a workspace, whose column grows with a wide
+    // window (styles/globals.css). One tree for every width, so the transcript (and a correction being written in it) stays mounted when the window
+    // crosses the laptop breakpoint: below it the heading, the tabs and the two panels in one column; from it the
+    // heading and the document 7 columns of 13 and the transcript 6 beside them, from the page's top, so that it ends in
+    // the window before the page is scrolled. Below it a hidden panel is an empty span, which takes no room between
+    // rows because the grid has no row gap.
+    <VStack paddingBlockStart={2} data-workspace={showTranscript || undefined}>
+      <Grid columns={sideBySide ? 13 : 1} columnGap={8} className={styles.columns}>
+        <GridSpan columns={sideBySide ? 7 : "full"}>
+          <VStack gap={6}>
+            <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
+              <VStack gap={1}>
+                <Heading level={1} ref={heading} tabIndex={-1}>
+                  {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
+                </Heading>
+                {finished && (
+                  <Text as="p" type="supporting">
+                    {/* The flow's name at every width: the top bar holds no name. */}
+                    {flowName} ·{" "}
+                    Skapad {formatRelativeDate(finished)}
+                    {fromReviewed && " från den rättade transkriberingen"}
+                  </Text>
+                )}
+              </VStack>
+              <HStack vAlign="center" gap={2}>
+                <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
+              </HStack>
+            </HStack>
+            <VStack gap={4}>
+              {tabs && (
+                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
+                  <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
+                  <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkribering" />
+                </TabList>
+              )}
+              {panel(
+                "document",
+                view === "document",
+                <VStack gap={6}>
+                  {documentColumn}
+                  {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
+                </VStack>,
+              )}
+            </VStack>
+          </VStack>
+        </GridSpan>
+        {transcriptColumn && (
+          <GridSpan columns={sideBySide ? 6 : "full"}>
+            {panel("transcript", view === "transcript", transcriptColumn, tabs ? styles.afterTabs : styles.sticky)}
           </GridSpan>
-          {transcriptColumn && (
-            <GridSpan columns={sideBySide ? 6 : "full"}>
-              {panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
-            </GridSpan>
-          )}
-        </Grid>
-      </VStack>
+        )}
+      </Grid>
     </VStack>
   );
 }

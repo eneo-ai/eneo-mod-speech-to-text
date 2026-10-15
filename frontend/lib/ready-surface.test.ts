@@ -97,9 +97,9 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
   // The device has the parts, and the browser cannot turn them into a download.
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const readParts = store.readParts;
+  const readFile = store.readFile;
   const createObjectURL = URL.createObjectURL;
-  store.readParts = async () => [{ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]) }] as never;
+  store.readFile = async () => ({ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]) });
   try {
     const view = await ready();
     await view.act(async () => undefined);
@@ -111,8 +111,78 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
     assert.ok(named(view.container, "Spara som fil"), "and the button is still there");
   } finally {
-    store.readParts = readParts;
+    store.readFile = readFile;
     URL.createObjectURL = createObjectURL;
+  }
+});
+
+test("a recording of two files says so on Spara som fil and saves one file a press, each once: a press while one saves adds none, and a failed one is the one tried again", async () => {
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const { readFile } = store;
+  const { createObjectURL } = URL;
+  const { click } = HTMLAnchorElement.prototype;
+  const files = [
+    { index: 0, filename: "inspelning-del-1.webm", blob: new Blob(["a"]) },
+    { index: 1, filename: "inspelning-del-2.webm", blob: new Blob(["b"]) },
+  ];
+  let reading = Promise.resolve();
+  let failing = false;
+  store.readFile = async (_id, nth) => {
+    await reading;
+    if (failing) throw new Error("the database is not readable");
+    return files[nth] ?? null;
+  };
+  const blobs = new Map<string, Blob>();
+  const downloads: Array<{ name: string; blob: Blob }> = [];
+  URL.createObjectURL = (blob: Blob) => {
+    const url = `blob:${blobs.size}`;
+    blobs.set(url, blob);
+    return url;
+  };
+  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+    downloads.push({ name: this.download, blob: blobs.get(this.href)! });
+  };
+  try {
+    const part = recording.parts[0];
+    const view = await ready({ recording: { ...recording, parts: [part, { ...part, index: 1 }] } });
+    await view.act(async () => undefined);
+    const save = named(view.container, "Spara som 2 filer")!;
+    assert.ok(save, "the number of files, before the first is saved");
+
+    let read = () => {};
+    reading = new Promise((resolve) => (read = resolve));
+    await view.act(async () => {
+      save.click();
+      save.click(); // a second press while the first file is read
+    });
+    assert.equal(save.getAttribute("aria-busy"), "true", "it says it is saving");
+    assert.equal(save.disabled, false, "and keeps the focus a disabled button would lose");
+    await view.act(async () => read());
+    assert.deepEqual(downloads.map((download) => download.name), ["inspelning-del-1.webm"], "one file for the two presses");
+    assert.equal(save.textContent?.trim(), "Spara fil 2 av 2");
+    assert.equal(save.hasAttribute("aria-busy"), false);
+
+    failing = true;
+    await view.act(async () => save.click());
+    assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
+    assert.equal(save.textContent?.trim(), "Spara fil 2 av 2", "a file that failed is still the next");
+    failing = false;
+    await view.act(async () => save.click());
+    assert.doesNotMatch(view.container.textContent ?? "", /kunde inte sparas/);
+    assert.equal(save.textContent?.trim(), "Spara som 2 filer", "and from the first again");
+    assert.deepEqual(
+      await Promise.all(downloads.map(async ({ name, blob }) => [name, await blob.text()])),
+      [
+        ["inspelning-del-1.webm", "a"],
+        ["inspelning-del-2.webm", "b"],
+      ],
+      "each file once, in order",
+    );
+  } finally {
+    store.readFile = readFile;
+    URL.createObjectURL = createObjectURL;
+    HTMLAnchorElement.prototype.click = click;
   }
 });
 
@@ -179,4 +249,16 @@ test("a recording the device cannot read says why there is no player, and the ne
   } finally {
     store.readParts = readParts;
   }
+});
+
+test("an unconfirmed recorder's audio can be saved but cannot be sent until confirmation arrives", async () => {
+  const pending = { ...recording, parts: recording.parts.map((part) => ({ ...part, endConfirmed: false })) };
+  const view = await ready({ recording: pending });
+  assert.equal(named(view.container, "Skapa dokument"), null);
+  assert.ok(named(view.container, "Spara som fil"));
+  assert.match(view.container.textContent!, /bekräftat inspelningens stopp/);
+  const { ReadyPanel } = await import("../components/flow/ReadyPanel");
+  await view.act(async () => view.rerender(createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate() {}, onDiscard() {} })));
+  assert.ok(named(view.container, "Skapa dokument"));
+  assert.doesNotMatch(view.container.textContent!, /bekräftat inspelningens stopp/);
 });
