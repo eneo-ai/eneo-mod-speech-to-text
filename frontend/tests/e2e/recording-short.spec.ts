@@ -76,7 +76,16 @@ const seen = (page: Page) =>
 const silent = (page: Page) =>
   page.addInitScript(() => {
     // A muted input: the stream carries digital silence, and the bar warns of it.
-    navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+    navigator.mediaDevices.getUserMedia = async () => {
+      // Zeros that flow, as a muted microphone gives them: a destination with nothing feeding it gives the recorder no audio at all.
+      const context = new AudioContext();
+      const out = context.createMediaStreamDestination();
+      const zero = context.createConstantSource();
+      zero.offset.value = 0;
+      zero.connect(out);
+      zero.start();
+      return out.stream;
+    };
   });
 
 const lowOnSpace = (page: Page) =>

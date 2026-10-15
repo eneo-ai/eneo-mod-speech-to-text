@@ -887,7 +887,16 @@ export const STATES: State[] = [
       // A muted input: the stream carries digital silence. Set on the prototype: WebKit lets go of the object that
       // `navigator.mediaDevices` gives once nothing holds it, and a method set on that object goes with it.
       await page.addInitScript(() => {
-        MediaDevices.prototype.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+        MediaDevices.prototype.getUserMedia = async () => {
+          // Zeros that flow, as a muted microphone gives them: a destination with nothing feeding it gives the recorder no audio at all.
+          const context = new AudioContext();
+          const out = context.createMediaStreamDestination();
+          const zero = context.createConstantSource();
+          zero.offset.value = 0;
+          zero.connect(out);
+          zero.start();
+          return out.stream;
+        };
       });
       await recordingSays(page, "Vi hör inget från mikrofonen.");
     },
