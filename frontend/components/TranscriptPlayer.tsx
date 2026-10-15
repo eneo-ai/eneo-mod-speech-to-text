@@ -88,8 +88,8 @@ const TO_CHECK = "__check";
 const CHIP_LIMIT = 5;
 
 /**
- * The transcript's keys, outside its controls and text: Space or K plays and
- * pauses, the arrow keys move five seconds, J and L ten. `skipMs` 0 toggles.
+ * The transcript's keys: Space or K plays and pauses, the arrow keys move five
+ * seconds, J and L ten. `skipMs` 0 toggles.
  * A key held with Ctrl, Cmd or Alt is the browser's or the system's (Alt+←
  * goes back, Cmd+K, Ctrl+L), never the player's.
  */
@@ -502,17 +502,28 @@ export function TranscriptPlayer(
     [hasAudio, playback],
   );
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
-    const action = shortcut(e);
-    if (!action) return;
-    const target = e.target as HTMLElement;
-    // The position slider moves by its own keys; controls and text fields keep theirs.
-    if (target.closest("button, a, input, select, textarea, summary, [role=button], [role=slider], [role=menuitemradio], [role=radio], [role=listbox], [role=option], [contenteditable]")) return;
-    if (!hasAudio || playback.getSnapshot().unavailable) return;
-    if (action.preventDefault) e.preventDefault();
-    if (action.skipMs === 0) playback.toggle();
-    else playback.skip(action.skipMs);
-  }
+  // K, J and L work from anywhere on the page, so K plays before anything in the player has been clicked; what types
+  // or picks with letters keeps them, and so does a dialog over the page. Space and the arrows scroll the page and
+  // work its controls: they are the player's only with the focus on it or its text, and the slider moves by its own.
+  const playerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const action = shortcut(e);
+      if (!action || e.defaultPrevented || !(e.target instanceof Element)) return;
+      const target = e.target;
+      if (e.key.length === 1 && e.key !== " ") {
+        if (target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
+      } else if (!playerRef.current?.contains(target) || target.closest("button, a, input, select, textarea, summary, [role=button], [role=slider], [role=menuitemradio], [role=radio], [role=listbox], [role=option], [contenteditable]")) {
+        return;
+      }
+      if (!hasAudio || playback.getSnapshot().unavailable) return;
+      if (action.preventDefault) e.preventDefault();
+      if (action.skipMs === 0) playback.toggle();
+      else playback.skip(action.skipMs);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [hasAudio, playback]);
 
   // The sentence being played stays in view, while following and not editing a line.
   const following = useRef({ follow, editing: editingIndex >= 0 });
@@ -682,7 +693,7 @@ export function TranscriptPlayer(
       role="region"
       aria-label="Inspelning och transkribering"
       tabIndex={0}
-      onKeyDown={onKeyDown}
+      ref={playerRef}
     >
       {tools && (
         <VStack gap={3} className={styles.tools}>

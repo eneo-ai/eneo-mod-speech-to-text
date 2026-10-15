@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabKey, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, chooseMode, isLaptop, isPhone, needsRecording, pdfInDialog, run, setup, STATES } from "./screens";
+import { backLink, chooseMode, isLaptop, isPhone, needsRecording, pdfInDialog, result, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
@@ -67,6 +67,25 @@ for (const name of WALKS) {
 }
 
 // A page with nothing but its message has two stops, and the second is the way on.
+test("K plays and pauses from anywhere on the page, before the player is clicked and from its buttons; the search keeps the letter", async ({ page }, info) => {
+  test.skip(!["laptop-1440-light", "laptop-1440-firefox", "laptop-1440-webkit"].includes(info.project.name), "a laptop's keyboard, in each engine");
+  await result(page);
+  const play = page.getByRole("button", { name: "Spela upp", exact: true });
+  const pause = page.getByRole("button", { name: "Pausa uppspelningen" });
+  await page.keyboard.press("k");
+  await expect(pause, "nothing in the player clicked yet").toBeVisible();
+  await page.keyboard.press("k");
+  await expect(play).toBeVisible();
+  await play.click();
+  await expect(pause).toBeVisible();
+  await page.keyboard.press("k");
+  await expect(play, "with the focus on the player's button").toBeVisible();
+  const search = page.getByRole("searchbox", { name: "Sök i transkriberingen" }).or(page.getByRole("textbox", { name: "Sök i transkriberingen" }));
+  await search.press("k");
+  await expect(search).toHaveValue("k");
+  await expect(play, "typed, not played").toBeVisible();
+});
+
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
   const { stops, left } = await tabWalk(page);
