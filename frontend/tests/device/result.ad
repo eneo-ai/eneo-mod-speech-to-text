@@ -1,0 +1,14 @@
+context platform=ios
+open com.apple.mobilesafari "${ORIGIN}/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78?run=7e6e01f7-5322-41a6-881f-ce336baba569"
+wait text "Dokumentet är klart" 20000
+wait 'role="button" label="Dela"' 10000
+press 'role="button" label="Transkribering"'
+wait 'role="button" label="Spela upp"' 10000
+press 'role="button" label="Spela upp"'
+wait 'role="button" label="Pausa uppspelningen"' 10000
+press 'role="button" label="Pausa uppspelningen"'
+open com.apple.mobilesafari "${ORIGIN}/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78?run=78d61878-90bc-422f-9e33-e6b2bdd9e71e"
+wait 'role="button" label="Kopiera texten"' 20000
+wait 'role="button" label="Dela"' 5000
+open com.apple.mobilesafari "${ORIGIN}/finns-inte"
+wait text "Sidan finns inte" 20000

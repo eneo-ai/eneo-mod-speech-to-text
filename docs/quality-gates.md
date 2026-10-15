@@ -157,6 +157,8 @@ Gaten kör webbläsarmotorerna; Safari på en iPhone eller iPad är en egen webb
 | Resa | Går igenom |
 |---|---|
 | `record-to-result.ad` | Flödeslistan, ett flöde, "Spela in", mikrofonfrågan, "Pausa", "Fortsätt", "Stoppa", "Skapa dokument", resultatet med PDF:en |
+| `review.ad` | "Vem är vem?" med beslutsraden, "Namnge talarna" och dess Avbryt, textgranskningens "Redigera" och Avbryt |
+| `result.ad` | Resultatet med "Dela", transkriptets "Spela upp" och "Pausa uppspelningen", ett textresultat med "Kopiera texten" och "Dela", "Sidan finns inte" |
 
 ```bash
 # en utvecklingsserver mot stubben, den adress simulatorn når (iOS-simulatorn når Macens 127.0.0.1)
@@ -165,7 +167,7 @@ npx vite --host 127.0.0.1 --port 3491 &   # med DEV_API_BASE till en stubbe, se 
 npm run test:device -- --platform ios --udid <simulatorns udid>
 ```
 
-`DEVICE_ORIGIN` är adressen (standard `http://127.0.0.1:3002`) och `AGENT_DEVICE` ett eget agent-device-kommando (standard `npx --yes agent-device@0.21.25`). `test` öppnar en egen session och kräver att ingen annan session håller enheten; i en session som redan är öppen körs en resa med `agent-device replay tests/device/record-to-result.ad -e ORIGIN=<adress>`.
+`DEVICE_ORIGIN` är adressen (standard `http://127.0.0.1:3002`) och `AGENT_DEVICE` ett eget agent-device-kommando (standard `npx --yes agent-device@0.21.25`). `test` öppnar en egen session och kräver att ingen annan session håller enheten; i en session som redan är öppen körs en resa med `agent-device replay tests/device/<resa>.ad -e ORIGIN=<adress>`. `review.ad` och `result.ad` läser stubbens körningar och behöver ingen mikrofon.
 
 Resorna körs före en utgåva, inte i CI. Lägen som gaten når genom att fånga nätverket (en inloggning som tar slut, tidsgränser) stannar i gaten. Android: Chromes webbinnehåll syns inte i agent-devices träd på Pixel-emulatorn, så en resa där går på koordinater; den görs inte som skript. Simulatorns mikrofon ger ingen användbar ljudfil: ljudet bedöms på en fysisk enhet.
 
