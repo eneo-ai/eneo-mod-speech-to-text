@@ -8,9 +8,9 @@ Det här är dokumentationen. Själva modulen öppnar du på den adress din orga
 
 ## Så fungerar det
 
-1. **Du lägger in ljudet.** Spela in i webbläsaren och se texten växa medan du pratar, eller ladda upp en ljudfil.
+1. **Du lägger in ljudet.** Spela in i webbläsaren och se texten växa medan du pratar, eller ladda upp en ljudfil. Inspelningen sparas på enheten under tiden, så den finns kvar efter en omladdning eller ett avbrott.
 2. **Ett flöde i Eneo tar över.** Modulen skickar ljudet till ett publicerat flöde i din organisations Eneo.
-3. **Du får resultatet.** Det visas i modulen när flödet är klart.
+3. **Du granskar och får resultatet.** Har flödet ett granskningssteg godkänner du talarna eller texten först. Resultatet visas i modulen när flödet är klart.
 
 ## Modulen och Eneo
 
@@ -20,6 +20,7 @@ Modulen är en egen webbapplikation som körs bredvid Eneo. Du loggar in med dit
 
 - [Driftsätt modulen](operations.md): köra imagen i Dokploy eller Portainer, miljövariabler, uppdateringar och felsökning.
 - [Byt organisation](branding.md): namn, logga och accentfärg för din kommun eller myndighet.
+- [Inspelaren](recording.md): vad som händer när mikrofonen, lagringen eller nätet sviker, och vad användaren ser.
 - [Lokal utveckling](development.md): starta modulen på din dator, med eller utan Docker.
 - [API-referens](api-referens.md): vilka anrop modulen släpper igenom till Eneo.
 - [Arkitektur](architecture.md): hur webbläsaren, modulen och Eneo hänger ihop.
