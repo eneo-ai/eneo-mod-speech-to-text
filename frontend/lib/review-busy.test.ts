@@ -248,6 +248,8 @@ test("a control that removes or disables itself hands the focus on, never to the
   await press("Redigera");
   assert.equal(redigera.isConnected, false, "Redigera is not reused as Avbryt, which a second Enter would press");
   assert.ok(focused() === view.container.querySelector("textarea"), `Redigera: the text, not ${focused()?.tagName}`);
+  const opened = view.container.querySelector("textarea")!;
+  assert.equal(opened.selectionStart, opened.value.length, "the caret waits at the text's end, where a reviewer adds");
   await press("Avbryt");
   assert.ok(focused() === button(view.container, "Redigera"), `Avbryt: back on Redigera, not ${focused()?.tagName}`);
   await press("Redigera");

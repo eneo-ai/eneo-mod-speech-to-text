@@ -169,6 +169,8 @@ export function ReviewView({
     if (!target || (target as HTMLButtonElement).disabled) return;
     handOff.current = null;
     target.focus();
+    // The text opens for more at its end, where a reviewer adds; Safari and Firefox put the caret at its start.
+    if (target === textField.current) textField.current.setSelectionRange(textField.current.value.length, textField.current.value.length);
   });
 
   // A kept edit the approved pause holds is saved, so it is no draft any more (and no reason to ask before leaving).
