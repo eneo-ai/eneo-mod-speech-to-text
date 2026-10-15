@@ -289,7 +289,9 @@ test("a dialog that gives the focus back is not a navigation: nothing is said an
   expect(await focused(page), "the focus went back to the link").toMatchObject({ tag: "a" });
 });
 
-test("a run that no longer exists leaves the address and says so above a new start, so a reload does not ask again", async ({ page }) => {
+test("a run that no longer exists leaves the address and says so above a new start, so a reload does not ask again", async ({ page, sentinel }) => {
+  // Eneo's answer for the run is a 404, which the browser reports in the console.
+  sentinel.expect({ console: /status of 404.*\/runs\/00000000-0000-4000-8000-00000000dead\// });
   await page.goto(`/flows/${ids.flows.flow1}?run=00000000-0000-4000-8000-00000000dead`);
   await expect(page.getByRole("alert").filter({ hasText: "Körningen finns inte längre. Du kan starta en ny här." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
