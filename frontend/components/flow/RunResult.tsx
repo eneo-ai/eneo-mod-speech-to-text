@@ -8,6 +8,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
@@ -21,7 +22,7 @@ import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-
 import { ResultDocument } from "./ResultDocument";
 import { correctionsNewerThanDocument, regenerationOffer } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
-import { LAPTOP, ResultFiles, useMediaMatch } from "./ResultFiles";
+import { LAPTOP, ResultFiles } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
 import { usePlayback, usePlaybackState } from "./AudioPlayer";
@@ -110,7 +111,7 @@ export function RunResult({
   const olderThanCorrections = showTranscript && !delivered && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
-  const wide = useMediaMatch(LAPTOP);
+  const wide = useMediaQuery(LAPTOP, true);
   // One playback for the page: the transcript's player, and the pause beside the document on a phone.
   const sources = useMemo(
     () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
@@ -149,7 +150,7 @@ export function RunResult({
           <Text as="p">Körningen blev klar, men flödet gav inget att visa.</Text>
           {onStartAgain && (
             <HStack>
-              <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} />} onClick={() => leaveFirst(onStartAgain)} />
+              <Button label="Starta en ny körning" variant="primary" size="lg" icon={<Icon icon={Plus} />} onClick={() => leaveFirst(onStartAgain)} />
             </HStack>
           )}
         </VStack>

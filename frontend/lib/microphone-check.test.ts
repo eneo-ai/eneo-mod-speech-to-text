@@ -78,7 +78,7 @@ async function microphoneCheck() {
 test("before a test the page says what the test does with the sound, and while the browser asks the test can be stopped", async (t) => {
   const microphone = useMicrophone(t);
   const view = await microphoneCheck();
-  assert.match(view.text(), /Testa innan mötet börjar\. Testljudet spelas inte in eller skickas vidare\./);
+  assert.match(view.text(), /Testa innan mötet börjar\. Det du säger under testet spelas inte in och skickas inte vidare\./);
 
   await view.press("Testa mikrofonen");
   assert.ok(view.offers("Sluta testa"), "the question is under way: the test can be stopped");
@@ -112,7 +112,7 @@ test("a microphone that ends, ends the test", async (t) => {
 
   await view.act(async () => given.track.fire("ended"));
   assert.ok(view.offers("Testa mikrofonen"), "the microphone is gone: nothing the test said holds");
-  assert.match(view.text(), /Testljudet spelas inte in eller skickas vidare\./);
+  assert.match(view.text(), /Det du säger under testet spelas inte in och skickas inte vidare\./);
   assert.doesNotMatch(view.text(), /Mikrofonen hörde/);
 });
 

@@ -18,7 +18,7 @@ test("a flow whose Eneo snapshot is outdated says, in Swedish, that its owner mu
     "flow_assistant_snapshot_republish_required",
     "Step 1 (Transkribera ljud): Assistant snapshot is missing or uses an unsupported schema_version. Republish the flow before running it.",
   );
-  assert.equal(friendlyError(error), "Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.");
+  assert.equal(friendlyError(error), "Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.");
 });
 
 test("Eneo's English message never reaches the page, whatever the code", (t) => {
@@ -87,7 +87,7 @@ test("a flow that cannot be opened says why in Swedish, and offers Försök igen
   );
   assert.deepEqual(republish, {
     title: "Flödet kan inte användas just nu.",
-    detail: "Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.",
+    detail: "Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.",
     retry: false,
   });
   assert.equal(unavailableCopy(eneo(503, undefined, "Service Unavailable")).retry, true);

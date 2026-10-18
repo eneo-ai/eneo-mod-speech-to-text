@@ -64,14 +64,14 @@ test("one unsent recording is spoken of in the singular", async () => {
 
 test("where the browser may delete the recordings the list does not promise they stay", async () => {
   const one = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))], evictable: true });
-  assert.match(one.container.textContent!, /Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge\./);
+  assert.match(one.container.textContent!, /Den finns på den här enheten\. Webbläsaren kan ta bort den om du väntar länge med att skicka den\./);
   assert.doesNotMatch(one.container.textContent!, /tills den har skickats/);
   await one.unmount();
   const two = await render({
     recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 60_000, at(23, 9, 0))],
     evictable: true,
   });
-  assert.match(two.container.textContent!, /De finns på den här enheten, men webbläsaren kan rensa dem om de ligger kvar osända för länge\./);
+  assert.match(two.container.textContent!, /De finns på den här enheten\. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem\./);
 });
 
 test("each unsent recording offers Skapa dokument, Spara som fil and Ta bort, described by its summary", async () => {

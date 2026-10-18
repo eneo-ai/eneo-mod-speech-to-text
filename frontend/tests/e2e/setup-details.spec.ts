@@ -10,9 +10,9 @@ test("the speaker switch says what takes longer after the way the audio was give
   await setup(page);
   const choice = page.getByRole("switch", { name: "Märk upp talare" });
   await chooseMode(page, "Spela in");
-  await expect(choice).toHaveAccessibleDescription("Tar längre tid efter inspelningen.");
+  await expect(choice).toHaveAccessibleDescription("Texten visar vem som sa vad. Det tar längre tid efter inspelningen.");
   await chooseMode(page, "Ladda upp");
-  await expect(choice).toHaveAccessibleDescription("Tar längre tid efter uppladdningen.");
+  await expect(choice).toHaveAccessibleDescription("Texten visar vem som sa vad. Det tar längre tid efter uppladdningen.");
 });
 
 test("the calendar's week starts on Monday", async ({ page }) => {

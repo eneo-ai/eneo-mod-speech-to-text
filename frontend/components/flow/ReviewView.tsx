@@ -131,8 +131,9 @@ export function ReviewView({
   const announce = useAnnounce();
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
+  // A consequence, at the body's size: not a footnote.
   const deadline = checkpoint.expires_at ? (
-    <Text as="p" type="supporting">
+    <Text as="p" color="secondary">
       Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
     </Text>
   ) : null;
@@ -361,6 +362,8 @@ export function ReviewView({
       const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
       if ("error" in saved) return saved.error;
       draft.drop(sent);
+      // The dialog closes and the list shows the names; a screen reader hears it too.
+      announce("Namnen är sparade.");
       return null;
     }, STILL_SENDING);
   }
@@ -579,7 +582,7 @@ export function ReviewView({
         <Heading level={1} ref={heading} tabIndex={-1}>
           {title}
         </Heading>
-        <Text as="p" type="supporting" className={styles.description}>
+        <Text as="p" color="secondary" className={styles.description}>
           {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
         </Text>
         {deadline}

@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -10,6 +10,7 @@ import { Switch } from "@astryxdesign/core/Switch";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { ClassificationLine, ClassificationNote } from "@/components/flow/ClassificationNote";
 import { FlowAside } from "@/components/flow/FlowAside";
@@ -77,19 +78,9 @@ const MICROPHONE_ANSWER_WAIT_MS = 3_000;
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 const REMOVED = "Inspelningen togs bort.";
 
-/** A media query, as useSyncExternalStore follows it. */
-const media = (query: string) => ({
-  subscribe: (onChange: () => void) => {
-    const list = window.matchMedia(query);
-    list.addEventListener("change", onChange);
-    return () => list.removeEventListener("change", onChange);
-  },
-  matches: () => window.matchMedia(query).matches,
-});
-// Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
-const PHONE = media("(max-width: 767.98px)");
+const PHONE = "(max-width: 767.98px)";
 // From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
-const COLUMNS = media("(min-width: 1024px)");
+const COLUMNS = "(min-width: 1024px)";
 
 /** The tab title follows the state; its own component, so the timer re-renders only this. */
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
@@ -137,8 +128,8 @@ export function FlowInput({
   const [removed, setRemoved] = useState(false);
   if (removed && group !== "setup") setRemoved(false);
   const [dockSlot, dockRef] = useDock();
-  const phone = useSyncExternalStore(PHONE.subscribe, PHONE.matches, () => false);
-  const columns = useSyncExternalStore(COLUMNS.subscribe, COLUMNS.matches, () => false);
+  const phone = useMediaQuery(PHONE);
+  const columns = useMediaQuery(COLUMNS);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
@@ -509,14 +500,16 @@ function SetupWorkspace({
         Talare kan inte märkas upp just nu. Transkriberingen fungerar som vanligt.
       </Text>
     ) : speakerOption?.selectable && snapshot.speakerLabels !== null ? (
+      // What it gives, then what it costs. As wide as the microphone row (24 rem picker and its button): across a
+      // laptop's column the label and the switch would stand 800 px apart.
       <Switch
         label="Märk upp talare"
-        description={`Tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
+        description={`Texten visar vem som sa vad. Det tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
         value={snapshot.speakerLabels}
         onChange={(on) => session.setSpeakerLabels(on)}
         labelPosition="start"
         labelSpacing="spread"
-        width="100%"
+        width="min(100%, 36rem)"
       />
     ) : speakerOption?.required || reviewsSpeakers ? (
       <Text as="p" color="secondary">
@@ -588,8 +581,9 @@ function SetupWorkspace({
           dock,
           // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
-            {/* Where the person commits: what the flow may take, once more beside the action. */}
-            <ClassificationLine classification={contract.security_classification} />
+            {/* Where the person commits: what the flow may take, once more beside the action. Not on a tablet's one
+                column, where the classification's card stands just above it. */}
+            {(dock || !details) && <ClassificationLine classification={contract.security_classification} />}
             {forwardedLine(contract) && (
               <Text as="p" type="supporting" justify="center">
                 {forwardedLine(contract)}
@@ -625,7 +619,7 @@ function SetupWorkspace({
               </VStack>
             )}
             {recordingMode && !dock && (
-              <Text as="p" type="supporting" justify="center">
+              <Text as="p" type="supporting" justify="center" textWrap="balance">
                 {storageLine(persistent, input.evictable)}
               </Text>
             )}

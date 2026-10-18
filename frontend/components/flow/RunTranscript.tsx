@@ -106,15 +106,23 @@ export function RunTranscriptView({
     );
   }
   if (transcript.segments.length === 0 && transcript.speakerReviews.length === 0) {
-    // Nothing to show is only nothing to say when nothing went wrong reading it.
-    if (!transcript.correctionProblem) return null;
+    // Read, and empty: text without timings is parsed into passages too, so the audio held no speech. Said where the
+    // transcript stands (its tab, its column), not left as an empty panel.
     return (
       <VStack as="section" aria-labelledby="run-transcript" gap={3} hAlign="start">
         <Heading level={2} id="run-transcript">
           Transkribering
         </Heading>
-        <Banner status="error" collapsible={false} title={transcript.correctionProblem} />
-        <Button icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
+        {transcript.correctionProblem ? (
+          <>
+            <Banner status="error" collapsible={false} title={transcript.correctionProblem} />
+            <Button icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
+          </>
+        ) : (
+          <Text as="p" color="secondary">
+            Inget tal hittades i ljudet.
+          </Text>
+        )}
       </VStack>
     );
   }

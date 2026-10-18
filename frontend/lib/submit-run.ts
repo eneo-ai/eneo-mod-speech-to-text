@@ -334,14 +334,14 @@ async function sendLeased(
       const limit = step?.max_duration_seconds;
       if (limit && recording.parts.some((part) => part.durationMs > limit * 1000)) {
         throw new Error(
-          `Inspelningen är för lång för en fil: en del är längre än flödet tar emot (${formatDuration(limit * 1000)}). Välj Spara som fil för att behålla den.`,
+          `Inspelningen är för lång för en fil: en del är längre än flödet tar emot (${formatDuration(limit * 1000)}). Spara den som fil för att behålla den.`,
         );
       }
       // Parts that go as one recording take Eneo's longest recording together.
       const whole = recording.parts.length > 1 ? oneRecordingLimitSeconds(params.contract, step) : undefined;
       if (whole && recording.parts.reduce((sum, part) => sum + part.durationMs, 0) > whole * 1000) {
         throw new Error(
-          `Inspelningen är längre än flödet tar emot (${formatDuration(whole * 1000)}). Välj Spara som fil för att behålla den.`,
+          `Inspelningen är längre än flödet tar emot (${formatDuration(whole * 1000)}). Spara den som fil för att behålla den.`,
         );
       }
       // Every chunk of every part, or the integrity error: before the recording is sealed, so it stays as it is.

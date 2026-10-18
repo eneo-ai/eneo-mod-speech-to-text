@@ -139,9 +139,9 @@ const INPUT_HINTS: Record<string, string> = {
 
 // Eneo sätter `retryable` bara när inget arbete hann tas emot och inget
 // hände utanför Eneo; annars kan en ny körning göra om arbete som redan gjorts.
-const RETRY_ADVICE = "Det går bra att köra flödet igen om en stund.";
+const RETRY_ADVICE = "Det går bra att försöka igen om en stund.";
 const CHECK_FIRST_ADVICE =
-  "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
+  "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta support och uppge körnings-ID.";
 
 export interface RunErrorView {
   /** Vad som hände och ev. hur indata kan ändras, valt utifrån `code`; råd om att köra igen utifrån `retryable`. */

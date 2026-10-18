@@ -735,7 +735,7 @@ test("the storage line says the recording is kept on the device only when the de
   assert.equal(storageLine(null), "Låt sidan vara öppen under inspelningen.", "unknown is never claimed");
   assert.equal(
     storageLine(true, true),
-    "Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge.",
+    "Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den.",
     "a browser that may delete it says so",
   );
   assert.equal(storageLine(false, true), "Låt sidan vara öppen under inspelningen.", "a recording only in this tab says that");
@@ -1103,7 +1103,7 @@ test("a part longer than Eneo takes is not sent, whatever the page's copy of the
   assert.equal(uploads, 0, "nothing uploaded for Eneo to take and refuse later");
   assert.equal(
     session.getSnapshot().problem?.title,
-    "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1\u00a0h\u00a030\u00a0min). Välj Spara som fil för att behålla den.",
+    "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1\u00a0h\u00a030\u00a0min). Spara den som fil för att behålla den.",
   );
   assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
 });
@@ -2135,7 +2135,7 @@ test("a flow its owner must republish says so in Swedish, with a way back, and t
   await until(() => session.getSnapshot().phase === "ready");
   assert.equal(await session.createDocument(), false);
   assert.deepEqual(session.getSnapshot().problem, {
-    title: "Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.",
+    title: "Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.",
     detail: "Inspelningen finns kvar. Spara den som fil om du vill behålla den.",
     back: true,
   });

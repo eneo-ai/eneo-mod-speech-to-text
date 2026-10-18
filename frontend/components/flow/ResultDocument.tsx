@@ -9,15 +9,17 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Item } from "@astryxdesign/core/Item";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { runArtifactUrl } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import type { ResultFileView } from "@/lib/run-files";
 import { copyableHtml, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
-import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
+import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile } from "./ResultFiles";
 import { pressing, savingWay, useFileAccess, waiting } from "./useFileAccess";
 import { useRoomInRow } from "./useRoomInRow";
+import fileStyles from "./ResultFiles.module.css";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -204,7 +206,7 @@ export function ResultDocument({
   const [copyState, copy] = useCopy(text ?? "", () => article.current && copyableHtml(article.current));
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
-  const wide = useMediaMatch(LAPTOP);
+  const wide = useMediaQuery(LAPTOP, true);
   const room = useRoomInRow();
 
   const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
@@ -318,20 +320,23 @@ export function ResultDocument({
         {file && Kind && (
           <>
             {text && <Divider />}
-            <Item
-              data-file-row
-              startContent={<Icon icon={Kind} />}
-              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
-              description={file.meta}
-              endContent={
-                wide && !text ? (
-                  <HStack vAlign="center" gap={1}>
-                    {shareButton("ghost")}
-                    {primaryDownload}
-                  </HStack>
-                ) : undefined
-              }
-            />
+            {/* The name has the row; its actions stand beside it where the line has room for both, and drop under it
+                where it has not (a laptop's narrower column), as Fler filer's rows do: never a name of three lines
+                squeezed between them. */}
+            <HStack data-file-row wrap="wrap" vAlign="center" gap={2}>
+              <Item
+                className={fileStyles.file}
+                startContent={<Icon icon={Kind} />}
+                label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
+                description={file.meta}
+              />
+              {wide && !text && (
+                <HStack vAlign="center" gap={1} paddingInline={2} paddingBlockEnd={2}>
+                  {shareButton("ghost")}
+                  {primaryDownload}
+                </HStack>
+              )}
+            </HStack>
           </>
         )}
         {preview && (

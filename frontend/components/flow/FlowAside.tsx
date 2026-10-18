@@ -4,12 +4,12 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { ClassificationNote } from "@/components/flow/ClassificationNote";
 import { HowItWorks } from "@/components/flow/HowItWorks";
 import type { FlowPublished, FlowSecurityClassification } from "@/lib/api";
 import type { HowItWorks as Guide } from "@/lib/flow-output";
 import styles from "./FlowFrame.module.css";
-import { useMediaMatch } from "./ResultFiles";
 
 /** A small phone's window (320 × 568): the first screen has the ways in and what the chosen one does above the dock. */
 const SHORT_PHONE = "(max-width: 767.98px) and (max-height: 640px)";
@@ -50,7 +50,7 @@ export function FlowAside({
   className?: string;
 }) {
   // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view.
-  const gap = useMediaMatch(SHORT_PHONE) ? 4 : 6;
+  const gap = useMediaQuery(SHORT_PHONE, true) ? 4 : 6;
   return (
     <VStack gap={gap} className={className}>
       {titleIsHeading ? (

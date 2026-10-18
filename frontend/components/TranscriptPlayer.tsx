@@ -704,7 +704,7 @@ export function TranscriptPlayer(
       ref={playerRef}
     >
       {title && (
-        <HStack hAlign="between" vAlign="center" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2}>
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2}>
           <Heading level={2}>{title}</Heading>
           {canDownload && (
             // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the

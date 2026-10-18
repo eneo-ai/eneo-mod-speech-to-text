@@ -83,9 +83,13 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 **Body Font:** system-ui with platform fallbacks; scale base 16 px, ratio 1.2.
 
 - **Headline** (600, 28 px): the flow's name and a state's heading (h1).
-- **Title** (600, 23 px / 19 px): h2 section headings ("Hur vill du lägga till ljudet?", "Tidigare körningar").
+- **Title** (600, 23 px / 19 px): h2 section headings ("Hur vill du lägga till ljudet?", "Tidigare körningar"). A
+  heading's look follows its level in the outline: an h3 that says it is an h2 (`aria-level`) reads as an h3 in some
+  assistive technology.
 - **Body** (400, 16 px, 1.5).
-- **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions.
+- **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions. What has a consequence
+  (the review's deadline and what to do) is body text in the secondary colour, never a footnote. Nothing read is set
+  below 14 px; 11 px is the speaker marks' numerals only.
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
 A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone, and a long
@@ -107,7 +111,9 @@ column is the same in every state: from 1024 px its name is the headline's size 
 page's heading. A row that holds a field and a button
 measures itself (a container query at 36 rem): the field fills the row below it, the two stand beside each other from
 it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
-inside a group, 8 px between a label and its control.
+inside a group, 8 px between a label and its control. A control that pairs a label with a switch is no wider than the
+microphone row (36 rem): across a laptop's column the two would stand 800 px apart. The recording's stage fills the
+window's height up to 44 rem, and its bar follows it: a window-high card around one clock is empty on a 4K display.
 
 ## Elevation & Depth
 
@@ -148,6 +154,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Steps
 - A run's steps say their state in words; the step under way has the accent bar and the spinner, a finished one its check and the plain track.
+- A failed run's note is red only when nothing the person can do mends it: a failure Försök igen may mend, and a
+  recording or file the flow cannot take, are a warning; a stopped run is information.
 
 ### Setup
 - Each way in says what happens to the audio: Strömma sends it to Eneo as it is spoken, Spela in keeps it on the device
@@ -172,11 +180,13 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
 
 ### Files
-- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first.
+- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first. A row too short for the name and its actions puts the actions under the name, never a name of three lines between them.
 
 ### Transcript
 - The transcript's Kopiera and Ladda ner som text stand beside its heading where the row has room and fold into one
   "Fler alternativ" menu where it has not, as the document's own actions do. Passages stand 32 px apart.
+- A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
+  column.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.

@@ -129,7 +129,7 @@
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Mikrofon Testa innan mötet börjar. Testljudet spelas inte in eller skickas vidare.
+    - text: Mikrofon Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.
     - combobox "Mikrofon": Standard
     - button "Testa mikrofonen":
       - text: ""
@@ -139,4 +139,4 @@
       - text: ""
       - status
     - status
-    - paragraph: Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge.
+    - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den.

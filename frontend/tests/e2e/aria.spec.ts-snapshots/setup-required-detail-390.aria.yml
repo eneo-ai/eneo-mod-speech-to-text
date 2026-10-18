@@ -14,6 +14,11 @@
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp" [checked]
       - text: Ladda upp Välj en ljudfil från din enhet.
+    - status: "Vald fil: kommunstyrelsen-mote.wav"
+    - text: kommunstyrelsen-mote.wav 15,7 kB · 1 s
+    - button "Byt fil":
+      - text: ""
+      - status
     - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
     - group "Deltagare Valfritt":
       - text: Lägg till namn
@@ -27,13 +32,8 @@
     - textbox "Ärende" [invalid]
     - text: Fyll i det här för att skapa dokumentet. Antal talare Valfritt
     - textbox "Antal talare Valfritt"
-    - text: Märk upp talare Tar längre tid efter uppladdningen.
+    - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter uppladdningen.
     - switch "Märk upp talare"
-    - status: "Vald fil: kommunstyrelsen-mote.wav"
-    - text: kommunstyrelsen-mote.wav 15,7 kB · 1 s
-    - button "Byt fil":
-      - text: ""
-      - status
   - button "Skapa dokument":
     - text: ""
     - status

@@ -345,7 +345,7 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
         flowId: "flow-1",
         flowName: "Nämndmöte till rapport",
         run: failed,
-        failure: { step: "Steg 2, Analysera mötesinnehållet", summary: "Tjänsten svarade inte eller var överbelastad. Det går bra att köra flödet igen om en stund.", detail: "Upstream 503", inputMustChange: false },
+        failure: { step: "Steg 2, Analysera mötesinnehållet", summary: "Tjänsten svarade inte eller var överbelastad. Det går bra att försöka igen om en stund.", detail: "Upstream 503", inputMustChange: false },
         steps,
         stepResults: [],
         files: [],
@@ -745,7 +745,9 @@ test("a transcript that could not be read shows why and Läs in igen, even with 
   const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner." });
   assert.match(html, /Kunde inte läsa transkriberingens underlag/);
   assert.deepEqual(names(html), ["Läs in igen"]);
-  assert.equal(transcriptView({ segments: [] }), "", "nothing at all to say: no section");
+  const empty = transcriptView({ segments: [] });
+  assert.match(empty, /Inget tal hittades i ljudet\./, "read and empty: said where the transcript stands, not an empty panel");
+  assert.deepEqual(names(empty), []);
 });
 
 test("a transcript still being read shows only skeletons the screen reader skips", () => {

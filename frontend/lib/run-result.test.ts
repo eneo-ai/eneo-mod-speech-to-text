@@ -96,7 +96,7 @@ test("a run error is described by its code, never by its message", () => {
 
 test("retry advice follows Eneo's retryable flag, never the code", () => {
   const checkFirst =
-    "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
+    "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta support och uppge körnings-ID.";
   // Eneo allows a new run only for flow_dispatch_failed,
   // flow_step_attempt_start_failed and flow_provider_rate_limited.
   for (const code of [
@@ -115,12 +115,12 @@ test("retry advice follows Eneo's retryable flag, never the code", () => {
   const { summary } = runErrorView(
     runError({ code: "flow_provider_rate_limited", retryable: true }),
   );
-  assert.ok(summary.endsWith("Det går bra att köra flödet igen om en stund."), summary);
+  assert.ok(summary.endsWith("Det går bra att försöka igen om en stund."), summary);
 });
 
 test("an input the flow cannot use says how to change it, and retry advice still follows retryable", () => {
   const checkFirst =
-    "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
+    "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta support och uppge körnings-ID.";
   // typed_io_transcript_too_large can come after provider work (speaker
   // mapping), so the hint must not tell the user to run the flow again.
   const hints: Record<string, string> = {
@@ -142,7 +142,7 @@ test("an input the flow cannot use says how to change it, and retry advice still
 test("a run whose speakers could not be labelled says which of the two it was, and the same audio is offered again", () => {
   // The text is there and only the labelling failed: Eneo marks it retryable, and the advice follows that.
   const failed = runErrorView(runError({ code: "typed_io_speaker_identification_failed", retryable: true }));
-  assert.equal(failed.summary, "Transkriberingen blev klar, men talarna kunde inte märkas upp. Det går bra att köra flödet igen om en stund.");
+  assert.equal(failed.summary, "Transkriberingen blev klar, men talarna kunde inte märkas upp. Det går bra att försöka igen om en stund.");
   // No service the flow can use: one sentence whatever the gap, and who can put it right.
   for (const speaker_service_gap of ["not_chosen", "picked_unavailable", undefined]) {
     const unavailable = runErrorView(runError({ code: "typed_io_speaker_service_unavailable", details: { speaker_service_gap } }));

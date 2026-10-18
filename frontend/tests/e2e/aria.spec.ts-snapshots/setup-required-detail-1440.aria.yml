@@ -33,13 +33,13 @@
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp" [checked]
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Märk upp talare Tar längre tid efter uppladdningen.
-    - switch "Märk upp talare"
     - status: "Vald fil: kommunstyrelsen-mote.wav"
     - text: kommunstyrelsen-mote.wav 15,7 kB · 1 s
     - button "Byt fil":
       - text: ""
       - status
+    - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter uppladdningen.
+    - switch "Märk upp talare"
     - button "Skapa dokument":
       - text: ""
       - status

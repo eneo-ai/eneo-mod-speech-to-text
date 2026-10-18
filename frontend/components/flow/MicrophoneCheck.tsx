@@ -24,7 +24,7 @@ const TEST = "Testa mikrofonen";
 const STOP = "Sluta testa";
 /** When to test, and what the test does with the sound (it only measures the level; nothing is kept or sent). Under the
  *  picker's label, so it stands still whatever the test is doing. */
-const BEFORE = "Testa innan mötet börjar. Testljudet spelas inte in eller skickas vidare.";
+const BEFORE = "Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.";
 /** The browser's question about the microphone left unanswered for a moment: the same words as the start's (FlowInput). */
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 /** A muted track while it is tested: the recording's own words for it (lib/recording-view). Each status is one line on

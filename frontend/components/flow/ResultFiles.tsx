@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentProps, type FocusEvent } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type FocusEvent } from "react";
 import {
   Download,
   Eye,
@@ -22,6 +22,7 @@ import { List } from "@astryxdesign/core/List";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { useSignedOut } from "@/components/AuthGate";
 import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
@@ -38,22 +39,6 @@ export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   image: FileImage,
   other: File,
 };
-
-/**
- * Whether the window matches a media query, read where the page is shown. Before the first read it is taken to match:
- * the wide layout, which is what a laptop shows first.
- */
-export function useMediaMatch(query: string): boolean {
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      const list = window.matchMedia(query);
-      list.addEventListener("change", onChange);
-      return () => list.removeEventListener("change", onChange);
-    },
-    [query],
-  );
-  return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => true);
-}
 
 /** Where a PDF opens in a dialog and where in a tab of its own: a phone's width, then a laptop's. */
 const TABLET = "(min-width: 640px)";
@@ -162,7 +147,7 @@ export function OpenFile({
   /** How the file is reached: asked for before the dialog opens or the tab is sent to it. */
   access: FileAccess;
 }) {
-  const roomy = useMediaMatch(`${name ? LAPTOP : TABLET} and ${WITH_A_MOUSE}`);
+  const roomy = useMediaQuery(`${name ? LAPTOP : TABLET} and ${WITH_A_MOUSE}`, true);
   const [open, setOpen] = useState(false);
   // Whether the viewer has drawn the file: until then the dialog's empty viewer says that it is coming.
   const [shown, setShown] = useState(false);

@@ -103,7 +103,7 @@ export function RunFailure({
               A recording or file the flow cannot take is for the person to change, not an error to be red about. */}
           <Banner
             role="note"
-            status={cancelled ? "info" : failure?.inputMustChange ? "warning" : "error"}
+            status={cancelled ? "info" : failure?.inputMustChange || run.error?.retryable ? "warning" : "error"}
             title={failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
             description={failure?.summary ?? "Körningen kunde inte slutföras."}
             collapsible={false}
