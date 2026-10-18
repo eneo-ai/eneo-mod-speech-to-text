@@ -124,12 +124,12 @@ test("a link to a flow and Back, with the session's answer late: the title at on
 });
 
 test("a page whose code cannot be fetched is a page too: its own title, said once, and the focus in its heading", async ({ page, sentinel }) => {
-  // The page's code: the dev server's module, or the built chunk.
+  // The page's code: the dev server's module, or the built chunk. Gone before the list fetches it while it is read.
   const code = /\/(routes\/FlowPage\.tsx|assets\/FlowPage-[^/]+\.js)(\?|$)/;
   sentinel.expect({ console: /status of 404.*FlowPage/ }, { console: /A page could not be shown/ });
   await page.addInitScript(listen);
-  await flows(page);
   await page.route(code, (route) => route.fulfill({ status: 404, body: "" }));
+  await flows(page);
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
 
   await expect(page.getByRole("heading", { name: "Sidan kunde inte visas." })).toBeVisible();

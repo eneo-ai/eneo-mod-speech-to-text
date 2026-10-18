@@ -6,7 +6,8 @@ import { documentTitle } from "@/lib/product";
 
 /**
  * One page. Its code is fetched when the route is first entered, so a person on the sign-in page does not download the
- * recording or the review (`tests/prod/weight.spec.ts` holds one budget per page).
+ * recording or the review (`tests/prod/weight.spec.ts` holds one budget per page). The flow page's is also fetched while
+ * the flow list is read (routes/FlowsPage.tsx).
  */
 function page(where: { path: string } | { index: true }, title: string, load: () => Promise<ComponentType>): RouteObject {
   return { ...where, handle: { title } satisfies RouteHandle, lazy: async () => ({ Component: await load() }) };

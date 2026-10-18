@@ -25,8 +25,18 @@ const ADDRESS: Record<Path, string> = {
   "/flows/:id": `/flows/${ids.flows.flow1}`,
 };
 
-/** Loads a page and returns the JS and CSS it transferred, in KB: compressed bodies plus headers. */
+/** A browser that asks to save data: the list does not fetch the flow page's code while it is read (routes/FlowsPage.tsx). */
+function saveData() {
+  Object.defineProperty(navigator, "connection", { value: { saveData: true }, configurable: true });
+}
+
+/**
+ * Loads a page and returns the JS and CSS it transferred, in KB: compressed bodies plus headers. The list is measured as a
+ * browser that asks to save data loads it, without the flow page's code it fetches while it is read: that code is the
+ * flow page's budget.
+ */
 async function transferredKB(page: Page, path: Path) {
+  if (path === "/flows") await page.addInitScript(saveData);
   const kb = { script: 0, stylesheet: 0 };
   const measured: Promise<void>[] = [];
   page.on("response", (response) => {
@@ -55,6 +65,18 @@ for (const path of Object.keys(budget) as Path[]) {
     expect.soft(cssKB, `${path} loads ${cssKB.toFixed(1)} KB of CSS, the budget is ${budget[path].cssKB} KB. ${rule}`).toBeLessThanOrEqual(budget[path].cssKB);
   });
 }
+
+test("a flow opened from the list asks for none of its page's code: the list fetched it while it was read @chromium", async ({ session, page }) => {
+  expect(session.user).toBeTruthy();
+  await page.goto("/flows", { waitUntil: "networkidle" });
+  const flow = page.getByRole("link", { name: /Nämndmöte till rapport/ });
+  await expect(flow).toBeVisible();
+  const asked: string[] = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await flow.click();
+  await expect(page.getByRole("heading", { name: HEADING["/flows/:id"] })).toBeVisible();
+  expect(asked.filter((path) => /\/assets\/FlowPage-[^/]+\.js$/.test(path)), "the flow page's code, asked for on the press").toEqual([]);
+});
 
 test("the built theme is used: the browser generates no theme styles @chromium", async ({ session, page }) => {
   expect(session.user).toBeTruthy();
