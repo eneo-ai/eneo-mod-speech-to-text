@@ -108,6 +108,7 @@ export function ReadyPanel({
   finishing = false,
   finishQueued = false,
   makesText = false,
+  forwarded = null,
   onCreate,
   onContinue,
   onDiscard,
@@ -126,6 +127,8 @@ export function ReadyPanel({
   finishQueued?: boolean;
   /** The flow ends in text, not a file: the action and the lines say text. */
   makesText?: boolean;
+  /** Where the result goes on to a receiver: said above the action that sends it (`forwardedLine`). */
+  forwarded?: string | null;
   /** Absent while the flow cannot run: the recording is then saved as a file or deleted, under the reason (`problem`). */
   onCreate?: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
@@ -212,6 +215,7 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
+      {create && forwarded && <Text as="p" type="supporting">{forwarded}</Text>}
       {(create || onContinue) && (
         <VStack gap={0}>
           <Grid columns={{ minWidth: 220, repeat: "fit" }} gap={3}>

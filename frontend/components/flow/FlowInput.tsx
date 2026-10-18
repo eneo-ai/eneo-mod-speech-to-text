@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -11,6 +11,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
+import { ClassificationLine, ClassificationNote } from "@/components/flow/ClassificationNote";
 import { FlowAside } from "@/components/flow/FlowAside";
 import {
   COUNT_FROM_NAMES,
@@ -46,7 +47,7 @@ import {
 } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
-import { createActionLabel, makesText } from "@/lib/flow-output";
+import { createActionLabel, forwardedLine, howItWorks, makesText } from "@/lib/flow-output";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -174,6 +175,26 @@ export function FlowInput({
   );
   // In one column the flow's details stand above the work: the recording to go on with comes first, under its name.
   const recoveryFirst = group === "setup" && !blocked && resuming && !columns;
+  // In one column the choice of way in comes first, so the chosen way is on the first screen with the docked action that
+  // starts it; the flow's details and its classification follow it, the details by the speaker controls they fill in.
+  const choiceFirst = group === "setup" && !blocked && !columns;
+  // The detail field that last had the focus. Moving the details (a tablet turned, a window crossing a laptop's width)
+  // mounts them anew and the focus falls to the page: it goes back to the same field, and a name being typed in it is kept
+  // as a chip (ParticipantsInput).
+  const detailFocus = useRef<string | null>(null);
+  useEffect(() => {
+    const remember = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      detailFocus.current = target?.closest("[data-detail-field]")?.getAttribute("data-detail-field") ?? null;
+    };
+    document.addEventListener("focusin", remember);
+    return () => document.removeEventListener("focusin", remember);
+  }, []);
+  useLayoutEffect(() => {
+    const field = detailFocus.current;
+    if (!field || (document.activeElement && document.activeElement !== document.body)) return;
+    document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(field)}"]`)?.focus();
+  }, [choiceFirst]);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -210,12 +231,13 @@ export function FlowInput({
         aside={
           <FlowAside
             published={published}
-            classification={contract.security_classification}
+            classification={choiceFirst ? null : contract.security_classification}
             compact={holdsAudio}
+            guide={group === "setup" ? howItWorks(contract, snapshot.modes) : null}
             lead={recoveryFirst ? unsentRecordings : undefined}
             // The blocked setup asks for nothing: its details would be filled in for no run, and on a phone they stand
             // above the reason. What was typed before stays with the session.
-            details={blocked && group === "setup" ? null : details}
+            details={(blocked && group === "setup") || choiceFirst ? null : details}
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
             open={openDetails}
             onOpenChange={setDetailsOpen}
@@ -248,6 +270,7 @@ export function FlowInput({
               unsent={unsent}
               unsentRecordings={recoveryFirst ? null : unsentRecordings}
               resuming={resuming}
+              details={choiceFirst ? details : null}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -258,6 +281,7 @@ export function FlowInput({
               finishing={snapshot.finishing}
               finishQueued={snapshot.finishQueued}
               makesText={text}
+              forwarded={forwardedLine(contract)}
               // Blocked since the recording was made: neither way on would do anything, so the panel has the reason
               // (the session's problem), saving as a file and deleting.
               onCreate={blocked ? undefined : () => void createDocument(session)}
@@ -384,6 +408,7 @@ function SetupWorkspace({
   unsent,
   unsentRecordings,
   resuming,
+  details,
 }: {
   contract: RunContract;
   input: Session;
@@ -397,6 +422,8 @@ function SetupWorkspace({
   unsentRecordings: ReactNode;
   /** A recording a reload cut off is the page's one filled action, "Fortsätt spela in". */
   resuming: boolean;
+  /** The flow's details and its classification, where they follow the choice of way in (one column); null beside it. */
+  details: ReactNode;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -503,6 +530,11 @@ function SetupWorkspace({
         </>
       )}
 
+      {/* The microphone right under the way it records with: tested before the meeting starts, not after the rest. */}
+      {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+
+      {details}
+
       {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
       {(speakerChoice || snapshot.speakerCount !== null) && (
         <VStack gap={4}>
@@ -517,7 +549,7 @@ function SetupWorkspace({
         </VStack>
       )}
 
-      {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+      {details && <ClassificationNote classification={contract.security_classification} />}
 
       {mode === "ladda-upp" && (
         <UploadPanel
@@ -537,6 +569,13 @@ function SetupWorkspace({
           dock,
           // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
+            {/* Where the person commits: what the flow may take, once more beside the action. */}
+            <ClassificationLine classification={contract.security_classification} />
+            {forwardedLine(contract) && (
+              <Text as="p" type="supporting" justify="center">
+                {forwardedLine(contract)}
+              </Text>
+            )}
             <Button
               ref={startButton}
               label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}

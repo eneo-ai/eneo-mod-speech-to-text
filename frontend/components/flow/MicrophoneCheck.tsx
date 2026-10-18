@@ -22,6 +22,15 @@ import {
 const STANDARD = "standard";
 const TEST = "Testa mikrofonen";
 const STOP = "Sluta testa";
+/** When to test, and what the test does with the sound (it only measures the level; nothing is kept or sent). Under the
+ *  picker's label, so it stands still whatever the test is doing. */
+const BEFORE = "Testa innan mötet börjar. Testljudet spelas inte in eller skickas vidare.";
+/** The browser's question about the microphone left unanswered for a moment: the same words as the start's (FlowInput). */
+const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
+/** A muted track while it is tested: the recording's own words for it (lib/recording-view). */
+const AWAY = "Mikrofonen är tillfälligt borta. Testet fortsätter när den är tillbaka.";
+/** An answer within this leaves no words to blink (the page's --module-wait-delay). */
+const ASK_DELAY_MS = 300;
 
 /**
  * The microphone and "Testa mikrofonen", an optional check before recording.
@@ -36,6 +45,11 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [heard, setHeard] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  // The browser is asked for the microphone and has not answered: the test is under way and can be stopped.
+  const [asking, setAsking] = useState(false);
+  const [askingLong, setAskingLong] = useState(false);
+  // The tested microphone's track is muted (a headset changing its route, the system's mute): what it heard is no longer so.
+  const [muted, setMuted] = useState(false);
   // A test granted after recording started, or after the page went, lets go at once.
   const allowed = useRef(active);
   // The newest request for the microphone. A request that a later one, Sluta testa or the page has overtaken is stale:
@@ -57,10 +71,19 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   // The test lets go of the microphone when it ends, when recording starts and when the page goes.
   useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
   useEffect(() => {
+    if (!asking) {
+      setAskingLong(false);
+      return;
+    }
+    const timer = setTimeout(() => setAskingLong(true), ASK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [asking]);
+  useEffect(() => {
     allowed.current = active;
     if (!active) {
       request.current += 1;
       setStream(null);
+      setAsking(false);
     }
     return () => {
       allowed.current = false;
@@ -69,16 +92,21 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   }, [active]);
 
   useInputLevel(stream, (level, running) => {
-    if (running && level > 0.35) setHeard(true);
+    if (running && level > 0.35 && !muted) setHeard(true);
   });
 
   const { choices, value, missing } = microphoneChoices(inputs, preferred);
+  const testing = stream !== null || asking;
 
   // The same choice recording makes: the remembered microphone, asked for as `ideal`.
   async function test(id = preferred ?? "") {
     const mine = (request.current += 1);
     setProblem(null);
     setHeard(false);
+    // Another microphone's test lets the one before go at once: what that one hears must not pass for this one.
+    setStream(null);
+    setMuted(false);
+    setAsking(true);
     try {
       const next = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints(id || null, { channelCount: SPEECH_RECORDING.channelCount }),
@@ -87,11 +115,24 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
         next.getTracks().forEach((track) => track.stop());
         return;
       }
+      // A microphone that goes (unplugged, taken by another app) ends the test; a muted one is heard again only once it is
+      // back and sound comes: nothing it said before holds.
+      for (const track of next.getAudioTracks()) {
+        track.addEventListener("ended", () => mine === request.current && stopTest(), { once: true });
+        track.addEventListener("mute", () => {
+          if (mine !== request.current) return;
+          setMuted(true);
+          setHeard(false);
+        });
+        track.addEventListener("unmute", () => mine === request.current && setMuted(false));
+      }
       setStream(next);
       setInputs(await listMicrophones());
     } catch (error) {
       // A test that was ended, or replaced, has no error to show.
       if (mine === request.current) setProblem(microphoneProblem(error instanceof DOMException ? error.name : null));
+    } finally {
+      if (mine === request.current) setAsking(false);
     }
   }
 
@@ -99,12 +140,15 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   function stopTest() {
     request.current += 1;
     setStream(null);
+    setAsking(false);
+    setMuted(false);
   }
 
   function choose(id: string) {
     setPreferredMicrophone(browserStorage(), id);
     setPreferred(id || null);
-    if (stream) void test(id);
+    // A test under way, or waiting for the browser, goes on with the microphone now chosen.
+    if (stream || asking) void test(id);
   }
 
   return (
@@ -119,20 +163,20 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           options={choices.map((choice) => ({ value: choice.value || STANDARD, label: choice.label }))}
           value={value || STANDARD}
           onChange={(next) => choose(next === STANDARD ? "" : next)}
-          description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
+          description={missing ? `Den valda mikrofonen hittades inte. Standard används. ${BEFORE}` : BEFORE}
           width="var(--microphone-picker-width, min(100%, 24rem))"
         />
-        <Button label={stream ? STOP : TEST} variant="secondary" onClick={() => (stream ? stopTest() : void test())}>
+        <Button label={testing ? STOP : TEST} variant="secondary" onClick={() => (testing ? stopTest() : void test())}>
           {/* As wide with either word, so it does not shrink under the finger that pressed it: the icon and the word
               shown, centred together, over the other word's, hidden. */}
           <span className={styles.sameWidth}>
             <span>
               <Icon icon="microphone" />
-              {stream ? STOP : TEST}
+              {testing ? STOP : TEST}
             </span>
             <span aria-hidden>
               <Icon icon="microphone" />
-              {stream ? TEST : STOP}
+              {testing ? TEST : STOP}
             </span>
           </span>
         </Button>
@@ -146,7 +190,15 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
         </HStack>
         {/* Always rendered, so a screen reader hears the change once. */}
         <Text as="p" role="status" type="supporting">
-          {stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : ""}
+          {stream
+            ? muted
+              ? AWAY
+              : heard
+                ? "Mikrofonen hör dig."
+                : "Säg något för att se att mikrofonen hör dig."
+            : askingLong
+              ? ASK_THE_BROWSER
+              : ""}
         </Text>
       </HStack>
       {problem && <ProblemAlert problem={problem} onRetry={() => void test()} />}

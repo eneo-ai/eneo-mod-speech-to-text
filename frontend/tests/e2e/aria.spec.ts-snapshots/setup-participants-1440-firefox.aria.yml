@@ -1,12 +1,22 @@
 - main:
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
+  - region "Så fungerar det":
+    - heading "Så fungerar det" [level=2]
+    - list:
+      - listitem: Du spelar in eller laddar upp ljud.
+      - listitem: Ljudet görs om till text.
+      - listitem: Du får ett dokument att ladda ner.
+    - button "Tips för bra ljud"
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
   - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - group "Deltagare Valfritt":
     - text: Lägg till namn
     - textbox "Deltagare Valfritt Lägg till namn":
       - /placeholder: Lägg till namn
+    - button "Lägg till" [disabled]:
+      - text: ""
+      - status
   - list "Tillagda namn":
     - listitem:
       - text: Anna Berg
@@ -22,19 +32,20 @@
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
       - radio "Strömma" [checked]
-      - text: Strömma Se texten medan du pratar.
+      - text: Strömma Se texten medan du pratar. Ljudet skickas till Eneo direkt.
       - radio "Spela in"
-      - text: Spela in Spela in nu och transkribera efteråt.
+      - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Märk upp talare Tar längre tid efter inspelningen.
-    - switch "Märk upp talare"
-    - text: Mikrofon
+    - text: Mikrofon Testa innan mötet börjar. Testljudet spelas inte in eller skickas vidare.
     - combobox "Mikrofon": Standard
     - button "Testa mikrofonen":
       - text: ""
       - status
     - status
+    - text: Märk upp talare Tar längre tid efter inspelningen.
+    - switch "Märk upp talare"
+    - text: "Flödet får ta emot: Öppen information"
     - button "Starta strömning":
       - text: ""
       - status

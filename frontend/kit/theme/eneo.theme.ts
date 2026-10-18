@@ -45,9 +45,11 @@ export const eneoTheme = defineTheme({
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
     // 320 px screen: Astryx breaks words only when it truncates.
     // A heading that wraps balances its lines: "Dokumentet kunde inte skapas" does not leave "skapas" alone on a phone.
+    // A long Swedish compound in a heading is hyphenated where the browser knows the language (the page is lang="sv"):
+    // "Samtalssamman-ställning", not "Samtalssammanställnin|g" in the flow's 20rem column.
     // A phase's heading takes focus when its view appears (usePhaseHeading) but is no control: the browser counts that
     // focus call as keyboard focus and would frame the headline on every visit.
-    heading: {base: {overflowWrap: 'anywhere', textWrap: 'balance', ':focus-visible': {outline: 'none'}}},
+    heading: {base: {overflowWrap: 'anywhere', hyphens: 'auto', textWrap: 'balance', ':focus-visible': {outline: 'none'}}},
     text: {base: {overflowWrap: 'anywhere'}},
     'text-input': {base: {':focus-within': fieldFocusRing}},
     'text-area': {base: {':focus-within': fieldFocusRing}},

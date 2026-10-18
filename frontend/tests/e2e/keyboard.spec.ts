@@ -474,5 +474,6 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   await expect(page.getByRole("button", { name: "Testa mikrofonen" }), "Strömma's own setup shows").toBeVisible();
   await page.keyboard.press(tabKey(page));
   expect(await page.evaluate(() => document.activeElement?.getAttribute("role")), "the next Tab leaves the group").not.toBe("radio");
-  await expect(page.getByRole("switch", { name: "Märk upp talare" })).toBeFocused();
+  // The microphone stands right under the way that records with it, before the speaker controls.
+  await expect(page.getByRole("combobox", { name: "Mikrofon" })).toBeFocused();
 });

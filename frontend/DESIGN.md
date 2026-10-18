@@ -57,8 +57,9 @@ hierarchy comes from type size, weight and spacing, not from colour or container
 
 **Key Characteristics:**
 - One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone.
-- The flow page is a 20rem column for the flow (name, description, classification, details) beside the working card
-  from 1024 px; one column below it.
+- The flow page is a 20rem column for the flow (name, description, how it works, classification, details) beside the
+  working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's
+  description and how it works, and the details and the classification follow the choice.
 - Status uses icons and text together; colour never carries meaning alone.
 
 ## Colors
@@ -87,7 +88,9 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions.
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
-A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone.
+A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone, and a long
+compound in it is hyphenated (`hyphens: auto`, the page is `lang="sv"`): "Samtalssamman-ställning", not a break inside a
+syllable.
 Every size is in rem, so the text follows the reader's own size: the browser's setting and, on an iPhone or iPad, the text size set in iOS (17 px at the default size, through `-apple-system-body`). A dock (the phone's bottom action bar, the player) that large text makes taller than a third of the window stands at the page's end instead of over it.
 
 ## Layout
@@ -121,7 +124,7 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 - **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating. A dialog
   has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
-- **Ghost:** the bar's way back and icon actions.
+- **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning).
 - **Decisions** (a review's Avvisa and its approval, a dialog's Avbryt and Spara): one row at the end of their space,
   the main action last; up to 640 px wide a stack across the whole width, the main action on top and first for the
   keyboard (`components/ActionRow.tsx`, as Astryx's alert dialog lays out its own). An editor's own buttons are no
@@ -142,13 +145,33 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 - A run's steps say their state in words; the step under way has the accent bar and the spinner, a finished one its check and the plain track.
 
 ### Setup
+- Each way in says what happens to the audio: Strömma sends it to Eneo as it is spoken, Spela in keeps it on the device
+  until it is sent.
+- The microphone test stands right under the way in that records with it. The picker's description says when to test and
+  that the test sound is neither recorded nor sent; while the browser asks for the microphone the test can already be
+  stopped, and after a moment it says where the question is. A microphone that goes quiet (muted) or away during the test
+  no longer counts as heard.
 - What appears when a control is pressed has its place from the first draw: the microphone test's level line rests until the test starts, and its button keeps one width for both of its words, so nothing under them moves.
+- The classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}", above the
+  setup's primary action, and docked with it on a phone. The card with the organisation's description stays with the flow.
+  A flow whose result goes on to a receiver says so there too, and above the recording's Skapa dokument.
+- In one column the flow's details follow the choice of way in; a field being typed in when the layout changes (a tablet
+  turned) keeps the focus, and a name typed in the participants' field is kept.
+
+### How it works
+- "Så fungerar det" under the flow's description: the steps a run takes the person through, said only as the run contract
+  states them (`lib/flow-output.ts`, `howItWorks`), and tips for good sound folded under them. From 1024 px it is open
+  under its own heading; below, one folded row like the details' fold, so the ways in stay on the first screen.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
 
 ### Files
 - A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first.
+
+### Transcript
+- The transcript's Kopiera and Ladda ner som text stand beside its heading where the row has room and fold into one
+  "Fler alternativ" menu where it has not, as the document's own actions do. Passages stand 32 px apart.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.

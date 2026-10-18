@@ -26,3 +26,20 @@ export function ClassificationNote({ classification }: { classification?: FlowSe
     </Card>
   );
 }
+
+/**
+ * The classification once more where the person commits, above the setup's primary action (docked with it on a phone):
+ * one line, the name only. The card with the organisation's description stays with the flow.
+ */
+export function ClassificationLine({ classification }: { classification?: FlowSecurityClassification | null }) {
+  if (!classification) return null;
+  return (
+    <HStack gap={2} hAlign="center" vAlign="center" wrap="wrap">
+      <Icon icon={ShieldCheck} />
+      <Text type="supporting">Flödet får ta emot:</Text>
+      <Text type="supporting" weight="semibold" color="primary">
+        {classification.name}
+      </Text>
+    </HStack>
+  );
+}

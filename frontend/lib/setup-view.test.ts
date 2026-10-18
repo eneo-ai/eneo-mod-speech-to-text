@@ -45,8 +45,8 @@ test("the modes are one radio group under the question, named by it, and only th
   }));
   // Each is named by its title and described by its line, in the order the page offers them.
   assert.deepEqual(radios, [
-    { value: "stromma", checked: false, name: "Strömma", line: "Se texten medan du pratar." },
-    { value: "spela-in", checked: true, name: "Spela in", line: "Spela in nu och transkribera efteråt." },
+    { value: "stromma", checked: false, name: "Strömma", line: "Se texten medan du pratar. Ljudet skickas till Eneo direkt." },
+    { value: "spela-in", checked: true, name: "Spela in", line: "Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det." },
     { value: "ladda-upp", checked: false, name: "Ladda upp", line: "Välj en ljudfil från din enhet." },
   ]);
   // Native radios of one group: the arrow keys and the one Tab stop are the browser's.

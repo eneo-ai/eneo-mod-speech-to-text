@@ -5,7 +5,9 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ClassificationNote } from "@/components/flow/ClassificationNote";
+import { HowItWorks } from "@/components/flow/HowItWorks";
 import type { FlowPublished, FlowSecurityClassification } from "@/lib/api";
+import type { HowItWorks as Guide } from "@/lib/flow-output";
 import styles from "./FlowFrame.module.css";
 
 /**
@@ -20,6 +22,7 @@ export function FlowAside({
   titleIsHeading = true,
   compact = false,
   lead,
+  guide = null,
   details,
   summary,
   open,
@@ -33,6 +36,8 @@ export function FlowAside({
   compact?: boolean;
   /** What the page asks of the person first, under the flow's name (a recording to go on with, in one column). */
   lead?: ReactNode;
+  /** "Så fungerar det", where the page asks for the audio (the setup); none while the page holds audio or a run. */
+  guide?: Guide | null;
   details: ReactNode;
   /** The details in one line, for the fold; none, no fold. */
   summary?: string | null;
@@ -54,6 +59,7 @@ export function FlowAside({
       {lead}
       <VStack gap={6} className={compact ? styles.fromLaptop : undefined}>
         {published.description && <Text as="p" color="secondary">{published.description}</Text>}
+        {guide && <HowItWorks guide={guide} />}
         <ClassificationNote classification={classification} />
       </VStack>
       {compact && summary ? (

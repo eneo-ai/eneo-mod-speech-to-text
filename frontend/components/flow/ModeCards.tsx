@@ -6,8 +6,10 @@ import { Text } from "@astryxdesign/core/Text";
 import type { InputMode } from "@/lib/flow-session";
 
 export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: LucideIcon }> = {
-  stromma: { name: "Strömma", line: "Se texten medan du pratar.", icon: AudioLines },
-  "spela-in": { name: "Spela in", line: "Spela in nu och transkribera efteråt.", icon: Mic },
+  // Each way says what happens to the audio: Strömma sends it to Eneo as it is spoken (flow-session openLive), Spela in
+  // keeps it on the device until the person sends it.
+  stromma: { name: "Strömma", line: "Se texten medan du pratar. Ljudet skickas till Eneo direkt.", icon: AudioLines },
+  "spela-in": { name: "Spela in", line: "Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.", icon: Mic },
   "ladda-upp": { name: "Ladda upp", line: "Välj en ljudfil från din enhet.", icon: Upload },
 };
 

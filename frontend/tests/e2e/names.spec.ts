@@ -13,8 +13,8 @@ test("the input modes are named by their title, described by their line, and say
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
   for (const [name, description, checked] of [
-    ["Strömma", "Se texten medan du pratar.", false],
-    ["Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["Strömma", "Se texten medan du pratar. Ljudet skickas till Eneo direkt.", false],
+    ["Spela in", "Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.", true],
     ["Ladda upp", "Välj en ljudfil från din enhet.", false],
   ] as const) {
     expect(await axNode(page.getByRole("radio", { name: new RegExp(`^${name}`) }))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });

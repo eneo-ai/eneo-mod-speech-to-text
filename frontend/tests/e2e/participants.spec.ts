@@ -102,3 +102,18 @@ test("a long name wraps inside its chip, in the field's column, and every remove
   const small = chips.filter((chip) => chip.across < target || chip.down < target).map((chip) => `${chip.name}: ${chip.across}×${chip.down}`);
   expect(small, `remove buttons that take a press over less than ${target} px`).toEqual([]);
 });
+
+test("a name being typed when a tablet is turned (the window crosses a laptop's width) is kept, and the field keeps the focus", async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await setup(page);
+  const field = page.getByRole("textbox", { name: /^Deltagare/ });
+  await field.fill("Anna Berg");
+  // Upright: one column, where the details follow the choice of way in.
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeVisible();
+  await expect(field).toBeFocused();
+  await field.fill("Erik Lund");
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
+  await expect(field).toBeFocused();
+});
