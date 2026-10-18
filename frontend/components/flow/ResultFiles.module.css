@@ -12,7 +12,8 @@
 /* The document's own file has two actions beside it (Dela, Ladda ner): its name keeps room for two lines before they go
    under it, not three lines squeezed between them. */
 .documentFile {
-  flex-basis: 20rem;
+  flex: 1 1 20rem;
+  min-inline-size: 0;
 }
 
 /* Why a file could not be had, under its row, on a line of its own. */

@@ -325,7 +325,7 @@ export function ResultDocument({
                 squeezed between them. */}
             <HStack data-file-row wrap="wrap" vAlign="center" gap={2}>
               <Item
-                className={`${fileStyles.file} ${fileStyles.documentFile}`}
+                className={fileStyles.documentFile}
                 startContent={<Icon icon={Kind} />}
                 label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
                 description={file.meta}
