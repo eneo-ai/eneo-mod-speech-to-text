@@ -46,3 +46,11 @@
     position: static;
   }
 }
+
+/* How the result was made closes the document column: a hairline and more air above it set it apart from what the
+   person came for. */
+.steps {
+  margin-block-start: var(--spacing-2);
+  padding-block-start: var(--spacing-4);
+  border-block-start: var(--border-width) solid var(--color-border);
+}

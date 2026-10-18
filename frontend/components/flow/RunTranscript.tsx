@@ -2,6 +2,7 @@ import { Download, RotateCcw } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
+import { DropdownMenu, DropdownMenuItem } from "@astryxdesign/core/DropdownMenu";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -20,7 +21,8 @@ import { useAuthenticatedUser } from "@/components/AuthGate";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { downloadBlob } from "@/lib/download";
 import { renderReviewedTranscript } from "@/lib/transcript-corrections";
-import { CopyButton } from "./CopyButton";
+import { CopyButton, useCopy } from "./CopyButton";
+import { useRoomInRow } from "./useRoomInRow";
 import styles from "./RunTranscript.module.css";
 
 /** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
@@ -125,34 +127,17 @@ export function RunTranscriptView({
   return (
     // From a laptop's width the card keeps to the window and its text scrolls inside it, the player docked below.
     <Card padding={0} role="region" aria-labelledby="run-transcript" className={styles.card}>
-      <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={4} paddingBlockStart={3} paddingBlockEnd={2}>
-        <Heading level={2} id="run-transcript">
-          Transkribering
-        </Heading>
-        <HStack wrap="wrap" gap={1}>
-          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
-          <Button
-            variant="ghost"
-            size="sm"
-            isDisabled={unread}
-            icon={<Icon icon={Download} />}
-            label="Ladda ner som text, transkriberingen"
-            onClick={() => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName)}
-          >
-            Ladda ner som text
-          </Button>
-        </HStack>
-      </HStack>
+      <TranscriptHeader plain={plain} unread={unread} fileName={fileName} />
       {/* Quiet, since the transcript is whole: only the click on a word cannot find its moment. */}
       {transcript.wordTimingFailed && transcript.fileIds.length > 0 && !unread && (
-        <HStack paddingInline={4} paddingBlockEnd={2}>
+        <HStack paddingInline={3} paddingBlockEnd={2}>
           <Text as="p" type="supporting">
             Ordtiderna kunde inte tas fram den här gången. Ett klick i texten spelar från början av avsnittet.
           </Text>
         </HStack>
       )}
       {(unread || localError || saveState === "error" || hasDropped) && (
-        <VStack gap={2} hAlign="start" paddingInline={4} paddingBlockEnd={3}>
+        <VStack gap={2} hAlign="start" paddingInline={3} paddingBlockEnd={3}>
           {unread && (
             <HStack wrap="wrap" vAlign="center" gap={3}>
               <Text color="secondary">
@@ -191,5 +176,58 @@ export function RunTranscriptView({
         playback={playback}
       />
     </Card>
+  );
+}
+
+/**
+ * The transcript's heading with its copy and download: beside it where the header has room, in one menu where it has
+ * not (the column of a narrow laptop, a phone), as the document's own actions fold.
+ */
+function TranscriptHeader({ plain, unread, fileName }: { plain: string; unread: boolean; fileName: string }) {
+  const room = useRoomInRow();
+  const download = () => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName);
+  return (
+    <HStack ref={room.ref} hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3}>
+      <Heading level={2} id="run-transcript">
+        Transkribering
+      </Heading>
+      {room.fits ? (
+        <HStack wrap="wrap" gap={1}>
+          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
+          <Button
+            variant="ghost"
+            size="sm"
+            isDisabled={unread}
+            icon={<Icon icon={Download} />}
+            label="Ladda ner som text, transkriberingen"
+            onClick={download}
+          >
+            Ladda ner som text
+          </Button>
+        </HStack>
+      ) : (
+        <TranscriptMenu plain={plain} unread={unread} onDownload={download} />
+      )}
+    </HStack>
+  );
+}
+
+function TranscriptMenu({ plain, unread, onDownload }: { plain: string; unread: boolean; onDownload: () => void }) {
+  const [copyState, copy] = useCopy(plain);
+  return (
+    <DropdownMenu
+      button={{
+        label: "Fler alternativ för transkriberingen",
+        isIconOnly: true,
+        variant: "ghost",
+        isDisabled: unread,
+        icon: <Icon icon={copyState === "copied" ? "check" : "moreHorizontal"} />,
+      }}
+      hasChevron={false}
+      alignment="end"
+    >
+      <DropdownMenuItem icon="copy" label="Kopiera transkriberingen" onClick={() => void copy()} />
+      <DropdownMenuItem icon={Download} label="Ladda ner som text" onClick={onDownload} />
+    </DropdownMenu>
   );
 }

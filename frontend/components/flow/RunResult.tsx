@@ -168,7 +168,7 @@ export function RunResult({
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
-      <StepDetails steps={steps} version={run.flow_version} />
+      <StepDetails steps={steps} version={run.flow_version} className={styles.steps} />
     </>
   );
   const transcriptColumn = showTranscript && (
@@ -225,7 +225,7 @@ export function RunResult({
                 )}
               </VStack>
               <HStack vAlign="center" gap={2}>
-                <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
+                <Button variant="ghost" icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
               </HStack>
             </HStack>
             <VStack gap={4}>

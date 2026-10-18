@@ -27,11 +27,7 @@
     - paragraph: flow_step_failed
   - region "Transkribering":
     - heading "Transkribering" [level=2]
-    - button "Kopiera transkriberingen":
-      - text: ""
-      - status
-    - button "Ladda ner som text, transkriberingen":
-      - text: ""
+    - button "Fler alternativ för transkriberingen":
       - status
     - region "Inspelning och transkribering":
       - group "Visa talare":

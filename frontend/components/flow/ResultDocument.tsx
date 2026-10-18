@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -17,6 +17,7 @@ import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
 import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 import { pressing, savingWay, useFileAccess, waiting } from "./useFileAccess";
+import { useRoomInRow } from "./useRoomInRow";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -159,35 +160,6 @@ async function runShare(share: Share, title: string, text: string | null): Promi
   } catch {
     // Closing the share sheet is a choice, not an error; a refused share leaves the other actions.
   }
-}
-
-/**
- * Whether a row's actions fit on one line, measured before the row is drawn: while they stand in it, their widths and
- * the gaps between them against the row's width; while they are folded, the width they took when they last stood in it.
- * Measured again whenever the row or one of its actions changes size: a tablet turned, a copy that could not be made, the
- * font arriving. `ref` goes on the row.
- */
-function useRoomInRow() {
-  const [row, ref] = useState<HTMLElement | null>(null);
-  const [fits, setFits] = useState(true);
-  const needs = useRef(0);
-  useLayoutEffect(() => {
-    if (!row) return;
-    const measure = () => {
-      if (fits) {
-        const actions = [...row.children];
-        const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
-        needs.current = actions.reduce((sum, action) => sum + action.getBoundingClientRect().width, gap * (actions.length - 1));
-      }
-      setFits(needs.current <= row.getBoundingClientRect().width);
-    };
-    measure();
-    if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(measure);
-    for (const element of [row, ...row.children]) observer.observe(element);
-    return () => observer.disconnect();
-  }, [row, fits]);
-  return { ref, fits };
 }
 
 /**

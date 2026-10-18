@@ -361,7 +361,7 @@
 .turn {
   display: flex;
   gap: var(--spacing-3);
-  padding: var(--spacing-3) var(--spacing-2);
+  padding: var(--spacing-4) var(--spacing-2);
   border-radius: var(--radius-container);
   transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
 }
