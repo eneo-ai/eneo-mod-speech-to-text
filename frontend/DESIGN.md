@@ -125,11 +125,16 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning).
-- **Decisions** (a review's Avvisa and its approval, a dialog's Avbryt and Spara): one row at the end of their space,
-  the main action last; up to 640 px wide a stack across the whole width, the main action on top and first for the
-  keyboard (`components/ActionRow.tsx`, as Astryx's alert dialog lays out its own). An editor's own buttons are no
-  decision: small, in the text's header above the field (the review's Redigera, Avbryt and Spara ändring). A long text
+- **Decisions** (a review's Avvisa and its approval, a ready recording's Fortsätt spela in and Skapa dokument, a
+  dialog's Avbryt and Spara): one row at the end of their space, the main action last; up to 640 px wide a stack across
+  the whole width, the main action on top and first for the keyboard (`components/ActionRow.tsx`, as Astryx's alert
+  dialog lays out its own). An editor's own buttons are no decision: small, Avbryt before Spara, in the text's header
+  above the field (the review's Redigera, Avbryt and Spara ändring) or under a passage being corrected. A long text
   under review keeps that header at the window's top and the decision at its bottom, with one page scroll.
+- **A card's own action** stands at the end of the card's heading row, never on a row of its own between rules:
+  "Transkribering … Ladda ner", "Talare … Namnge talarna". The review's decision is the page's, under the speakers' card
+  and not in its group.
+- **An action stands with what it acts on:** the microphone test under Spela in, the chosen file under Ladda upp.
 
 ### Inputs / Fields
 - Astryx fields with label above and description under the label; focus ring 2 px accent around the whole field.

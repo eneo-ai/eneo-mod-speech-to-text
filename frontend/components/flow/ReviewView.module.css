@@ -102,20 +102,6 @@
   }
 }
 
-/* The speakers' card's own action spans it up to 640 px wide, where the decision under it stacks too (ActionRow). */
-@media (width > 640px) {
-  .cardAction {
-    align-self: flex-start;
-  }
-}
-
-/* The decision and what stops it, under Namnge talarna: set apart by a rule. */
-.decision {
-  margin-block-start: var(--spacing-4);
-  padding-block-start: var(--spacing-4);
-  border-block-start: var(--border-width) solid var(--color-border);
-}
-
 /* The transcript's card. From a laptop's width it keeps to the window, one gutter from its top, and its text scrolls
    inside it, the player docked below. Beside the speakers it starts at the page's top: as tall as the window below that
    (FlowFrame's --view-fit-height) less a gutter, it ends in the window before the page is scrolled. */

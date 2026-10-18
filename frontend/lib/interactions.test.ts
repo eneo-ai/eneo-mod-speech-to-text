@@ -698,7 +698,7 @@ test("a flow that requires speaker labels Eneo cannot make now says so in place 
   // In one column the flow's details follow the way in, before the file and the action (FlowInput, choiceFirst).
   assert.deepEqual(
     usual.ways,
-    ["Skapa dokument av inspelningen", "Spara som fil", "Ta bort", "text", "Lägg till", "text", "text", "file", "Välj ljudfil"],
+    ["Skapa dokument av inspelningen", "Spara som fil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Välj ljudfil"],
     "the flow as it is when the labels can be made",
   );
   assert.ok(usual.details.includes("arende"), "with the details it asks for");
@@ -754,7 +754,7 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   try {
     await view.act(async () => makeReady());
     const before = offered();
-    assert.deepEqual(before, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"], "ready, while the labels can be made");
+    assert.deepEqual(before, ["Spara som fil", "Fortsätt spela in", "Skapa dokument", "Ta bort"], "ready, while the labels can be made");
 
     await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
@@ -856,7 +856,7 @@ test("a recording the flow takes no further part of offers no Fortsätt spela in
   try {
     for (const [maxFiles, expected] of [
       [1, ["Spara som fil", "Skapa dokument", "Ta bort"]],
-      [2, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"]],
+      [2, ["Spara som fil", "Fortsätt spela in", "Skapa dokument", "Ta bort"]],
     ] as const) {
       const { view, offered, makeReady } = await mountAudioSetup(labels, { step: { max_files: maxFiles }, parts: [part] });
       try {

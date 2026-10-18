@@ -28,6 +28,12 @@ export interface SpeakerMappingRow {
   split?: boolean;
 }
 
+/** The flow's own guess, still the name chosen, and the flow said it was not sure of it: "Osäkert förslag". */
+export function isUnsureProposal(row: Pick<SpeakerMappingRow, "label" | "name">, proposals: readonly SpeakerMappingRow[]): boolean {
+  const proposal = proposals.find((p) => p.label === row.label);
+  return Boolean(proposal?.name && row.name?.trim() === proposal.name.trim() && proposal.confidence !== "high");
+}
+
 // Type-alias (inte interface) så värdet är tilldelningsbart till Json/ReviewEditedValue.
 type SpeakerMappingEditedValue = {
   speakers: {

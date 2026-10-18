@@ -1436,8 +1436,8 @@ function LineEditor({
       ) : (
         <HStack gap={3} wrap="wrap" vAlign="center">
           {/* Pressed without taking the focus, so leaving the field does not save first. */}
-          <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
           <Button size="sm" variant="ghost" label="Avbryt" onMouseDown={(e) => e.preventDefault()} onClick={onCancel} />
+          <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
           <Text type="supporting" className={styles.keysHint}>Enter sparar · Esc avbryter</Text>
           {corrected && (
             <Button size="sm" variant="ghost" label="Återställ originalet" onMouseDown={(e) => e.preventDefault()} onClick={onRevert} />

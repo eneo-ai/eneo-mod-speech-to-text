@@ -46,6 +46,7 @@ import {
   getSpeakerMappingParticipants,
   getSpeakerMappingSourceStep,
   isSpeakerMappingCheckpoint,
+  isUnsureProposal,
   namingRefusal,
   proposalNameToLabel,
   speakerNamesFromRows,
@@ -480,10 +481,10 @@ export function ReviewView({
     </VStack>
   );
 
-  // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
-  // whole transcript.
+  // Who is who: the decision, and what stops it, under the speakers' card at every width, never after the whole
+  // transcript.
   const decision = (
-    <VStack gap={4} className={styles.decision}>
+    <VStack gap={4}>
       {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
       {hasDropped && <Button variant="secondary" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
       {saveState === "error" && (
@@ -505,25 +506,34 @@ export function ReviewView({
   );
 
   if (isSpeakerMapping) {
-    // Who is who at a glance; naming happens in "Namnge talarna".
-    const speakers =
+    // Who is who at a glance; naming happens in "Namnge talarna", the card's own action at the end of its heading's row.
+    // A name the flow guessed and was not sure of says so here too, not only in the dialog.
+    const speakerList =
       speakerRows.length === 0 ? (
         <Text as="p" type="supporting">
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        <VStack gap={4}>
-          {/* Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. */}
-          <List aria-label="Talare" density="compact" hasDividers>
-            {namingRows.map((row) => (
-              <ListItem
-                key={row.label}
-                label={row.name ?? speakerDisplayLabel(row.label)}
-                startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-                description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
-              />
-            ))}
-          </List>
+        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it.
+        <List aria-label="Talare" density="compact" hasDividers>
+          {namingRows.map((row) => (
+            <ListItem
+              key={row.label}
+              label={row.name ?? speakerDisplayLabel(row.label)}
+              startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
+              description={
+                !row.name
+                  ? "Inget namn"
+                  : isUnsureProposal(row, modelProposals)
+                    ? `${speakerDisplayLabel(row.label)} · Osäkert förslag`
+                    : speakerDisplayLabel(row.label)
+              }
+            />
+          ))}
+        </List>
+      );
+    const namingAction =
+      speakerRows.length === 0 ? null : (
           <SpeakerNamingDialog
             rows={namingRows}
             proposals={modelProposals}
@@ -543,18 +553,20 @@ export function ReviewView({
             decided={decided}
             draftKey={namesDraftKey}
           >
-            {/* The card's own action: across the card on a phone, at its start where there is room. */}
             <Button
               variant="secondary"
-              size="lg"
               icon={<UsersRound aria-hidden />}
               label="Namnge talarna"
               isDisabled={busy || transcript.pending}
-              className={styles.cardAction}
             />
           </SpeakerNamingDialog>
-        </VStack>
       );
+    const speakers = (
+      <VStack gap={4}>
+        {speakerList}
+        {namingAction}
+      </VStack>
+    );
     const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
       <Text as="p" type="supporting">
         Talare utan namn behåller sin etikett i transkriberingen.
@@ -604,13 +616,22 @@ export function ReviewView({
           ) : (
             <VStack gap={6}>
               {intro}
-              <Card padding={4} role="group" aria-label="Talare">
+              {/* The card is the speakers, its heading and its action in one row as the transcript's card has them; the
+                  decision is the page's, under the card. Not docked on a phone: the transcript's player docks there,
+                  and two bars would cover a fifth of the screen. */}
+              <Card padding={4} role="group" aria-labelledby="review-speakers">
                 <VStack gap={3}>
-                  {speakers}
+                  <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+                    <Heading level={2} id="review-speakers">
+                      Talare
+                    </Heading>
+                    {namingAction}
+                  </HStack>
+                  {speakerList}
                   {unmappedNote}
                 </VStack>
-                {decision}
               </Card>
+              {decision}
             </VStack>
           )}
           {/* There the card folds away, so the decision follows it instead. */}

@@ -10,6 +10,7 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { SlowWait } from "@/components/SlowWait";
 import { BackToFlows } from "@/components/flow/BackToFlows";
@@ -186,10 +187,10 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
             Körningen är avslutad och finns kvar i Eneo.
           </Text>
         </VStack>
-        <HStack gap={3} wrap="wrap">
-          <Button label="Försök igen" variant="primary" icon={<Icon icon={RotateCcw} size="sm" color="inherit" />} onClick={onRetry} />
+        <ActionRow>
           <BackToFlows size="md" />
-        </HStack>
+          <Button label="Försök igen" variant="primary" icon={<Icon icon={RotateCcw} size="sm" color="inherit" />} onClick={onRetry} />
+        </ActionRow>
       </VStack>
     </StateCard>
   );

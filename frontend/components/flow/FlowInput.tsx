@@ -541,8 +541,19 @@ function SetupWorkspace({
         </>
       )}
 
-      {/* The microphone right under the way it records with: tested before the meeting starts, not after the rest. */}
+      {/* The microphone right under the way it records with: tested before the meeting starts, not after the rest. The
+          chosen file the same way: in view under Ladda upp, not under the details, out of sight of the action it sends. */}
       {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+      {mode === "ladda-upp" && (
+        <UploadPanel
+          step={step}
+          file={file}
+          audio={audio}
+          optional={optionalFile}
+          inputRef={fileInput}
+          onChoose={(chosen) => session.chooseFile(chosen)}
+        />
+      )}
 
       {details}
 
@@ -561,17 +572,6 @@ function SetupWorkspace({
       )}
 
       {details && <ClassificationNote classification={contract.security_classification} />}
-
-      {mode === "ladda-upp" && (
-        <UploadPanel
-          step={step}
-          file={file}
-          audio={audio}
-          optional={optionalFile}
-          inputRef={fileInput}
-          onChoose={(chosen) => session.chooseFile(chosen)}
-        />
-      )}
 
       {/* On a phone the dock keeps to the classification and the action, so the ways in stay in view above it: where the
           recording is kept is said at the form's end. */}
