@@ -51,6 +51,8 @@ test("Lägg till stands beside the field, level with it and off until a name is 
   const input = page.getByRole("textbox", { name: /^Deltagare/ });
   const add = page.getByRole("button", { name: "Lägg till", exact: true });
   await expect(add, "there before a name is typed, and off").toBeDisabled();
+  // On a phone the field stands after the ways in, below the first screen: measured where typing in it leaves the page.
+  await input.focus();
   const empty = await row(page);
   await input.fill("Sara Holm");
   await expect(add).toBeEnabled();
