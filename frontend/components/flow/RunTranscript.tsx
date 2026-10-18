@@ -199,7 +199,7 @@ function TranscriptHeader({ plain, unread, fileName }: { plain: string; unread: 
         Transkribering
       </Heading>
       {room.fits ? (
-        <HStack wrap="wrap" gap={1}>
+        <HStack wrap="wrap" gap={2}>
           <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
           <Button
             variant="ghost"

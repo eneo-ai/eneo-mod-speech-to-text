@@ -614,6 +614,11 @@
       min-height: 44px;
     }
 
+    .astryx-toggle-button-group {
+      flex-wrap: wrap;
+      gap: var(--spacing-2);
+    }
+
     .astryx-text-area-control {
       min-block-size: 44px;
     }

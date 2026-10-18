@@ -331,7 +331,7 @@ export function ResultDocument({
                 description={file.meta}
               />
               {wide && !text && (
-                <HStack vAlign="center" gap={1} paddingInline={2} paddingBlockEnd={2}>
+                <HStack vAlign="center" gap={2} paddingInline={2} paddingBlockEnd={2}>
                   {shareButton("ghost")}
                   {primaryDownload}
                 </HStack>

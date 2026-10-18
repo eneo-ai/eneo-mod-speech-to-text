@@ -307,6 +307,12 @@
   gap: var(--spacing-1);
 }
 
+@media (pointer: coarse) {
+  .dockTools {
+    gap: var(--spacing-2);
+  }
+}
+
 /* The player's keys: one quiet line where there is a keyboard to press them, with a mouse; never on a touch screen. */
 .keys {
   display: none;
@@ -399,6 +405,8 @@
      text below leave enough room for that area, so neighbouring controls never share a hit target. */
   .head {
     row-gap: var(--spacing-6);
+    /* 8 px between a speaker's name and the time beside it once the time's own -4 px inset is taken off. */
+    column-gap: var(--spacing-3);
   }
 
   .head .inline {

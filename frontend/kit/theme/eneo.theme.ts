@@ -175,6 +175,8 @@ export const eneoTheme = defineTheme({
             'slider-control': {base: {minBlockSize: TOUCH}},
             'collapsible-trigger': {base: {minHeight: TOUCH}},
             'radio-list-item': {base: {minHeight: TOUCH}},
+            // Chips a finger presses stand 8 px apart, not side by side: a tap meant for one does not land on the next.
+            'toggle-button-group': {base: {flexWrap: 'wrap', gap: 'var(--spacing-2)'}},
             // A one-line correction can shrink to 32 px on a tablet. The field itself remains a touch target.
             'text-area-control': {base: {minBlockSize: TOUCH}},
           },

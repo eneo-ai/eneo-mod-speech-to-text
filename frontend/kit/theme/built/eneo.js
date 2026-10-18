@@ -481,6 +481,12 @@ export const eneoTheme = {
                 "minHeight": "44px"
               }
             },
+            "toggle-button-group": {
+              "base": {
+                "flexWrap": "wrap",
+                "gap": "var(--spacing-2)"
+              }
+            },
             "text-area-control": {
               "base": {
                 "minBlockSize": "44px"
