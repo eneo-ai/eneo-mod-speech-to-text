@@ -251,6 +251,12 @@
   text-align: center;
 }
 
+/* Strömma shown to a room (the recording's section on the whole screen): the bar keeps its controls and its warnings,
+   and leaves out its calm lines to the presenter (the lock note, Stoppa's line), which are not the room's to read. */
+:fullscreen .notes {
+  display: none;
+}
+
 /* A note of two lines breaks them evenly, never one word alone on the second. */
 .notes p {
   text-wrap: balance;

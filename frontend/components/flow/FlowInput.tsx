@@ -251,10 +251,6 @@ export function FlowInput({
           />
         }
       >
-        {/* Recording state changes are said once here; the timer never is. */}
-        <VisuallyHidden as="p" role="status">
-          {removed ? REMOVED : recordingAnnouncement(phase)}
-        </VisuallyHidden>
         <VStack
           as="section"
           ref={workspace}
@@ -262,6 +258,12 @@ export function FlowInput({
           gap={group === "capture" ? 4 : 6}
           className={group === "capture" ? [styles.capturePane, styles.capture].join(" ") : group === "setup" ? styles.setup : undefined}
         >
+          {/* Recording state changes are said once here; the timer never is. Inside the section, so they are still heard
+              when Strömma shows the section alone on the whole screen: a browser then hides the rest of the page from
+              assistive technology. */}
+          <VisuallyHidden as="p" role="status">
+            {removed ? REMOVED : recordingAnnouncement(phase)}
+          </VisuallyHidden>
           <OfflineBanner waiting={group === "capture" ? "recording" : null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
           {group === "setup" ? (

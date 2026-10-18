@@ -1,5 +1,5 @@
 /**
- * "Skapa dokumentet igen med rättningarna": when the transcript's saved
+ * "Skapa dokumentet igen": when the transcript's saved
  * corrections are newer than the document, a new run can make the document
  * again from the reviewed transcript. The source run and its files never
  * change; nothing happens unless the user asks.

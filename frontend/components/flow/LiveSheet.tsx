@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
@@ -35,12 +36,22 @@ const Pieces = memo(
 );
 
 /**
+ * Where "Visa i helskärm" is offered: from a tablet's width (on a phone its button would take a line of the text's
+ * little room), in a browser that shows an element on the whole screen (an iPhone does not). The setup's line for
+ * Strömma says so where it is.
+ */
+export function useRoomViewOffered(): boolean {
+  const wide = useMediaQuery("(min-width: 768px)", true);
+  return wide && typeof document !== "undefined" && document.fullscreenEnabled === true;
+}
+
+/**
  * Strömma's workspace: the draft on a document sheet. Committed pieces form a
  * log a screen reader hears once each; words still arriving are shown faintly
  * and not read. The sheet follows new text only while the reader is at its
  * end, keeps its size as text arrives, and never moves focus into the text.
  *
- * "Visa för rummet" puts `room` (the recording's section: this sheet and the bar with Pausa and Stoppa) alone on the
+ * "Visa i helskärm" puts `room` (the recording's section: this sheet and the bar with Pausa and Stoppa) alone on the
  * whole screen, for a projector or a screen on the wall: the text in a size read across a room, and what the sheet says
  * spoken to no one in particular. Esc or "Lämna helskärm" brings the page back, and the room view ends with the
  * recording.
@@ -55,9 +66,10 @@ export function LiveSheet({
   recorder: CaptureStatus;
   /** The run labels speakers, which live text does not show: say they come with the final text. */
   speakers?: boolean;
-  /** What "Visa för rummet" shows on the whole screen. */
+  /** What "Visa i helskärm" shows on the whole screen. */
   room?: RefObject<HTMLElement | null>;
 }) {
+  const offered = useRoomViewOffered();
   const snapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
   const scroller = useRef<HTMLElement>(null);
@@ -104,12 +116,12 @@ export function LiveSheet({
               ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
               : "Preliminär text, den slutliga skapas när du är klar"}
         </Heading>
-        {room && fullscreen.supported && (
+        {room && offered && (
           <Button
             variant="ghost"
             size="sm"
             icon={<Icon icon={forRoom ? Minimize2 : Presentation} />}
-            label={forRoom ? "Lämna helskärm" : "Visa för rummet"}
+            label={forRoom ? "Lämna helskärm" : "Visa i helskärm"}
             onClick={showForRoom}
             className={styles.roomButton}
           />

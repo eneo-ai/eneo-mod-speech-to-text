@@ -31,14 +31,14 @@
       - text: ""
       - status
   - status
-  - status
   - region "Ljudet":
+    - status
     - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
       - radio "Strömma" [checked]
-      - text: Strömma Se texten medan du pratar. Ljudet skickas till Eneo direkt.
+      - text: Strömma Se texten medan du pratar, också i helskärm för rummet. Ljudet skickas till Eneo direkt.
       - radio "Spela in"
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"

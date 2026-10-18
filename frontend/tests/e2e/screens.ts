@@ -824,7 +824,7 @@ export const STATES: State[] = [
       await setup(page);
       await record(page, "Strömma");
       await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
-      await page.getByRole("button", { name: "Visa för rummet" }).click();
+      await page.getByRole("button", { name: "Visa i helskärm" }).click();
       await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
       await expect(page.getByRole("heading", { name: "Preliminär text, kan innehålla fel" })).toBeVisible();
     },

@@ -77,12 +77,12 @@ test("tips are for recording, and the one about names helps the naming without p
   assert.deepEqual(guide(contract(), RECORDS)?.tips, [
     "Ställ en enhet mitt på bordet.",
     "Stäng dörrar och fönster om du kan.",
-    "Lås inte skärmen under inspelningen.",
+    "Lås inte skärmen och stäng inte locket under inspelningen.",
   ]);
   assert.deepEqual(guide(contract({ steps_requiring_review: [speakerReview] }), RECORDS_AND_STREAMS)?.tips, [
     "Be alla säga sitt namn i början. Det hjälper när du bekräftar vem som är vem.",
     "Ställ en enhet mitt på bordet.",
     "Stäng dörrar och fönster om du kan.",
-    "Lås inte skärmen under inspelningen.",
+    "Lås inte skärmen och stäng inte locket under inspelningen.",
   ]);
 });

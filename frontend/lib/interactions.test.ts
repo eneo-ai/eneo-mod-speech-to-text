@@ -801,7 +801,10 @@ test("Ta bort on a ready recording says it was removed without moving the page, 
     await view.act(async () => undefined);
     const said = [...view.container.querySelectorAll('[role="status"]')].map((region) => region.textContent);
     assert.ok(said.includes("Inspelningen togs bort."), `said once it is gone: ${said.join(" | ")}`);
-    assert.doesNotMatch(audio.textContent ?? "", /Inspelningen togs bort\./, "said, not shown: nothing pushes the setup down");
+    // The page's announcer stands in the section (so it is heard in Strömma's room view); outside it nothing says so.
+    const shown = audio.cloneNode(true) as HTMLElement;
+    shown.querySelectorAll('[role="status"]').forEach((region) => region.remove());
+    assert.doesNotMatch(shown.textContent ?? "", /Inspelningen togs bort\./, "said, not shown: nothing pushes the setup down");
     assert.ok(document.activeElement?.matches("[data-phase-heading]"), "with the focus on the setup's heading");
   } finally {
     store.remove = remove;

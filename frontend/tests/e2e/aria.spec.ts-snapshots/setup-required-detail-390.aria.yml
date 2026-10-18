@@ -2,8 +2,8 @@
   - heading "Samråd till protokoll" [level=1]
   - paragraph: Gör ett protokoll av ett samrådsmöte.
   - button "Så fungerar det 3 steg"
-  - status
   - region "Ljudet":
+    - status
     - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?

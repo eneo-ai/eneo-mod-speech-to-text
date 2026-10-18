@@ -74,7 +74,7 @@ export function howItWorks(contract: RunContract, modes: readonly InputMode[]): 
         ...(asksWhoIsWho ? ["Be alla säga sitt namn i början. Det hjälper när du bekräftar vem som är vem."] : []),
         "Ställ en enhet mitt på bordet.",
         "Stäng dörrar och fönster om du kan.",
-        "Lås inte skärmen under inspelningen.",
+        "Lås inte skärmen och stäng inte locket under inspelningen.",
       ]
     : [];
   return { steps, tips };

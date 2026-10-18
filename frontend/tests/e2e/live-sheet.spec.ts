@@ -153,7 +153,7 @@ test("live text that cannot start says why where the promise of text was, and th
   await expect(page.getByRole("status").filter({ hasText: sentence })).toHaveCount(1);
 });
 
-test("Visa för rummet shows the live text and the bar alone on the whole screen, in a size read across a room, and Lämna helskärm brings the page back", async ({ page }, info) => {
+test("Visa i helskärm shows the live text and the bar alone on the whole screen, in a size read across a room, and Lämna helskärm brings the page back", async ({ page }, info) => {
   test.skip(info.project.name !== "laptop-1440-light", "a laptop on a projector");
   await longLiveText(page);
   await setup(page);
@@ -163,7 +163,7 @@ test("Visa för rummet shows the live text and the bar alone on the whole screen
   const textSize = () => log.evaluate((element) => parseFloat(getComputedStyle(element.querySelector("p")!).fontSize));
   const onPage = await textSize();
 
-  await page.getByRole("button", { name: "Visa för rummet" }).click();
+  await page.getByRole("button", { name: "Visa i helskärm" }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute("aria-label") ?? null)).toBe("Ljudet");
   expect(await textSize(), `the text is read across a room (${onPage} px on the page)`).toBeGreaterThanOrEqual(48);
   await expect(page.getByRole("heading", { name: "Preliminär text, kan innehålla fel" }), "the room is spoken to as a room").toBeVisible();
@@ -176,13 +176,19 @@ test("Visa för rummet shows the live text and the bar alone on the whole screen
   const sheet = page.getByRole("region", { name: "Preliminär text, kan innehålla fel" });
   await expect(sheet.getByText("Inspelningen är pausad.", { exact: true })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Inspelningen är pausad." }), "said once").toHaveCount(1);
+  // What the browser itself gives a screen reader while the section is on the whole screen, where the rest of the page is
+  // inert: the pause is in Chromium's own accessibility tree, once (the room's written line is hidden from it).
+  const cdp = await page.context().newCDPSession(page);
+  const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+  const heard = nodes.filter((node) => !node.ignored && node.role?.value === "StaticText" && node.name?.value === "Inspelningen är pausad.");
+  expect(heard, "the pause is heard in the room view").toHaveLength(1);
   await page.getByRole("button", { name: "Fortsätt" }).click();
   await expect(sheet.getByText("Inspelningen är pausad.", { exact: true })).toHaveCount(0);
 
   const leave = page.getByRole("button", { name: "Lämna helskärm" });
   await leave.click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
-  await expect(page.getByRole("button", { name: "Visa för rummet" }), "the focus stays where the presenter pressed").toBeFocused();
+  await expect(page.getByRole("button", { name: "Visa i helskärm" }), "the focus stays where the presenter pressed").toBeFocused();
   expect(await textSize()).toBe(onPage);
 });
 
@@ -192,7 +198,7 @@ test("where the browser shows no element on the whole screen (a frame without th
   await setup(page);
   await record(page, "Strömma");
   await expect(page.getByRole("log", { name: "Preliminär text" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Visa för rummet" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Visa i helskärm" })).toHaveCount(0);
 });
 
 test("on a phone the room view is not offered: its button would take a line of the text's little room", async ({ page }, info) => {
@@ -200,5 +206,5 @@ test("on a phone the room view is not offered: its button would take a line of t
   await setup(page);
   await record(page, "Strömma");
   await expect(page.getByRole("log", { name: "Preliminär text" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Visa för rummet" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Visa i helskärm" })).toHaveCount(0);
 });

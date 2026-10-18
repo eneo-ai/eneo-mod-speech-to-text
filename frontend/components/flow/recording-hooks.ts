@@ -74,13 +74,12 @@ const onFullscreenChange = (change: () => void) => {
 };
 
 /**
- * `target` alone on the whole screen (the Fullscreen API): whether it is, and the way in and out. `supported` is false
- * where the browser shows no element on the whole screen (an iPhone, a frame without the permission). Leaving with Esc
- * is the browser's own. Whatever the hook's owner shows ends with it: unmounted, it leaves the whole screen, so a page
- * that moves on never stands there.
+ * `target` alone on the whole screen (the Fullscreen API): whether it is, and the way in and out (where the browser
+ * offers it at all is the caller's to ask: `document.fullscreenEnabled`). Leaving with Esc is the browser's own.
+ * Whatever the hook's owner shows ends with it: unmounted, it leaves the whole screen, so a page that moves on never
+ * stands there.
  */
 export function useFullscreen(target: RefObject<HTMLElement | null>) {
-  const supported = typeof document !== "undefined" && document.fullscreenEnabled === true;
   const active = useSyncExternalStore(
     onFullscreenChange,
     () => document.fullscreenElement !== null && document.fullscreenElement === target.current,
@@ -96,7 +95,7 @@ export function useFullscreen(target: RefObject<HTMLElement | null>) {
       if (element && document.fullscreenElement === element) void document.exitFullscreen().catch(() => undefined);
     };
   }, [target]);
-  return { supported, active, toggle };
+  return { active, toggle };
 }
 
 /** How long live text must be down before the sheet says so, and up again before it takes the words back. */

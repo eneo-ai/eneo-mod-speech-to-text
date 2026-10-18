@@ -233,7 +233,8 @@ export function RunResult({
                   </Text>
                 )}
                 {detailsLine && (
-                  <Text as="p" type="supporting">
+                  // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
+                  <Text as="p" type="supporting" maxLines={2}>
                     {detailsLine}
                   </Text>
                 )}
@@ -245,14 +246,24 @@ export function RunResult({
             <VStack gap={4}>
               {tabs && (
                 <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
-                  {/* The notice that the document can be made again is in this panel, out of sight on the other tab. The
-                      dot's words go on from the tab's own: "Dokument kan göras om med rättningarna". */}
+                  {/* The notice that the document can be made again is in this panel: while the other tab is chosen it is
+                      out of sight, and this tab carries a dot whose words go on from the tab's own ("Dokument kan
+                      skapas igen med rättningarna", the notice's own verb), and say so on hover too. With this tab chosen
+                      the notice itself is there, and the dot would only repeat it. */}
                   <Tab
                     value="document"
                     id={PANELS.document.tab}
                     panelId={PANELS.document.panel}
                     label={words.tab}
-                    endContent={regenerates ? <StatusDot variant="accent" label="kan göras om med rättningarna" /> : undefined}
+                    endContent={
+                      regenerates && view === "transcript" ? (
+                        <StatusDot
+                          variant="accent"
+                          label="kan skapas igen med rättningarna"
+                          tooltip={`${words.tab} kan skapas igen med rättningarna`}
+                        />
+                      ) : undefined
+                    }
                   />
                   <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkribering" />
                 </TabList>

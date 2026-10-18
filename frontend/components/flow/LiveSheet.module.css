@@ -10,17 +10,14 @@
   overflow: clip;
 }
 
-/* The sheet's head: what the text is, and "Visa för rummet" at its end. */
+/* The sheet's head: what the text is, and "Visa i helskärm" at its end, also when a long heading pushes it to a line of
+   its own (where it is offered is LiveSheet's useRoomViewOffered). */
 .head {
   padding: var(--spacing-4) var(--spacing-5) 0;
 }
 
-/* The room view is for a laptop or a tablet on a projector or a screen on the wall; on a phone its button would take a
-   line of the little room the text has. */
-@media (max-width: 767.98px) {
-  .roomButton {
-    display: none;
-  }
+.roomButton {
+  margin-inline-start: auto;
 }
 
 .heading {

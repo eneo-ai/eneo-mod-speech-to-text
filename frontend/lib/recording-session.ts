@@ -30,9 +30,10 @@ import {
 } from "./recording-store";
 
 const CHUNK_MS = 2_000;
-// The tiers of time left that the page tells of (recordingNotices).
-const NOTE_MS = 15 * 60_000;
-const WARNING_MS = 5 * 60_000;
+/** From this much recording time left the page notes it (recordingNotices); the snapshot's `remainingMs` tier. */
+export const TIME_LEFT_NOTE_MS = 15 * 60_000;
+/** From this much recording time left the page warns of it; the snapshot's `remainingMs` tier. */
+export const TIME_LEFT_WARNING_MS = 5 * 60_000;
 // The recorder is looked at every CHUNK_MS while the page is in view. After this many looks without audio from it, it is
 // asked for its audio once; one more without, and the page says that nothing is being kept.
 const QUIET_LOOKS = 3;
@@ -817,7 +818,7 @@ export class RecordingCapture {
     const left = this.remaining(part);
     if (left === null) return null;
     if (left <= 0) return 0;
-    return left <= WARNING_MS ? WARNING_MS : left <= NOTE_MS ? NOTE_MS : Infinity;
+    return left <= TIME_LEFT_WARNING_MS ? TIME_LEFT_WARNING_MS : left <= TIME_LEFT_NOTE_MS ? TIME_LEFT_NOTE_MS : Infinity;
   }
 
   /** The exact recording time left before the flow's last allowed file is full; null without an end. */

@@ -9,11 +9,13 @@ import { axNode } from "./checks";
 import { addParticipants, backLink, chooseMode, isLaptop, pdfInDialog, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
-test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
+test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }, info) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
+  // From a tablet's width, where the live text can be shown on the whole screen, Strömma's line says so.
+  const room = (info.project.use.viewport?.width ?? 0) >= 768;
   for (const [name, description, checked] of [
-    ["Strömma", "Se texten medan du pratar. Ljudet skickas till Eneo direkt.", false],
+    ["Strömma", room ? "Se texten medan du pratar, också i helskärm för rummet. Ljudet skickas till Eneo direkt." : "Se texten medan du pratar. Ljudet skickas till Eneo direkt.", false],
     ["Spela in", "Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.", true],
     ["Ladda upp", "Välj en ljudfil från din enhet.", false],
   ] as const) {

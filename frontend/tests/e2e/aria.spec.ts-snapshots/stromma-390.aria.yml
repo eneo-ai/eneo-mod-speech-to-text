@@ -10,5 +10,5 @@
     - button "Pausa"
     - button "Stoppa"
   - status:
-    - paragraph: Lås inte skärmen och byt inte app under inspelningen. Då kan ljud saknas.
+    - paragraph: "Lås inte skärmen och byt inte app: ljud kan saknas."
   - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.

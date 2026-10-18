@@ -2,8 +2,8 @@
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - button "Så fungerar det 3 steg"
-  - status
   - region "Ljudet":
+    - status
     - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?

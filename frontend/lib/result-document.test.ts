@@ -590,10 +590,14 @@ test("a failed later save keeps the note that the document is older, and says wh
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const note = () => view.container.querySelector('[role="note"]');
   assert.ok(note(), "saved corrections are newer than the document");
-  assert.equal(button(note()!, "Skapa dokumentet igen med rättningarna")!.disabled, false);
-  // The notice is in the Dokument panel: while the person corrects on the other tab, its tab says so.
-  const dots = (name: string) => [...tabsIn(view.container).find((b) => tabLabel(b) === name)!.querySelectorAll('[role="img"]')].map((dot) => dot.getAttribute("aria-label"));
-  assert.deepEqual(dots("Dokument"), ["kan göras om med rättningarna"], "the tab is called Dokument kan göras om med rättningarna");
+  assert.equal(button(note()!, "Skapa dokumentet igen")!.disabled, false);
+  // The notice is in the Dokument panel. With that tab chosen the notice is in view and the tab carries nothing more;
+  // while the person corrects on the other tab, the Dokument tab says so.
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
+  const dots = (name: string) => [...tab(name).querySelectorAll('[role="img"]')].map((dot) => dot.getAttribute("aria-label"));
+  assert.deepEqual(dots("Dokument"), [], "the notice is in view: no dot");
+  await view.act(async () => tab("Transkribering").click());
+  assert.deepEqual(dots("Dokument"), ["kan skapas igen med rättningarna"], "the tab is called Dokument kan skapas igen med rättningarna");
   assert.deepEqual(dots("Transkribering"), []);
 
   // A later correction fails to save.
@@ -1000,7 +1004,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
   assert.equal(view.container.querySelector("h1")?.textContent, "Texten är klar");
   const note = view.container.querySelector('[role="note"]')!;
   assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
-  assert.ok(button(note, "Skapa texten igen med rättningarna"), "Skapa texten igen");
+  assert.ok(button(note, "Skapa texten igen"), "Skapa texten igen");
   assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkribering"]);
   assert.ok(view.container.querySelector('[role="region"][aria-label="Texten"]'), "the text, named as such");
   assert.doesNotMatch(view.container.textContent ?? "", /[Dd]okument/);

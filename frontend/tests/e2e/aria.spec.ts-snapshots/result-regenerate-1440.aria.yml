@@ -5,7 +5,7 @@
   - button "Ny inspelning"
   - note:
     - text: Dokumentet skapades före dina rättningar Den nya versionen görs från den rättade transkriberingen.
-    - button "Skapa dokumentet igen med rättningarna"
+    - button "Skapa dokumentet igen"
   - region "Dokumentet":
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
     - text: /PDF, \d+ B/

@@ -26,7 +26,7 @@
   }
 }
 
-/* Shown to a room (Strömma's "Visa för rummet"): the recording's section alone on the screen, on the page's own colour
+/* Shown to a room (Strömma's "Visa i helskärm"): the recording's section alone on the screen, on the page's own colour
    (a whole-screen element is otherwise drawn over black), with the live text above the bar of controls. The side room is
    the bar's widest gutter (Recorder.module.css), which it reaches into; below a laptop's width the bar runs to the
    screen's bottom edge, as it does on the page. */

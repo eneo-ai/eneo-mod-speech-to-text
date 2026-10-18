@@ -7,14 +7,13 @@ import type { FormField } from "./api";
 import type { Problem, SessionPhase } from "./flow-session";
 import { formatClock, formatDuration } from "./format";
 import type { LiveStatus } from "./live-transcriber";
-import type { CaptureStatus } from "./recording-session";
+import { TIME_LEFT_NOTE_MS, TIME_LEFT_WARNING_MS, type CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
 import { documentTitle } from "./product";
 
 /** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
 export const stopLine = (makesText: boolean) =>
   `Stoppa avslutar inspelningen. Sedan kan du skapa ${makesText ? "texten" : "dokumentet"}.`;
-const MINUTE = 60_000;
 
 const SILENT_AFTER_MS = 15_000;
 // Two steps of 16-bit audio (about −84 dBFS).
@@ -136,11 +135,11 @@ export function recordingNotices({
       detail: "Kontrollera mikrofonen. Står varningen kvar, välj Stoppa: det som hunnit spelas in sparas, och du kan spela in vidare.",
     });
   }
-  if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
+  if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= TIME_LEFT_NOTE_MS) {
     // Two steps, never a count: a calm note from fifteen minutes, and a warning from five, when what is said after the
-    // end is close to not being recorded.
+    // end is close to not being recorded. The recorder publishes the time left in these same steps.
     const stops = "Då stoppas inspelningen och det som spelats in sparas.";
-    if (remainingMs <= 5 * MINUTE) warnings.push({ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops });
+    if (remainingMs <= TIME_LEFT_WARNING_MS) warnings.push({ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops });
     else notes.push(`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`);
   }
   if (phase === "recording" && silent && !muted) {
@@ -179,7 +178,7 @@ export function recordingNotices({
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
   // Said before it happens; the gaps above say it after.
-  if (phase === "recording" && coarsePointer) notes.push("Lås inte skärmen och byt inte app under inspelningen. Då kan ljud saknas.");
+  if (phase === "recording" && coarsePointer) notes.push("Lås inte skärmen och byt inte app: ljud kan saknas.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
   return { warnings, notes };
 }

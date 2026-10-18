@@ -190,7 +190,8 @@ export function RecordingBar({
             startContent={showStatus ? readout : actions}
             endContent={showStatus ? actions : undefined}
           />
-          <VStack gap={0.5} className={styles.notes} data-status={marker}>
+          {/* The notes, then Stoppa's line a step apart, so two short lines do not read as one paragraph. */}
+          <VStack gap={2} className={styles.notes} data-status={marker}>
             {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
             <VStack role="status" gap={0.5}>
               {notes.map((note) => (

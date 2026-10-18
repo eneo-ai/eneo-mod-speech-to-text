@@ -65,10 +65,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/base/frontend/scripts" "$RUNNER_TEMP/base/frontend/tests/perf"
           cp scripts/perf.mjs "$RUNNER_TEMP/base/frontend/scripts/perf.mjs"
           cp tests/perf/budget.json "$RUNNER_TEMP/base/frontend/tests/perf/budget.json"
+      # The base's backend runs on the base's own locked packages, in a virtual environment of its own: a pull request that
+      # changes a dependency is then measured against the packages it replaces.
       - name: Install and build the base
         if: github.event_name == 'pull_request'
         working-directory: ${{ runner.temp }}/base/frontend
         run: |
+          python -m venv "$RUNNER_TEMP/base-venv"
+          "$RUNNER_TEMP/base-venv/bin/python" -m pip install --require-hashes --no-deps -r ../backend/requirements.lock
           npm ci
           npx playwright install chromium
           npm run build
@@ -78,8 +82,9 @@ jobs:
       - name: Measure the base
         if: github.event_name == 'pull_request'
         working-directory: ${{ runner.temp }}/base/frontend
+        # The script itself, not an npm entry the base may not have.
         run: |
-          npm run --silent perf -- --label base --runs 3 2>&1 || true
+          BACKEND_PYTHON="$RUNNER_TEMP/base-venv/bin/python" node scripts/perf.mjs --label base --runs 3 2>&1 || true
           mkdir -p "$GITHUB_WORKSPACE/frontend/test-results/perf"
           if [ -f test-results/perf/base.json ]; then
             cp test-results/perf/base.json "$GITHUB_WORKSPACE/frontend/test-results/perf/base.json"
