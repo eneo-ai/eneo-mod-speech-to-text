@@ -300,6 +300,14 @@
   }
 }
 
+/* The soft keyboard opens over the lower half of a touch screen: with a text field of the player focused (the search,
+   a passage's editor) the dock stays where it is in the text, not above the keyboard where it would cover the text. */
+@media (pointer: coarse) {
+  .player:has(input:focus, textarea:focus) .dock {
+    position: static;
+  }
+}
+
 .dockTools {
   display: flex;
   align-items: center;

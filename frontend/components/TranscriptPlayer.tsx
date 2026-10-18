@@ -853,7 +853,11 @@ export function TranscriptPlayer(
                     kunde inte hittas i ljudet.
                     {canConfirm
                       ? " Lyssna och bekräfta att de stämmer, eller rätta repliken."
-                      : ""}
+                      : canEdit
+                        ? " Rätta repliken om ordet är fel."
+                        : fileCount > 0
+                          ? " Ett klick på ordet spelar upp det."
+                          : ""}
                   </>
                 ) : (
                   "Alla osäkra ord är bekräftade."
@@ -1204,7 +1208,9 @@ const TurnBlock = memo(function TurnBlock({
                             piece.correctedFrom !== null
                               ? `Rättad från: ${piece.correctedFrom}`
                               : flagged
-                                ? "Ordet kunde inte hittas i ljudet. Lyssna och bekräfta, eller rätta repliken."
+                                ? onToggleConfirmed
+                                  ? "Ordet kunde inte hittas i ljudet. Lyssna och bekräfta, eller rätta repliken."
+                                  : "Ordet kunde inte hittas i ljudet."
                                 : confirmed
                                   ? "Bekräftat: ordet stämmer."
                                   : undefined

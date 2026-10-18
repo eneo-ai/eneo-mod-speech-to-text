@@ -1,6 +1,7 @@
 - main:
   - heading "Dokumentet är klart" [level=1]
   - paragraph: /Nämndmöte till rapport · Skapad i dag \d+:\d+/
+  - paragraph: "Deltagare: Anna Berg, Erik Lund"
   - button "Ny inspelning"
   - note:
     - text: Dokumentet skapades före dina rättningar Den nya versionen görs från den rättade transkriberingen.
