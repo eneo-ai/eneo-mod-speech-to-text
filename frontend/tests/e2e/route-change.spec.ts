@@ -89,7 +89,8 @@ test("a link to a flow and Back, with the session's answer late: the title at on
   expect(offset, "the list scrolls in this window").toBeGreaterThan(100);
   await page.evaluate(() => (window.scrolls = []));
 
-  await delaySession(page, 1_500);
+  // Long enough that the spinner is still up after the checks below on a slow machine.
+  await delaySession(page, 3_000);
   // A link, followed as a click does, without the test scrolling the window to it first.
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
   // The title is the route's at once; nothing else yet: the session has not answered, the page is a spinner.
@@ -98,6 +99,7 @@ test("a link to a flow and Back, with the session's answer late: the title at on
   await page.waitForTimeout(700);
   expect(await said(page), "nothing is said over a spinner").toEqual([]);
   const meanwhile = await focused(page);
+  await expect(page.getByRole("status", { name: "Laddar" }), "the focus was read over the spinner").toBeVisible();
   expect(meanwhile.heading, `no focus in the spinner's heading (${JSON.stringify(meanwhile)})`).toBe(false);
 
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();

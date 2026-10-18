@@ -7,8 +7,15 @@ const focusRing = {
 // A menu's rows sit edge to edge in a clipping box: their ring is drawn inside them.
 const rowFocusRing = {...focusRing, outlineOffset: 'calc(var(--focus-outline-width) * -1)'};
 // A field's ring is its border, thickened: one line on the field's own edge and radius, not a second box around it, and
-// without the design system's faint inner ring beside it.
-const fieldFocusRing = {...focusRing, outlineOffset: 'calc(var(--border-width) * -1)', boxShadow: 'none'};
+// without the design system's faint inner ring beside it. The ring covers the border and the ring's full width inside
+// it: over the grey border the ring's colour differs by less than 3:1, so a ring of only its width drew one line the eye
+// can tell, and not every field showed all of it.
+const fieldFocusRing = {
+  ...focusRing,
+  outlineWidth: 'calc(var(--focus-outline-width) + var(--border-width))',
+  outlineOffset: 'calc(var(--border-width) * -1)',
+  boxShadow: 'none',
+};
 const TOUCH = '44px';
 // The one action a screen exists for, at every pointer.
 const LARGE = '48px';
