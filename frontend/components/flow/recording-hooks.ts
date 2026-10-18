@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useInputLevel } from "@/components/flow/LevelMeter";
 import type { LiveStatus } from "@/lib/live-transcriber";
 import type { RecordingCapture } from "@/lib/recording-session";
@@ -66,6 +66,37 @@ export function useDocumentTitle(title: string): void {
     },
     [],
   );
+}
+
+const onFullscreenChange = (change: () => void) => {
+  document.addEventListener("fullscreenchange", change);
+  return () => document.removeEventListener("fullscreenchange", change);
+};
+
+/**
+ * `target` alone on the whole screen (the Fullscreen API): whether it is, and the way in and out. `supported` is false
+ * where the browser shows no element on the whole screen (an iPhone, a frame without the permission). Leaving with Esc
+ * is the browser's own. Whatever the hook's owner shows ends with it: unmounted, it leaves the whole screen, so a page
+ * that moves on never stands there.
+ */
+export function useFullscreen(target: RefObject<HTMLElement | null>) {
+  const supported = typeof document !== "undefined" && document.fullscreenEnabled === true;
+  const active = useSyncExternalStore(
+    onFullscreenChange,
+    () => document.fullscreenElement !== null && document.fullscreenElement === target.current,
+    () => false,
+  );
+  const toggle = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void target.current?.requestFullscreen({ navigationUI: "hide" }).catch(() => undefined);
+  }, [target]);
+  useEffect(() => {
+    const element = target.current;
+    return () => {
+      if (element && document.fullscreenElement === element) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, [target]);
+  return { supported, active, toggle };
 }
 
 /** How long live text must be down before the sheet says so, and up again before it takes the words back. */

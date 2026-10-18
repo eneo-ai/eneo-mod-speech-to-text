@@ -313,6 +313,14 @@ test("live text says what it is doing apart from the recording, and only while t
   assert.equal(liveStatusLine("connecting", false, "recording"), null);
 });
 
+test("shown to a room, live text speaks to no one in particular", () => {
+  assert.equal(liveStatusLine("unavailable", false, "recording", true), "Livetexten kunde inte starta. Inspelningen fortsätter.");
+  assert.equal(liveStatusLine("stopped", true, "recording", true), "Livetexten stannade. Inspelningen fortsätter.");
+  assert.equal(liveStatusLine("reconnecting", true, "recording", true), "Livetexten pausades. Inspelningen fortsätter.");
+  assert.equal(liveStatusLine("live", true, "recording", true), null);
+  assert.equal(liveStatusLine("reconnecting", true, "paused", true), null, "a paused recorder is not claimed to record");
+});
+
 test("details a send found missing stay unfolded while they are filled in, until the user folds them", () => {
   let open = keepDetailsOpen(false, []);
   assert.equal(open, false, "folded to one line while recording");

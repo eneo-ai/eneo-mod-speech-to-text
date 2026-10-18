@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -301,6 +301,7 @@ export function FlowInput({
               input={input}
               speakers={labelsSpeakers(contract.transcription?.speaker_labels, snapshot.speakerLabels)}
               makesText={text}
+              room={workspace}
             />
           )}
         </VStack>
@@ -313,8 +314,21 @@ export function FlowInput({
   );
 }
 
-/** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
-function CaptureWorkspace({ input, speakers, makesText }: { input: Session; speakers: boolean; makesText: boolean }) {
+/**
+ * Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. `room` is
+ * the recording's section, which Strömma can show alone on the whole screen.
+ */
+function CaptureWorkspace({
+  input,
+  speakers,
+  makesText,
+  room,
+}: {
+  input: Session;
+  speakers: boolean;
+  makesText: boolean;
+  room: RefObject<HTMLElement | null>;
+}) {
   const { session, snapshot, capture, persistent } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
@@ -357,7 +371,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
       {streaming ? (
-        <LiveSheet live={live} recorder={capture.status} speakers={speakers} />
+        <LiveSheet live={live} recorder={capture.status} speakers={speakers} room={room} />
       ) : (
         <FocusedRecorder
           capture={session.capture}

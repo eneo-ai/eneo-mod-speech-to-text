@@ -283,18 +283,20 @@ export function atBottom({
  * What live text is doing, apart from the recording. Said only while the
  * recorder confirms that it records, so a delayed draft never reads as a
  * stopped microphone and "Inspelningen fortsätter" is never a guess.
+ * Shown to a room (`room`), it speaks to no one in particular.
  */
-export function liveStatusLine(live: LiveStatus, started: boolean, recorder: CaptureStatus): string | null {
+export function liveStatusLine(live: LiveStatus, started: boolean, recorder: CaptureStatus, room = false): string | null {
   if (recorder !== "recording") return null;
+  const later = room ? "" : ", och texten skapas när du stoppar";
   switch (live) {
     case "reconnecting":
       return started
         ? "Livetexten pausades. Inspelningen fortsätter."
         : "Livetexten kan inte starta just nu. Inspelningen fortsätter.";
     case "unavailable":
-      return "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.";
+      return `Livetexten kunde inte starta. Inspelningen fortsätter${later}.`;
     case "stopped":
-      return "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar.";
+      return `Livetexten stannade. Inspelningen fortsätter${later}.`;
     default:
       return null;
   }

@@ -2,6 +2,7 @@
   - status
   - region "Preliminär text, den slutliga skapas när du är klar":
     - heading "Preliminär text, den slutliga skapas när du är klar" [level=2]
+    - button "Visa för rummet"
     - log "Preliminär text":
       - paragraph: /Välkomna till/
     - status
