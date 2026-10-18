@@ -79,6 +79,9 @@ const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 const REMOVED = "Inspelningen togs bort.";
 
 const PHONE = "(max-width: 767.98px)";
+// A touch screen, which locks and whose apps switch under a recording, tall enough that the bar's line about it leaves the
+// text its room; on a smaller one the line stands only among the tips before the start ("Så fungerar det").
+const TOUCH = "(pointer: coarse) and (min-height: 640px)";
 // From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
 const COLUMNS = "(min-width: 1024px)";
 
@@ -316,6 +319,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
+  const coarsePointer = useMediaQuery(TOUCH);
   const { warnings, notes } = recordingNotices({
     phase,
     silent,
@@ -334,6 +338,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     error: problem || capture.stopping ? null : capture.error,
     wakeLock: !capture.screenMayDim,
     makesText,
+    coarsePointer,
   });
   // Stoppa asks first only where it cannot be taken back with Fortsätt spela in: the flow takes no further part of the
   // recording. Asked from the sign-in dialog, the question opens above it; asked from the page, it is closed while the

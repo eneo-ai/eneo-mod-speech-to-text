@@ -91,6 +91,14 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
     warnings: [{ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." }],
     notes: [],
   });
+  const lockNote = "Lås inte skärmen och byt inte app under inspelningen. Då kan ljud saknas.";
+  assert.deepEqual(recordingNotices({ ...base, coarsePointer: true }), { warnings: [], notes: [lockNote] }, "said on a touch device before it happens");
+  assert.deepEqual(recordingNotices({ ...base, phase: "paused", coarsePointer: true }), none, "audio is not at risk while paused");
+  assert.deepEqual(
+    recordingNotices({ ...base, coarsePointer: true, wakeLock: false }).notes,
+    [lockNote, "Låt skärmen vara tänd under inspelningen."],
+    "beside the note that the screen may dim",
+  );
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), none, "no silence warning while paused");
   assert.deepEqual(recordingNotices({ ...base, lowSpace: true, persistent: false, wakeLock: false }), {
     warnings: [{ title: "Det finns lite lagringsutrymme kvar på enheten.", detail: "Frigör utrymme om du ska spela in länge." }],

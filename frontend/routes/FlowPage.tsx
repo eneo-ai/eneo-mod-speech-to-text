@@ -257,6 +257,23 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [holdsAudio, submitting, unstored]);
 
+  // A file dropped outside Ladda upp's zone would make the browser open it and leave the page (and a recording). The zone's
+  // own handlers run first (React's root listeners are below window) and mark their event handled, so only a drop that
+  // landed elsewhere is stopped here; nothing is chosen by it.
+  useEffect(() => {
+    const keepPage = (event: DragEvent) => {
+      if (event.defaultPrevented || !event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      if (event.type === "dragover") event.dataTransfer.dropEffect = "none";
+    };
+    window.addEventListener("dragover", keepPage);
+    window.addEventListener("drop", keepPage);
+    return () => {
+      window.removeEventListener("dragover", keepPage);
+      window.removeEventListener("drop", keepPage);
+    };
+  }, []);
+
   // Opened by "Skapa dokument" on an unsent recording in the flow list, or "Fortsätt spela in" on a cut-off one: the
   // recording is sent, or recorded on in as this page's own "Fortsätt spela in" does it, once the flow has loaded.
   useEffect(() => {

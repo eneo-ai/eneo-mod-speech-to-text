@@ -23,8 +23,16 @@
 
 /* ----- Spela in's stage ----- */
 
-/* From a laptop's width the stage fills the column and centres its content; below, it is as tall as its content. */
+/* The stage fills what the recording's column leaves (`.capture`, FlowSetup.module.css, a flex column) and centres its
+   content, up to a timer's own room: on a tall screen (a tablet, a 4K display) a window-high card around one clock is
+   empty, so it stops there and the controls' bar follows it (`.stage + .bar`, from a laptop's width, where the bar is a
+   card in the column rather than docked to the window's edge). */
 .stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: center;
+  max-block-size: 44rem;
   padding-block: var(--spacing-10);
   text-align: center;
 }
@@ -35,17 +43,7 @@
   }
 }
 
-/* From a laptop's width the stage fills the window's height, up to a timer's own room: on a tall screen (a 4K display) a
-   window-high card around one clock is empty, so it stops there and the controls' bar follows it (`.stage + .bar`). */
 @media (min-width: 1024px) {
-  .stage {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    justify-content: center;
-    max-block-size: 44rem;
-  }
-
   .stage + .bar {
     margin-block-start: 0;
   }

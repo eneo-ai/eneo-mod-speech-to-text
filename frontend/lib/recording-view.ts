@@ -81,6 +81,7 @@ export function recordingNotices({
   wakeLock,
   backOnDevice = false,
   makesText = false,
+  coarsePointer = false,
 }: {
   phase: SessionPhase;
   silent: boolean;
@@ -106,6 +107,8 @@ export function recordingNotices({
   wakeLock: boolean;
   /** The flow ends in text, not a file. */
   makesText?: boolean;
+  /** A touch device: the screen locks and apps switch under a recording, which then loses audio. */
+  coarsePointer?: boolean;
 }): { warnings: Problem[]; notes: string[] } {
   const warnings: Problem[] = [];
   const notes: string[] = [];
@@ -175,6 +178,8 @@ export function recordingNotices({
     notes.push(`Sidan låg i bakgrunden i ${formatDuration(hiddenGap)}. Ljud från den tiden kan saknas.`);
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
+  // Said before it happens; the gaps above say it after.
+  if (phase === "recording" && coarsePointer) notes.push("Lås inte skärmen och byt inte app under inspelningen. Då kan ljud saknas.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
   return { warnings, notes };
 }
