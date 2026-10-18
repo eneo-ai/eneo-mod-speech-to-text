@@ -1,0 +1,5 @@
+{
+  "cls": { "phone": 0.1, "laptop": 0.1 },
+  "inp": { "phone": 200, "laptop": 200 },
+  "inpLong": { "phone": 300, "laptop": 250 }
+}
