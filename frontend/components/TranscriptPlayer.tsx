@@ -2,6 +2,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateC
 import {
   type ComponentProps,
   type ComponentType,
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -1148,8 +1149,10 @@ function TurnBlock({
                       Boolean(piece.word?.uncertain) &&
                       all[k + 1]?.wordIndex !== piece.wordIndex;
                     const Word = piece.hit ? "mark" : "span";
+                    // A piece is its one element (and a word's confirm button after it), no wrapper: an hour's meeting
+                    // is tens of thousands of pieces, and a wrapper each doubled the page's elements.
                     return (
-                      <span key={k}>
+                      <Fragment key={k}>
                         <Word
                           data-word-start={piece.word ? piece.word.start : undefined}
                           data-word-index={piece.word ? piece.wordIndex : undefined}
@@ -1196,7 +1199,7 @@ function TurnBlock({
                             </span>
                           </button>
                         )}
-                      </span>
+                      </Fragment>
                     );
                   })}
                 </span>

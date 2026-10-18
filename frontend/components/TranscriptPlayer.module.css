@@ -357,6 +357,8 @@
   padding: var(--spacing-4) var(--spacing-2);
   border-radius: var(--radius-container);
   transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 7rem;
 }
 
 .turn[data-active="true"] {
