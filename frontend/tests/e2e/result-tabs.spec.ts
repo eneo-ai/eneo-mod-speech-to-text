@@ -56,3 +56,33 @@ test("Visa i transkriberingen on the docked player takes the person to the trans
   await expect(page.getByRole("tab", { name: "Transkribering" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: "Transkribering" })).toBeFocused();
 });
+
+test("a copy from the transcript's menu that the clipboard refuses says so beside the menu, and the next one is copied", async ({ page }) => {
+  // A phone's column: the transcript's copy and download fold into its menu there.
+  await page.setViewportSize({ width: 390, height: 844 });
+  // A clipboard that refuses until it is let through, as a page without the permission and then with it.
+  await page.addInitScript(() => {
+    const state = window as unknown as { clipboardRefuses: boolean };
+    state.clipboardRefuses = true;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          if (state.clipboardRefuses) throw new DOMException("Refused", "NotAllowedError");
+        },
+      },
+    });
+  });
+  await result(page);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  const menu = page.getByRole("button", { name: "Fler alternativ för transkriberingen" });
+  const failed = page.getByText("Kunde inte kopiera", { exact: true });
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Kopiera transkriberingen" }).click();
+  await expect(failed, "the refusal is said where the person looks, not only to a screen reader").toBeVisible();
+
+  await page.evaluate(() => ((window as unknown as { clipboardRefuses: boolean }).clipboardRefuses = false));
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Kopiera transkriberingen" }).click();
+  await expect(failed).toBeHidden();
+});
