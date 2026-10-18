@@ -114,6 +114,8 @@ it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 
 inside a group, 8 px between a label and its control. A control that pairs a label with a switch is no wider than the
 microphone row (36 rem): across a laptop's column the two would stand 800 px apart. The recording's stage fills the
 window's height up to 44 rem, and its bar follows it: a window-high card around one clock is empty on a 4K display.
+Controls a finger presses stand at least 8 px apart (WCAG 2.5.8 asks 24 px targets; the house asks 44 px and room
+between them): chips, a passage's name and time, a file's actions, the player's tools.
 
 ## Elevation & Depth
 
@@ -185,6 +187,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ### Transcript
 - The transcript's Kopiera and Ladda ner som text stand beside its heading where the row has room and fold into one
   "Fler alternativ" menu where it has not, as the document's own actions do. Passages stand 32 px apart.
+- A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
+  window (`content-visibility: auto`): an hour's meeting is tens of thousands of words.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
   column.
 
