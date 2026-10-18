@@ -1,6 +1,5 @@
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
-import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { HowItWorks as Guide } from "@/lib/flow-output";
@@ -27,18 +26,23 @@ export function HowItWorks({ guide }: { guide: Guide }) {
         <Heading level={2} id="how-it-works" className={styles.fromLaptop}>
           Så fungerar det
         </Heading>
-        <List listStyle="decimal" density="compact">
+        {/* Native lists, so a long step wraps in the 20rem column and on a phone; Astryx's list item keeps one line. */}
+        <VStack as="ol" gap={2} className={styles.steps}>
           {guide.steps.map((step) => (
-            <ListItem key={step} label={step} />
+            <li key={step}>
+              <Text>{step}</Text>
+            </li>
           ))}
-        </List>
+        </VStack>
         {guide.tips.length > 0 && (
           <Collapsible trigger="Tips för bra ljud" defaultIsOpen={false}>
-            <List listStyle="disc" density="compact">
+            <VStack as="ul" gap={2} className={styles.tips}>
               {guide.tips.map((tip) => (
-                <ListItem key={tip} label={tip} />
+                <li key={tip}>
+                  <Text>{tip}</Text>
+                </li>
               ))}
-            </List>
+            </VStack>
           </Collapsible>
         )}
       </VStack>

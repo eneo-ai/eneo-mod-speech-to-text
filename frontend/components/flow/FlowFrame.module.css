@@ -176,3 +176,19 @@
     line-height: var(--text-heading-1-leading);
   }
 }
+
+/* "Så fungerar det" (HowItWorks): the steps and tips as native lists whose words wrap; the reset takes the markers away,
+   so they are given back here. */
+.steps,
+.tips {
+  margin: 0;
+  padding-inline-start: var(--spacing-6);
+}
+
+.steps {
+  list-style: decimal;
+}
+
+.tips {
+  list-style: disc;
+}
