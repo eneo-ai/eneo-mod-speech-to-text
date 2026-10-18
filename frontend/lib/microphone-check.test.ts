@@ -140,3 +140,26 @@ test("a microphone that goes quiet while it is tested no longer says it hears yo
   await listen();
   assert.match(view.text(), /Mikrofonen hör dig\./);
 });
+
+test("after a moment muted, only new sound says the microphone hears you, not what it heard before", async (t) => {
+  const microphone = useMicrophone(t);
+  const level = useLevel(t);
+  const view = await microphoneCheck();
+  await view.press("Testa mikrofonen");
+  const given = fakeStream();
+  await view.act(async () => microphone.answer(given.stream));
+  const read = () => view.act(async () => t.mock.timers.tick(66));
+
+  level.peak = 0.6;
+  await read();
+  assert.match(view.text(), /Mikrofonen hör dig\./);
+  // A brief mute: back at once, and then only silence.
+  level.peak = 0;
+  await view.act(async () => given.track.fire("mute"));
+  await view.act(async () => given.track.fire("unmute"));
+  await read();
+  assert.doesNotMatch(view.text(), /Mikrofonen hör dig\./, "the meter still glows from before, but nothing new was heard");
+  level.peak = 0.6;
+  await read();
+  assert.match(view.text(), /Mikrofonen hör dig\./);
+});

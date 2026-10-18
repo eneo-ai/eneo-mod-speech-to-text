@@ -187,8 +187,19 @@ export function FlowInput({
       const target = event.target instanceof Element ? event.target : null;
       detailFocus.current = target?.closest("[data-detail-field]")?.getAttribute("data-detail-field") ?? null;
     };
+    // A field the person leaves while it stays on the page is left; one the layout took away keeps its claim to the focus.
+    const left = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      queueMicrotask(() => {
+        if (target?.isConnected) detailFocus.current = null;
+      });
+    };
     document.addEventListener("focusin", remember);
-    return () => document.removeEventListener("focusin", remember);
+    document.addEventListener("focusout", left);
+    return () => {
+      document.removeEventListener("focusin", remember);
+      document.removeEventListener("focusout", left);
+    };
   }, []);
   useLayoutEffect(() => {
     const field = detailFocus.current;

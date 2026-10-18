@@ -91,8 +91,9 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     };
   }, [active]);
 
-  useInputLevel(stream, (level, running) => {
-    if (running && level > 0.35 && !muted) setHeard(true);
+  // Heard on this read's own level, not the display's gliding one: after a moment muted, only new sound counts.
+  useInputLevel(stream, (_level, running, _peak, now) => {
+    if (running && now > 0.35 && !muted) setHeard(true);
   });
 
   const { choices, value, missing } = microphoneChoices(inputs, preferred);

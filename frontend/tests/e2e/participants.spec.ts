@@ -119,3 +119,14 @@ test("a name being typed when a tablet is turned (the window crosses a laptop's 
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
   await expect(field).toBeFocused();
 });
+
+test("a field left before the window crosses a laptop's width does not take the focus back", async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await setup(page);
+  const field = page.getByRole("textbox", { name: /^Deltagare/ });
+  await field.focus();
+  await field.blur();
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(field).not.toBeFocused();
+});
