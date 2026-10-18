@@ -4,13 +4,14 @@ import type { LiveStatus } from "@/lib/live-transcriber";
 import type { RecordingCapture } from "@/lib/recording-session";
 import { SilenceWatch } from "@/lib/recording-view";
 
-/** Recorded time from the recorder itself, refreshed while it records. */
+/** Recorded time from the recorder itself in whole seconds (all the clock and the tab title show), refreshed while it records. */
 export function useElapsed(capture: RecordingCapture, running: boolean): number {
-  const [elapsed, setElapsed] = useState(() => capture.elapsedMs());
+  const seconds = () => Math.floor(capture.elapsedMs() / 1000) * 1000;
+  const [elapsed, setElapsed] = useState(seconds);
   useEffect(() => {
-    setElapsed(capture.elapsedMs());
+    setElapsed(seconds());
     if (!running) return;
-    const timer = setInterval(() => setElapsed(capture.elapsedMs()), 250);
+    const timer = setInterval(() => setElapsed(seconds()), 250);
     return () => clearInterval(timer);
   }, [capture, running]);
   return elapsed;
