@@ -14,6 +14,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@astryxdesign/core/DropdownMenu";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -370,7 +371,7 @@ export function TranscriptPlayer(
     saveState = "idle",
     confirmedWords = EMPTY_SET,
     onToggleConfirmed,
-    downloadable = true,
+    title,
     playback: shared,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
@@ -399,8 +400,11 @@ export function TranscriptPlayer(
     confirmedWords?: ReadonlySet<string>;
     /** Makes it possible to confirm, or take back, an uncertain word. */
     onToggleConfirmed?: (key: string) => void;
-    /** Its own link to download the reviewed transcript; off when the page has actions of its own. */
-    downloadable?: boolean;
+    /**
+     * The card's heading, shown over its tools, with the download of the reviewed transcript beside it (as the result's
+     * transcript has its actions). Without it the page names the transcript and has its own actions.
+     */
+    title?: string;
     /**
      * The page's own playback of these parts, when the page shows it elsewhere too
      * (a pause control beside the document); otherwise the transcript owns one.
@@ -686,6 +690,10 @@ export function TranscriptPlayer(
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
   const hitStatus = !query.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
+  const canDownload = corrections && !correctionProblem;
+  const downloadReviewed = () =>
+    corrections &&
+    downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt");
 
   return (
     <section
@@ -695,6 +703,18 @@ export function TranscriptPlayer(
       tabIndex={0}
       ref={playerRef}
     >
+      {title && (
+        <HStack hAlign="between" vAlign="center" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2}>
+          <Heading level={2}>{title}</Heading>
+          {canDownload && (
+            // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
+            // speakers under it.
+            <Button variant="ghost" size="sm" icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed}>
+              Ladda ner
+            </Button>
+          )}
+        </HStack>
+      )}
       {tools && (
         <VStack gap={3} className={styles.tools}>
           {labelled && (<>
@@ -822,16 +842,6 @@ export function TranscriptPlayer(
         <div className={styles.notice}>
           <Banner status="error" title={editError} collapsible={false} />
         </div>
-      )}
-      {downloadable && corrections && !correctionProblem && (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Download aria-hidden />}
-          label="Hämta granskad transkribering"
-          className={styles.download}
-          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt")}
-        />
       )}
 
       {/* The text and its player: the player's sticking stays within the text, never over the tools above. */}

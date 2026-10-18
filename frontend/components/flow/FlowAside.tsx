@@ -9,6 +9,10 @@ import { HowItWorks } from "@/components/flow/HowItWorks";
 import type { FlowPublished, FlowSecurityClassification } from "@/lib/api";
 import type { HowItWorks as Guide } from "@/lib/flow-output";
 import styles from "./FlowFrame.module.css";
+import { useMediaMatch } from "./ResultFiles";
+
+/** A small phone's window (320 × 568): the first screen has the ways in and what the chosen one does above the dock. */
+const SHORT_PHONE = "(max-width: 767.98px) and (max-height: 640px)";
 
 /**
  * A flow's page, its first column: the flow's name and description, and its details. The same in every state, so
@@ -45,8 +49,10 @@ export function FlowAside({
   onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
+  // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view.
+  const gap = useMediaMatch(SHORT_PHONE) ? 4 : 6;
   return (
-    <VStack gap={6} className={className}>
+    <VStack gap={gap} className={className}>
       {titleIsHeading ? (
         <Heading level={1} className={compact ? styles.compactName : undefined}>
           {published.name}
@@ -57,7 +63,7 @@ export function FlowAside({
         </Text>
       )}
       {lead}
-      <VStack gap={6} className={compact ? styles.fromLaptop : undefined}>
+      <VStack gap={gap} className={compact ? styles.fromLaptop : undefined}>
         {published.description && <Text as="p" color="secondary">{published.description}</Text>}
         {guide && <HowItWorks guide={guide} />}
         <ClassificationNote classification={classification} />

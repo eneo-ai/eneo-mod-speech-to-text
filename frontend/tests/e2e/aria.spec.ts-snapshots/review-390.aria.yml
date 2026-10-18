@@ -17,8 +17,11 @@
     - button "Avvisa":
       - text: ""
       - status
-  - heading "Transkribering" [level=2]
   - region "Inspelning och transkribering":
+    - heading "Transkribering" [level=2]
+    - button "Ladda ner granskad transkribering":
+      - text: ""
+      - status
     - group "Visa talare":
       - button "Alla" [pressed]:
         - text: ""
@@ -36,9 +39,6 @@
     - textbox "Sök i transkriberingen"
     - status
     - status
-    - button "Hämta granskad transkribering":
-      - text: ""
-      - status
     - link "Hoppa förbi transkriberingen":
       - /url: /#.+/
     - heading "Del 1" [level=3]

@@ -172,7 +172,6 @@ export function RunTranscriptView({
         onCorrectionsChange={onCorrectionsChange}
         saveState={saveState}
         confirmedWords={confirmedWords}
-        downloadable={false}
         playback={playback}
       />
     </Card>

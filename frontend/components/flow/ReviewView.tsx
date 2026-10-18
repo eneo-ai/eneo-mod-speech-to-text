@@ -21,7 +21,6 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
-import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
 import { useAuthenticatedUser } from "@/components/AuthGate";
@@ -617,9 +616,9 @@ export function ReviewView({
           {/* There the card folds away, so the decision follows it instead. */}
           {SPEAKER_REVIEW_ENABLED && decision}
 
-          {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
-          <VisuallyHidden as="h2">Transkribering</VisuallyHidden>
+          {/* The card's title, as the result's transcript has one: its parts ("Del 1") are h3s under it. */}
           <TranscriptPlayer
+            title="Transkribering"
             className={styles.transcriptCard}
             segments={transcript.segments}
             speakerReviews={transcript.speakerReviews}

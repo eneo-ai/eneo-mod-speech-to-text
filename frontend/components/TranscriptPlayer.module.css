@@ -171,13 +171,6 @@
   padding: var(--spacing-2) var(--spacing-3) 0;
 }
 
-.download {
-  flex-shrink: 0;
-  align-self: flex-start;
-  /* The focus ring is drawn outside the button: the card around the transcript may clip what is nearer than that. */
-  margin: var(--spacing-2) var(--spacing-2) 0;
-  max-inline-size: calc(100% - 2 * var(--spacing-2));
-}
 
 /* ---- The text and its player ---- */
 
