@@ -18,6 +18,14 @@
   align-self: start;
 }
 
+/* In a window lower than the player's own (TranscriptPlayer: 600 px), the transcript is part of the page and scrolls with
+   it: held at the top, its end would wait for the document's. */
+@media (max-height: 600px) {
+  .sticky {
+    position: static;
+  }
+}
+
 /* Below a laptop's width the transcript is the second tab's panel, in the span after the tabs' own: as far from them
    as the first. */
 .afterTabs {

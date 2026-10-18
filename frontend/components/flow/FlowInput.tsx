@@ -573,6 +573,14 @@ function SetupWorkspace({
         />
       )}
 
+      {/* On a phone the dock keeps to the classification and the action, so the ways in stay in view above it: where the
+          recording is kept is said at the form's end. */}
+      {recordingMode && dock && (
+        <Text as="p" type="supporting">
+          {storageLine(persistent, input.evictable)}
+        </Text>
+      )}
+
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} reveal />}
 
       {(mode || modes.length === 0) &&
@@ -616,7 +624,7 @@ function SetupWorkspace({
                 }} />
               </VStack>
             )}
-            {recordingMode && (
+            {recordingMode && !dock && (
               <Text as="p" type="supporting" justify="center">
                 {storageLine(persistent, input.evictable)}
               </Text>

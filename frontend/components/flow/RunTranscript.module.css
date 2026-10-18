@@ -13,8 +13,9 @@
 /* From a laptop's width the card keeps to the window (the column is sticky, one gutter from its top) and its text
    scrolls inside it, the player docked below. It starts at the result's top, beside its heading, and is as tall as the
    window below that (FlowFrame's --view-fit-height, less the result's own top padding) less a gutter: the player is in
-   view before the page is scrolled. */
-@media (min-width: 1024px) {
+   view before the page is scrolled. In a window lower than the player's own (TranscriptPlayer: 600 px), the text is part
+   of the page, so the card does not cut it off. */
+@media (min-width: 1024px) and (min-height: 601px) {
   .card {
     max-height: calc(var(--view-fit-height, 100dvh) - var(--spacing-2) - var(--spacing-6));
     overflow: hidden;

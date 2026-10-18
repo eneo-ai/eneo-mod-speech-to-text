@@ -27,8 +27,9 @@ const STOP = "Sluta testa";
 const BEFORE = "Testa innan mötet börjar. Testljudet spelas inte in eller skickas vidare.";
 /** The browser's question about the microphone left unanswered for a moment: the same words as the start's (FlowInput). */
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
-/** A muted track while it is tested: the recording's own words for it (lib/recording-view). */
-const AWAY = "Mikrofonen är tillfälligt borta. Testet fortsätter när den är tillbaka.";
+/** A muted track while it is tested: the recording's own words for it (lib/recording-view). Each status is one line on
+ *  the narrowest phone, so a change of words moves nothing under them; Sluta testa says that the test goes on. */
+const AWAY = "Mikrofonen är tillfälligt borta.";
 /** An answer within this leaves no words to blink (the page's --module-wait-delay). */
 const ASK_DELAY_MS = 300;
 /** A test left running lets the microphone go by itself after this, so the browser's microphone light goes out. */
@@ -226,7 +227,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
               : tested
                 ? heard
                   ? "Mikrofonen hörde dig."
-                  : "Mikrofonen hörde inget. Prova en annan mikrofon."
+                  : "Mikrofonen hörde inget."
                 : " "}
         </Text>
       </VStack>

@@ -33,4 +33,39 @@ for (const view of VIEWS) {
       expect(Math.round(box.y + box.height), `at ${width} × ${height}, the card's end`).toBeLessThanOrEqual(height);
     }
   });
+
+  test(`${view.name}: in a window lower than the player's own, the end of a long transcript is reached by scrolling the page`, async ({ page }, info) => {
+    for (const [width, height] of [
+      [1280, 480],
+      [1024, 600],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await view.go(page, info);
+      await expect(page.getByRole("group", { name: /^Uppspelning/ }).first()).toBeVisible();
+      const card = view.card(page);
+      // A long meeting: the transcript's passages, as the page drew them, thirty times over.
+      const last = await card.evaluate((element) => {
+        const passages = element.querySelector("[data-segment-index]")?.parentElement;
+        if (!passages) throw new Error("no passages");
+        for (const passage of [...passages.children].flatMap((child) => Array(30).fill(child))) {
+          passages.appendChild(passage.cloneNode(true));
+        }
+        const all = element.querySelectorAll<HTMLElement>("[data-segment-index]");
+        all[all.length - 1].dataset.last = "true";
+        return all.length;
+      });
+      expect(last).toBeGreaterThan(30);
+      // Only the page scrolls, as a wheel or a finger would: a card that clips can still be scrolled by a script.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const end = page.locator("[data-last]");
+      const box = (await end.boundingBox())!;
+      const shown = await end.evaluate((element) => {
+        const { left, top, height: tall } = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(left + 4, top + tall / 2);
+        return hit !== null && element.contains(hit);
+      });
+      expect(box.y + box.height, `at ${width} × ${height}, the last passage's end`).toBeLessThanOrEqual(height + 1);
+      expect(shown, `at ${width} × ${height}, the last passage is not covered or cut off`).toBe(true);
+    }
+  });
 }
