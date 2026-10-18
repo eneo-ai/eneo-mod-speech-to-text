@@ -113,6 +113,51 @@ test("a microphone that ends, ends the test", async (t) => {
   await view.act(async () => given.track.fire("ended"));
   assert.ok(view.offers("Testa mikrofonen"), "the microphone is gone: nothing the test said holds");
   assert.match(view.text(), /Testljudet spelas inte in eller skickas vidare\./);
+  assert.doesNotMatch(view.text(), /Mikrofonen hörde/);
+});
+
+test("a test that is stopped says what the microphone heard", async (t) => {
+  const microphone = useMicrophone(t);
+  const level = useLevel(t);
+  const view = await microphoneCheck();
+  const run = async (peak: number) => {
+    await view.press("Testa mikrofonen");
+    const given = fakeStream();
+    await view.act(async () => microphone.answer(given.stream));
+    level.peak = peak;
+    await view.act(async () => t.mock.timers.tick(500));
+    await view.press("Sluta testa");
+    assert.equal(given.track.stopped, true);
+  };
+
+  await run(0.6);
+  assert.match(view.text(), /Mikrofonen hörde dig\./);
+  await run(0);
+  assert.match(view.text(), /Mikrofonen hörde inget\./);
+  assert.doesNotMatch(view.text(), /Mikrofonen hörde dig\./, "a new test says only what it heard itself");
+});
+
+test("the test lets the microphone go by itself after a minute, and when the page is hidden", async (t) => {
+  const microphone = useMicrophone(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = await microphoneCheck();
+
+  await view.press("Testa mikrofonen");
+  const first = fakeStream();
+  await view.act(async () => microphone.answer(first.stream));
+  await view.act(async () => t.mock.timers.tick(59_000));
+  assert.equal(first.track.stopped, false);
+  await view.act(async () => t.mock.timers.tick(1_000));
+  assert.equal(first.track.stopped, true, "the browser's microphone light goes out without Sluta testa");
+  assert.ok(view.offers("Testa mikrofonen"));
+
+  await view.press("Testa mikrofonen");
+  const second = fakeStream();
+  await view.act(async () => microphone.answer(second.stream));
+  Object.defineProperty(document, "hidden", { value: true, configurable: true });
+  t.after(() => Reflect.deleteProperty(document, "hidden"));
+  await view.act(async () => document.dispatchEvent(new window.Event("visibilitychange")));
+  assert.equal(second.track.stopped, true, "another tab or the home screen: the test ends");
 });
 
 test("a microphone that goes quiet while it is tested no longer says it hears you, and says so", async (t) => {
@@ -135,7 +180,7 @@ test("a microphone that goes quiet while it is tested no longer says it hears yo
   assert.match(view.text(), /Mikrofonen är tillfälligt borta\./);
 
   await view.act(async () => given.track.fire("unmute"));
-  assert.match(view.text(), /Säg något för att se att mikrofonen hör dig\./, "back, and not heard yet");
+  assert.match(view.text(), /Säg något för att se att du hörs\./, "back, and not heard yet");
   level.peak = 0.6;
   await listen();
   assert.match(view.text(), /Mikrofonen hör dig\./);
