@@ -219,22 +219,26 @@ function TranscriptHeader({ plain, unread, fileName }: { plain: string; unread: 
   );
 }
 
+/** The menu's copy confirms with a check on the menu's button; one that fails says so beside it, as the copy button does. */
 function TranscriptMenu({ plain, unread, onDownload }: { plain: string; unread: boolean; onDownload: () => void }) {
   const [copyState, copy] = useCopy(plain);
   return (
-    <DropdownMenu
-      button={{
-        label: "Fler alternativ för transkriberingen",
-        isIconOnly: true,
-        variant: "ghost",
-        isDisabled: unread,
-        icon: <Icon icon={copyState === "copied" ? "check" : "moreHorizontal"} />,
-      }}
-      hasChevron={false}
-      alignment="end"
-    >
-      <DropdownMenuItem icon="copy" label="Kopiera transkriberingen" onClick={() => void copy()} />
-      <DropdownMenuItem icon={Download} label="Ladda ner som text" onClick={onDownload} />
-    </DropdownMenu>
+    <HStack gap={2} vAlign="center">
+      {copyState === "failed" && <Text type="supporting">Kunde inte kopiera</Text>}
+      <DropdownMenu
+        button={{
+          label: "Fler alternativ för transkriberingen",
+          isIconOnly: true,
+          variant: "ghost",
+          isDisabled: unread,
+          icon: <Icon icon={copyState === "copied" ? "check" : "moreHorizontal"} />,
+        }}
+        hasChevron={false}
+        alignment="end"
+      >
+        <DropdownMenuItem icon="copy" label="Kopiera transkriberingen" onClick={() => void copy()} />
+        <DropdownMenuItem icon={Download} label="Ladda ner som text" onClick={onDownload} />
+      </DropdownMenu>
+    </HStack>
   );
 }
