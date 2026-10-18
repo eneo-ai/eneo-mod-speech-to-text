@@ -7,8 +7,15 @@ const focusRing = {
 // A menu's rows sit edge to edge in a clipping box: their ring is drawn inside them.
 const rowFocusRing = {...focusRing, outlineOffset: 'calc(var(--focus-outline-width) * -1)'};
 // A field's ring is its border, thickened: one line on the field's own edge and radius, not a second box around it, and
-// without the design system's faint inner ring beside it.
-const fieldFocusRing = {...focusRing, outlineOffset: 'calc(var(--border-width) * -1)', boxShadow: 'none'};
+// without the design system's faint inner ring beside it. The ring covers the border and the ring's full width inside
+// it: over the grey border the ring's colour differs by less than 3:1, so a ring of only its width drew one line the eye
+// can tell, and not every field showed all of it.
+const fieldFocusRing = {
+  ...focusRing,
+  outlineWidth: 'calc(var(--focus-outline-width) + var(--border-width))',
+  outlineOffset: 'calc(var(--border-width) * -1)',
+  boxShadow: 'none',
+};
 const TOUCH = '44px';
 // The one action a screen exists for, at every pointer.
 const LARGE = '48px';
@@ -45,9 +52,11 @@ export const eneoTheme = defineTheme({
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
     // 320 px screen: Astryx breaks words only when it truncates.
     // A heading that wraps balances its lines: "Dokumentet kunde inte skapas" does not leave "skapas" alone on a phone.
+    // A long Swedish compound in a heading is hyphenated where the browser knows the language (the page is lang="sv"):
+    // "Samtalssamman-ställning", not "Samtalssammanställnin|g" in the flow's 20rem column.
     // A phase's heading takes focus when its view appears (usePhaseHeading) but is no control: the browser counts that
     // focus call as keyboard focus and would frame the headline on every visit.
-    heading: {base: {overflowWrap: 'anywhere', textWrap: 'balance', ':focus-visible': {outline: 'none'}}},
+    heading: {base: {overflowWrap: 'anywhere', hyphens: 'auto', textWrap: 'balance', ':focus-visible': {outline: 'none'}}},
     text: {base: {overflowWrap: 'anywhere'}},
     'text-input': {base: {':focus-within': fieldFocusRing}},
     'text-area': {base: {':focus-within': fieldFocusRing}},
@@ -166,6 +175,8 @@ export const eneoTheme = defineTheme({
             'slider-control': {base: {minBlockSize: TOUCH}},
             'collapsible-trigger': {base: {minHeight: TOUCH}},
             'radio-list-item': {base: {minHeight: TOUCH}},
+            // Chips a finger presses stand 8 px apart, not side by side: a tap meant for one does not land on the next.
+            'toggle-button-group': {base: {flexWrap: 'wrap', gap: 'var(--spacing-2)'}},
             // A one-line correction can shrink to 32 px on a tablet. The field itself remains a touch target.
             'text-area-control': {base: {minBlockSize: TOUCH}},
           },

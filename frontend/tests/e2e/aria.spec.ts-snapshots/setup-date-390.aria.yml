@@ -1,6 +1,29 @@
 - main:
   - heading "Nämndmöte med mötesdatum" [level=1]
   - paragraph: Frågar efter dagen mötet hölls.
-  - text: Mötesdatum Valfritt
-  - button "Öppna kalender"
-  - textbox "Mötesdatum Valfritt"
+  - button "Så fungerar det 2 steg"
+  - status
+  - region "Ljudet":
+    - status
+    - heading "Hur vill du lägga till ljudet?" [level=2]
+    - text: Hur vill du lägga till ljudet?
+    - radiogroup "Hur vill du lägga till ljudet?":
+      - radio "Spela in" [checked]
+      - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
+      - radio "Ladda upp"
+      - text: Ladda upp Välj en ljudfil från din enhet.
+    - text: Mikrofon Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.
+    - combobox "Mikrofon"
+    - button "Testa mikrofonen":
+      - text: ""
+      - status
+    - status
+    - text: Mötesdatum Valfritt
+    - button "Öppna kalender"
+    - textbox "Mötesdatum Valfritt"
+    - alert
+    - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den.
+  - button "Starta inspelning":
+    - text: ""
+    - status
+  - status

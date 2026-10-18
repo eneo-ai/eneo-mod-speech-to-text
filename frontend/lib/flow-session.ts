@@ -327,7 +327,7 @@ export function labelsSpeakers(
 export function storageLine(persistent: boolean | null, evictable = false): string {
   if (!persistent) return "Låt sidan vara öppen under inspelningen.";
   return evictable
-    ? "Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
+    ? "Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den."
     : "Inspelningen sparas på enheten medan du spelar in.";
 }
 

@@ -70,7 +70,8 @@
 @media (max-height: 480px) {
   .heading {
     padding: var(--spacing-2) var(--spacing-3) 0;
-    font-size: var(--font-size-xs);
+    /* The supporting size, never below it: 11 px is too small to read on a phone on its side. */
+    font-size: var(--font-size-sm);
     line-height: 1.3;
   }
 

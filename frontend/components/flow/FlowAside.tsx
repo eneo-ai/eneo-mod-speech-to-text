@@ -4,9 +4,15 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { ClassificationNote } from "@/components/flow/ClassificationNote";
+import { HowItWorks } from "@/components/flow/HowItWorks";
 import type { FlowPublished, FlowSecurityClassification } from "@/lib/api";
+import type { HowItWorks as Guide } from "@/lib/flow-output";
 import styles from "./FlowFrame.module.css";
+
+/** A small phone's window (320 × 568): the first screen has the ways in and what the chosen one does above the dock. */
+const SHORT_PHONE = "(max-width: 767.98px) and (max-height: 640px)";
 
 /**
  * A flow's page, its first column: the flow's name and description, and its details. The same in every state, so
@@ -20,6 +26,7 @@ export function FlowAside({
   titleIsHeading = true,
   compact = false,
   lead,
+  guide = null,
   details,
   summary,
   open,
@@ -33,6 +40,8 @@ export function FlowAside({
   compact?: boolean;
   /** What the page asks of the person first, under the flow's name (a recording to go on with, in one column). */
   lead?: ReactNode;
+  /** "Så fungerar det", where the page asks for the audio (the setup); none while the page holds audio or a run. */
+  guide?: Guide | null;
   details: ReactNode;
   /** The details in one line, for the fold; none, no fold. */
   summary?: string | null;
@@ -40,8 +49,10 @@ export function FlowAside({
   onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
+  // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view.
+  const gap = useMediaQuery(SHORT_PHONE, true) ? 4 : 6;
   return (
-    <VStack gap={6} className={className}>
+    <VStack gap={gap} className={className}>
       {titleIsHeading ? (
         <Heading level={1} className={compact ? styles.compactName : undefined}>
           {published.name}
@@ -52,8 +63,9 @@ export function FlowAside({
         </Text>
       )}
       {lead}
-      <VStack gap={6} className={compact ? styles.fromLaptop : undefined}>
+      <VStack gap={gap} className={compact ? styles.fromLaptop : undefined}>
         {published.description && <Text as="p" color="secondary">{published.description}</Text>}
+        {guide && <HowItWorks guide={guide} />}
         <ClassificationNote classification={classification} />
       </VStack>
       {compact && summary ? (

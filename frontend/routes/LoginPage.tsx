@@ -102,9 +102,11 @@ export default function LoginPage() {
             {authError && <Banner status="error" title={authError} collapsible={false} />}
             {reachable && (
               <HStack>
+                {/* The one action the page exists for: the primary's own size, as every view's (DESIGN.md, Buttons). */}
                 <Button
                   label={submitting ? "Öppnar Eneo…" : "Logga in med Eneo"}
                   variant="primary"
+                  size="lg"
                   isLoading={submitting}
                   onClick={startLogin}
                 />

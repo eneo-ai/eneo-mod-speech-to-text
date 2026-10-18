@@ -203,10 +203,10 @@ export function UnsentRecordings({
             ? "Den fortsätter i samma inspelning när du väljer Fortsätt spela in."
             : recordings.length === 1
               ? evictable
-                ? "Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
+                ? "Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den."
                 : "Den finns kvar på den här enheten tills den har skickats."
               : evictable
-                ? "De finns på den här enheten, men webbläsaren kan rensa dem om de ligger kvar osända för länge."
+                ? "De finns på den här enheten. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem."
                 : "De finns kvar på den här enheten tills de har skickats."}
         </Text>
       </VStack>

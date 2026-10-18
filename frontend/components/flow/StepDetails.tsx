@@ -10,12 +10,13 @@ import { StepList } from "./StepList";
  * How the result was made, folded away: the flow's steps, in words a reader
  * knows, and the flow version, which belongs here and not in the headline.
  */
-export function StepDetails({ steps, version }: { steps: readonly StepView[]; version?: number }) {
+export function StepDetails({ steps, version, className }: { steps: readonly StepView[]; version?: number; className?: string }) {
   const [open, setOpen] = useState(false);
   if (steps.length === 0) return null;
   return (
     // Controlled: left alone, a Collapsible starts open.
     <Collapsible
+      className={className}
       isOpen={open}
       onOpenChange={setOpen}
       trigger={

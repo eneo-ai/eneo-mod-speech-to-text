@@ -343,8 +343,8 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         {editing && <form onSubmit={(e) => { e.preventDefault(); saveText(); }} className={styles.correction}>
           <TextArea label="Rätta markerad text" hasAutoFocus rows={4} value={draft} onChange={setDraft} />
           <div className={styles.buttons}>
-            <Button type="submit" size="sm" variant="primary" icon={<Icon icon={Check} />} label="Spara text" />
             <Button size="sm" variant="ghost" label="Avbryt" onClick={() => { setEditing(false); requestAnimationFrame(focusTools); }} />
+            <Button type="submit" size="sm" variant="primary" icon={<Icon icon={Check} />} label="Spara text" />
           </div>
         </form>}
       </div>}

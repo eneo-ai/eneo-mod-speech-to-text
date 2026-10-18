@@ -21,7 +21,6 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
-import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
 import { useAuthenticatedUser } from "@/components/AuthGate";
@@ -47,6 +46,7 @@ import {
   getSpeakerMappingParticipants,
   getSpeakerMappingSourceStep,
   isSpeakerMappingCheckpoint,
+  isUnsureProposal,
   namingRefusal,
   proposalNameToLabel,
   speakerNamesFromRows,
@@ -131,8 +131,9 @@ export function ReviewView({
   const announce = useAnnounce();
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
+  // A consequence, at the body's size: not a footnote.
   const deadline = checkpoint.expires_at ? (
-    <Text as="p" type="supporting">
+    <Text as="p" color="secondary">
       Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
     </Text>
   ) : null;
@@ -361,6 +362,8 @@ export function ReviewView({
       const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
       if ("error" in saved) return saved.error;
       draft.drop(sent);
+      // The dialog closes and the list shows the names; a screen reader hears it too.
+      announce("Namnen är sparade.");
       return null;
     }, STILL_SENDING);
   }
@@ -481,10 +484,10 @@ export function ReviewView({
     </VStack>
   );
 
-  // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
-  // whole transcript.
+  // Who is who: the decision, and what stops it, under the speakers' card at every width, never after the whole
+  // transcript.
   const decision = (
-    <VStack gap={4} className={styles.decision}>
+    <VStack gap={4}>
       {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
       {hasDropped && <Button variant="secondary" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
       {saveState === "error" && (
@@ -506,25 +509,34 @@ export function ReviewView({
   );
 
   if (isSpeakerMapping) {
-    // Who is who at a glance; naming happens in "Namnge talarna".
-    const speakers =
+    // Who is who at a glance; naming happens in "Namnge talarna", the card's own action at the end of its heading's row.
+    // A name the flow guessed and was not sure of says so here too, not only in the dialog.
+    const speakerList =
       speakerRows.length === 0 ? (
         <Text as="p" type="supporting">
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        <VStack gap={4}>
-          {/* Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. */}
-          <List aria-label="Talare" density="compact" hasDividers>
-            {namingRows.map((row) => (
-              <ListItem
-                key={row.label}
-                label={row.name ?? speakerDisplayLabel(row.label)}
-                startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-                description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
-              />
-            ))}
-          </List>
+        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it.
+        <List aria-label="Talare" density="compact" hasDividers>
+          {namingRows.map((row) => (
+            <ListItem
+              key={row.label}
+              label={row.name ?? speakerDisplayLabel(row.label)}
+              startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
+              description={
+                !row.name
+                  ? "Inget namn"
+                  : isUnsureProposal(row, modelProposals)
+                    ? `${speakerDisplayLabel(row.label)} · Osäkert förslag`
+                    : speakerDisplayLabel(row.label)
+              }
+            />
+          ))}
+        </List>
+      );
+    const namingAction =
+      speakerRows.length === 0 ? null : (
           <SpeakerNamingDialog
             rows={namingRows}
             proposals={modelProposals}
@@ -544,18 +556,20 @@ export function ReviewView({
             decided={decided}
             draftKey={namesDraftKey}
           >
-            {/* The card's own action: across the card on a phone, at its start where there is room. */}
             <Button
               variant="secondary"
-              size="lg"
               icon={<UsersRound aria-hidden />}
               label="Namnge talarna"
               isDisabled={busy || transcript.pending}
-              className={styles.cardAction}
             />
           </SpeakerNamingDialog>
-        </VStack>
       );
+    const speakers = (
+      <VStack gap={4}>
+        {speakerList}
+        {namingAction}
+      </VStack>
+    );
     const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
       <Text as="p" type="supporting">
         Talare utan namn behåller sin etikett i transkriberingen.
@@ -568,7 +582,7 @@ export function ReviewView({
         <Heading level={1} ref={heading} tabIndex={-1}>
           {title}
         </Heading>
-        <Text as="p" type="supporting" className={styles.description}>
+        <Text as="p" color="secondary" className={styles.description}>
           {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
         </Text>
         {deadline}
@@ -605,21 +619,30 @@ export function ReviewView({
           ) : (
             <VStack gap={6}>
               {intro}
-              <Card padding={4} role="group" aria-label="Talare">
+              {/* The card is the speakers, its heading and its action in one row as the transcript's card has them; the
+                  decision is the page's, under the card. Not docked on a phone: the transcript's player docks there,
+                  and two bars would cover a fifth of the screen. */}
+              <Card padding={4} role="group" aria-labelledby="review-speakers">
                 <VStack gap={3}>
-                  {speakers}
+                  <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+                    <Heading level={2} id="review-speakers">
+                      Talare
+                    </Heading>
+                    {namingAction}
+                  </HStack>
+                  {speakerList}
                   {unmappedNote}
                 </VStack>
-                {decision}
               </Card>
+              {decision}
             </VStack>
           )}
           {/* There the card folds away, so the decision follows it instead. */}
           {SPEAKER_REVIEW_ENABLED && decision}
 
-          {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
-          <VisuallyHidden as="h2">Transkribering</VisuallyHidden>
+          {/* The card's title, as the result's transcript has one: its parts ("Del 1") are h3s under it. */}
           <TranscriptPlayer
+            title="Transkribering"
             className={styles.transcriptCard}
             segments={transcript.segments}
             speakerReviews={transcript.speakerReviews}

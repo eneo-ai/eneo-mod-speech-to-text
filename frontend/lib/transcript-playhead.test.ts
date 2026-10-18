@@ -42,7 +42,7 @@ function list() {
       (segment, s) =>
         `<li data-turn-index="${s}"><span data-segment-index="${s}">${(segment.words ?? [])
           // As the player renders a piece: a word, then the space after it, each in a span of its own.
-          .map((w, i) => `<span><span data-word-index="${i}">${w.word}</span></span><span><span> </span></span>`)
+          .map((w, i) => `<span data-word-index="${i}">${w.word}</span><span> </span>`)
           .join("")}</span></li>`,
     )
     .join("");
@@ -83,7 +83,7 @@ test("in a long passage a word moving on changes only the words passed, without 
   ];
   const root = document.createElement("ol");
   root.innerHTML = `<li data-turn-index="0"><span data-segment-index="0">${long[0].words!
-    .map((w, i) => `<span><span data-word-index="${i}">${w.word}</span></span><span><span> </span></span>`)
+    .map((w, i) => `<span data-word-index="${i}">${w.word}</span><span> </span>`)
     .join("")}</span></li>`;
   document.body.append(root);
   const painter = new PlayheadPainter(root);

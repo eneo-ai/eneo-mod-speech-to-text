@@ -66,12 +66,12 @@ signedIn("text whose formatting cannot be fetched stays readable with a line, an
 
 signedIn("a page whose code cannot be fetched is replaced by a line and a reload button in the frame, and the reload the person chooses opens it @chromium", async ({ session, page }) => {
   expect(session.user).toBeTruthy();
+  // The list fetches the page's code while it is read: the deploy came before that, and the person opens a flow from it.
+  const chunk = await removeChunk(page, "FlowPage");
   await page.goto("/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
-  const chunk = await removeChunk(page, "FlowPage");
   const reloads = await watchForReloads(page);
 
-  // Within the app, as a person opens a flow from the list: the router asks for the page's code.
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
   const heading = page.getByRole("heading", { name: "Sidan kunde inte visas." });
   await expect(heading).toBeVisible();

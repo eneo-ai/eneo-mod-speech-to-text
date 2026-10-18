@@ -49,7 +49,8 @@ function analyse(AudioCtor: typeof AudioContext, stream: MediaStream) {
  */
 export function useInputLevel(
   stream: MediaStream | null,
-  onLevel: (level: number, running: boolean, peak: number) => void,
+  /** `level` glides down for the display; `now` is this read's own level, the evidence that sound is coming in now. */
+  onLevel: (level: number, running: boolean, peak: number, now: number) => void,
 ): void {
   const listener = useRef(onLevel);
   listener.current = onLevel;
@@ -73,8 +74,9 @@ export function useInputLevel(
         sum += sample * sample;
         peak = Math.max(peak, Math.abs(sample));
       }
-      level = Math.max(levelFromRms(Math.sqrt(sum / samples.length)), level * 0.85);
-      listener.current(level, context.state === "running", peak);
+      const now = levelFromRms(Math.sqrt(sum / samples.length));
+      level = Math.max(now, level * 0.85);
+      listener.current(level, context.state === "running", peak, now);
     }, 66);
     return () => {
       clearInterval(timer);
@@ -82,7 +84,7 @@ export function useInputLevel(
       source.disconnect();
       void context.close().catch(() => undefined);
       // Paused or gone: the display settles instead of freezing mid-word.
-      listener.current(0, false, 0);
+      listener.current(0, false, 0, 0);
     };
   }, [stream]);
 }

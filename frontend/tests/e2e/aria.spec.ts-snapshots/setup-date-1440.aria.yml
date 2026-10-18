@@ -1,6 +1,12 @@
 - main:
   - heading "Nämndmöte med mötesdatum" [level=1]
   - paragraph: Frågar efter dagen mötet hölls.
+  - region "Så fungerar det":
+    - heading "Så fungerar det" [level=2]
+    - list:
+      - listitem: Du spelar in eller laddar upp ljud.
+      - listitem: Du får resultatet här när flödet är klart.
+    - button "Tips för bra ljud"
   - text: Mötesdatum Valfritt
   - button "Stäng kalender"
   - combobox "Mötesdatum Valfritt" [expanded]
@@ -8,10 +14,10 @@
   - dialog "Välj datum":
     - button "Föregående månad":
       - status
-    - text: /september \d+/
+    - text: september 2026
     - button "Nästa månad":
       - status
-    - grid /september \d+/:
+    - grid "september 2026":
       - row "må ti on to fr lö sö":
         - columnheader "må"
         - columnheader "ti"
@@ -20,96 +26,96 @@
         - columnheader "fr"
         - columnheader "lö"
         - columnheader "sö"
-      - row /måndag \d+ augusti \d+ tisdag 1 september \d+ onsdag 2 september \d+ torsdag 3 september \d+ fredag 4 september \d+ lördag 5 september \d+ söndag 6 september \d+/:
-        - gridcell /måndag \d+ augusti \d+/:
-          - button /måndag \d+ augusti \d+/ [disabled]
-        - gridcell /tisdag 1 september \d+/:
-          - button /tisdag 1 september \d+/
-        - gridcell /onsdag 2 september \d+/:
-          - button /onsdag 2 september \d+/
-        - gridcell /torsdag 3 september \d+/:
-          - button /torsdag 3 september \d+/
-        - gridcell /fredag 4 september \d+/:
-          - button /fredag 4 september \d+/
-        - gridcell /lördag 5 september \d+/:
-          - button /lördag 5 september \d+/
-        - gridcell /söndag 6 september \d+/:
-          - button /söndag 6 september \d+/
-      - row /måndag 7 september \d+ tisdag 8 september \d+ onsdag 9 september \d+ torsdag \d+ september \d+ fredag \d+ september \d+ lördag \d+ september \d+ söndag \d+ september \d+/:
-        - gridcell /måndag 7 september \d+/:
-          - button /måndag 7 september \d+/
-        - gridcell /tisdag 8 september \d+/:
-          - button /tisdag 8 september \d+/
-        - gridcell /onsdag 9 september \d+/:
-          - button /onsdag 9 september \d+/
-        - gridcell /torsdag \d+ september \d+/:
-          - button /torsdag \d+ september \d+/
-        - gridcell /fredag \d+ september \d+/:
-          - button /fredag \d+ september \d+/
-        - gridcell /lördag \d+ september \d+/:
-          - button /lördag \d+ september \d+/
-        - gridcell /söndag \d+ september \d+/:
-          - button /söndag \d+ september \d+/
-      - row /måndag \d+ september \d+ tisdag \d+ september \d+ onsdag \d+ september \d+ torsdag \d+ september \d+ fredag \d+ september \d+ lördag \d+ september \d+ söndag \d+ september \d+/:
-        - gridcell /måndag \d+ september \d+/:
-          - button /måndag \d+ september \d+/
-        - gridcell /tisdag \d+ september \d+/:
-          - button /tisdag \d+ september \d+/
-        - gridcell /onsdag \d+ september \d+/:
-          - button /onsdag \d+ september \d+/
-        - gridcell /torsdag \d+ september \d+/:
-          - button /torsdag \d+ september \d+/
-        - gridcell /fredag \d+ september \d+/:
-          - button /fredag \d+ september \d+/
-        - gridcell /lördag \d+ september \d+/:
-          - button /lördag \d+ september \d+/
-        - gridcell /söndag \d+ september \d+/:
-          - button /söndag \d+ september \d+/
-      - row /måndag \d+ september \d+ tisdag \d+ september \d+ onsdag \d+ september \d+ torsdag \d+ september \d+ fredag \d+ september \d+ lördag \d+ september \d+ söndag \d+ september \d+/:
-        - gridcell /måndag \d+ september \d+/:
-          - button /måndag \d+ september \d+/
-        - gridcell /tisdag \d+ september \d+/:
-          - button /tisdag \d+ september \d+/
-        - gridcell /onsdag \d+ september \d+/:
-          - button /onsdag \d+ september \d+/
-        - gridcell /torsdag \d+ september \d+/:
-          - button /torsdag \d+ september \d+/
-        - gridcell /fredag \d+ september \d+/:
-          - button /fredag \d+ september \d+/
-        - gridcell /lördag \d+ september \d+/:
-          - button /lördag \d+ september \d+/
-        - gridcell /söndag \d+ september \d+/:
-          - button /söndag \d+ september \d+/
-      - row /måndag \d+ september \d+ tisdag \d+ september \d+ onsdag \d+ september \d+ torsdag 1 oktober \d+ fredag 2 oktober \d+ lördag 3 oktober \d+ söndag 4 oktober \d+/:
-        - gridcell /måndag \d+ september \d+/:
-          - button /måndag \d+ september \d+/
-        - gridcell /tisdag \d+ september \d+/:
-          - button /tisdag \d+ september \d+/
-        - gridcell /onsdag \d+ september \d+/:
-          - button /onsdag \d+ september \d+/
-        - gridcell /torsdag 1 oktober \d+/:
-          - button /torsdag 1 oktober \d+/ [disabled]
-        - gridcell /fredag 2 oktober \d+/:
-          - button /fredag 2 oktober \d+/ [disabled]
-        - gridcell /lördag 3 oktober \d+/:
-          - button /lördag 3 oktober \d+/ [disabled]
-        - gridcell /söndag 4 oktober \d+/:
-          - button /söndag 4 oktober \d+/ [disabled]
-      - row /måndag 5 oktober \d+ tisdag 6 oktober \d+ onsdag 7 oktober \d+ torsdag 8 oktober \d+ fredag 9 oktober \d+ lördag \d+ oktober \d+ söndag \d+ oktober \d+/:
-        - gridcell /måndag 5 oktober \d+/:
-          - button /måndag 5 oktober \d+/ [disabled]
-        - gridcell /tisdag 6 oktober \d+/:
-          - button /tisdag 6 oktober \d+/ [disabled]
-        - gridcell /onsdag 7 oktober \d+/:
-          - button /onsdag 7 oktober \d+/ [disabled]
-        - gridcell /torsdag 8 oktober \d+/:
-          - button /torsdag 8 oktober \d+/ [disabled]
-        - gridcell /fredag 9 oktober \d+/:
-          - button /fredag 9 oktober \d+/ [disabled]
-        - gridcell /lördag \d+ oktober \d+/:
-          - button /lördag \d+ oktober \d+/ [disabled]
-        - gridcell /söndag \d+ oktober \d+/:
-          - button /söndag \d+ oktober \d+/ [disabled]
+      - row "måndag 31 augusti 2026 tisdag 1 september 2026 onsdag 2 september 2026 torsdag 3 september 2026 fredag 4 september 2026 lördag 5 september 2026 söndag 6 september 2026":
+        - gridcell "måndag 31 augusti 2026":
+          - button "måndag 31 augusti 2026" [disabled]: "31"
+        - gridcell "tisdag 1 september 2026":
+          - button "tisdag 1 september 2026": "1"
+        - gridcell "onsdag 2 september 2026":
+          - button "onsdag 2 september 2026": "2"
+        - gridcell "torsdag 3 september 2026":
+          - button "torsdag 3 september 2026": "3"
+        - gridcell "fredag 4 september 2026":
+          - button "fredag 4 september 2026": "4"
+        - gridcell "lördag 5 september 2026":
+          - button "lördag 5 september 2026": "5"
+        - gridcell "söndag 6 september 2026":
+          - button "söndag 6 september 2026": "6"
+      - row "måndag 7 september 2026 tisdag 8 september 2026 onsdag 9 september 2026 torsdag 10 september 2026 fredag 11 september 2026 lördag 12 september 2026 söndag 13 september 2026":
+        - gridcell "måndag 7 september 2026":
+          - button "måndag 7 september 2026": "7"
+        - gridcell "tisdag 8 september 2026":
+          - button "tisdag 8 september 2026": "8"
+        - gridcell "onsdag 9 september 2026":
+          - button "onsdag 9 september 2026": "9"
+        - gridcell "torsdag 10 september 2026":
+          - button "torsdag 10 september 2026": "10"
+        - gridcell "fredag 11 september 2026":
+          - button "fredag 11 september 2026": "11"
+        - gridcell "lördag 12 september 2026":
+          - button "lördag 12 september 2026": "12"
+        - gridcell "söndag 13 september 2026":
+          - button "söndag 13 september 2026": "13"
+      - row "måndag 14 september 2026 tisdag 15 september 2026 onsdag 16 september 2026 torsdag 17 september 2026 fredag 18 september 2026 lördag 19 september 2026 söndag 20 september 2026":
+        - gridcell "måndag 14 september 2026":
+          - button "måndag 14 september 2026": "14"
+        - gridcell "tisdag 15 september 2026":
+          - button "tisdag 15 september 2026": "15"
+        - gridcell "onsdag 16 september 2026":
+          - button "onsdag 16 september 2026": "16"
+        - gridcell "torsdag 17 september 2026":
+          - button "torsdag 17 september 2026": "17"
+        - gridcell "fredag 18 september 2026":
+          - button "fredag 18 september 2026": "18"
+        - gridcell "lördag 19 september 2026":
+          - button "lördag 19 september 2026": "19"
+        - gridcell "söndag 20 september 2026":
+          - button "söndag 20 september 2026": "20"
+      - row "måndag 21 september 2026 tisdag 22 september 2026 onsdag 23 september 2026 torsdag 24 september 2026 fredag 25 september 2026 lördag 26 september 2026 söndag 27 september 2026":
+        - gridcell "måndag 21 september 2026":
+          - button "måndag 21 september 2026": "21"
+        - gridcell "tisdag 22 september 2026":
+          - button "tisdag 22 september 2026": "22"
+        - gridcell "onsdag 23 september 2026":
+          - button "onsdag 23 september 2026": "23"
+        - gridcell "torsdag 24 september 2026":
+          - button "torsdag 24 september 2026": "24"
+        - gridcell "fredag 25 september 2026":
+          - button "fredag 25 september 2026": "25"
+        - gridcell "lördag 26 september 2026":
+          - button "lördag 26 september 2026": "26"
+        - gridcell "söndag 27 september 2026":
+          - button "söndag 27 september 2026": "27"
+      - row "måndag 28 september 2026 tisdag 29 september 2026 onsdag 30 september 2026 torsdag 1 oktober 2026 fredag 2 oktober 2026 lördag 3 oktober 2026 söndag 4 oktober 2026":
+        - gridcell "måndag 28 september 2026":
+          - button "måndag 28 september 2026": "28"
+        - gridcell "tisdag 29 september 2026":
+          - button "tisdag 29 september 2026": "29"
+        - gridcell "onsdag 30 september 2026":
+          - button "onsdag 30 september 2026": "30"
+        - gridcell "torsdag 1 oktober 2026":
+          - button "torsdag 1 oktober 2026" [disabled]: "1"
+        - gridcell "fredag 2 oktober 2026":
+          - button "fredag 2 oktober 2026" [disabled]: "2"
+        - gridcell "lördag 3 oktober 2026":
+          - button "lördag 3 oktober 2026" [disabled]: "3"
+        - gridcell "söndag 4 oktober 2026":
+          - button "söndag 4 oktober 2026" [disabled]: "4"
+      - row "måndag 5 oktober 2026 tisdag 6 oktober 2026 onsdag 7 oktober 2026 torsdag 8 oktober 2026 fredag 9 oktober 2026 lördag 10 oktober 2026 söndag 11 oktober 2026":
+        - gridcell "måndag 5 oktober 2026":
+          - button "måndag 5 oktober 2026" [disabled]: "5"
+        - gridcell "tisdag 6 oktober 2026":
+          - button "tisdag 6 oktober 2026" [disabled]: "6"
+        - gridcell "onsdag 7 oktober 2026":
+          - button "onsdag 7 oktober 2026" [disabled]: "7"
+        - gridcell "torsdag 8 oktober 2026":
+          - button "torsdag 8 oktober 2026" [disabled]: "8"
+        - gridcell "fredag 9 oktober 2026":
+          - button "fredag 9 oktober 2026" [disabled]: "9"
+        - gridcell "lördag 10 oktober 2026":
+          - button "lördag 10 oktober 2026" [disabled]: "10"
+        - gridcell "söndag 11 oktober 2026":
+          - button "söndag 11 oktober 2026" [disabled]: "11"
     - button "Stäng kalender":
       - text: ""
       - status
@@ -120,10 +126,10 @@
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
       - radio "Spela in" [checked]
-      - text: Spela in Spela in nu och transkribera efteråt.
+      - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Mikrofon
+    - text: Mikrofon Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.
     - combobox "Mikrofon": Standard (Fake Default Audio Input)
     - button "Testa mikrofonen":
       - text: ""
@@ -133,4 +139,4 @@
       - text: ""
       - status
     - status
-    - paragraph: Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge.
+    - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den.

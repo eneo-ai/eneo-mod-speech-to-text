@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -10,7 +10,9 @@ import { Switch } from "@astryxdesign/core/Switch";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { BackToFlows } from "@/components/flow/BackToFlows";
+import { ClassificationLine, ClassificationNote } from "@/components/flow/ClassificationNote";
 import { FlowAside } from "@/components/flow/FlowAside";
 import {
   COUNT_FROM_NAMES,
@@ -46,7 +48,7 @@ import {
 } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
-import { createActionLabel, makesText } from "@/lib/flow-output";
+import { createActionLabel, forwardedLine, howItWorks, makesText } from "@/lib/flow-output";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -76,19 +78,9 @@ const MICROPHONE_ANSWER_WAIT_MS = 3_000;
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 const REMOVED = "Inspelningen togs bort.";
 
-/** A media query, as useSyncExternalStore follows it. */
-const media = (query: string) => ({
-  subscribe: (onChange: () => void) => {
-    const list = window.matchMedia(query);
-    list.addEventListener("change", onChange);
-    return () => list.removeEventListener("change", onChange);
-  },
-  matches: () => window.matchMedia(query).matches,
-});
-// Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
-const PHONE = media("(max-width: 767.98px)");
+const PHONE = "(max-width: 767.98px)";
 // From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
-const COLUMNS = media("(min-width: 1024px)");
+const COLUMNS = "(min-width: 1024px)";
 
 /** The tab title follows the state; its own component, so the timer re-renders only this. */
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
@@ -136,8 +128,8 @@ export function FlowInput({
   const [removed, setRemoved] = useState(false);
   if (removed && group !== "setup") setRemoved(false);
   const [dockSlot, dockRef] = useDock();
-  const phone = useSyncExternalStore(PHONE.subscribe, PHONE.matches, () => false);
-  const columns = useSyncExternalStore(COLUMNS.subscribe, COLUMNS.matches, () => false);
+  const phone = useMediaQuery(PHONE);
+  const columns = useMediaQuery(COLUMNS);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
@@ -174,6 +166,37 @@ export function FlowInput({
   );
   // In one column the flow's details stand above the work: the recording to go on with comes first, under its name.
   const recoveryFirst = group === "setup" && !blocked && resuming && !columns;
+  // In one column the choice of way in comes first, so the chosen way is on the first screen with the docked action that
+  // starts it; the flow's details and its classification follow it, the details by the speaker controls they fill in.
+  const choiceFirst = group === "setup" && !blocked && !columns;
+  // The detail field that last had the focus. Moving the details (a tablet turned, a window crossing a laptop's width)
+  // mounts them anew and the focus falls to the page: it goes back to the same field, and a name being typed in it is kept
+  // as a chip (ParticipantsInput).
+  const detailFocus = useRef<string | null>(null);
+  useEffect(() => {
+    const remember = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      detailFocus.current = target?.closest("[data-detail-field]")?.getAttribute("data-detail-field") ?? null;
+    };
+    // A field the person leaves while it stays on the page is left; one the layout took away keeps its claim to the focus.
+    const left = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      queueMicrotask(() => {
+        if (target?.isConnected) detailFocus.current = null;
+      });
+    };
+    document.addEventListener("focusin", remember);
+    document.addEventListener("focusout", left);
+    return () => {
+      document.removeEventListener("focusin", remember);
+      document.removeEventListener("focusout", left);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const field = detailFocus.current;
+    if (!field || (document.activeElement && document.activeElement !== document.body)) return;
+    document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(field)}"]`)?.focus();
+  }, [choiceFirst]);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -210,12 +233,13 @@ export function FlowInput({
         aside={
           <FlowAside
             published={published}
-            classification={contract.security_classification}
+            classification={choiceFirst ? null : contract.security_classification}
             compact={holdsAudio}
+            guide={group === "setup" ? howItWorks(contract, snapshot.modes) : null}
             lead={recoveryFirst ? unsentRecordings : undefined}
             // The blocked setup asks for nothing: its details would be filled in for no run, and on a phone they stand
             // above the reason. What was typed before stays with the session.
-            details={blocked && group === "setup" ? null : details}
+            details={(blocked && group === "setup") || choiceFirst ? null : details}
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
             open={openDetails}
             onOpenChange={setDetailsOpen}
@@ -248,6 +272,7 @@ export function FlowInput({
               unsent={unsent}
               unsentRecordings={recoveryFirst ? null : unsentRecordings}
               resuming={resuming}
+              details={choiceFirst ? details : null}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -258,6 +283,7 @@ export function FlowInput({
               finishing={snapshot.finishing}
               finishQueued={snapshot.finishQueued}
               makesText={text}
+              forwarded={forwardedLine(contract)}
               // Blocked since the recording was made: neither way on would do anything, so the panel has the reason
               // (the session's problem), saving as a file and deleting.
               onCreate={blocked ? undefined : () => void createDocument(session)}
@@ -384,6 +410,7 @@ function SetupWorkspace({
   unsent,
   unsentRecordings,
   resuming,
+  details,
 }: {
   contract: RunContract;
   input: Session;
@@ -397,6 +424,8 @@ function SetupWorkspace({
   unsentRecordings: ReactNode;
   /** A recording a reload cut off is the page's one filled action, "Fortsätt spela in". */
   resuming: boolean;
+  /** The flow's details and its classification, where they follow the choice of way in (one column); null beside it. */
+  details: ReactNode;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -471,14 +500,16 @@ function SetupWorkspace({
         Talare kan inte märkas upp just nu. Transkriberingen fungerar som vanligt.
       </Text>
     ) : speakerOption?.selectable && snapshot.speakerLabels !== null ? (
+      // What it gives, then what it costs. As wide as the microphone row (24 rem picker and its button): across a
+      // laptop's column the label and the switch would stand 800 px apart.
       <Switch
         label="Märk upp talare"
-        description={`Tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
+        description={`Texten visar vem som sa vad. Det tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
         value={snapshot.speakerLabels}
         onChange={(on) => session.setSpeakerLabels(on)}
         labelPosition="start"
         labelSpacing="spread"
-        width="100%"
+        width="min(100%, 36rem)"
       />
     ) : speakerOption?.required || reviewsSpeakers ? (
       <Text as="p" color="secondary">
@@ -503,6 +534,22 @@ function SetupWorkspace({
         </>
       )}
 
+      {/* The microphone right under the way it records with: tested before the meeting starts, not after the rest. The
+          chosen file the same way: in view under Ladda upp, not under the details, out of sight of the action it sends. */}
+      {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+      {mode === "ladda-upp" && (
+        <UploadPanel
+          step={step}
+          file={file}
+          audio={audio}
+          optional={optionalFile}
+          inputRef={fileInput}
+          onChoose={(chosen) => session.chooseFile(chosen)}
+        />
+      )}
+
+      {details}
+
       {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
       {(speakerChoice || snapshot.speakerCount !== null) && (
         <VStack gap={4}>
@@ -517,17 +564,14 @@ function SetupWorkspace({
         </VStack>
       )}
 
-      {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+      {details && <ClassificationNote classification={contract.security_classification} />}
 
-      {mode === "ladda-upp" && (
-        <UploadPanel
-          step={step}
-          file={file}
-          audio={audio}
-          optional={optionalFile}
-          inputRef={fileInput}
-          onChoose={(chosen) => session.chooseFile(chosen)}
-        />
+      {/* On a phone the dock keeps to the classification and the action, so the ways in stay in view above it: where the
+          recording is kept is said at the form's end. */}
+      {recordingMode && dock && (
+        <Text as="p" type="supporting">
+          {storageLine(persistent, input.evictable)}
+        </Text>
       )}
 
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} reveal />}
@@ -537,6 +581,14 @@ function SetupWorkspace({
           dock,
           // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
+            {/* Where the person commits: what the flow may take, once more beside the action. Not on a tablet's one
+                column, where the classification's card stands just above it. */}
+            {(dock || !details) && <ClassificationLine classification={contract.security_classification} />}
+            {forwardedLine(contract) && (
+              <Text as="p" type="supporting" justify="center">
+                {forwardedLine(contract)}
+              </Text>
+            )}
             <Button
               ref={startButton}
               label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
@@ -566,8 +618,8 @@ function SetupWorkspace({
                 }} />
               </VStack>
             )}
-            {recordingMode && (
-              <Text as="p" type="supporting" justify="center">
+            {recordingMode && !dock && (
+              <Text as="p" type="supporting" justify="center" textWrap="balance">
                 {storageLine(persistent, input.evictable)}
               </Text>
             )}

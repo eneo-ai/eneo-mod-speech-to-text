@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { InputGroup } from "@astryxdesign/core/InputGroup";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
@@ -86,6 +86,21 @@ export function ParticipantsInput({
     add(splitNames(text));
     setText("");
   };
+
+  // A field that goes while a name is typed in it (the flow's details move when a tablet is turned or the window crosses a
+  // laptop's width) keeps the name, as leaving the field does.
+  const typed = useRef({ text, names, onChange, onAdded });
+  typed.current = { text, names, onChange, onAdded };
+  useEffect(
+    () => () => {
+      const { text: left, names: kept, onChange: change, onAdded: added } = typed.current;
+      const next = addNames(kept, splitNames(left));
+      if (next.length === kept.length) return;
+      change(next);
+      added?.(next.slice(kept.length));
+    },
+    [],
+  );
 
   return (
     <VStack gap={2}>

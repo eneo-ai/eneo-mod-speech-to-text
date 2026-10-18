@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -9,14 +9,17 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Item } from "@astryxdesign/core/Item";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { runArtifactUrl } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import type { ResultFileView } from "@/lib/run-files";
 import { copyableHtml, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
-import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
+import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile } from "./ResultFiles";
 import { pressing, savingWay, useFileAccess, waiting } from "./useFileAccess";
+import { useRoomInRow } from "./useRoomInRow";
+import fileStyles from "./ResultFiles.module.css";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -162,35 +165,6 @@ async function runShare(share: Share, title: string, text: string | null): Promi
 }
 
 /**
- * Whether a row's actions fit on one line, measured before the row is drawn: while they stand in it, their widths and
- * the gaps between them against the row's width; while they are folded, the width they took when they last stood in it.
- * Measured again whenever the row or one of its actions changes size: a tablet turned, a copy that could not be made, the
- * font arriving. `ref` goes on the row.
- */
-function useRoomInRow() {
-  const [row, ref] = useState<HTMLElement | null>(null);
-  const [fits, setFits] = useState(true);
-  const needs = useRef(0);
-  useLayoutEffect(() => {
-    if (!row) return;
-    const measure = () => {
-      if (fits) {
-        const actions = [...row.children];
-        const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
-        needs.current = actions.reduce((sum, action) => sum + action.getBoundingClientRect().width, gap * (actions.length - 1));
-      }
-      setFits(needs.current <= row.getBoundingClientRect().width);
-    };
-    measure();
-    if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(measure);
-    for (const element of [row, ...row.children]) observer.observe(element);
-    return () => observer.disconnect();
-  }, [row, fits]);
-  return { ref, fits };
-}
-
-/**
  * What the flow produced, first on the page: the text as a readable page and
  * its file, with one filled action (the file's download, or copying the text
  * when there is no file) and never a second download of the same file.
@@ -232,7 +206,7 @@ export function ResultDocument({
   const [copyState, copy] = useCopy(text ?? "", () => article.current && copyableHtml(article.current));
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
-  const wide = useMediaMatch(LAPTOP);
+  const wide = useMediaQuery(LAPTOP, true);
   const room = useRoomInRow();
 
   const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
@@ -346,20 +320,23 @@ export function ResultDocument({
         {file && Kind && (
           <>
             {text && <Divider />}
-            <Item
-              data-file-row
-              startContent={<Icon icon={Kind} />}
-              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
-              description={file.meta}
-              endContent={
-                wide && !text ? (
-                  <HStack vAlign="center" gap={1}>
-                    {shareButton("ghost")}
-                    {primaryDownload}
-                  </HStack>
-                ) : undefined
-              }
-            />
+            {/* The name has the row; its actions stand beside it where the line has room for both, and drop under it
+                where it has not (a laptop's narrower column), as Fler filer's rows do: never a name of three lines
+                squeezed between them. */}
+            <HStack data-file-row wrap="wrap" vAlign="center" gap={2}>
+              <Item
+                className={fileStyles.documentFile}
+                startContent={<Icon icon={Kind} />}
+                label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
+                description={file.meta}
+              />
+              {wide && !text && (
+                <HStack vAlign="center" gap={2} paddingInline={2} paddingBlockEnd={2}>
+                  {shareButton("ghost")}
+                  {primaryDownload}
+                </HStack>
+              )}
+            </HStack>
           </>
         )}
         {preview && (

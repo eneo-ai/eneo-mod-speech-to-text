@@ -2,9 +2,13 @@ import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateC
 import {
   type ComponentProps,
   type ComponentType,
+  Fragment,
+  memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -14,6 +18,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@astryxdesign/core/DropdownMenu";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -78,6 +83,7 @@ export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
+const NO_HITS: ReadonlyMap<number, Hit[]> = new Map();
 const SKIP_SECONDS = 10;
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
@@ -117,6 +123,15 @@ export function shortcut({ key, altKey, ctrlKey, metaKey }: Pick<KeyboardEvent, 
 
 /** The class names that apply, joined: a CSS Module's names and a caller's own. */
 const join = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
+
+/** The same function from render to render, calling the latest `fn`: a passage given it renders again only when it changes. */
+function useSteady<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn);
+  useLayoutEffect(() => {
+    latest.current = fn;
+  });
+  return useCallback((...args: A) => latest.current(...args), []);
+}
 
 function rateLabel(rate: number): string {
   return `${String(rate).replace(".", ",")}×`;
@@ -370,7 +385,7 @@ export function TranscriptPlayer(
     saveState = "idle",
     confirmedWords = EMPTY_SET,
     onToggleConfirmed,
-    downloadable = true,
+    title,
     playback: shared,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
@@ -399,8 +414,11 @@ export function TranscriptPlayer(
     confirmedWords?: ReadonlySet<string>;
     /** Makes it possible to confirm, or take back, an uncertain word. */
     onToggleConfirmed?: (key: string) => void;
-    /** Its own link to download the reviewed transcript; off when the page has actions of its own. */
-    downloadable?: boolean;
+    /**
+     * The card's heading, shown over its tools, with the download of the reviewed transcript beside it (as the result's
+     * transcript has its actions). Without it the page names the transcript and has its own actions.
+     */
+    title?: string;
     /**
      * The page's own playback of these parts, when the page shows it elsewhere too
      * (a pause control beside the document); otherwise the transcript owns one.
@@ -469,19 +487,26 @@ export function TranscriptPlayer(
   const toCheck = turns.filter(pendingSpeakerReview).length;
   const shownFilter =
     filter === TO_CHECK ? (toCheck > 0 ? TO_CHECK : "all") : speakers.some((s) => s.label === filter) ? filter : "all";
-  const visibleTurns =
-    shownFilter === "all"
-      ? turns
-      : shownFilter === TO_CHECK
-        ? turns.filter(pendingSpeakerReview)
-        : turns.filter((turn) => turn.speaker === shownFilter && !pendingSpeakerReview(turn));
+  // The chip and the typed letter show at once; the passages and the hits follow them, a render that a next press or
+  // letter interrupts: an hour's meeting is two thousand passages.
+  const listFilter = useDeferredValue(shownFilter);
+  const searched = useDeferredValue(query);
+  const visibleTurns = useMemo(
+    () =>
+      listFilter === "all"
+        ? turns
+        : listFilter === TO_CHECK
+          ? turns.filter(pendingSpeakerReview)
+          : turns.filter((turn) => turn.speaker === listFilter && !pendingSpeakerReview(turn)),
+    [turns, listFilter],
+  );
   const visibleSegments = useMemo(
     () => new Set(visibleTurns.flatMap((turn) => turn.parts.map((part) => part.segmentIndex))),
     [visibleTurns],
   );
   const hits = useMemo(
-    () => findHits(shown, query).filter((hit) => visibleSegments.has(hit.segmentIndex)),
-    [shown, query, visibleSegments],
+    () => findHits(shown, searched).filter((hit) => visibleSegments.has(hit.segmentIndex)),
+    [shown, searched, visibleSegments],
   );
   const currentHit = hits.length > 0 ? Math.min(hitIndex, hits.length - 1) : -1;
   const hitsBySegment = useMemo(() => {
@@ -553,7 +578,7 @@ export function TranscriptPlayer(
     programmaticScrollUntil.current = Date.now() + 800;
     setFollow(false);
     el.scrollIntoView({ block: "center", behavior: "instant" });
-  }, [currentHit, query]);
+  }, [currentHit, searched]);
 
   function onUserScroll() {
     if (Date.now() < programmaticScrollUntil.current) return;
@@ -644,6 +669,24 @@ export function TranscriptPlayer(
     return null;
   }
 
+  // What a passage calls: the same functions on every render, so a press, a letter or a line's editor renders only the
+  // passages it changes.
+  const startEdit = useSteady((segmentIndex: number) => {
+    playback.pause();
+    setEditingIndex(segmentIndex);
+  });
+  const cancelEdit = useSteady(() => setEditingIndex(-1));
+  const commitTurnLine = useSteady(commitLine);
+  const revertTurnLine = useSteady(revertLine);
+  const reassignTurn = useSteady(reassign);
+  // "Spela från": it plays, also from a pause.
+  const seekTurn = useSteady((turn: TranscriptTurn) => seekTo(turn.fileIndex, turn.start, true));
+  const clickPart = useSteady(onPartClick);
+  const textForEdit = useSteady((index: number) => {
+    const source = shown[index]?.sourceSegmentIndex ?? index;
+    return correctedSegmentText(segments[source].text, corrections?.occurrences.filter((o) => o.segment_index === source) ?? []);
+  });
+
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
     if (audioPending) {
@@ -685,7 +728,11 @@ export function TranscriptPlayer(
   const tools = !reviewEnabled && hasSegments;
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
-  const hitStatus = !query.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
+  const hitStatus = !searched.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
+  const canDownload = corrections && !correctionProblem;
+  const downloadReviewed = () =>
+    corrections &&
+    downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt");
 
   return (
     <section
@@ -695,6 +742,18 @@ export function TranscriptPlayer(
       tabIndex={0}
       ref={playerRef}
     >
+      {title && (
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2}>
+          <Heading level={2}>{title}</Heading>
+          {canDownload && (
+            // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
+            // speakers under it.
+            <Button variant="ghost" size="sm" icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed}>
+              Ladda ner
+            </Button>
+          )}
+        </HStack>
+      )}
       {tools && (
         <VStack gap={3} className={styles.tools}>
           {labelled && (<>
@@ -823,16 +882,6 @@ export function TranscriptPlayer(
           <Banner status="error" title={editError} collapsible={false} />
         </div>
       )}
-      {downloadable && corrections && !correctionProblem && (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Download aria-hidden />}
-          label="Hämta granskad transkribering"
-          className={styles.download}
-          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt")}
-        />
-      )}
 
       {/* The text and its player: the player's sticking stays within the text, never over the tools above. */}
       <div className={styles.body}>
@@ -879,6 +928,9 @@ export function TranscriptPlayer(
                   turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
                     ? canDecide
                     : true);
+                // A passage is given only what is its own: the line being edited and the hits when they are in it.
+                const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
+                const hitHere = turn.parts.some((part) => hitsBySegment.has(part.segmentIndex));
                 return (
                   <TurnBlock
                     key={turn.index}
@@ -886,7 +938,7 @@ export function TranscriptPlayer(
                     rawSegments={segments}
                     correctedIndices={correctedIndices}
                     correctedRanges={correctedRanges}
-                    hitsBySegment={hitsBySegment}
+                    hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
                     partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
                     labelled={labelled}
                     displayName={displayName}
@@ -894,24 +946,17 @@ export function TranscriptPlayer(
                     samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
                     canEdit={canEdit}
                     canPickSpeaker={editableTurn && labelled}
-                    textForEdit={(index) => {
-                      const source = shown[index]?.sourceSegmentIndex ?? index;
-                      return correctedSegmentText(segments[source].text, corrections?.occurrences.filter((o) => o.segment_index === source) ?? []);
-                    }}
+                    textForEdit={textForEdit}
                     confirmedWords={confirmedWords}
                     onToggleConfirmed={onToggleConfirmed}
-                    editingIndex={editingIndex}
-                    onStartEdit={(idx) => {
-                      playback.pause();
-                      setEditingIndex(idx);
-                    }}
-                    onCancelEdit={() => setEditingIndex(-1)}
-                    onCommitLine={commitLine}
-                    onRevertLine={revertLine}
-                    onReassign={(speaker, all) => reassign(turn, speaker, all)}
-                    // "Spela från": it plays, also from a pause.
-                    onSeekTurn={() => seekTo(turn.fileIndex, turn.start, true)}
-                    onPartClick={onPartClick}
+                    editingIndex={editingHere ? editingIndex : -1}
+                    onStartEdit={startEdit}
+                    onCancelEdit={cancelEdit}
+                    onCommitLine={commitTurnLine}
+                    onRevertLine={revertTurnLine}
+                    onReassign={reassignTurn}
+                    onSeekTurn={seekTurn}
+                    onPartClick={clickPart}
                   />
                 );
               })}
@@ -938,7 +983,8 @@ export function TranscriptPlayer(
   );
 }
 
-function TurnBlock({
+/** One passage. Memoized: the list renders only the passages a change reaches (TranscriptPlayer gives each its own). */
+const TurnBlock = memo(function TurnBlock({
   turn,
   rawSegments,
   correctedIndices,
@@ -986,9 +1032,9 @@ function TurnBlock({
   onCancelEdit: () => void;
   onCommitLine: (segmentIndex: number, text: string) => void;
   onRevertLine: (segmentIndex: number) => void;
-  onReassign: (speaker: string, all: boolean) => string | null;
+  onReassign: (turn: TranscriptTurn, speaker: string, all: boolean) => string | null;
   textForEdit: (index: number) => string;
-  onSeekTurn: () => void;
+  onSeekTurn: (turn: TranscriptTurn) => void;
   onPartClick: (part: TranscriptTurnPart, e: React.MouseEvent) => void;
 }) {
   const toCheck = pendingSpeakerReview(turn);
@@ -1023,7 +1069,7 @@ function TurnBlock({
       passages={samePassages}
       fromName={displayName(turn.speaker)}
       toCheck={toCheck || Boolean(decision)}
-      onPick={onReassign}
+      onPick={(speaker, all) => onReassign(turn, speaker, all)}
     >
       {trigger}
     </SpeakerPicker>
@@ -1059,7 +1105,7 @@ function TurnBlock({
             ))}
           <button
             type="button"
-            onClick={onSeekTurn}
+            onClick={() => onSeekTurn(turn)}
             aria-label={`Spela från ${clock}${partLabel}`}
             className={join(styles.inline, styles.clock)}
           >
@@ -1138,8 +1184,10 @@ function TurnBlock({
                       Boolean(piece.word?.uncertain) &&
                       all[k + 1]?.wordIndex !== piece.wordIndex;
                     const Word = piece.hit ? "mark" : "span";
+                    // A piece is its one element (and a word's confirm button after it), no wrapper: an hour's meeting
+                    // is tens of thousands of pieces, and a wrapper each doubled the page's elements.
                     return (
-                      <span key={k}>
+                      <Fragment key={k}>
                         <Word
                           data-word-start={piece.word ? piece.word.start : undefined}
                           data-word-index={piece.word ? piece.wordIndex : undefined}
@@ -1186,7 +1234,7 @@ function TurnBlock({
                             </span>
                           </button>
                         )}
-                      </span>
+                      </Fragment>
                     );
                   })}
                 </span>
@@ -1198,7 +1246,7 @@ function TurnBlock({
       </div>
     </li>
   );
-}
+});
 
 /**
  * "Ändra talare": which of the run's speakers says this passage. It changes
@@ -1426,8 +1474,8 @@ function LineEditor({
       ) : (
         <HStack gap={3} wrap="wrap" vAlign="center">
           {/* Pressed without taking the focus, so leaving the field does not save first. */}
-          <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
           <Button size="sm" variant="ghost" label="Avbryt" onMouseDown={(e) => e.preventDefault()} onClick={onCancel} />
+          <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
           <Text type="supporting" className={styles.keysHint}>Enter sparar · Esc avbryter</Text>
           {corrected && (
             <Button size="sm" variant="ghost" label="Återställ originalet" onMouseDown={(e) => e.preventDefault()} onClick={onRevert} />

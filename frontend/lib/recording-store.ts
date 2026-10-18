@@ -252,7 +252,7 @@ export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
 /** Chunks of the recording are gone from the device (it cleared its storage, or lost the database): it would go shorter. */
 export const INCOMPLETE_ON_DEVICE =
-  "Inspelningen är ofullständig på enheten: en del av ljudet saknas, så den skickas inte. Välj Spara som fil för att behålla det som finns kvar.";
+  "Inspelningen är ofullständig på enheten: en del av ljudet saknas, så den skickas inte. Spara den som fil för att behålla det som finns kvar.";
 /** Eneo has a run under the recording's key: sent, from this send or an earlier one. */
 export const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
 

@@ -300,6 +300,7 @@
 
   .astryx-heading {
     overflow-wrap: anywhere;
+    hyphens: auto;
     text-wrap: balance;
   }
 
@@ -362,36 +363,42 @@
   .astryx-text-input:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
+    outline-width: calc(var(--focus-outline-width) + var(--border-width));
     box-shadow: none;
   }
 
   .astryx-text-area:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
+    outline-width: calc(var(--focus-outline-width) + var(--border-width));
     box-shadow: none;
   }
 
   .astryx-number-input:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
+    outline-width: calc(var(--focus-outline-width) + var(--border-width));
     box-shadow: none;
   }
 
   .astryx-selector:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
+    outline-width: calc(var(--focus-outline-width) + var(--border-width));
     box-shadow: none;
   }
 
   .astryx-typeahead:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
+    outline-width: calc(var(--focus-outline-width) + var(--border-width));
     box-shadow: none;
   }
 
   .astryx-tokenizer:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
+    outline-width: calc(var(--focus-outline-width) + var(--border-width));
     box-shadow: none;
   }
 
@@ -605,6 +612,11 @@
 
     .astryx-radio-list-item {
       min-height: 44px;
+    }
+
+    .astryx-toggle-button-group {
+      flex-wrap: wrap;
+      gap: var(--spacing-2);
     }
 
     .astryx-text-area-control {

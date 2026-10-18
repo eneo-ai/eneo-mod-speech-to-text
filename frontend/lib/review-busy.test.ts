@@ -259,17 +259,23 @@ test("a control that removes or disables itself hands the focus on, never to the
   assert.ok(focused() === button(view.container, "Redigera"), `Spara ändring: on Redigera, not ${focused()?.tagName}`);
 });
 
-test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card under Namnge talarna, before the transcript", async (t) => {
+test("who is who: Namnge talarna stands in the speakers' card's heading row; Avvisa and Godkänn och fortsätt follow the card, before the transcript", async (t) => {
   eneo(t);
   const view = await review(speakers);
-  const card = button(view.container, "Namnge talarna")!.closest('[role="group"][aria-label="Talare"]')!;
+  const card = view.container.querySelector('[role="group"][aria-labelledby="review-speakers"]')!;
+  assert.equal(card.querySelector("#review-speakers")?.textContent, "Talare");
+  const naming = button(view.container, "Namnge talarna")!;
+  assert.ok(card.contains(naming), "the card's own action");
+  assert.ok(card.querySelector("#review-speakers")!.parentElement!.contains(naming), "in the row of the card's heading");
   const approve = button(view.container, "Godkänn och fortsätt")!;
-  assert.ok(card.contains(approve) && card.contains(button(view.container, "Avvisa")));
+  assert.ok(!card.contains(approve) && !card.contains(button(view.container, "Avvisa")), "the decision is the page's, not the speakers' group");
+  assert.ok(card.compareDocumentPosition(approve) & window.Node.DOCUMENT_POSITION_FOLLOWING, "after the card");
   assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
   const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
   await view.act(async () => button(view.container, "Avvisa")!.click());
-  assert.ok(card.contains(button(view.container, "Bekräfta avvisning")), "the reason form opens there too");
+  const confirm = button(view.container, "Bekräfta avvisning")!;
+  assert.ok(!card.contains(confirm) && confirm.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "the reason form opens in the decision's place");
 });
 
 test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both large; the reason form takes its place, with a destructive confirm", async (t) => {

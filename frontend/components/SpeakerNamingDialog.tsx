@@ -14,7 +14,7 @@ import styles from "@/components/SpeakerNamingDialog.module.css";
 import { SpeakerMark } from "@/components/TranscriptPlayer";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { isRecord } from "@/lib/is-record";
-import { speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
+import { isUnsureProposal, speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { speakerDisplayLabel } from "@/lib/transcript";
 
 /**
@@ -239,7 +239,7 @@ export function SpeakerNamingDialog({
                     const playing = listening === row.label;
                     const proposal = proposals.find((p) => p.label === row.label);
                     // The flow's own guess, still in the field, said to be one when it was not sure.
-                    const unsure = Boolean(proposal?.name && row.name?.trim() === proposal.name.trim() && proposal.confidence !== "high");
+                    const unsure = isUnsureProposal(row, proposals);
                     const sample = playing ? "Stoppa exempel" : "Lyssna på exempel";
                     return (
                       <li key={row.label} className={styles.row}>

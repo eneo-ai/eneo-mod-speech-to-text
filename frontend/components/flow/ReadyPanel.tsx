@@ -2,13 +2,13 @@ import { Download, FileText, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
-import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
@@ -108,6 +108,7 @@ export function ReadyPanel({
   finishing = false,
   finishQueued = false,
   makesText = false,
+  forwarded = null,
   onCreate,
   onContinue,
   onDiscard,
@@ -126,6 +127,8 @@ export function ReadyPanel({
   finishQueued?: boolean;
   /** The flow ends in text, not a file: the action and the lines say text. */
   makesText?: boolean;
+  /** Where the result goes on to a receiver: said above the action that sends it (`forwardedLine`). */
+  forwarded?: string | null;
   /** Absent while the flow cannot run: the recording is then saved as a file or deleted, under the reason (`problem`). */
   onCreate?: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
@@ -162,6 +165,30 @@ export function ReadyPanel({
   const create = audio && !awaitingStop ? onCreate : undefined;
   // Stopped a moment after it started, most likely by mistake, or with nothing kept: going on is the likely next step.
   const moment = onContinue !== undefined && (recording.durationMs < 2_000 || !audio);
+  const createButton = create && (
+    <Button
+      key="create"
+      variant={moment ? "secondary" : "primary"}
+      size="lg"
+      label={createActionLabel(makesText)}
+      icon={<Icon icon={FileText} size="md" />}
+      // Not disabled, so focus stays on it; a press does nothing until the text is in (the session ignores it). The
+      // name stays; the button shows a spinner meanwhile, and the line under it says why.
+      isLoading={finishing}
+      isInterruptible
+      onClick={create}
+    />
+  );
+  const continueButton = onContinue && (
+    <Button
+      key="continue"
+      variant={moment ? "primary" : "secondary"}
+      size="lg"
+      label="Fortsätt spela in"
+      icon={<Icon icon="microphone" size="md" />}
+      onClick={onContinue}
+    />
+  );
 
   async function save() {
     setSaveProblem(null);
@@ -212,34 +239,13 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
+      {create && forwarded && <Text as="p" type="supporting">{forwarded}</Text>}
       {(create || onContinue) && (
         <VStack gap={0}>
-          <Grid columns={{ minWidth: 220, repeat: "fit" }} gap={3}>
-            {create && (
-              <Button
-                variant={moment ? "secondary" : "primary"}
-                size="lg"
-                width="100%"
-                label={createActionLabel(makesText)}
-                icon={<Icon icon={FileText} size="md" />}
-                // Not disabled, so focus stays on it; a press does nothing until the text is in (the session ignores it). The
-                // name stays; the button shows a spinner meanwhile, and the line under it says why.
-                isLoading={finishing}
-                isInterruptible
-                onClick={create}
-              />
-            )}
-            {onContinue && (
-              <Button
-                variant={moment ? "primary" : "secondary"}
-                size="lg"
-                width="100%"
-                label="Fortsätt spela in"
-                icon={<Icon icon="microphone" size="md" />}
-                onClick={onContinue}
-              />
-            )}
-          </Grid>
+          {/* Which one is main follows the recording: a very short one was most likely stopped by mistake. */}
+          <ActionRow>
+            {(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}
+          </ActionRow>
           {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
           <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
             {finishing ? (finishQueued ? "Slutför texten… Det skapas så snart den är klar." : "Slutför texten…") : ""}

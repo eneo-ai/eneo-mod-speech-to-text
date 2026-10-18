@@ -31,6 +31,20 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
   outside.remove();
 });
 
+test("participants: a name typed when the field goes (a tablet turned moves the flow's details) is kept", async () => {
+  const { createElement } = await import("react");
+  const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
+  const changes: string[][] = [];
+  const view = await mount(
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn3", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+  );
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn3"]')!;
+  await view.act(async () => field.focus());
+  await view.act(async () => type(field, "Anna Berg"));
+  await view.unmount();
+  assert.deepEqual(changes, [["Anna Berg"]]);
+});
+
 test("participants: Tab to Lägg till and Enter adds the name, and focus goes back to the field", async () => {
   const { createElement } = await import("react");
   const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
@@ -317,7 +331,9 @@ test("a microphone the browser grants after Sluta testa is let go at once, not t
   const settleAll = () => view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click()); // asks the browser...
-  await view.act(async () => button(view.container, "Testa mikrofonen")!.click()); // ...and again, as when the device is changed
+  // ...and again before it has answered, after Sluta testa: the test is under way while the browser asks.
+  await view.act(async () => button(view.container, "Sluta testa")!.click());
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
   assert.equal(grants.length, 2, "two requests are pending");
   await view.act(async () => grants[1](first.stream)); // the newer one answers first and is under test
   await settleAll();
@@ -342,6 +358,7 @@ test("a microphone request that a newer one has replaced is let go when it arriv
   stubMicrophones([["usb", "Jabra Speak 510"]], () => new Promise((resolve) => grants.push(resolve)));
   const view = await mount(createElement(MicrophoneCheck, { active: true }));
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => button(view.container, "Sluta testa")!.click());
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
 
   await view.act(async () => grants[1](newer.stream)); // the newer answers first
@@ -363,6 +380,7 @@ test("a request that failed after Sluta testa says nothing", async () => {
   stubMicrophones([["usb", "Jabra Speak 510"]], () => new Promise((ok, fail) => grants.push({ ok, fail })));
   const view = await mount(createElement(MicrophoneCheck, { active: true }));
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => button(view.container, "Sluta testa")!.click());
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
   await view.act(async () => grants[1].ok(first.stream));
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
@@ -607,8 +625,11 @@ async function mountAudioSetup(
     step = {},
     parts = [{ index: 0, startedAt: 0, durationMs: 60_000, bytes: 240_000, chunks: 30, fileId: null }],
     state = "stopped",
+    contract: extra = {},
   }: {
     step?: Record<string, unknown>;
+    /** More of the run contract (what the flow ends in, say). */
+    contract?: Record<string, unknown>;
     parts?: import("./recording-store").StoredRecording["parts"];
     state?: import("./recording-store").StoredRecording["state"];
   } = {},
@@ -621,6 +642,7 @@ async function mountAudioSetup(
       ...IBIC_CONTRACT,
       steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", ...step }],
       transcription: { live: { available: false, reason: null }, speaker_labels: labels },
+      ...extra,
     }) as unknown as import("./api").RunContract;
   const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state, parts, runId: null } as import("./recording-store").StoredRecording;
   let publish: (labels: Record<string, unknown>) => void = () => undefined;
@@ -653,11 +675,32 @@ async function mountAudioSetup(
   return { view, audio, offered, details, publish: (labels: Record<string, unknown>) => publish(labels), makeReady: () => makeReady() };
 }
 
+test("a flow that sends its result on says so beside the action that sends, not only in the folded overview", async () => {
+  const forwarded = "Resultatet skickas vidare till en mottagare.";
+  const { view, audio } = await mountAudioSetup(
+    { selectable: true, required: false, default: false },
+    { contract: { final_output: { output_type: "json", delivery: "outbound_http" } } },
+  );
+  try {
+    const action = audio.querySelector('[data-docked-action]') ?? audio;
+    assert.ok(action.textContent?.includes(forwarded), "beside the setup's action");
+    const overview = [...document.querySelectorAll("button")].find((b) => b.textContent?.startsWith("Så fungerar det"));
+    assert.equal(overview?.getAttribute("aria-expanded"), "false", "with the overview folded");
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("a flow that requires speaker labels Eneo cannot make now says so in place of every way in, and keeps an earlier recording to save", async () => {
   const usable = await mountAudioSetup({ selectable: false, required: true, default: true });
   const usual = { ways: usable.offered(), details: usable.details() };
   await usable.view.unmount();
-  assert.deepEqual(usual.ways, ["Skapa dokument av inspelningen", "Spara som fil", "Ta bort", "file", "Välj ljudfil"], "the flow as it is when the labels can be made");
+  // In one column the flow's details follow the way in, before the file and the action (FlowInput, choiceFirst).
+  assert.deepEqual(
+    usual.ways,
+    ["Skapa dokument av inspelningen", "Spara som fil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Välj ljudfil"],
+    "the flow as it is when the labels can be made",
+  );
   assert.ok(usual.details.includes("arende"), "with the details it asks for");
 
   const { view, audio, offered, details } = await mountAudioSetup({ selectable: false, required: true, default: true, unavailable_reason: "picked_unavailable" });
@@ -711,7 +754,7 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   try {
     await view.act(async () => makeReady());
     const before = offered();
-    assert.deepEqual(before, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"], "ready, while the labels can be made");
+    assert.deepEqual(before, ["Spara som fil", "Fortsätt spela in", "Skapa dokument", "Ta bort"], "ready, while the labels can be made");
 
     await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
@@ -813,7 +856,7 @@ test("a recording the flow takes no further part of offers no Fortsätt spela in
   try {
     for (const [maxFiles, expected] of [
       [1, ["Spara som fil", "Skapa dokument", "Ta bort"]],
-      [2, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"]],
+      [2, ["Spara som fil", "Fortsätt spela in", "Skapa dokument", "Ta bort"]],
     ] as const) {
       const { view, offered, makeReady } = await mountAudioSetup(labels, { step: { max_files: maxFiles }, parts: [part] });
       try {

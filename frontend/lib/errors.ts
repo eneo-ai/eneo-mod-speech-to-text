@@ -15,7 +15,7 @@ export interface ErrorAdvice {
   ownerMustFix: boolean;
 }
 
-const REPUBLISH = "Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.";
+const REPUBLISH = "Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.";
 const OWNER_FIX = "Flödet har ett fel som den som ansvarar för det behöver rätta innan det kan användas.";
 const RELOAD = "Flödet har ändrats. Ladda om sidan och försök igen.";
 const FIELDS = "En uppgift har fel format. Kontrollera uppgifterna och försök igen.";

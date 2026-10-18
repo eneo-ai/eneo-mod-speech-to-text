@@ -4,7 +4,7 @@
   - status
   - heading "Dokumentet kunde inte skapas" [level=1]
   - paragraph: /Startad i dag \d+:\d+/
-  - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att köra flödet igen om en stund.
+  - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att försöka igen om en stund.
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - button "Försök igen":
     - text: ""
@@ -27,11 +27,7 @@
     - paragraph: flow_step_failed
   - region "Transkribering":
     - heading "Transkribering" [level=2]
-    - button "Kopiera transkriberingen":
-      - text: ""
-      - status
-    - button "Ladda ner som text, transkriberingen":
-      - text: ""
+    - button "Fler alternativ för transkriberingen":
       - status
     - region "Inspelning och transkribering":
       - group "Visa talare":

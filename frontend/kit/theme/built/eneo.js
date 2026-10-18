@@ -160,6 +160,7 @@ export const eneoTheme = {
       },
       "base": {
         "overflowWrap": "anywhere",
+        "hyphens": "auto",
         "textWrap": "balance",
         ":focus-visible": {
           "outline": "none"
@@ -216,6 +217,7 @@ export const eneoTheme = {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "calc(var(--border-width) * -1)",
+          "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
         }
       }
@@ -225,6 +227,7 @@ export const eneoTheme = {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "calc(var(--border-width) * -1)",
+          "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
         }
       }
@@ -234,6 +237,7 @@ export const eneoTheme = {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "calc(var(--border-width) * -1)",
+          "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
         }
       }
@@ -243,6 +247,7 @@ export const eneoTheme = {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "calc(var(--border-width) * -1)",
+          "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
         }
       }
@@ -252,6 +257,7 @@ export const eneoTheme = {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "calc(var(--border-width) * -1)",
+          "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
         }
       }
@@ -261,6 +267,7 @@ export const eneoTheme = {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "calc(var(--border-width) * -1)",
+          "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
         }
       }
@@ -472,6 +479,12 @@ export const eneoTheme = {
             "radio-list-item": {
               "base": {
                 "minHeight": "44px"
+              }
+            },
+            "toggle-button-group": {
+              "base": {
+                "flexWrap": "wrap",
+                "gap": "var(--spacing-2)"
               }
             },
             "text-area-control": {

@@ -122,8 +122,10 @@ export class PlayheadPainter {
     for (const piece of sentence?.querySelectorAll<HTMLElement>("[data-word-index]") ?? []) {
       const index = Number(piece.dataset.wordIndex);
       (found.pieces[index] ??= []).push(piece);
-      // The space after a word is the next piece when it is no word: the player renders each piece in a span.
-      const gap = piece.parentElement?.nextElementSibling?.firstElementChild as HTMLElement | null | undefined;
+      // The space after a word is the next piece when it is no word: the player renders each piece as its own element,
+      // a word's confirm button after it when it has one.
+      let gap = piece.nextElementSibling as HTMLElement | null;
+      if (gap?.tagName === "BUTTON") gap = gap.nextElementSibling as HTMLElement | null;
       if (gap && !gap.hasAttribute("data-word-index")) found.gaps[index] = gap;
     }
     this.sentences.set(segment, found);

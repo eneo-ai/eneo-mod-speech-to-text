@@ -12,6 +12,7 @@ Vikt och läckor mäts på bygget som levereras, och ett test stoppar när mätv
 - Det byggda temat ska användas: inget `<style data-astryx-theme*>` får finnas efter laddning, för det är temagenerering i webbläsaren vid varje sidladdning.
 - `frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums DOM-räknare, lyssnare och minne.
 - Varje sida är en egen bit som hämtas när sidan öppnas, så att den som är på inloggningssidan inte laddar inspelningen eller granskningen. Inget laddas som sidan inte använder: en språkfil, ikonuppsättning eller komponent importeras där den används, inte via en gemensam samlingsfil.
+- Ett undantag: flödeslistan hämtar flödessidans bit när listan visas och webbläsaren är ledig, eftersom ett flöde är det man öppnar därifrån. Då väntar öppnandet inte på koden, på en mellantelefon över 4G halva tiden. Det sker inte när webbläsaren ber om att spara data. Listans budget mäts utan den biten, som flödessidans budget håller, och `weight.spec.ts` visar att ett flöde som öppnas från listan inte hämtar sin kod igen.
 - Utvecklingssidorna (`/dev/...`) finns bara i utvecklingsservern och i `dist-check`, aldrig i `dist/`.
 
 ## Konsekvenser

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { ActionRow } from "@/components/ActionRow";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 
 /** How long a wait with no answer goes on before the page says so and offers a way on. */
@@ -44,7 +44,8 @@ export function SlowWait({
           <Text as="p" aria-hidden>
             {said}
           </Text>
-          <HStack gap={3} wrap="wrap">
+          <ActionRow>
+            {flows && <BackToFlows size="md" />}
             <Button
               label="Försök igen"
               variant="primary"
@@ -54,8 +55,7 @@ export function SlowWait({
                 onRetry();
               }}
             />
-            {flows && <BackToFlows size="md" />}
-          </HStack>
+          </ActionRow>
         </VStack>
       )}
     </>
