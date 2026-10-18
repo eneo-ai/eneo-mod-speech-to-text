@@ -1,4 +1,5 @@
 import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
+import { firefoxEnv } from "./tests/firefox-home";
 
 // The accessibility gate: `npm run test:a11y`. The app runs on the Vite dev server against
 // the stub backend in tests/e2e, so no Eneo is needed. The server is this run's own, on its own port, so your own
@@ -39,13 +40,15 @@ const laptop: Use = { viewport: { width: 1440, height: 900 } };
 // no MediaRecorder, and the app's upload-only setup is what the gate expects there (`records` in tests/e2e/screens.ts).
 const webkit: Use = { browserName: "webkit", channel: "webkit", launchOptions: {} };
 // Firefox has no microphone permission to grant in Playwright: two preferences give a fake stream without the question,
-// and a third keeps what the tests play out of the speakers. WebKit's build has no such switch.
+// and a third keeps what the tests play out of the speakers. WebKit's build has no such switch. On a Mac it needs a home
+// of its own (tests/firefox-home.ts).
 const firefox: Use = {
   browserName: "firefox",
   channel: "firefox",
   permissions: [],
   launchOptions: {
     firefoxUserPrefs: { "media.navigator.streams.fake": true, "media.navigator.permission.disabled": true, "media.volume_scale": "0.0" },
+    ...firefoxEnv(),
   },
 };
 // A desktop screen, a mouse.

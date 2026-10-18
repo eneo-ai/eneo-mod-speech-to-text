@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { defineConfig } from "@playwright/test";
+import { firefoxEnv } from "./tests/firefox-home";
 
 // The built UI, served by the real backend (`python -m app.serve`, started by tests/prod/start-backend.mjs) in front of the
 // fake Eneo (tests/e2e/stub-server.py): `npm run test:prod`. Three backends, because a build holds what its tests expect:
@@ -39,7 +40,8 @@ export default defineConfig({
   projects: [
     { name: "shipped-chromium", grepInvert: NOT_SHIPPED, use: { browserName: "chromium", baseURL: EXTERNAL ?? address(APP) } },
     { name: "shipped-webkit", grepInvert: new RegExp(`${NOT_SHIPPED.source}|@chromium`), use: { browserName: "webkit", baseURL: EXTERNAL ?? address(APP) } },
-    { name: "shipped-firefox", grepInvert: new RegExp(`${NOT_SHIPPED.source}|@chromium`), use: { browserName: "firefox", baseURL: EXTERNAL ?? address(APP) } },
+    // On a Mac, Firefox needs a home of its own (tests/firefox-home.ts).
+    { name: "shipped-firefox", grepInvert: new RegExp(`${NOT_SHIPPED.source}|@chromium`), use: { browserName: "firefox", baseURL: EXTERNAL ?? address(APP), launchOptions: firefoxEnv() } },
     { name: "fixture", grep: /@fixture/, use: { browserName: "chromium", baseURL: address(APP + 1) } },
     { name: "branded", grep: /@branded/, use: { browserName: "chromium", baseURL: address(APP + 2) } },
   ],
