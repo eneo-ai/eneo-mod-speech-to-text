@@ -743,9 +743,11 @@ export function TranscriptPlayer(
   const downloadReviewed = () =>
     corrections &&
     downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt");
-  // The player docked to the text: under it, where the way past the passages ends on it, or above it (PLAYER_ON_TOP).
+  // The player docked to the text: under it, where the way past the passages ends on it, or above it (PLAYER_ON_TOP). One
+  // key in both places, so a tablet turned while it plays moves the same player, and its audio plays on.
   const dockedPlayer = hasAudio && (
     <div
+      key="docked-player"
       id={playerOnTop ? undefined : pastId}
       ref={dockRef}
       tabIndex={playerOnTop ? undefined : -1}

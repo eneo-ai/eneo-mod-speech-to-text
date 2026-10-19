@@ -129,6 +129,28 @@ test("the active word and search hit have readable text in both color modes", as
   }
 });
 
+test("turning a tablet while the recording plays moves the player above or under the text, and it plays on", async ({ page }, info) => {
+  test.skip(info.project.name !== "tablet-portrait", "the player stands above the text upright and under it on its side (1024 px)");
+  await result(page);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  const audio = page.locator("audio").first();
+  await page.getByRole("button", { name: "Spela upp", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Pausa uppspelningen" })).toBeVisible();
+  // A mark on the element itself: a new <audio> would not carry it.
+  await audio.evaluate((element) => void ((element as unknown as { kept?: boolean }).kept = true));
+  const time = () => audio.evaluate((element: HTMLAudioElement) => element.currentTime);
+  const above = () => page.getByRole("region", { name: "Inspelning och transkribering" }).locator("[data-docked-player]").evaluate((player) => player.getAttribute("data-dock-edge") === "top");
+  expect(await above(), "upright, above the text").toBe(true);
+  for (const [size, top] of [[{ width: 1024, height: 768 }, false], [{ width: 768, height: 1024 }, true]] as const) {
+    const before = await time();
+    await page.setViewportSize(size);
+    await expect.poll(above).toBe(top);
+    expect(await audio.evaluate((element) => (element as unknown as { kept?: boolean }).kept === true), "the same audio element").toBe(true);
+    await expect.poll(time, { message: "it plays on without another press" }).toBeGreaterThan(before + 0.3);
+  }
+  await page.getByRole("button", { name: "Pausa uppspelningen" }).click();
+});
+
 test("the way past the transcript appears on keyboard focus and reaches the player", async ({ page }, info) => {
   test.skip(!["phone-390-light", "phone-390-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name));
   await result(page);
