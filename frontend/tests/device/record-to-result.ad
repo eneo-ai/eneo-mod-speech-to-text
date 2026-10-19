@@ -17,4 +17,4 @@ press 'role="button" label="Stoppa"'
 wait text "Inspelningen är klar" 15000
 press 'role="button" label="Skapa dokument"'
 wait text "Dokumentet är klart" 60000
-wait text "Ladda ner PDF" 10000
+wait text "Öppna PDF" 10000

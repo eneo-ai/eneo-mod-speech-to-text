@@ -735,7 +735,7 @@ test("the storage line says the recording is kept on the device only when the de
   assert.equal(storageLine(null), "Låt sidan vara öppen under inspelningen.", "unknown is never claimed");
   assert.equal(
     storageLine(true, true),
-    "Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den.",
+    "Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge efter att du har stoppat.",
     "a browser that may delete it says so",
   );
   assert.equal(storageLine(false, true), "Låt sidan vara öppen under inspelningen.", "a recording only in this tab says that");

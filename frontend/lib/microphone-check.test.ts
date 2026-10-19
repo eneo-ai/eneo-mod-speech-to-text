@@ -78,7 +78,7 @@ async function microphoneCheck() {
 test("before a test the page says what the test does with the sound, and while the browser asks the test can be stopped", async (t) => {
   const microphone = useMicrophone(t);
   const view = await microphoneCheck();
-  assert.match(view.text(), /Testa innan mötet börjar\. Det du säger under testet spelas inte in och skickas inte vidare\./);
+  assert.match(view.text(), /Testa innan mötet börjar och välj den mikrofon som sitter närmast talarna\. Det du säger under testet spelas inte in och skickas inte vidare\./);
 
   await view.press("Testa mikrofonen");
   assert.ok(view.offers("Sluta testa"), "the question is under way: the test can be stopped");

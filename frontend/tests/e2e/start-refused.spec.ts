@@ -53,6 +53,6 @@ test("a recording being started can be saved as a file meanwhile", async ({ page
   await page.getByRole("button", { name: "Skapa dokument" }).click();
   await expect(page.getByText("Inspelningen är uppladdad. Vi försöker starta flödet igen.")).toBeVisible();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Spara som fil" }).click();
+  await page.getByRole("button", { name: "Spara ljudfil" }).click();
   await download;
 });

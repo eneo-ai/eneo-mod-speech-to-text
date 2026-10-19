@@ -122,6 +122,14 @@ test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt
   assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen…"], "the stage once, first");
 });
 
+test("an upload says to keep the page open until Eneo has the file, and once every byte has left that it can soon be closed", () => {
+  const under = text(uploading({ percent: 33 }));
+  assert.match(under, /Stäng inte sidan och lås inte skärmen medan det laddas upp\. När det är klart kan du stänga sidan\./);
+  const sent = text(uploading({ loaded: 2048, total: 2048, percent: 100 }));
+  assert.match(sent, /Du kan snart stänga sidan\./);
+  assert.doesNotMatch(sent, /Stäng inte sidan/);
+});
+
 test("once every byte has left, the stage says Eneo is taking the file, and a recording is called a recording", () => {
   assert.equal(statuses(uploading({ loaded: 2048, total: 2048, percent: 100 }))[0], "Eneo tar emot filen…");
   assert.equal(statuses(uploading({ loaded: 2047, total: 2048, percent: 100 }))[0], "Laddar upp filen…", "a rounded 100 % is not the end");
@@ -181,7 +189,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   const starting = send({ kind: "starting", wait: null });
   assert.equal(statuses(starting)[0], "Startar flödet…");
   assert.match(text(starting), /Avbryt/, "a way out from the first moment: the answer may never come");
-  assert.doesNotMatch(text(starting), /uppladdad|Spara som fil/, "nothing has gone wrong yet to explain");
+  assert.doesNotMatch(text(starting), /uppladdad|Spara ljudfil/, "nothing has gone wrong yet to explain");
 
   const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
   assert.equal(statuses(waiting)[0], "Startar flödet…");
@@ -195,7 +203,9 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
 
   const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recording: { id: "rec-1", files: 1 } });
   assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
-  assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
+  assert.match(text(recording), /Avbryt Spara ljudfil/, "a recording can be kept as a file meanwhile");
+  assert.match(text(recording), /Stäng inte sidan förrän flödet har startat\. Avbryt stoppar sändningen, och inspelningen finns kvar på enheten\./);
+  assert.match(text(stopped), /Avbryt stoppar sändningen, och filen och uppgifterna finns kvar\./, "a file is kept too");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -387,7 +397,7 @@ test("a failure Eneo said nothing about still says what happened, and shows no s
   assert.match(words, /Körningen kunde inte slutföras Körningen kunde inte slutföras\./, "the callout's title, then its sentence");
   assert.doesNotMatch(words, /Startad/);
   assert.doesNotMatch(words, /Visa teknisk information|Stegen/, "no folded detail without Eneo's, no empty step list");
-  assert.match(words, /Kontakta support Körnings-ID run-1 Kopiera körnings-ID/, "the run id to quote, always");
+  assert.match(words, /Behöver du hjälp\? Kontakta den som ansvarar för Eneo i din verksamhet och uppge körnings-ID:t\. Körnings-ID run-1 Kopiera körnings-ID/, "the run id to quote, always");
 });
 
 test("an Eneo detail with nothing in it offers no folded technical information", () => {

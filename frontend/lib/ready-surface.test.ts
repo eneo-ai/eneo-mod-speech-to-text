@@ -90,10 +90,10 @@ test("with nothing to play, the player is left out and the next steps are still 
   const view = await ready();
   assert.equal(view.container.querySelector('[role="group"][aria-label^="Uppspelning"]'), null, "no player for a recording it cannot read");
   assert.doesNotMatch(view.container.textContent ?? "", /kunde inte läsas/, "a device with no parts is not an unreadable one");
-  for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(named(view.container, name), name);
+  for (const name of ["Skapa dokument", "Spara ljudfil", "Ta bort"]) assert.ok(named(view.container, name), name);
 });
 
-test("a recording that cannot be saved as a file says so, and Spara som fil is still there to try again", async () => {
+test("a recording that cannot be saved as a file says so, and Spara ljudfil is still there to try again", async () => {
   // The device has the parts, and the browser cannot turn them into a download.
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
@@ -106,17 +106,17 @@ test("a recording that cannot be saved as a file says so, and Spara som fil is s
     URL.createObjectURL = () => {
       throw new Error("no object URLs");
     };
-    await view.act(async () => named(view.container, "Spara som fil")!.click());
+    await view.act(async () => named(view.container, "Spara ljudfil")!.click());
     await view.act(async () => undefined);
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
-    assert.ok(named(view.container, "Spara som fil"), "and the button is still there");
+    assert.ok(named(view.container, "Spara ljudfil"), "and the button is still there");
   } finally {
     store.readFile = readFile;
     URL.createObjectURL = createObjectURL;
   }
 });
 
-test("a recording of two files says so on Spara som fil and saves one file a press, each once: a press while one saves adds none, and a failed one is the one tried again", async () => {
+test("a recording of two files says so on Spara ljudfil and saves one file a press, each once: a press while one saves adds none, and a failed one is the one tried again", async () => {
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
   const { readFile } = store;
@@ -147,7 +147,7 @@ test("a recording of two files says so on Spara som fil and saves one file a pre
     const part = recording.parts[0];
     const view = await ready({ recording: { ...recording, parts: [part, { ...part, index: 1 }] } });
     await view.act(async () => undefined);
-    const save = named(view.container, "Spara som 2 filer")!;
+    const save = named(view.container, "Spara som 2 ljudfiler")!;
     assert.ok(save, "the number of files, before the first is saved");
 
     let read = () => {};
@@ -160,17 +160,17 @@ test("a recording of two files says so on Spara som fil and saves one file a pre
     assert.equal(save.disabled, false, "and keeps the focus a disabled button would lose");
     await view.act(async () => read());
     assert.deepEqual(downloads.map((download) => download.name), ["inspelning-del-1.webm"], "one file for the two presses");
-    assert.equal(save.textContent?.trim(), "Spara fil 2 av 2");
+    assert.equal(save.textContent?.trim(), "Spara ljudfil 2 av 2");
     assert.equal(save.hasAttribute("aria-busy"), false);
 
     failing = true;
     await view.act(async () => save.click());
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
-    assert.equal(save.textContent?.trim(), "Spara fil 2 av 2", "a file that failed is still the next");
+    assert.equal(save.textContent?.trim(), "Spara ljudfil 2 av 2", "a file that failed is still the next");
     failing = false;
     await view.act(async () => save.click());
     assert.doesNotMatch(view.container.textContent ?? "", /kunde inte sparas/);
-    assert.equal(save.textContent?.trim(), "Spara som 2 filer", "and from the first again");
+    assert.equal(save.textContent?.trim(), "Spara som 2 ljudfiler", "and from the first again");
     assert.deepEqual(
       await Promise.all(downloads.map(async ({ name, blob }) => [name, await blob.text()])),
       [
@@ -245,7 +245,7 @@ test("a recording the device cannot read says why there is no player, and the ne
     await view.act(async () => undefined);
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp\./);
     assert.equal(view.container.querySelector('[role="group"][aria-label^="Uppspelning"]'), null);
-    for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(named(view.container, name), name);
+    for (const name of ["Skapa dokument", "Spara ljudfil", "Ta bort"]) assert.ok(named(view.container, name), name);
   } finally {
     store.readParts = readParts;
   }
@@ -255,7 +255,7 @@ test("an unconfirmed recorder's audio can be saved but cannot be sent until conf
   const pending = { ...recording, parts: recording.parts.map((part) => ({ ...part, endConfirmed: false })) };
   const view = await ready({ recording: pending });
   assert.equal(named(view.container, "Skapa dokument"), null);
-  assert.ok(named(view.container, "Spara som fil"));
+  assert.ok(named(view.container, "Spara ljudfil"));
   assert.match(view.container.textContent!, /bekräftat inspelningens stopp/);
   const { ReadyPanel } = await import("../components/flow/ReadyPanel");
   await view.act(async () => view.rerender(createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate() {}, onDiscard() {} })));

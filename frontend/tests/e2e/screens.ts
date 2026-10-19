@@ -1067,7 +1067,7 @@ export const STATES: State[] = [
         ? route.fulfill({ status: 404, json: { detail: "File not found" } })
         : route.fallback());
       await result(page);
-      await page.getByRole("link", { name: /^Ladda ner PDF/ }).click();
+      await page.getByRole("link", { name: /^(Ladda ner|Öppna) PDF/ }).click();
       await expect(page.getByRole("alert").filter({ hasText: "Filen finns inte kvar hos Eneo." })).toBeVisible();
       // The page stays on its notice until asked again; its recovery controls can now prove that they recover.
       gone = false;
@@ -1187,7 +1187,7 @@ export const STATES: State[] = [
     name: "review-reject",
     go: async (page) => {
       await run(page, ids.runs.review, ids.flows.flow2);
-      await page.getByRole("button", { name: "Avvisa" }).click();
+      await page.getByRole("button", { name: "Avvisa körningen" }).click();
       await expect(page.getByRole("button", { name: "Bekräfta avvisning" })).toBeVisible();
     },
   },

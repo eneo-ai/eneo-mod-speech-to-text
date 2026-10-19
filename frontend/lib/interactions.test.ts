@@ -698,14 +698,14 @@ test("a flow that requires speaker labels Eneo cannot make now says so in place 
   // In one column the flow's details follow the way in, before the file and the action (FlowInput, choiceFirst).
   assert.deepEqual(
     usual.ways,
-    ["Skapa dokument av inspelningen", "Spara som fil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Välj ljudfil"],
+    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Välj ljudfil"],
     "the flow as it is when the labels can be made",
   );
   assert.ok(usual.details.includes("arende"), "with the details it asks for");
 
   const { view, audio, offered, details } = await mountAudioSetup({ selectable: false, required: true, default: true, unavailable_reason: "picked_unavailable" });
   try {
-    assert.deepEqual(offered(), ["Alla flöden", "Spara som fil", "Ta bort"], "nothing to record, choose or send: the way to another flow, and the recording to save");
+    assert.deepEqual(offered(), ["Alla flöden", "Spara ljudfil", "Ta bort"], "nothing to record, choose or send: the way to another flow, and the recording to save");
     assert.deepEqual(details(), [], "and no details to fill in for a run that cannot be made");
     const heading = audio.querySelector("h2[data-phase-heading]");
     assert.equal(heading?.textContent, "Flödet kan inte användas just nu.");
@@ -740,7 +740,7 @@ test("optional speaker labels Eneo cannot make now are one line where the switch
   }
 });
 
-test("a recording that was ready when the flow became blocked keeps Spara som fil and Ta bort under the reason and neither way on, and a deletion the device refuses says so", async () => {
+test("a recording that was ready when the flow became blocked keeps Spara ljudfil and Ta bort under the reason and neither way on, and a deletion the device refuses says so", async () => {
   // A browser that records, so the ready state has "Fortsätt spela in" to offer as well.
   const microphones = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { addEventListener() {}, removeEventListener() {}, enumerateDevices: async () => [] } });
@@ -754,12 +754,12 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   try {
     await view.act(async () => makeReady());
     const before = offered();
-    assert.deepEqual(before, ["Spara som fil", "Fortsätt spela in", "Skapa dokument", "Ta bort"], "ready, while the labels can be made");
+    assert.deepEqual(before, ["Spara ljudfil", "Fortsätt spela in", "Skapa dokument", "Ta bort"], "ready, while the labels can be made");
 
     await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
     // Neither press could do anything: the session takes no run and no new part of a flow that cannot run.
-    assert.deepEqual(offered(), ["Spara som fil", "Alla flöden", "Ta bort"], "saved or deleted, or on to another flow");
+    assert.deepEqual(offered(), ["Spara ljudfil", "Alla flöden", "Ta bort"], "saved or deleted, or on to another flow");
     const reasons = [...audio.querySelectorAll('[role="alert"]')].filter((alert) => alert.textContent?.includes("Flödet kan inte användas just nu."));
     assert.equal(reasons.length, 1, "the reason, as the answer to the flow's change");
     assert.match(reasons[0].textContent ?? "", /tjänsten som gör det går inte att använda\. Kontakta den som ansvarar för flödet\./);
@@ -774,7 +774,7 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
     const said = [...audio.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
     assert.ok(said.some((text) => text?.includes("Inspelningen kunde inte tas bort.") && text.includes("Försök igen.")), `the deletion's own answer, as outside a blocked flow: ${said.join(" | ")}`);
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "and the recording is still there");
-    assert.deepEqual(offered(), ["Spara som fil", "Ta bort"], "to save or to delete again, and still neither way on");
+    assert.deepEqual(offered(), ["Spara ljudfil", "Ta bort"], "to save or to delete again, and still neither way on");
 
     await view.act(async () => publish(required));
     assert.deepEqual(offered(), before, "and both are back when the flow can run again");
@@ -858,8 +858,8 @@ test("a recording the flow takes no further part of offers no Fortsätt spela in
   const part = { index: 0, startedAt: 0, durationMs: 60_000, bytes: 1_000, chunks: 30, fileId: null };
   try {
     for (const [maxFiles, expected] of [
-      [1, ["Spara som fil", "Skapa dokument", "Ta bort"]],
-      [2, ["Spara som fil", "Fortsätt spela in", "Skapa dokument", "Ta bort"]],
+      [1, ["Spara ljudfil", "Skapa dokument", "Ta bort"]],
+      [2, ["Spara ljudfil", "Fortsätt spela in", "Skapa dokument", "Ta bort"]],
     ] as const) {
       const { view, offered, makeReady } = await mountAudioSetup(labels, { step: { max_files: maxFiles }, parts: [part] });
       try {
@@ -1049,7 +1049,7 @@ test("upload under way: the header offers no way off the page, which would abort
   const view = await mount(tree);
   assert.deepEqual(exits(view.container), { links: 0, account: 0 }, "no back link, no brand link, no sign-out while it uploads");
 
-  await view.act(async () => button(view.container, "Avbryt")!.click());
+  await view.act(async () => button(view.container, "Avbryt uppladdningen")!.click());
   assert.equal(cancelled, 1);
   assert.deepEqual(visited, []);
   await view.unmount();
@@ -1146,7 +1146,7 @@ test("repeated Back while the question is open leaves one question, and Stanna k
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   function Page() {
-    return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
+    return useLeaveQuestion(true, "Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.").question;
   }
   const { tree, router } = await signedIn(createElement(Page), { entries: ["/start", "/flows", "/"] });
   const view = await mount(tree);
@@ -1166,7 +1166,7 @@ test("an address the page writes that keeps the page is no departure, and a page
   function Page() {
     const [active, set] = useState(true);
     setActive = set;
-    return useLeaveQuestion(active, "Det som spelats in finns kvar bland osända inspelningar.").question;
+    return useLeaveQuestion(active, "Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.").question;
   }
   const { tree, router } = await signedIn(createElement(Page), { path: "/flows/:id", entries: ["/flows", "/flows/f1"] });
   const view = await mount(tree);
@@ -1189,7 +1189,7 @@ test("signed out, Back still asks in a native dialog that is open, focused and a
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
   function Recording() {
-    return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
+    return useLeaveQuestion(true, "Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.").question;
   }
   const { tree, router } = await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), { entries: ["/flows", "/"] });
   const view = await mount(tree);

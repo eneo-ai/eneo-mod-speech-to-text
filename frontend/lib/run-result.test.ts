@@ -96,7 +96,7 @@ test("a run error is described by its code, never by its message", () => {
 
 test("retry advice follows Eneo's retryable flag, never the code", () => {
   const checkFirst =
-    "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta support och uppge körnings-ID.";
+    "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta den som ansvarar för Eneo i din verksamhet och uppge körnings-ID:t.";
   // Eneo allows a new run only for flow_dispatch_failed,
   // flow_step_attempt_start_failed and flow_provider_rate_limited.
   for (const code of [
@@ -120,7 +120,7 @@ test("retry advice follows Eneo's retryable flag, never the code", () => {
 
 test("an input the flow cannot use says how to change it, and retry advice still follows retryable", () => {
   const checkFirst =
-    "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta support och uppge körnings-ID.";
+    "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta den som ansvarar för Eneo i din verksamhet och uppge körnings-ID:t.";
   // typed_io_transcript_too_large can come after provider work (speaker
   // mapping), so the hint must not tell the user to run the flow again.
   const hints: Record<string, string> = {

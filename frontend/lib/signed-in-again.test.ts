@@ -57,7 +57,7 @@ test("a renewal that found the login already ended says so, keeps its window and
   const { container, closed, requests } = await open(t, "/inloggad?fel=utgangen");
   assert.equal(heading(container), "Inloggningen har redan gått ut");
   assert.equal(document.title, "Inloggningen har gått ut · Tal till text");
-  assert.match(container.textContent ?? "", /stoppa den och välj Spara som fil/);
+  assert.match(container.textContent ?? "", /stoppa den och välj Spara ljudfil/);
   assert.equal(closed.mock.callCount(), 0, "the window stays for the person to read");
   assert.deepEqual(requests, []);
 });

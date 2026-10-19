@@ -141,7 +141,7 @@ const INPUT_HINTS: Record<string, string> = {
 // hände utanför Eneo; annars kan en ny körning göra om arbete som redan gjorts.
 const RETRY_ADVICE = "Det går bra att försöka igen om en stund.";
 const CHECK_FIRST_ADVICE =
-  "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta support och uppge körnings-ID.";
+  "Titta efter vad som hann bli klart innan du försöker igen, eller kontakta den som ansvarar för Eneo i din verksamhet och uppge körnings-ID:t.";
 
 export interface RunErrorView {
   /** Vad som hände och ev. hur indata kan ändras, valt utifrån `code`; råd om att köra igen utifrån `retryable`. */

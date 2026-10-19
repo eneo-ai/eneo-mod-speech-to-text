@@ -727,7 +727,7 @@ async function stoppedRecording(store: RecordingStore, parts: string[][]) {
   return recording;
 }
 
-test("a recording whose stored chunks are gone is not sent and not deleted, and what survived stays for Spara som fil", async () => {
+test("a recording whose stored chunks are gone is not sent and not deleted, and what survived stays for Spara ljudfil", async () => {
   let underneath = new IDBFactory();
   const connections: IDBDatabase[] = [];
   const factory = {

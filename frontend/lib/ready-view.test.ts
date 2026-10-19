@@ -56,7 +56,7 @@ test("the ready state names the recording for people, never as a file or a type,
   );
   assert.equal(parse(html).querySelector("h2")?.textContent, "Inspelningen är klar");
   assert.match(html, /Inspelning 23 sep 16:13 · 32\u00a0min/);
-  for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(hasButton(html, name), name);
+  for (const name of ["Skapa dokument", "Spara ljudfil", "Ta bort"]) assert.ok(hasButton(html, name), name);
   assert.match(html, /Inspelningen finns kvar på enheten tills dokumentet är skapat\./);
   assert.doesNotMatch(html, /audio\/|webm|\.webm|recording-\d|<audio[^>]*controls/i, "no MIME type, file name or native controls");
   assert.doesNotMatch(html, /Fortsätt spela in/, "offered only when the recorder can continue a stopped recording");
@@ -107,7 +107,7 @@ test("a recording with no audio says so plainly, and offers neither a document n
   );
   assert.match(html, /Inget ljud sparades i den här inspelningen\./);
   assert.doesNotMatch(html, /mycket kort/, "not a short recording: none at all");
-  for (const name of ["Skapa dokument", "Spara som fil"]) assert.ok(!hasButton(html, name), name);
+  for (const name of ["Skapa dokument", "Spara ljudfil"]) assert.ok(!hasButton(html, name), name);
   const filled = [...parse(html).querySelectorAll("button")].filter((button) => button.getAttribute("data-variant") === "primary");
   assert.deepEqual(filled.map((button) => button.textContent?.trim()), ["Fortsätt spela in"]);
   assert.ok(hasButton(html, "Ta bort"));

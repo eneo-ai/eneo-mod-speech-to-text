@@ -80,10 +80,6 @@
   justify-content: center;
 }
 
-.note {
-  max-inline-size: 24rem;
-}
-
 /* Short screens need room for warnings as well as the timer, in either orientation. */
 @media (max-height: 480px), (max-width: 559.98px) and (max-height: 700px) {
   .stage {
@@ -100,10 +96,6 @@
 
   .stageMeter {
     block-size: 2rem;
-  }
-
-  .note {
-    display: none;
   }
 }
 

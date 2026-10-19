@@ -38,6 +38,7 @@ import { resumableRecording, UnsentRecordings, type UnsentList } from "@/compone
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
+  captureLimits,
   labelsSpeakers,
   primaryActionLabel,
   readSpeakerCount,
@@ -49,6 +50,7 @@ import {
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { createActionLabel, forwardedLine, howItWorks, makesText } from "@/lib/flow-output";
+import { formatDuration } from "@/lib/format";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -264,7 +266,7 @@ export function FlowInput({
           <VisuallyHidden as="p" role="status">
             {removed ? REMOVED : recordingAnnouncement(phase)}
           </VisuallyHidden>
-          <OfflineBanner waiting={group === "capture" ? "recording" : null} />
+          <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
           {group === "setup" ? (
             <SetupWorkspace
@@ -469,6 +471,11 @@ function SetupWorkspace({
   const audio = step?.input_format?.toLowerCase() === "audio";
   // The flow runs without a file too: Skapa dokument sends the details alone, and choosing a file stays offered.
   const optionalFile = step?.required === false;
+  // Where the recording is kept, and the flow's longest recording, said before it starts rather than near its end.
+  const longest = captureLimits(contract, step).maxRecordingMs;
+  const storage = [storageLine(persistent, input.evictable), longest ? `Inspelningen kan vara högst ${formatDuration(longest)}.` : ""]
+    .filter(Boolean)
+    .join(" ");
   const ActionIcon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
   const text = makesText(contract.final_output);
@@ -591,7 +598,7 @@ function SetupWorkspace({
           recording is kept is said at the form's end. */}
       {recordingMode && dock && (
         <Text as="p" type="supporting">
-          {storageLine(persistent, input.evictable)}
+          {storage}
         </Text>
       )}
 
@@ -641,7 +648,7 @@ function SetupWorkspace({
             )}
             {recordingMode && !dock && (
               <Text as="p" type="supporting" justify="center" textWrap="balance">
-                {storageLine(persistent, input.evictable)}
+                {storage}
               </Text>
             )}
           </VStack>,

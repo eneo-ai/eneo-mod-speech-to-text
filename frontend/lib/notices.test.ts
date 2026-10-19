@@ -219,6 +219,19 @@ test("while online the offline notice is an empty status region; offline it says
   assert.equal(region.children.length, 0);
 });
 
+test("a recording kept on the device says so in the offline notice; nothing else that waits does", async () => {
+  for (const [waiting, words] of [
+    ["recording", "Ingen anslutning. Inspelningen fortsätter. Den sparas på enheten."],
+    ["run", "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka."],
+  ] as [OfflineWaiting, string][]) {
+    const { status, network } = device();
+    network(false);
+    const view = await mount(createElement(OfflineBanner, { waiting, saved: true, status }));
+    assert.equal(view.container.querySelector('[role="status"]')!.textContent, words, String(waiting));
+    await view.unmount();
+  }
+});
+
 test("the offline notice says what waits for each thing that can", async () => {
   for (const [waiting, words] of OFFLINE) {
     const { status, network } = device();

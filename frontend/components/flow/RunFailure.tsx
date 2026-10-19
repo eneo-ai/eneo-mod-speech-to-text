@@ -11,6 +11,7 @@ import { Section } from "@astryxdesign/core/Section";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
+import { ASK_ENEO_OWNER } from "@/lib/errors";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -108,6 +109,12 @@ export function RunFailure({
             description={failure?.summary ?? "Körningen kunde inte slutföras."}
             collapsible={false}
           />
+          {/* The transcript stays last on the page (see RunTranscript below), so the card says it is there. */}
+          {showTranscript && (
+            <Text as="p" type="supporting">
+              Transkriberingen blev klar. Du hittar den längst ner på sidan, där du kan kopiera eller ladda ner den.
+            </Text>
+          )}
 
           <VStack gap={3}>
             {/* One alert for each sentence, however many ways of saying it there are. */}
@@ -187,9 +194,14 @@ function SupportDetails({ runId, failure, code }: { runId: string; failure: RunE
     <VStack gap={6}>
       <Divider />
       <VStack as="section" aria-labelledby="run-support" gap={3}>
-        <Heading level={2} id="run-support">
-          Kontakta support
-        </Heading>
+        <VStack gap={1}>
+          <Heading level={2} id="run-support">
+            Behöver du hjälp?
+          </Heading>
+          <Text as="p" type="supporting">
+            {ASK_ENEO_OWNER} och uppge körnings-ID:t.
+          </Text>
+        </VStack>
         <HStack gap={3} wrap="wrap" align="center">
           <Text type="supporting">Körnings-ID</Text>
           {/* Astryx's types leave out `lang` and `translate`, so the language of a part (WCAG 3.1.2) goes on an inline element. */}

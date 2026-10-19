@@ -730,7 +730,7 @@ export class RecordingCapture {
    * The time handover runs on its own timer on the recorded clock (pauses stop it), not on chunk delivery, which a
    * locked phone may hold back. Its bound: a page the browser suspends past the deadline, so that even this timer
    * fires late, can still overrun a part. That recording stays on the device, and the send refuses it and says so
-   * (submit-run's sendLeased), with Spara som fil as the way to keep it.
+   * (submit-run's sendLeased), with Spara ljudfil as the way to keep it.
    */
   private scheduleHandover(part: Part) {
     this.clearHandover();

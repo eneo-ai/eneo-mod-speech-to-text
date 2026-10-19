@@ -8,7 +8,7 @@
     - tab "Transkribering"
   - tabpanel "Dokument":
     - note:
-      - text: Dokumentet skapades före dina rättningar Den nya versionen görs från den rättade transkriberingen.
+      - text: Dokumentet skapades före dina rättningar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.
       - button "Skapa dokumentet igen"
     - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=attachment

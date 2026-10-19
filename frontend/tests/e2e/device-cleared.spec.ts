@@ -8,7 +8,7 @@ import { record, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "storage, at one width"));
 
-test("clearing the site's data mid-recording is said at once, and Spara som fil saves what is kept", async ({ page, context, baseURL }) => {
+test("clearing the site's data mid-recording is said at once, and Spara ljudfil saves what is kept", async ({ page, context, baseURL }) => {
   await setup(page);
   await record(page, "Spela in");
   await page.waitForTimeout(2_500);
@@ -20,7 +20,7 @@ test("clearing the site's data mid-recording is said at once, and Spara som fil 
   await page.waitForTimeout(2_500);
   await stop(page);
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Spara som fil" }).click();
+  await page.getByRole("button", { name: "Spara ljudfil" }).click();
   const chunks: Buffer[] = [];
   for await (const chunk of await (await download).createReadStream()) chunks.push(chunk as Buffer);
   expect(Buffer.concat(chunks).length, "a file with audio in it").toBeGreaterThan(1_000);

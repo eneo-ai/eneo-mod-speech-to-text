@@ -73,7 +73,7 @@ export function RegenerateNotice({
       description={
         <OneOf
           first={!unreadable}
-          one="Den nya versionen görs från den rättade transkriberingen."
+          one={`Den nya versionen görs från den rättade transkriberingen och tar en stund. ${thing[0].toUpperCase() + thing.slice(1)} som visas nu finns kvar under Tidigare körningar.`}
           other="Rättningarna kunde inte läsas just nu."
         />
       }

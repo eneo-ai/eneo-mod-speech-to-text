@@ -239,7 +239,14 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
-      {create && forwarded && <Text as="p" type="supporting">{forwarded}</Text>}
+      {/* What the filled action does that its name does not say: the audio leaves the device, and the recording ends. */}
+      {create && (
+        <Text as="p" type="supporting">
+          {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
+          {onContinue ? " Efter det går det inte att fortsätta spela in." : ""}
+          {forwarded ? ` ${forwarded}` : ""}
+        </Text>
+      )}
       {(create || onContinue) && (
         <VStack gap={0}>
           {/* Which one is main follows the recording: a very short one was most likely stopped by mistake. */}

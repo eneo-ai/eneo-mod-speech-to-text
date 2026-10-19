@@ -15,7 +15,7 @@
   - button "Godkänn och fortsätt":
     - text: ""
     - status
-  - button "Avvisa":
+  - button "Avvisa körningen":
     - text: ""
     - status
   - region "Inspelning och transkribering":

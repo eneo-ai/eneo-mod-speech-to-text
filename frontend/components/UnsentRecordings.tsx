@@ -175,6 +175,9 @@ export function UnsentRecordings({
   const cutOff = recordings.length === 1 && resumable !== undefined;
   const shown = folded ? (resumable ?? recordings[0]) : null;
   const rest = recordings.filter((recording) => shown !== null && recording !== shown);
+  // What the send does that its name does not say, as the ready view says it; only when every row's send has one name.
+  const sendNames = new Set(recordings.map(sendLabel));
+  const sends = onSend && !cutOff && sendNames.size === 1 ? ` ${[...sendNames][0]} skickar inspelningen till Eneo.` : "";
   const row = (recording: UnsentRecording) => (
     <UnsentRecordingRow
       key={recording.id}
@@ -208,6 +211,7 @@ export function UnsentRecordings({
               : evictable
                 ? "De finns på den här enheten. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem."
                 : "De finns kvar på den här enheten tills de har skickats."}
+          {sends}
         </Text>
       </VStack>
       <List hasDividers>{shown ? row(shown) : recordings.map(row)}</List>

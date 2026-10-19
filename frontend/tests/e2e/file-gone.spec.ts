@@ -58,7 +58,7 @@ test("a download of a file that is gone starts nothing, and starts when the file
   const downloads: string[] = [];
   page.on("download", (download) => void downloads.push(download.url()));
 
-  await page.getByRole("link", { name: /^Ladda ner PDF/ }).click();
+  await page.getByRole("link", { name: /^(Ladda ner|Öppna) PDF/ }).click();
   await expect(gone(page)).toBeVisible();
   expect(downloads, "no download of the module's answer under the file's name").toEqual([]);
 

@@ -8,6 +8,7 @@
   - heading "Dokumentet kunde inte skapas" [level=1]
   - paragraph: /Startad i dag \d+:\d+/
   - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att försöka igen om en stund.
+  - paragraph: Transkriberingen blev klar. Du hittar den längst ner på sidan, där du kan kopiera eller ladda ner den.
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - button "Försök igen"
   - region "Stegen":
@@ -15,8 +16,9 @@
     - list "Flödets steg":
       - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Misslyckades
-  - region "Kontakta support":
-    - heading "Kontakta support" [level=2]
+  - region "Behöver du hjälp?":
+    - heading "Behöver du hjälp?" [level=2]
+    - paragraph: Kontakta den som ansvarar för Eneo i din verksamhet och uppge körnings-ID:t.
     - text: Körnings-ID
     - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
     - button "Kopiera körnings-ID"

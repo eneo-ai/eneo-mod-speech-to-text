@@ -74,7 +74,7 @@ test("where the browser may delete the recordings the list does not promise they
   assert.match(two.container.textContent!, /De finns på den här enheten\. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem\./);
 });
 
-test("each unsent recording offers Skapa dokument, Spara som fil and Ta bort, described by its summary", async () => {
+test("each unsent recording offers Skapa dokument, Spara ljudfil and Ta bort, described by its summary", async () => {
   const { container } = await render({
     recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 120_000, at(23, 9, 0))],
     withFlowName: true,
@@ -82,7 +82,7 @@ test("each unsent recording offers Skapa dokument, Spara som fil and Ta bort, de
   const rows = rowsOf(container);
   assert.equal(rows.length, 2);
   for (const row of rows) {
-    assert.deepEqual(labels(row), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+    assert.deepEqual(labels(row), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
     assert.match(summaryOf(row).textContent!, /^Inspelning \d+ sep \d\d:\d\d/, "the summary is the recording's name and details");
   }
   const { container: nothing } = await render({ recordings: [] });
@@ -100,8 +100,8 @@ test("the actions call back with their recording, and Fortsätt spela in only wh
     onContinue: (r) => void continued.push(r.id),
   });
   const [first, second] = rowsOf(container);
-  assert.deepEqual(labels(first), ["Fortsätt spela in", "Skapa dokument", "Spara som fil", "Ta bort"]);
-  assert.deepEqual(labels(second), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+  assert.deepEqual(labels(first), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"]);
+  assert.deepEqual(labels(second), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
   await act(async () => button(first, "Fortsätt spela in")!.click());
   await act(async () => button(second, "Skapa dokument")!.click());
   assert.deepEqual([continued, sent], [["a"], ["b"]]);
@@ -128,10 +128,10 @@ test("without Web Locks, another tab's recording is offered only as a file to sa
   const elsewhere = { ...recording("a", 60_000, at(23, 10, 12)), state: "paused" as const, exportOnly: true };
   const { container } = await render({ recordings: [elsewhere, recording("b", 60_000, at(23, 9, 0))], onContinue: () => {} });
   const [first, second] = rowsOf(container);
-  assert.deepEqual(labels(first), ["Spara som fil"]);
+  assert.deepEqual(labels(first), ["Spara ljudfil"]);
   assert.match(first.textContent!, /I den här webbläsaren kan den bara sparas som fil\./);
   assert.equal(summaryOf(first).textContent?.startsWith("Inspelning"), true, "the one action is still described by the summary");
-  assert.deepEqual(labels(second), ["Skapa dokument", "Spara som fil", "Ta bort"], "a recording this tab may change keeps every action");
+  assert.deepEqual(labels(second), ["Skapa dokument", "Spara ljudfil", "Ta bort"], "a recording this tab may change keeps every action");
 });
 
 test("a recording a reload cut off says so and how to go on, with Fortsätt spela in the one filled action", async () => {
@@ -208,7 +208,7 @@ test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to 
 
   await act(async () => button(row, "Avbryt")!.click());
   assert.equal(row.querySelector('[role="group"]'), null);
-  assert.deepEqual(labels(row), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+  assert.deepEqual(labels(row), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
   assert.equal(focused(), "Ta bort");
 });
 
@@ -264,7 +264,7 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
       throw new Error(IN_USE_ELSEWHERE);
     },
   }));
-  await act(async () => button(row, "Spara som fil")!.click());
+  await act(async () => button(row, "Spara ljudfil")!.click());
   assert.deepEqual(alert(), ["Inspelningen kunde inte sparas som fil. Försök igen."]);
 
   await act(async () => button(row, "Ta bort")!.click());
@@ -295,14 +295,14 @@ test("a recording another tab holds is listed with why nothing can be done with 
     const [held, own] = rowsOf(container);
     assert.match(held.textContent!, /Inspelningen används i en annan flik\./);
     assert.deepEqual(labels(held), [], "nothing here that the other tab would have to undo");
-    assert.deepEqual(labels(own), ["Skapa dokument", "Spara som fil", "Ta bort"]);
+    assert.deepEqual(labels(own), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
 
     // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
     elsewhere = [];
     offered = [recordedElsewhere, mine];
     await act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
     await act(async () => undefined);
-    assert.deepEqual(labels(rowsOf(container)[0]), ["Fortsätt spela in", "Skapa dokument", "Spara som fil", "Ta bort"]);
+    assert.deepEqual(labels(rowsOf(container)[0]), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"]);
   } finally {
     store.listUnsentGroups = listUnsentGroups;
     store.mayChange = mayChange;

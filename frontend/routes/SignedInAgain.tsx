@@ -75,7 +75,7 @@ function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
               : refusal === "utgangen"
                 ? // This window cannot know whether the other tab's recording is kept on the device (see leaveWarning):
                   // it promises nothing and says how to keep it, as "Lämna sidan?" does.
-                  "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
+                  "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara ljudfil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
                 : "Du kan stänga det här fönstret och fortsätta där du var."}
           </Text>
         </VStack>

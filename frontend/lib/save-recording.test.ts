@@ -9,7 +9,7 @@ import { installDom } from "./test-dom";
 // The download is an anchor's click.
 installDom();
 
-test("Spara som fil on a recording that is gone from the device says so instead of doing nothing", async () => {
+test("Spara ljudfil on a recording that is gone from the device says so instead of doing nothing", async () => {
   const { saveRecordingFile } = await import("../components/save-recording");
   await assert.rejects(
     saveRecordingFile("gone", 0, async () => ({ readFile: async () => null })),
@@ -17,7 +17,7 @@ test("Spara som fil on a recording that is gone from the device says so instead 
   );
 });
 
-test("Spara som fil reads only the file it saves: one part of the recording, not every part again for each press", async (t) => {
+test("Spara ljudfil reads only the file it saves: one part of the recording, not every part again for each press", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] }); // the download's address is let go a minute later
   const { saveRecordingFile } = await import("../components/save-recording");
   const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() });

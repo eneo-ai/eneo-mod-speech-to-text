@@ -125,12 +125,12 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
     "back on the device: a calm note in the bar's line",
   );
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
-    { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
+    { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara ljudfil när du stoppar." },
   ]);
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "lost" }).warnings, [
     {
       title: "Inspelningen kan inte längre sparas på enheten.",
-      detail: "Det som spelats in tidigare kan ha försvunnit. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
+      detail: "Det som spelats in tidigare kan ha försvunnit. Inspelningen fortsätter, men välj Spara ljudfil när du stoppar.",
     },
   ]);
   const minutes = (count: number) => count * 60_000;
@@ -334,15 +334,15 @@ test("details a send found missing stay unfolded while they are filled in, until
 
 test("leaving an upload says it stops, and what is kept of a recording", () => {
   assert.equal(leaveWarning(true, "setup", true), "Sändningen avbryts, och filen behöver väljas igen.");
-  assert.equal(leaveWarning(true, "ready", true), "Sändningen avbryts. Det som spelats in finns kvar bland osända inspelningar.");
+  assert.equal(leaveWarning(true, "ready", true), "Sändningen avbryts. Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.");
   // A full device keeps what came before; only the latest is in this tab, and a saved file would be refused too.
   const full = leaveWarning(false, "recording", false, "full");
   assert.match(full, /^Inspelningen stoppas\. Enheten är full, så det senaste av inspelningen finns bara i den här fliken/);
   assert.match(full, /Det som spelades in innan finns kvar på enheten\. Stanna kvar och frigör utrymme/);
-  assert.doesNotMatch(full, /Spara som fil/);
+  assert.doesNotMatch(full, /Spara ljudfil/);
   assert.equal(
     leaveWarning(false, "ready", true),
-    "Sändningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
+    "Sändningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara ljudfil först om du vill behålla den.",
   );
 });
 
@@ -350,18 +350,18 @@ test("leaving promises the recording back only when the device keeps it, and oth
   for (const phase of ["recording", "paused", "interrupted"] as const) {
     assert.equal(
       leaveWarning(true, phase),
-      "Inspelningen stoppas. Det som spelats in finns kvar bland osända inspelningar.",
+      "Inspelningen stoppas. Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.",
       "leaving stops the recording: it does not go on in the background",
     );
   }
   for (const persistent of [false, null]) {
     assert.equal(
       leaveWarning(persistent, "recording"),
-      "Inspelningen stoppas. Den finns bara i den här fliken och försvinner när du lämnar sidan. Stoppa och välj Spara som fil först om du vill behålla den.",
+      "Inspelningen stoppas. Den finns bara i den här fliken och försvinner när du lämnar sidan. Stoppa och välj Spara ljudfil först om du vill behålla den.",
     );
     assert.equal(
       leaveWarning(persistent, "ready"),
-      "Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
+      "Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara ljudfil först om du vill behålla den.",
     );
   }
 });
