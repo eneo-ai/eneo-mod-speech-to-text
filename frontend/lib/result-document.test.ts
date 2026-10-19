@@ -1361,13 +1361,13 @@ test("an uncertain word says how to put it right where the result allows it", as
 
 /**
  * A finished run of a flow with no naming step, whose transcript's corrections are saved by `onSave` (the request's body
- * in, Eneo's answer out): the result page as it is opened. Rendered at a laptop's width unless `narrow`. `saved` are the
- * corrections as read with the run, and the transcript's read ends when `read` does.
+ * in, Eneo's answer out): the result page as it is opened. Rendered at a laptop's width unless `narrow`; the flow makes
+ * text when `text`. `saved` are the corrections as read with the run, and the transcript's read ends when `read` does.
  */
 async function namingRun(
   t: TestContext,
   onSave: (body: Record<string, unknown>) => Promise<Response>,
-  { narrow = false, saved, read = Promise.resolve() }: { narrow?: boolean; saved?: unknown[]; read?: Promise<void> } = {},
+  { narrow = false, text = false, saved, read = Promise.resolve() }: { narrow?: boolean; text?: boolean; saved?: unknown[]; read?: Promise<void> } = {},
 ) {
   const { createElement } = await import("react");
   const { RunResult } = await import("../components/flow/RunResult");
@@ -1403,11 +1403,15 @@ async function namingRun(
   const page = createElement(RunResult, {
     flowId: "flow-1",
     flowName: "Nämndmöte till rapport",
-    run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
+    run: {
+      id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z",
+      result: text ? { kind: "inline_text", text: "Mötet godkände budgeten." } : { kind: "artifact", files: [{ file_id: "file-1" }] },
+    } as never,
+    contract: text ? ({ flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text", delivery: "payload" } } as never) : null,
     savedCorrections: saved as never,
     steps: [],
     stepResults: [transcribe] as never,
-    files: [pdf],
+    files: text ? [] : [pdf],
     onNewRecording: () => undefined,
     onRegenerated: () => undefined,
   });
@@ -1424,6 +1428,11 @@ const nameFieldOf = async (label: string) => {
   const { computeAccessibleName } = await import("dom-accessibility-api");
   return [...document.querySelectorAll<HTMLInputElement>("dialog[open] input")].find((input) => computeAccessibleName(input) === `Vem är ${label}?`)!;
 };
+/** What the open naming dialog says under its title: its description, as a screen reader is given it. */
+const namingDescription = () => {
+  const dialog = document.querySelector("dialog[open]")!;
+  return document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent;
+};
 
 test("names given after the run go with the corrections, show at once in the transcript and its text, and the document can be made again", async (t) => {
   const { type } = await import("./test-dom");
@@ -1439,10 +1448,9 @@ test("names given after the run go with the corrections, show at once in the tra
   const view = await open();
   assert.equal(view.container.querySelector('[role="note"]'), null, "nothing newer than the document yet");
   await view.act(async () => button(view.container, "Namnge talare")!.click());
-  const dialog = document.querySelector("dialog[open]")!;
-  assert.match(
-    dialog.textContent ?? "",
-    /Lyssna på ett exempel och skriv vem som talar\. Namnen syns direkt i transkriberingen och i texten du laddar ner\. Dokumentet får namnen när du skapar det igen\./,
+  assert.equal(
+    namingDescription(),
+    "Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Dokumentet får namnen när du skapar det igen.",
   );
   await view.act(async () => type(await nameFieldOf("Talare 1"), "Anna Berg"));
   await view.act(async () => type(await nameFieldOf("Talare 2"), "Erik Lund"));
@@ -1544,6 +1552,16 @@ test("the notice over a document older than names says so from the first draw, a
   assert.ok(button(view.container, "Anna Berg, ändra talare"), "the transcript is read");
   assert.deepEqual(redrawn, [], "the same words throughout: never the corrections' sentence, nor that they could not be read");
   assert.equal(button(note, "Skapa dokumentet igen")!.disabled, false, "and now it acts");
+});
+
+test("on a flow that makes text, the naming tells the transcript's copy and download from the text made again", async (t) => {
+  const { open } = await namingRun(t, async () => Response.json({}), { text: true });
+  const view = await open();
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  assert.equal(
+    namingDescription(),
+    "Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Texten får namnen när du skapar den igen.",
+  );
 });
 
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {

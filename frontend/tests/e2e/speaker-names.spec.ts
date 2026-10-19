@@ -76,7 +76,7 @@ test("names given to a finished run's speakers show in its transcript, its copy 
   const naming = page.getByRole("button", { name: "Namnge talare" });
   await naming.click();
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
-  await expect(dialog.getByText("Namnen syns direkt i transkriberingen och i texten du laddar ner. Dokumentet får namnen när du skapar det igen.")).toBeVisible();
+  await expect(dialog.getByText("Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Dokumentet får namnen när du skapar det igen.")).toBeVisible();
   for (const [speaker, name] of [["Talare 1", "Anna Berg"], ["Talare 2", "Erik Lund"]]) {
     await dialog.getByRole("combobox", { name: `Vem är ${speaker}?` }).fill(name);
     // Typing opens the name list over what is below the field; a press outside it closes it first.

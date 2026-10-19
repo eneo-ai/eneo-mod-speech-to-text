@@ -194,8 +194,9 @@ export function RunTranscriptView({
 }
 
 /**
- * What naming after the run changes, said in its dialog: the transcript and its text at once; the document only when
- * it is made again, and one already sent on not at all.
+ * What naming after the run changes, said in its dialog: the transcript, its copy and its download at once (said by
+ * their actions, never "texten", which a flow that makes text calls its result); the document only when it is made
+ * again, and one already sent on not at all.
  */
 function namingDescription({ thing, delivered, hasDocument }: { thing: string; delivered: boolean; hasDocument: boolean }): string {
   const later = delivered
@@ -203,7 +204,7 @@ function namingDescription({ thing, delivered, hasDocument }: { thing: string; d
     : hasDocument
       ? ` ${thing[0].toUpperCase() + thing.slice(1)} får namnen när du skapar ${thing === "texten" ? "den" : "det"} igen.`
       : "";
-  return `Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen och i texten du laddar ner.${later}`;
+  return `Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text.${later}`;
 }
 
 /**
