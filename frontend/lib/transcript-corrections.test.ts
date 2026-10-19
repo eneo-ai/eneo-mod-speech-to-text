@@ -4,11 +4,18 @@ import {
   EMPTY_CORRECTIONS,
   applyCorrections,
   correctedSegmentText,
+  correctionRequest,
+  correctionsFromResponse,
+  correctionWriteProblem,
+  effectiveSpeakerNames,
+  namesAfterNaming,
   occurrencesForLine,
+  prunedSpeakerNames,
   renderReviewedTranscript,
   sameCorrections,
   withLineCorrection,
   withSpeakerEdit,
+  type CorrectionSet,
 } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
 
@@ -156,4 +163,115 @@ test("the plain text names a speaker as the page does: the confirmed name, else 
     renderReviewedTranscript(segments, EMPTY_CORRECTIONS, { SPEAKER_01: " Anna Berg " }).split("\n"),
     ["[00:00:00 - 00:00:04] Talare 1: Hej och välkomna.", "[00:00:04 - 00:00:09] Anna Berg: Tack så mycket."],
   );
+});
+
+// ---- Names given after the run (Eneo's speaker_names) ----
+
+const HASH = "a".repeat(64);
+const v3: CorrectionSet = { ...EMPTY_CORRECTIONS, schemaVersion: 3, segmentsHash: HASH };
+
+test("the names shown are the step's with those given after the run over them: a name overrides, null takes it away, none inherits", () => {
+  const step = { SPEAKER_00: "Anna Berg", SPEAKER_01: "Erik Lund" };
+  assert.deepEqual(effectiveSpeakerNames(step, { SPEAKER_00: "Anna Bergström", SPEAKER_01: null, SPEAKER_02: "Sara Holm" }), {
+    SPEAKER_00: "Anna Bergström",
+    SPEAKER_02: "Sara Holm",
+  });
+  assert.deepEqual(effectiveSpeakerNames(step, undefined), step, "nothing given: the step's names");
+  assert.deepEqual(effectiveSpeakerNames({}, { SPEAKER_00: null }), {}, "no step name to take away");
+});
+
+test("names are kept only for a speaker of the transcript or one a speaker edit makes, as Eneo keeps them", () => {
+  const split = { segment_index: 0, char_start: 0, char_end: 3, original: "Hej", original_speaker: "SPEAKER_00", speaker: "SPEAKER_02", decision: "confirmed" as const };
+  // SPEAKER_01 has no passage left (moved to SPEAKER_00), and keeps its name: it is a label of the transcript.
+  const moved = withSpeakerEdit(EMPTY_CORRECTIONS, 1, "SPEAKER_01", "SPEAKER_00");
+  const names = { SPEAKER_00: "Anna Berg", SPEAKER_01: null, SPEAKER_02: "Sara Holm", SPEAKER_07: "Ingen" };
+  assert.deepEqual(prunedSpeakerNames(names, segments, [...moved.speaker_edits, split]), { SPEAKER_00: "Anna Berg", SPEAKER_01: null, SPEAKER_02: "Sara Holm" });
+  // The split undone: its speaker has no passage, and its name goes.
+  assert.deepEqual(prunedSpeakerNames(names, segments, []), { SPEAKER_00: "Anna Berg", SPEAKER_01: null });
+});
+
+test("a naming keeps the step's name where it is typed again, takes it away where it is emptied, and gives one where none was", () => {
+  const step = { SPEAKER_00: "Anna Berg", SPEAKER_01: "Erik Lund" };
+  const kept = { SPEAKER_03: "Sara Holm" };
+  assert.deepEqual(
+    namesAfterNaming(
+      [
+        { label: "SPEAKER_00", name: " Anna Berg " }, // the step's own: nothing to keep
+        { label: "SPEAKER_01", name: "" }, // emptied: Talare 2 again, over the step's name
+        { label: "SPEAKER_02", name: "Bertil Ek" }, // a name where there was none
+      ],
+      step,
+      kept,
+    ),
+    { SPEAKER_01: null, SPEAKER_02: "Bertil Ek", SPEAKER_03: "Sara Holm" },
+  );
+  // Emptying a name the step never gave removes it: absent is "Talare N" already.
+  assert.deepEqual(namesAfterNaming([{ label: "SPEAKER_02", name: null }], step, { SPEAKER_02: "Bertil Ek" }), {});
+  // Typed over a name given earlier.
+  assert.deepEqual(namesAfterNaming([{ label: "SPEAKER_01", name: "Erik Lindqvist" }], step, { SPEAKER_01: null }), { SPEAKER_01: "Erik Lindqvist" });
+});
+
+test("every save sends the names, pruned to the transcript's speakers and the edits' with nulls kept", () => {
+  const set: CorrectionSet = { ...v3, speakerNames: { SPEAKER_00: "Anna Berg", SPEAKER_01: null, SPEAKER_05: "Gone" } };
+  const body = correctionRequest(set, segments);
+  assert.deepEqual(body.speaker_names, { SPEAKER_00: "Anna Berg", SPEAKER_01: null });
+  // A set without names sends an empty object, never leaves the field out: the stored names are replaced by what the page holds.
+  assert.deepEqual(correctionRequest(v3, segments).speaker_names, {});
+});
+
+test("a name Eneo would refuse is said before anything is sent", () => {
+  const named = (speakerNames: Record<string, string | null>) => correctionWriteProblem({ ...v3, speakerNames });
+  assert.equal(named({ SPEAKER_00: "Anna Berg", SPEAKER_01: null }), null);
+  assert.match(named({ SPEAKER_00: "Anna\nBerg" }) ?? "", /en rad/);
+  assert.match(named({ SPEAKER_00: "Anna​Berg" }) ?? "", /en rad/, "an invisible character breaks the line Eneo shows it on");
+  assert.match(named({ SPEAKER_00: "A".repeat(121) }) ?? "", /högst 120 tecken/);
+  assert.equal(named({ SPEAKER_00: "🙂".repeat(120) }), null, "120 characters as Eneo counts them, not UTF-16 units");
+  assert.match(named(Object.fromEntries(Array.from({ length: 101 }, (_, i) => [`SPEAKER_${String(i).padStart(2, "0")}`, "N"]))) ?? "", /fler än 100/);
+  assert.match(named({ Anna: "Anna Berg" }) ?? "", /talare/i, "a name belongs to a speaker label");
+});
+
+test("the names are part of what a set is: compared without regard to their order, absent as none", () => {
+  assert.equal(sameCorrections({ ...v3, speakerNames: { SPEAKER_00: "Anna", SPEAKER_01: null } }, { ...v3, speakerNames: { SPEAKER_01: null, SPEAKER_00: "Anna" } }), true);
+  assert.equal(sameCorrections({ ...v3, speakerNames: {} }, v3), true);
+  assert.equal(sameCorrections({ ...v3, speakerNames: { SPEAKER_00: "Anna" } }, v3), false);
+  assert.equal(sameCorrections({ ...v3, speakerNames: { SPEAKER_00: null } }, v3), false, "taking a step's name away is a change");
+});
+
+test("the names are read with the corrections, and a set whose names Eneo could not have stored is not shown", () => {
+  const response = { schema_version: 3, segments_hash: HASH, revision: 2, stale: false, occurrences: [], speaker_edits: [] };
+  assert.deepEqual(correctionsFromResponse({ ...response, speaker_names: { SPEAKER_00: "Anna Berg", SPEAKER_01: null } }, segments, HASH).speakerNames, {
+    SPEAKER_00: "Anna Berg",
+    SPEAKER_01: null,
+  });
+  assert.deepEqual(correctionsFromResponse(response, segments, HASH).speakerNames, {}, "none stored");
+  for (const names of [{ Anna: "Anna Berg" }, { SPEAKER_00: 5 }, ["SPEAKER_00"]]) {
+    assert.throws(() => correctionsFromResponse({ ...response, speaker_names: names as never }, segments, HASH), /Talarnamnen/);
+  }
+});
+
+test("the text names each speaker as the page does, and keeps the brackets of what cannot be told and the parts' headings", () => {
+  const parts: TranscriptSegment[] = [
+    { fileIndex: 0, start: 0, end: 4, speaker: "SPEAKER_00", text: "Hej och välkomna." },
+    { fileIndex: 0, start: 4, end: 6, speaker: "SPEAKER_01", text: "Ja.", speakerAttribution: "provisional", overlapIds: ["o1"] },
+    { fileIndex: 1, start: 0, end: 3, speaker: "SPEAKER_01", text: "Tack." },
+    { fileIndex: 1, start: 3, end: 5, speaker: "SPEAKER_02", text: "Ingen aning." },
+  ];
+  const set: CorrectionSet = {
+    ...v3,
+    speaker_edits: [{ segment_index: 3, char_start: null, char_end: null, original: null, original_speaker: "SPEAKER_02", speaker: null, decision: "unresolved" }],
+    speakerNames: { SPEAKER_00: "Anna Berg", SPEAKER_01: null },
+  };
+  // The step named SPEAKER_01 Erik; the name was taken away after the run, so it is Talare 2 again.
+  assert.deepEqual(renderReviewedTranscript(parts, set, { SPEAKER_01: "Erik Lund" }).split("\n"), [
+    "## Del 1",
+    "",
+    "[00:00:00 - 00:00:04] Anna Berg: Hej och välkomna.",
+    "[00:00:04 - 00:00:06] [Överlappande tal – osäker talare]: Ja.",
+    "## Del 2",
+    "",
+    "[00:00:00 - 00:00:03] Talare 2: Tack.",
+    "[00:00:03 - 00:00:05] [Talare går inte att avgöra]: Ingen aning.",
+  ]);
+  // Without names the text is as it was.
+  assert.equal(renderReviewedTranscript(parts, { ...set, speakerNames: {} }, {}), renderReviewedTranscript(parts, { ...set, speakerNames: undefined }));
 });

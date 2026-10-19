@@ -132,6 +132,18 @@ const CODES: Record<string, string> = {
   flow_transcript_corrections_segments_unavailable: "Den här transkriberingen saknar lagrade repliker och kan inte rättas.",
 };
 
+// A refusal whose reason (Eneo's `context.reason`) says more than its code: the reason's sentence comes first.
+const REASONS: Record<string, string> = {
+  unknown_speaker_label: "En talare som fick ett namn finns inte längre i transkriberingen. Läs in sidan igen och försök på nytt.",
+  run_not_completed: "Namnen kan bara ändras när körningen är klar.",
+};
+
+/** Eneo's reason for a refusal, where its answer gives one. */
+export function refusalReason(err: unknown): string | null {
+  const reason = err instanceof ApiError ? (err.body as { context?: { reason?: unknown } } | null)?.context?.reason : undefined;
+  return typeof reason === "string" ? reason : null;
+}
+
 // Busy or briefly unreachable: the same request may go through a moment later.
 const RETRY_CODES = new Set([
   "flow_run_audio_measurement_busy",
@@ -173,6 +185,8 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     if (err.code && OWN_CODES.has(err.code)) return advice(err.message, true);
     logForSupport(err);
     if (err.code && OWNER_CODES[err.code]) return advice(OWNER_CODES[err.code], false, true);
+    const reason = refusalReason(err);
+    if (reason && Object.hasOwn(REASONS, reason)) return advice(REASONS[reason]);
     if (err.code && CODES[err.code]) return advice(CODES[err.code], RETRY_CODES.has(err.code));
     // Our own session (no code) has run out; Eneo's 401 always carries a code. The page asks for the new login in
     // place, so this is read after it.

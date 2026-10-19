@@ -14,8 +14,8 @@ import styles from "@/components/SpeakerNamingDialog.module.css";
 import { SpeakerMark } from "@/components/TranscriptPlayer";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { isRecord } from "@/lib/is-record";
-import { isUnsureProposal, speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
-import { speakerDisplayLabel } from "@/lib/transcript";
+import { isUnsureProposal, type SpeakerMappingRow } from "@/lib/speaker-mapping";
+import { speakerDisplayLabel, speakerNameProblem } from "@/lib/transcript";
 
 /**
  * The keyboard on a phone covers the lower part of the screen without making

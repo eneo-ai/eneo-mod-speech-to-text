@@ -49,11 +49,17 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     staleNotice.current = null;
   }, [transcript.pending, transcript.corrections]);
 
-  function onCorrectionsChange(next: CorrectionSet) {
-    if (!transcript.stepId || transcript.correctionProblem) return;
+  /**
+   * Shows `next` and saves it after what is being saved; resolves with why it was not saved, or null. A save waits behind
+   * one that failed, until the person saves again (`saveNow`).
+   */
+  function onCorrectionsChange(next: CorrectionSet): Promise<string | null> {
+    if (!transcript.stepId || transcript.correctionProblem) return Promise.resolve(transcript.correctionProblem ?? "Transkriberingen kan inte ändras här.");
     setCorrections(next);
     const requestGeneration = ++generation.current;
     setSaveState("saving");
+    // What a save that waits behind a failed one says, if it never runs.
+    let refusal: string | null = "Den förra ändringen kunde inte sparas. Spara den igen först.";
     saveQueue.current = appendCorrectionSave(saveQueue.current, async () => {
       try {
         const saved = await saveTranscriptCorrections(flowId, runId, transcript.stepId!, correctionRequest(next, transcript.segments, revisionRef.current));
@@ -64,24 +70,31 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         setCorrections((prev) => sameCorrections(prev, next) ? { ...prev, revision: saved.revision, updatedAt: saved.updated_at } : prev);
         if (requestGeneration === generation.current) { setSaveState("saved"); setLocalError(null); }
         setDropped(null);
+        refusal = null;
         return true;
       } catch (err) {
+        refusal = friendlyError(err);
         if (err instanceof ApiError && err.code === STALE_REVISION) {
           // Someone else saved first: their corrections are read again and replace these, which could never be saved.
-          staleNotice.current = friendlyError(err);
+          staleNotice.current = refusal;
           setDropped(next);
           reload();
           return false;
         }
-        setLocalError(`${friendlyError(err)} Dina osparade rättningar finns kvar.`);
+        setLocalError(`${refusal} Dina osparade rättningar finns kvar.`);
         return false;
       }
     }).then((saved) => { if (!saved) setSaveState("error"); return saved; });
+    return saveQueue.current.then(() => refusal);
   }
-  async function retryCorrections() {
+  /** Saves `next` after what is under way, also when an earlier save failed: a save the person asks for (Försök spara igen, Spara namnen). */
+  async function saveNow(next: CorrectionSet): Promise<string | null> {
     await saveQueue.current;
     saveQueue.current = Promise.resolve(true);
-    onCorrectionsChange(corrections);
+    return onCorrectionsChange(next);
+  }
+  async function retryCorrections() {
+    await saveNow(corrections);
   }
   function downloadUnsavedCorrections() {
     saveCorrectionsFile(corrections, revisionRef.current);
@@ -97,5 +110,5 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
       "osparade-rattningar.json",
     );
   }
-  return { corrections, saveState, localError, saveQueue, hasDropped: dropped !== null, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped };
+  return { corrections, saveState, localError, saveQueue, hasDropped: dropped !== null, onCorrectionsChange, saveNow, retryCorrections, downloadUnsavedCorrections, downloadDropped };
 }
