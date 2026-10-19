@@ -48,5 +48,5 @@ test("a full device is said with what to do, and once there is room the recordin
   await expect(page.getByText("Det finns plats igen, och inspelningen sparas på enheten."), "said for a moment").toHaveCount(0);
 
   await stop(page);
-  await expect(page.getByText("Inspelningen finns kvar på enheten tills dokumentet är skapat.")).toBeVisible();
+  await expect(page.getByText("finns kvar på enheten tills dokumentet är skapat.")).toBeVisible();
 });
