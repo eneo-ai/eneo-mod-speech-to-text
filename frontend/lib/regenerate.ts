@@ -6,7 +6,7 @@
  */
 
 import { ApiError, regenerateTranscript, type FlowRunPublic, type FlowRunStep, type TranscriptCorrectionsPublic } from "./api";
-import { friendlyError } from "./errors";
+import { friendlyError, refusalReason } from "./errors";
 import { carriesTranscript } from "./speaker-review";
 import { isSegmentsHash, type CorrectionSet } from "./transcript-corrections";
 
@@ -138,7 +138,14 @@ export function regenerationRefusal(err: unknown, thing = "dokumentet"): { messa
       case "flow_transcript_corrections_invalid_occurrence":
         return {
           message:
-            `Det här flödet kan inte skapa ${thing} igen från en rättad transkribering. Ladda ner den rättade transkriberingen i stället.`,
+            refusalReason(err) === "file_backed_prefix_unsupported"
+              ? `Transkriberingen är för lång för att ${thing} ska kunna skapas igen här. Ladda ner den rättade transkriberingen i stället.`
+              : `Det här flödet kan inte skapa ${thing} igen från en rättad transkribering. Ladda ner den rättade transkriberingen i stället.`,
+          reload: false,
+        };
+      case "flow_run_input_payload_too_large":
+        return {
+          message: `Den rättade transkriberingen är större än flödet tar emot, så ${thing} kan inte skapas igen här. Ladda ner den rättade transkriberingen i stället.`,
           reload: false,
         };
       case "flow_run_access_denied":

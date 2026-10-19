@@ -151,6 +151,20 @@ test("a save that only named speakers offers a new document like any other, unde
   assert.equal(namesOnly({ occurrences: [], speaker_edits: [], speaker_names: { SPEAKER_00: null } }), true);
 });
 
+test("Eneo's refusals for a transcript too long to make the document again from say so, and offer the download", () => {
+  const refused = (code: string, context?: Record<string, unknown>) =>
+    regenerationRefusal(new ApiError(400, "x", { code, context }, code));
+  assert.deepEqual(refused("flow_transcript_corrections_invalid_occurrence", { reason: "file_backed_prefix_unsupported" }), {
+    message: "Transkriberingen är för lång för att dokumentet ska kunna skapas igen här. Ladda ner den rättade transkriberingen i stället.",
+    reload: false,
+  });
+  assert.deepEqual(refused("flow_run_input_payload_too_large", { max_inline_text_bytes: 1 }), {
+    message: "Den rättade transkriberingen är större än flödet tar emot, så dokumentet kan inte skapas igen här. Ladda ner den rättade transkriberingen i stället.",
+    reload: false,
+  });
+  assert.match(regenerationRefusal(new ApiError(400, "x", { context: { reason: "file_backed_prefix_unsupported" } }, "flow_transcript_corrections_invalid_occurrence"), "texten").message, /för att texten ska kunna/);
+});
+
 test("a notice for names alone says they show in the transcript already and the document gets them when it is made again", async () => {
   const { createElement } = await import("react");
   const { RegenerateNotice } = await import("../components/flow/RegenerateNotice");
