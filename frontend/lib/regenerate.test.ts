@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import { ApiError, type FlowRunPublic, type FlowRunStep, type TranscriptCorrectionsPublic } from "./api";
-import { correctionsNewerThanDocument, regenerate, regenerationOffer, regenerationRefusal } from "./regenerate";
+import { correctionsNewerThanDocument, namesOnly, regenerate, regenerationOffer, regenerationRefusal } from "./regenerate";
 import { button, cleanup, installDom, mount } from "./test-dom";
 import type { CorrectionSet } from "./transcript-corrections";
 
@@ -112,7 +112,7 @@ test("the notice starts the new run only when asked, and shows a refusal with th
   };
   assert.match(
     seenText(),
-    /^Dokumentet skapades före dina rättningarDen nya versionen görs från den rättade transkriberingen och tar en stund\. Dokumentet som visas nu finns kvar under Tidigare körningar\.Skapa dokumentet igen$/,
+    /^Dokumentet skapades före dina ändringarDen nya versionen görs från den rättade transkriberingen och tar en stund\. Dokumentet som visas nu finns kvar under Tidigare körningar\.Skapa dokumentet igen$/,
     "a title, what the new version is and that this one stays, and the button",
   );
   // The design system's warning is an alert; this one is there when the page opens and is not announced.
@@ -137,6 +137,37 @@ test("while corrections are being saved, the new document waits for them", async
     createElement(RegenerateNotice, { offer: regenerationOffer(base)!, saveState: "saving", onStarted: () => undefined, onReload: () => undefined }),
   );
   assert.equal(button(view.container, "Sparar rättningarna…")!.disabled, true);
+});
+
+test("a save that only named speakers offers a new document like any other, under the key of its own revision", () => {
+  const named: CorrectionSet = { ...saved, revision: 3, speakerNames: { SPEAKER_00: "Anna Berg" } };
+  assert.deepEqual(regenerationOffer({ ...base, corrections: named }), {
+    flowId: "flow-1", runId: "run-1", stepId: "step-1", runRevision: 4, correctionRevision: 3, segmentsHash: HASH,
+  });
+  assert.equal(namesOnly(named), true);
+  assert.equal(namesOnly({ ...named, speaker_edits: [{ segment_index: 0, char_start: null, char_end: null, original: null, original_speaker: "SPEAKER_00", speaker: "SPEAKER_01" }] }), false);
+  assert.equal(namesOnly(saved), false, "no names, nothing only named");
+  // Read with the run, before the transcript: Eneo's own shape.
+  assert.equal(namesOnly({ occurrences: [], speaker_edits: [], speaker_names: { SPEAKER_00: null } }), true);
+});
+
+test("a notice for names alone says they show in the transcript already and the document gets them when it is made again", async () => {
+  const { createElement } = await import("react");
+  const { RegenerateNotice } = await import("../components/flow/RegenerateNotice");
+  const shown = async (thing?: string) => {
+    const view = await mount(
+      createElement(RegenerateNotice, { offer: regenerationOffer(base)!, saveState: "idle", namesOnly: true, onStarted: () => undefined, onReload: () => undefined, thing }),
+    );
+    const copy = view.container.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("[inert]").forEach((layer) => layer.remove());
+    await view.unmount();
+    return copy.textContent ?? "";
+  };
+  assert.equal(
+    await shown(),
+    "Dokumentet skapades före dina ändringarNamnen syns redan i transkriberingen, och dokumentet får dem när du skapar det igen. Det som visas nu finns kvar under Tidigare körningar.Skapa dokumentet igen",
+  );
+  assert.match(await shown("texten"), /och texten får dem när du skapar den igen\. Den som visas nu finns kvar/);
 });
 
 test("whether saved corrections are newer than the document is known from the run's own read, before the transcript", () => {

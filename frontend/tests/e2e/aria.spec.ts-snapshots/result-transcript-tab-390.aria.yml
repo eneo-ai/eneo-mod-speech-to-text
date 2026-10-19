@@ -24,6 +24,9 @@
           - button "Talare 2":
             - text: ""
             - status
+        - button "Namnge talare":
+          - text: ""
+          - status
         - text: Sök i transkriberingen
         - textbox "Sök i transkriberingen"
         - status

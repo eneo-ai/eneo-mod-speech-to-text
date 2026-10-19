@@ -1003,7 +1003,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.equal(view.container.querySelector("h1")?.textContent, "Texten är klar");
   const note = view.container.querySelector('[role="note"]')!;
-  assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
+  assert.match(note.textContent ?? "", /^Texten skapades före dina ändringar/);
   assert.ok(button(note, "Skapa texten igen"), "Skapa texten igen");
   assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkribering"]);
   assert.ok(view.container.querySelector('[role="region"][aria-label="Texten"]'), "the text, named as such");
@@ -1357,4 +1357,134 @@ test("an uncertain word says how to put it right where the result allows it", as
   assert.match(await status({ editable: true, onCorrectionsChange: () => undefined }), /^1 ord kunde inte hittas i ljudet\. Rätta repliken om ordet är fel\.$/);
   assert.match(await status({ editable: true, onCorrectionsChange: () => undefined, onToggleConfirmed: () => undefined }), /Lyssna och bekräfta att de stämmer, eller rätta repliken\.$/);
   assert.match(await status({}), /^1 ord kunde inte hittas i ljudet\. Ett klick på ordet spelar upp det\.$/);
+});
+
+/**
+ * A finished run of a flow with no naming step, whose transcript's corrections are saved by `onSave` (the request's body
+ * in, Eneo's answer out): the result page as it is opened. Rendered at a laptop's width unless `narrow`.
+ */
+async function namingRun(t: TestContext, onSave: (body: Record<string, unknown>) => Promise<Response>, { narrow = false } = {}) {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  if (!narrow) widthOf(t, 1440);
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  t.after(() => window.sessionStorage.clear());
+  const hash = "a".repeat(64);
+  const sent: Record<string, unknown>[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("transcript-words")) return Response.json({ code: "not_found" }, { status: 404 });
+    if (path.includes("transcript-corrections") && init?.method === "PATCH") {
+      const body = JSON.parse(String(init.body));
+      sent.push(body);
+      return onSave(body);
+    }
+    return Response.json([]);
+  }) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: {
+      transcription: {
+        file_ids: [],
+        segments_hash: hash,
+        segments: [
+          { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { file_index: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten gäller budgeten." },
+        ],
+      },
+    },
+  };
+  const page = createElement(RunResult, {
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
+    steps: [],
+    stepResults: [transcribe] as never,
+    files: [pdf],
+    onNewRecording: () => undefined,
+    onRegenerated: () => undefined,
+  });
+  const open = async () => {
+    const view = await mount(await asPerson(page));
+    await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    return view;
+  };
+  return { open, sent, hash };
+}
+
+/** The name field of a speaker in the open naming dialog, as a screen reader names it. */
+const nameFieldOf = async (label: string) => {
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  return [...document.querySelectorAll<HTMLInputElement>("dialog[open] input")].find((input) => computeAccessibleName(input) === `Vem är ${label}?`)!;
+};
+
+test("names given after the run go with the corrections, show at once in the transcript and its text, and the document can be made again", async (t) => {
+  const { type } = await import("./test-dom");
+  const download = await import("./download");
+  const saved: Blob[] = [];
+  t.mock.method(download, "downloadBlob", (blob: Blob) => void saved.push(blob));
+  const copied: string[] = [];
+  Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text: string) => void copied.push(text) }, configurable: true });
+  t.after(() => void Reflect.deleteProperty(navigator, "clipboard"));
+  const { open, sent, hash } = await namingRun(t, async (body) =>
+    Response.json({ ...body, flow_run_id: "run-1", step_id: "step-1", revision: 1, stale: false, updated_at: "2026-09-24T10:00:00Z" }),
+  );
+  const view = await open();
+  assert.equal(view.container.querySelector('[role="note"]'), null, "nothing newer than the document yet");
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  const dialog = document.querySelector("dialog[open]")!;
+  assert.match(
+    dialog.textContent ?? "",
+    /Lyssna på ett exempel och skriv vem som talar\. Namnen syns direkt i transkriberingen och i texten du laddar ner\. Dokumentet får namnen när du skapar det igen\./,
+  );
+  await view.act(async () => type(await nameFieldOf("Talare 1"), "Anna Berg"));
+  await view.act(async () => type(await nameFieldOf("Talare 2"), "Erik Lund"));
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  assert.deepEqual(sent.map((body) => [body.expected_revision, body.segments_hash, body.speaker_names]), [
+    [null, hash, { SPEAKER_00: "Anna Berg", SPEAKER_01: "Erik Lund" }],
+  ]);
+  assert.ok(!document.querySelector("dialog[open]"), "saved: the dialog closes");
+  assert.ok(button(view.container, "Anna Berg, ändra talare") && button(view.container, "Erik Lund, ändra talare"), "the passages name them");
+
+  await view.act(async () => button(view.container, "Kopiera transkriberingen")!.click());
+  await view.act(async () => button(view.container, "Ladda ner som text, transkriberingen")!.click());
+  const lines = ["[00:00:00 - 00:00:02] Anna Berg: Välkomna till mötet.", "[00:00:02 - 00:00:04] Erik Lund: Första punkten gäller budgeten."];
+  assert.deepEqual(copied, [lines.join("\n")], "Kopiera");
+  assert.equal(await saved[0].text(), lines.join("\n"), "Ladda ner som text");
+
+  const note = view.container.querySelector('[role="note"]')!;
+  assert.match(note.textContent ?? "", /^Dokumentet skapades före dina ändringarNamnen syns redan i transkriberingen, och dokumentet får dem när du skapar det igen\./);
+  assert.equal(button(note, "Skapa dokumentet igen")!.disabled, false);
+});
+
+test("a save of names that fails keeps the dialog open with the names, says why there, and the page offers to save again", async (t) => {
+  const { type } = await import("./test-dom");
+  const { open } = await namingRun(t, async () => Response.json({ code: "upstream_unreachable" }, { status: 502 }));
+  const view = await open();
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await view.act(async () => type(await nameFieldOf("Talare 1"), "Anna Berg"));
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const dialog = document.querySelector("dialog[open]");
+  assert.ok(dialog, "still open");
+  assert.match(dialog!.querySelector('[role="alert"]')?.textContent ?? dialog!.textContent ?? "", /Eneo gick inte att nå just nu\./);
+  assert.equal((await nameFieldOf("Talare 1")).value, "Anna Berg");
+  assert.ok(button(view.container, "Försök spara igen"), "the page's own way to save again");
+});
+
+test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {
+  const { type } = await import("./test-dom");
+  const { open } = await namingRun(t, () => new Promise<Response>(() => undefined), { narrow: true });
+  const first = await open();
+  await first.act(async () => button(first.container, "Namnge talare")!.click());
+  await first.act(async () => type(await nameFieldOf("Talare 2"), "Erik Lund"));
+  await first.unmount(); // the page reloaded before Spara namnen
+
+  const again = await open();
+  assert.equal((await nameFieldOf("Talare 2"))?.value, "Erik Lund", "open again, with the name typed before");
+  const chosen = tabsIn(again.container).find((tab) => tab.getAttribute("aria-selected") === "true")!;
+  assert.equal(tabLabel(chosen), "Transkribering", "where the dialog is");
 });

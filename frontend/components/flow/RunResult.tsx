@@ -22,7 +22,9 @@ import { fileText, runFileName, transcriptFileName, type ResultFileView } from "
 import { ofContractVersion, type StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
-import { correctionsNewerThanDocument, regenerationOffer } from "@/lib/regenerate";
+import { useAuthenticatedUser } from "@/components/AuthGate";
+import { hasNamesDraft } from "@/components/SpeakerNamingDialog";
+import { correctionsNewerThanDocument, namesOnly, regenerationOffer, savedTranscriptCorrections } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
 import { LAPTOP, ResultFiles } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
@@ -112,6 +114,13 @@ export function RunResult({
   // document under it does not move when the transcript arrives. It can act once the transcript is read.
   const olderThanCorrections = showTranscript && !delivered && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
   const regenerates = Boolean(offer || olderThanCorrections);
+  // What the newer corrections change, said from the first draw: by the run's own read until the transcript is read.
+  const newer = transcript.pending ? savedTranscriptCorrections(stepResults, savedSets(savedCorrections)) : editing.corrections;
+  // A finished run's speakers can be named (Eneo changes names only on a completed run); names typed and not saved are
+  // kept for this person through a reload.
+  const user = useAuthenticatedUser();
+  const namesDraft = { ownerId: user.id, name: `names:${run.id}` };
+  const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument } : undefined;
   // The details the run was started with (meeting name, participants), as the failure and progress views show them:
   // only on the flow version the contract describes, and only the filled ones.
   const fields = contract?.form_fields ?? [];
@@ -130,7 +139,8 @@ export function RunResult({
   useEffect(() => (sources.length ? rememberPosition(playback, run.id, browserStorage()) : undefined), [playback, run.id, sources]);
   const tabs = !wide && showTranscript;
   const sideBySide = wide && showTranscript;
-  const [view, setView] = useState<View>("document");
+  // Names typed and not saved bring their dialog back, open: on a phone it is in the transcript's tab.
+  const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : "document"));
   const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab.
   const positions = useRef<Partial<Record<View, number>>>({});
@@ -171,6 +181,7 @@ export function RunResult({
           onStarted={onRegenerated}
           onReload={reload}
           thing={words.thing}
+          namesOnly={Boolean(newer && namesOnly(newer))}
         />
       )}
       {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} downloadName={runFileName(flowName, run.created_at)} />}
@@ -190,6 +201,7 @@ export function RunResult({
       editing={editing}
       onReload={reload}
       playback={playback}
+      naming={naming}
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side

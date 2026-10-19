@@ -4,7 +4,7 @@
   - paragraph: "Deltagare: Anna Berg, Erik Lund"
   - button "Ny inspelning"
   - note:
-    - text: Dokumentet skapades före dina rättningar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.
+    - text: Dokumentet skapades före dina ändringar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.
     - button "Skapa dokumentet igen"
   - region "Dokumentet":
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
@@ -46,6 +46,9 @@
         - button "Talare 2":
           - text: ""
           - status
+      - button "Namnge talare":
+        - text: ""
+        - status
       - text: Sök i transkriberingen
       - textbox "Sök i transkriberingen"
       - status

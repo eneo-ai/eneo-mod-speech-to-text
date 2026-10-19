@@ -1124,7 +1124,7 @@ export const STATES: State[] = [
     name: "result-regenerate",
     go: async (page) => {
       await run(page, ids.runs.corrected);
-      await expect(page.getByText("Dokumentet skapades före dina rättningar")).toBeVisible();
+      await expect(page.getByText("Dokumentet skapades före dina ändringar")).toBeVisible();
     },
   },
   {

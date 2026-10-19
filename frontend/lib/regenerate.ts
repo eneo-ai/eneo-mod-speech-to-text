@@ -19,6 +19,15 @@ export interface RegenerationRequest {
   segmentsHash: string;
 }
 
+/** The saved corrections of the run's transcript, as read with the finished run. */
+export function savedTranscriptCorrections(
+  steps: readonly FlowRunStep[],
+  saved: readonly TranscriptCorrectionsPublic[] | null | undefined,
+): TranscriptCorrectionsPublic | undefined {
+  const stepId = steps.find(carriesTranscript)?.step_id;
+  return stepId ? saved?.find((candidate) => candidate.step_id === stepId) : undefined;
+}
+
 /**
  * Whether the transcript's saved corrections, as read with the finished run, are newer than its document: known before
  * the transcript itself is read, so the page gives the offer its place from the first draw (RunResult). Whether a new
@@ -29,8 +38,7 @@ export function correctionsNewerThanDocument(
   steps: readonly FlowRunStep[],
   saved: readonly TranscriptCorrectionsPublic[] | null | undefined,
 ): boolean {
-  const stepId = steps.find(carriesTranscript)?.step_id;
-  const set = stepId ? saved?.find((candidate) => candidate.step_id === stepId) : undefined;
+  const set = savedTranscriptCorrections(steps, saved);
   if (!set?.updated_at || !run.finished_at) return false;
   return Date.parse(set.updated_at) > Date.parse(run.finished_at);
 }
@@ -68,6 +76,20 @@ export function regenerationOffer({
     correctionRevision: corrections.revision,
     segmentsHash: corrections.segmentsHash!,
   };
+}
+
+/**
+ * The saved corrections only give speakers names: the text and who says what are as the document has them, so the
+ * notice says the names are what the new document adds. Read in Eneo's shape (with the run) or the page's.
+ */
+export function namesOnly(set: {
+  occurrences: readonly unknown[];
+  speaker_edits: readonly unknown[];
+  speaker_names?: Readonly<Record<string, unknown>>;
+  speakerNames?: Readonly<Record<string, unknown>>;
+}): boolean {
+  const names = set.speakerNames ?? set.speaker_names ?? {};
+  return set.occurrences.length === 0 && set.speaker_edits.length === 0 && Object.keys(names).length > 0;
 }
 
 type RegenerationOutcome =

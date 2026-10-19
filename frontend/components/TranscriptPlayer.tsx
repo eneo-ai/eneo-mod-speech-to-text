@@ -1,9 +1,10 @@
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, UsersRound } from "lucide-react";
 import {
   type ComponentProps,
   type ComponentType,
   Fragment,
   memo,
+  type Ref,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -12,6 +13,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -34,6 +36,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { SpeakerMark } from "@/components/SpeakerMark";
+import { SpeakerNamingDialog, type SpeakerNamingHandle } from "@/components/SpeakerNamingDialog";
 import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/components/flow/AudioPlayer";
 import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
@@ -47,12 +50,14 @@ import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
+import type { SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { countUncertain, wordKey } from "@/lib/confirmed-words";
 import {
   computeTurns,
   countFiles,
   effectiveSpeakerLabel,
   findHits,
+  firstSegmentForSpeaker,
   paragraphTurns,
   pendingSpeakerReview,
   speakerName,
@@ -71,7 +76,9 @@ import {
   withSpeakerEdit,
   correctedSegmentText,
   correctionWriteProblem,
+  effectiveSpeakerNames,
   MAX_SPEAKER_EDITS,
+  namesAfterNaming,
   renderReviewedTranscript,
   sameCorrections,
   type CorrectedRange,
@@ -79,6 +86,16 @@ import {
 } from "@/lib/transcript-corrections";
 
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
+
+/**
+ * Naming the speakers of a finished run: the dialog's words, where names typed and not yet saved are kept, and the save
+ * of the corrections with the names, which resolves with why they were not saved, or null.
+ */
+type Naming = {
+  description: string;
+  draftKey: { ownerId: string; name: string };
+  save: (next: CorrectionSet) => Promise<string | null>;
+};
 
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 const NO_SOURCES: readonly PlayerSource[] = [];
@@ -386,6 +403,7 @@ export function TranscriptPlayer(
     onToggleConfirmed,
     title,
     playback: shared,
+    naming,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
@@ -423,6 +441,11 @@ export function TranscriptPlayer(
      * (a pause control beside the document); otherwise the transcript owns one.
      */
     playback?: Playback;
+    /**
+     * Naming the speakers of a finished run: "Namnge talare" in the speakers' row and "Byt namn på" in a passage's
+     * Ändra talare. Without it nobody is named here (the review pause names in its own dialog).
+     */
+    naming?: Naming;
   },
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -468,12 +491,14 @@ export function TranscriptPlayer(
   const canDecide = canEdit && corrections?.schemaVersion === 3 && !correctionWriteProblem(corrections);
   const canConfirm = typeof onToggleConfirmed === "function";
 
+  // The names the page shows: a naming step's, with those given after the run over them.
+  const names = useMemo(() => effectiveSpeakerNames(speakerNames, corrections?.speakerNames), [speakerNames, corrections?.speakerNames]);
   const displayName = useCallback(
     (label: string | null) => {
       if (!label) return "Okänd talare";
-      return speakerName(label, speakerNames);
+      return speakerName(label, names);
     },
-    [speakerNames],
+    [names],
   );
 
   const labelOptions = useMemo(() => {
@@ -482,6 +507,10 @@ export function TranscriptPlayer(
     for (const e of corrections?.speaker_edits ?? []) if (e.speaker) set.add(e.speaker);
     return [...set].sort();
   }, [speakerOptions, segments, corrections]);
+
+  // Naming after the run, where the passages can be corrected and have speakers to name.
+  const canName = naming !== undefined && canEdit && corrections !== undefined && labelled && speakers.length > 0;
+  const namingDialog = useRef<SpeakerNamingHandle>(null);
 
   // A filter whose speaker is gone (all their passages moved) shows everyone again.
   const toCheck = turns.filter(pendingSpeakerReview).length;
@@ -679,6 +708,7 @@ export function TranscriptPlayer(
   const commitTurnLine = useSteady(commitLine);
   const revertTurnLine = useSteady(revertLine);
   const reassignTurn = useSteady(reassign);
+  const renameSpeaker = useSteady((label: string, returnTo: HTMLElement | null) => namingDialog.current?.open(label, returnTo));
   // "Spela från": it plays, also from a pause.
   const seekTurn = useSteady((turn: TranscriptTurn) => seekTo(turn.fileIndex, turn.start, true));
   const clickPart = useSteady(onPartClick);
@@ -771,8 +801,9 @@ export function TranscriptPlayer(
       )}
       {tools && (
         <VStack gap={3} className={styles.tools}>
-          {labelled && (<>
-          {/* The speaker filter, nothing else: chips that wrap, so none is cut off on a phone. */}
+          {labelled && (
+          <HStack gap={2} vAlign="center" wrap="wrap">
+          {/* The speaker filter: chips that wrap, so none is cut off on a phone. Naming the speakers ends the row. */}
           <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
             <ToggleButtonGroup label="Visa talare" type="single" size="sm" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
               <ToggleButton value="all" label="Alla" />
@@ -809,7 +840,21 @@ export function TranscriptPlayer(
               />
             </div>
           )}
-          </>)}
+          {canName && (
+            <SpeakerNaming
+              ref={namingDialog}
+              naming={naming}
+              speakers={speakers}
+              shown={shown}
+              names={names}
+              stepNames={speakerNames}
+              corrections={corrections}
+              playback={playback}
+              hasAudio={hasAudio}
+            />
+          )}
+          </HStack>
+          )}
 
           <HStack gap={2} vAlign="center">
             <div className={styles.search}>
@@ -976,6 +1021,7 @@ export function TranscriptPlayer(
                     onCommitLine={commitTurnLine}
                     onRevertLine={revertTurnLine}
                     onReassign={reassignTurn}
+                    onRename={canName ? renameSpeaker : undefined}
                     onSeekTurn={seekTurn}
                     onPartClick={clickPart}
                   />
@@ -1024,6 +1070,7 @@ const TurnBlock = memo(function TurnBlock({
   onCommitLine,
   onRevertLine,
   onReassign,
+  onRename,
   textForEdit,
   onSeekTurn,
   onPartClick,
@@ -1052,6 +1099,8 @@ const TurnBlock = memo(function TurnBlock({
   onCommitLine: (segmentIndex: number, text: string) => void;
   onRevertLine: (segmentIndex: number) => void;
   onReassign: (turn: TranscriptTurn, speaker: string, all: boolean) => string | null;
+  /** Opens the naming at a speaker, from the passage's Ändra talare; the focus goes back to `returnTo`. */
+  onRename?: (label: string, returnTo: HTMLElement | null) => void;
   textForEdit: (index: number) => string;
   onSeekTurn: (turn: TranscriptTurn) => void;
   onPartClick: (part: TranscriptTurnPart, e: React.MouseEvent) => void;
@@ -1089,6 +1138,7 @@ const TurnBlock = memo(function TurnBlock({
       fromName={displayName(turn.speaker)}
       toCheck={toCheck || Boolean(decision)}
       onPick={(speaker, all) => onReassign(turn, speaker, all)}
+      onRename={onRename}
     >
       {trigger}
     </SpeakerPicker>
@@ -1286,6 +1336,7 @@ function SpeakerPicker({
   fromName,
   toCheck,
   onPick,
+  onRename,
   children,
 }: {
   /** The passage's settled speaker; null while it is to be checked or cannot be told. */
@@ -1302,6 +1353,8 @@ function SpeakerPicker({
   toCheck: boolean;
   /** Saves the choice; returns why it was not saved, or null. */
   onPick: (speaker: string, all: boolean) => string | null;
+  /** Names the passage's speaker instead ("Byt namn på"), once this has closed and given the focus back to its button. */
+  onRename?: (label: string, returnTo: HTMLElement | null) => void;
   /** The button that opens it: the design system's own props for it go on the button. */
   children: (trigger: SpeakerPickerTrigger) => React.ReactNode;
 }) {
@@ -1314,8 +1367,14 @@ function SpeakerPicker({
   const dialogId = useId();
   const covered = useSignedOut();
   const wasOpen = useRef(false);
+  // The speaker "Byt namn på" names: the naming opens once this dialog has closed, so the focus returns to this button.
+  const renaming = useRef<string | null>(null);
   useEffect(() => {
-    if (wasOpen.current && !open) trigger.current?.focus({ preventScroll: true });
+    if (wasOpen.current && !open) {
+      trigger.current?.focus({ preventScroll: true });
+      if (renaming.current) onRename?.(renaming.current, trigger.current);
+      renaming.current = null;
+    }
     wasOpen.current = open;
   }, [open]);
   const close = () => setOpen(false);
@@ -1383,6 +1442,23 @@ function SpeakerPicker({
                     </RadioList>
                   </div>
                 )}
+                {/* Or the speaker is right and only unnamed: after the choice and its scope, which belong together. */}
+                {onRename && current && (
+                  <div className={styles.pickerSection}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<Pencil aria-hidden />}
+                      label={`Byt namn på ${displayName(current)}`}
+                      aria-haspopup="dialog"
+                      className={styles.rename}
+                      onClick={() => {
+                        renaming.current = current;
+                        close();
+                      }}
+                    />
+                  </div>
+                )}
                 {problem && (
                   <div className={styles.pickerSection}>
                     <Banner status="error" title={problem} collapsible={false} />
@@ -1402,6 +1478,84 @@ function SpeakerPicker({
         )}
       </Dialog>
     </>
+  );
+}
+
+/**
+ * "Namnge talare" after the run: the naming dialog with a row for each speaker the transcript shows, a split one too,
+ * their passages and first words, a sample through the page's player, and the names in use to choose from. A save sends
+ * the corrections with the names over the naming step's (namesAfterNaming); names as they were send nothing.
+ */
+function SpeakerNaming({
+  ref,
+  naming,
+  speakers,
+  shown,
+  names,
+  stepNames,
+  corrections,
+  playback,
+  hasAudio,
+}: {
+  ref: Ref<SpeakerNamingHandle>;
+  naming: Naming;
+  speakers: readonly { label: string; passages: number }[];
+  /** The passages as shown, with the corrections. */
+  shown: readonly TranscriptSegment[];
+  /** The names the page shows. */
+  names: Readonly<Record<string, string>>;
+  /** A naming step's names, which the names given after the run are laid over. */
+  stepNames: Readonly<Record<string, string>>;
+  corrections: CorrectionSet;
+  playback: Playback;
+  hasAudio: boolean;
+}) {
+  // The speaker whose sample was asked for; it plays while the playback does.
+  const [sample, setSample] = useState<string | null>(null);
+  const sounds = useSyncExternalStore(
+    playback.subscribe,
+    () => playback.getSnapshot().playing || playback.getSnapshot().starting,
+    () => false,
+  );
+  const listening = sounds ? sample : null;
+  const rows = useMemo<SpeakerMappingRow[]>(
+    () => speakers.map((speaker) => ({ label: speaker.label, lineCount: speaker.passages, samples: [], name: names[speaker.label] ?? null, confidence: "low", evidence: "" })),
+    [speakers, names],
+  );
+
+  // A sample: the speaker's first passage, at most eight seconds, as the review's naming plays it.
+  function listenTo(label: string) {
+    const target = firstSegmentForSpeaker(shown, label);
+    if (!target) return;
+    setSample(label);
+    playback.playRange(target.fileIndex, target.time * 1_000, Math.min(shown[target.segmentIndex].end, target.time + 8) * 1_000);
+  }
+  function stopListening() {
+    if (listening) playback.pause();
+    setSample(null);
+  }
+  function save(typed: SpeakerMappingRow[]): Promise<string | null> {
+    const next = { ...corrections, speakerNames: namesAfterNaming(typed, stepNames, corrections.speakerNames) };
+    return sameCorrections(next, corrections) ? Promise.resolve(null) : naming.save(next);
+  }
+
+  return (
+    <SpeakerNamingDialog
+      ref={ref}
+      rows={rows}
+      participants={[...new Set(Object.values(names))]}
+      passages={(label) => speakers.find((speaker) => speaker.label === label)?.passages ?? 0}
+      quote={(label) => shown.find((segment) => segment.speaker === label)?.text ?? null}
+      onListen={hasAudio ? listenTo : undefined}
+      listening={listening}
+      onStopListening={stopListening}
+      listenUnavailableReason={(label) => (firstSegmentForSpeaker(shown, label) ? null : "Det finns inget tilldelat exempel utan överlappande tal.")}
+      onSave={save}
+      draftKey={naming.draftKey}
+      description={naming.description}
+    >
+      <Button variant="secondary" size="sm" icon={<UsersRound aria-hidden />} label="Namnge talare" className={styles.nameSpeakers} />
+    </SpeakerNamingDialog>
   );
 }
 

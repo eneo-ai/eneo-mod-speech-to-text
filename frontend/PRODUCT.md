@@ -21,7 +21,8 @@ are not technical. They work on a laptop at a desk, on a phone in a meeting room
 
 Tal till text is an Eneo module: the person records in the browser (Strömma, with live text, or Spela in) or uploads an
 audio file (Ladda upp), and a flow published in Eneo turns it into text or a document. The person may review the
-transcript and name the speakers before the flow continues, then reads, plays, copies and downloads the result.
+transcript and name the speakers before the flow continues, or name them once it has finished; then reads, plays,
+copies and downloads the result.
 
 ## Operating Context
 

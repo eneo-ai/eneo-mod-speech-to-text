@@ -15,8 +15,9 @@ import styles from "./RegenerateNotice.module.css";
 
 /**
  * Says, without alarm, that the document was made from the transcript before
- * the saved corrections, and offers to make it again from the corrected one.
- * Nothing happens unless the user asks; the new run is followed like any other.
+ * the saved changes (corrections, names), and offers to make it again from the
+ * corrected one. Nothing happens unless the user asks; the new run is followed
+ * like any other.
  *
  * It stands from the page's first draw when the run's own read says the corrections are newer (`offer` null while the
  * transcript is `reading`), so the document under it does not move when the transcript arrives: its button acts once
@@ -30,6 +31,7 @@ export function RegenerateNotice({
   onStarted,
   onReload,
   thing = "dokumentet",
+  namesOnly = false,
 }: {
   /** What a new document is made with; null while the transcript is read, or when its corrections cannot make one. */
   offer: RegenerationRequest | null;
@@ -42,6 +44,8 @@ export function RegenerateNotice({
   onReload: () => void;
   /** What the run makes, as the notice names it: "dokumentet", "texten" or "resultatet" (`outputWords`). */
   thing?: string;
+  /** The changes only give speakers names (lib/regenerate `namesOnly`), which the transcript shows already. */
+  namesOnly?: boolean;
 }) {
   const { leaveFirst } = useContext(LeaveContext);
   const [working, setWorking] = useState(false);
@@ -51,6 +55,9 @@ export function RegenerateNotice({
   // Read, and the corrections cannot make a new document: said in the description's place, with the reading again in
   // the button's.
   const unreadable = !offer && !reading;
+  const Thing = thing[0].toUpperCase() + thing.slice(1);
+  // "den" for texten, "det" for dokumentet and resultatet.
+  const it = thing === "texten" ? "den" : "det";
 
   async function start() {
     if (!offer) return;
@@ -69,11 +76,15 @@ export function RegenerateNotice({
       status="warning"
       role="note"
       collapsible={false}
-      title={`${thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar`}
+      title={`${Thing} skapades före dina ändringar`}
       description={
         <OneOf
           first={!unreadable}
-          one={`Den nya versionen görs från den rättade transkriberingen och tar en stund. ${thing[0].toUpperCase() + thing.slice(1)} som visas nu finns kvar under Tidigare körningar.`}
+          one={
+            namesOnly
+              ? `Namnen syns redan i transkriberingen, och ${thing} får dem när du skapar ${it} igen. ${it[0].toUpperCase() + it.slice(1)} som visas nu finns kvar under Tidigare körningar.`
+              : `Den nya versionen görs från den rättade transkriberingen och tar en stund. ${Thing} som visas nu finns kvar under Tidigare körningar.`
+          }
           other="Rättningarna kunde inte läsas just nu."
         />
       }

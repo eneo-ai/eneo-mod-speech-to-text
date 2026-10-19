@@ -32,7 +32,7 @@ test("saved corrections that cannot be read leave the document to read, and the 
   await expect(page.getByRole("region", { name: "Dokument" })).toBeVisible();
   await expect(page.getByText("Kunde inte läsa sparade rättningar.", { exact: false })).toBeVisible();
   // Without the corrections there is nothing to say about them: no notice, no button that cannot act.
-  await expect(page.getByText("Dokumentet skapades före dina rättningar")).toHaveCount(0);
+  await expect(page.getByText("Dokumentet skapades före dina ändringar")).toHaveCount(0);
 });
 
 test("corrections newer than the document that cannot make a new one keep the notice in its place, and it says why there", async ({ page }, info) => {
@@ -48,7 +48,7 @@ test("corrections newer than the document that cannot make a new one keep the no
   const held = new Promise<void>((resolve) => (release = resolve));
   await page.route("**/transcript-words/**", async (route) => (await held, route.fallback()));
   await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.corrected}`);
-  const notice = page.getByRole("note").filter({ hasText: "Dokumentet skapades före dina rättningar" });
+  const notice = page.getByRole("note").filter({ hasText: "Dokumentet skapades före dina ändringar" });
   await expect(notice.getByRole("button", { name: "Skapa dokumentet igen" })).toBeDisabled();
   const documentTop = () => page.getByRole("region", { name: "Dokument" }).evaluate((element) => Math.round(element.getBoundingClientRect().top));
   const before = await documentTop();

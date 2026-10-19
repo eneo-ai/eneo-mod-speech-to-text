@@ -50,6 +50,7 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 - **En lång text under granskning** har en enda scroll: rubrikraden stannar överst i fönstret och beslutet nederst, fältet växer med texten och Redigera öppnar där man läser. Ett lågt fönster (telefon på sidan, 200 % zoom) håller båda i sidan.
 - **Läsbredd:** granskad text och resultatets dokument högst 75 tecken per rad; textgranskningen är en läskolumn från 1024 px.
 - **Resultatet:** huvudåtgärden först (nedladdningen, eller Kopiera för en text utan fil), de två andra bredvid när raden har plats och annars i menyn **Fler alternativ** (`components/flow/ResultDocument.tsx`). En PDF öppnas i en dialog bara med mus (från 640 px, från filens namn från 1024 px); på en pekskärm och i ett smalare fönster i en egen flik (`components/flow/ResultFiles.tsx`).
+- **Transkriberingens talarrad** på en färdig körning: talarfiltret och sist i raden **Namnge talare**; en repliks **Ändra talare** har **Byt namn på** dess talare efter valet och vad det gäller. Båda öppnar granskningens namndialog (`components/SpeakerNamingDialog.tsx`), och fokus går tillbaka dit den öppnades.
 - **Inspelningar som inte har skickats** (`components/UnsentRecordings.tsx`): upp till 640 px en stapel över hela kortet, bredare en rad med **Ta bort** sist; frågan om att ta bort är ett beslut.
 - **Rörelse** tar `--duration-fast` och `--ease-standard`, bara opacitet: en vy av flödet som ersätter en annan tonar in (`components/flow/FlowFrame.module.css`), liksom en utfällnings innehåll (`styles/globals.css`). Med reducerad rörelse tonar inget.
 
@@ -68,6 +69,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` ([Inspelaren](recording.md)) |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) |
 | Det man skrivit men inte skickat | `lib/drafts.ts` (`sessionStorage`, per person) |
+| Talarnas namn: ett namngivningsstegs, med de namn som ges efter körningen ovanpå | Eneos rättningsset; regeln är `effectiveSpeakerNames` i `lib/transcript-corrections.ts` |
 | Var uppspelningen av en körning stannade | `lib/playback-position.ts` (`localStorage`, de 50 senast lyssnade körningarna) |
 | Körningens tillstånd | `run` i `routes/FlowPage.tsx`; uppföljningen i `lib/follow-run.ts` |
 | Om vi är uppkopplade, och vad sidan säger när vi inte är det: "Ingen anslutning." när enheten saknar nät, annars "Tal till text svarar inte just nu." | `lib/online-status.ts` |

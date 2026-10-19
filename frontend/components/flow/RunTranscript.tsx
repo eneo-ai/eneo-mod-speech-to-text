@@ -83,6 +83,7 @@ export function RunTranscriptView({
   editing,
   onReload,
   playback,
+  naming,
 }: {
   flowId: string;
   runId: string;
@@ -94,8 +95,13 @@ export function RunTranscriptView({
   editing: ReturnType<typeof useTranscriptCorrections>;
   /** Reads the transcript and its saved corrections again. */
   onReload: () => void;
+  /**
+   * The run is finished, so its speakers can be named: where names typed and not saved are kept, and what the run made
+   * (`thing`, as outputWords says it), whether it was sent on, and whether it has a document to make again.
+   */
+  naming?: { draftKey: { ownerId: string; name: string }; thing: string; delivered: boolean; hasDocument: boolean };
 }) {
-  const { corrections, saveState, localError, hasDropped, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
+  const { corrections, saveState, localError, hasDropped, onCorrectionsChange, saveNow, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
 
   if (transcript.pending) {
     return (
@@ -181,9 +187,23 @@ export function RunTranscriptView({
         saveState={saveState}
         confirmedWords={confirmedWords}
         playback={playback}
+        naming={naming && { description: namingDescription(naming), draftKey: naming.draftKey, save: saveNow }}
       />
     </Card>
   );
+}
+
+/**
+ * What naming after the run changes, said in its dialog: the transcript and its text at once; the document only when
+ * it is made again, and one already sent on not at all.
+ */
+function namingDescription({ thing, delivered, hasDocument }: { thing: string; delivered: boolean; hasDocument: boolean }): string {
+  const later = delivered
+    ? " Dokumentet som redan har skickats ändras inte."
+    : hasDocument
+      ? ` ${thing[0].toUpperCase() + thing.slice(1)} får namnen när du skapar ${thing === "texten" ? "den" : "det"} igen.`
+      : "";
+  return `Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen och i texten du laddar ner.${later}`;
 }
 
 /**
