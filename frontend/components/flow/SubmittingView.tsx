@@ -149,7 +149,10 @@ function UploadProgress({
             {submission.filename}
           </Text>
         </StackItem>
-        <Button label="Avbryt uppladdningen" variant="secondary" size="sm" onClick={onCancel} />
+        {/* Its name says what it stops; the word beside the file name stays short, so the name keeps its line. */}
+        <Button label="Avbryt uppladdningen" variant="secondary" size="sm" onClick={onCancel}>
+          Avbryt
+        </Button>
       </HStack>
       {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. */}
       <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null} />

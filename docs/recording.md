@@ -65,14 +65,14 @@ Innan en del når flödets största filstorlek startar nästa del på samma mikr
 
 | Läge | Vad appen gör |
 |---|---|
-| Nätavbrott | Väntar tills anslutningen är tillbaka eller du väljer **Avbryt uppladdningen**. |
+| Nätavbrott | Väntar tills anslutningen är tillbaka eller du väljer **Avbryt**. |
 | 408, 429 eller 5xx | Försöker igen. Efter fyra försök med 408 eller 5xx visas ett fel och **Försök igen**. |
 | Annat 4xx | Stoppar med Eneos felmeddelande. |
 | Fil över 4 MiB | Skickas i delar och fortsätter från den senast bekräftade delen. En inspelning fortsätter också efter en omladdning eller krasch; en vald fil bara medan sidan finns kvar. [Tidsgränserna](operations.md#uppladdningens-tillfälliga-lagring). |
 | Kvittensen saknas | Appen läser modulens kvittens och skickar inte filen igen. Saknas även den visas **Försök igen**. Inget flöde startas utan ett bekräftat fil-id. |
 | **Startar flödet** | Tio automatiska försök under ungefär fem minuter, sedan **Försök igen** och **Avbryt**, med samma fil och idempotensnyckel. |
 
-Under överföringen står det att sidan ska vara öppen tills Eneo har filen. **Avbryt uppladdningen**, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
+Under överföringen står det att sidan ska vara öppen tills Eneo har filen. **Avbryt**, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
 
 ## Format
 
