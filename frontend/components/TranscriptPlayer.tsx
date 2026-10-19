@@ -33,6 +33,7 @@ import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton
 import { VStack } from "@astryxdesign/core/VStack";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import type { TranscriptEditor } from "@/components/TranscriptEditor";
+import { SpeakerMark } from "@/components/SpeakerMark";
 import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/components/flow/AudioPlayer";
 import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
@@ -54,9 +55,7 @@ import {
   findHits,
   paragraphTurns,
   pendingSpeakerReview,
-  speakerColorIndex,
   speakerName,
-  speakerInitial,
   speakerSummaries,
   type SearchHit,
   type TranscriptSegment,
@@ -269,15 +268,6 @@ function LazyTranscriptEditor(props: EditorProps) {
       <Skeleton width="100%" height={16} />
       <Skeleton width="90%" height={16} />
     </div>
-  );
-}
-
-/** A speaker's round mark: the initial on the speaker's colour, the same everywhere on the page. */
-export function SpeakerMark({ label, name, size = "md" }: { label: string | null; name: string; size?: "sm" | "md" | "lg" }) {
-  return (
-    <span aria-hidden className={styles.mark} data-size={size} data-speaker-color={label ? speakerColorIndex(label) : undefined}>
-      {label ? speakerInitial(name) : "?"}
-    </span>
   );
 }
 

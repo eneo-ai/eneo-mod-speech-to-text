@@ -11,7 +11,7 @@ import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
-import { SpeakerMark } from "@/components/TranscriptPlayer";
+import { SpeakerMark } from "@/components/SpeakerMark";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { isRecord } from "@/lib/is-record";
 import { isUnsureProposal, type SpeakerMappingRow } from "@/lib/speaker-mapping";

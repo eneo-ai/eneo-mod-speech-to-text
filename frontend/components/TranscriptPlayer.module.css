@@ -1,34 +1,3 @@
-/* A speaker's round mark (SpeakerMark). Decorative: the name is always beside it. An unlabelled passage is a quiet "?",
-   a speaker has one of six colours, the same everywhere on the page. */
-.mark {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  user-select: none;
-  border-radius: var(--radius-full);
-  font-weight: var(--font-weight-semibold);
-  background: var(--tint, var(--color-text-secondary));
-  color: var(--color-background-surface);
-}
-
-.mark[data-size="sm"] {
-  inline-size: var(--spacing-6);
-  block-size: var(--spacing-6);
-  font-size: var(--font-size-xs);
-}
-
-.mark[data-size="md"] {
-  inline-size: var(--spacing-7);
-  block-size: var(--spacing-7);
-  font-size: var(--font-size-sm);
-}
-
-.mark[data-size="lg"] {
-  inline-size: var(--spacing-9);
-  block-size: var(--spacing-9);
-  font-size: var(--font-size-sm);
-}
-
 /* ---- The player (TranscriptPlayer): the text, its words, the tools above it and the player docked under it. ---- */
 
 .player {
