@@ -160,6 +160,9 @@ const PROFILES = {
 };
 
 const click = (role, text, options) => (page) => page.getByRole(role, { name: text, ...options }).first().click();
+// A speaker chip, found inside its group: a role query over the whole long transcript names thousands of buttons, which
+// on CI's throttled phone outlasts the click's timeout. What is measured is the click, not the finding.
+const chip = (text) => (page) => page.getByRole("group", { name: "Visa talare" }).getByRole("button", { name: text, exact: true }).click();
 const type = (text, label) => (page) => page.getByRole("textbox", { name: label }).first().pressSequentially(text, { delay: 60 });
 // The page folds its columns into tabs below a laptop's width (1024 px): there the tab must be there and is pressed (a
 // tab that is gone fails the step); on a laptop the columns stand side by side and there is nothing to press.
@@ -189,7 +192,7 @@ const PAGES = [
     (page) => page.getByRole("heading", { name: /Dokumentet är klart/ }).waitFor(),
     [
       ["tab Transkribering", tab("Transkribering")],
-      ["chip Talare 1", click("button", "Talare 1", { exact: true })],
+      ["chip Talare 1", chip("Talare 1")],
       ["type search", type("budget", "Sök i transkriberingen")],
       ["Rätta open", click("button", /^Rätta/)],
       ["Rätta Escape", (page) => page.keyboard.press("Escape")],
@@ -210,8 +213,8 @@ const PAGES = [
 const LONG = flow(ids.flows.flow1, ids.runs.long);
 const LONG_ACTIONS = [
   ["tab Transkribering", tab("Transkribering")],
-  ["chip Talare 1", click("button", "Talare 1", { exact: true })],
-  ["chip Alla", click("button", "Alla", { exact: true })],
+  ["chip Talare 1", chip("Talare 1")],
+  ["chip Alla", chip("Alla")],
   ["type search", type("budget", "Sök i transkriberingen")],
   ["clear search", (page) => page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("")],
   ["Rätta open", click("button", /^Rätta/)],
