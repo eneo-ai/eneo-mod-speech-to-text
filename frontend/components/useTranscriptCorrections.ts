@@ -4,7 +4,7 @@ import type { CorrectionsSaveState } from "./TranscriptPlayer";
 import { ApiError, saveTranscriptCorrections } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/errors";
-import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, type CorrectionSet } from "@/lib/transcript-corrections";
+import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, type CorrectionSet, type SpeakerNames } from "@/lib/transcript-corrections";
 import { LeaveContext } from "./flow/useLeaveQuestion";
 
 const STALE_REVISION = "flow_transcript_corrections_stale_revision";
@@ -16,6 +16,8 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   const [localError, setLocalError] = useState<string | null>(null);
   const revisionRef = useRef<number | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
+  // The corrections the page shows, as the last save in the queue sends them, ahead of the draw that shows them.
+  const draft = useRef<CorrectionSet>(EMPTY_CORRECTIONS);
   const generation = useRef(0);
   // What a refused, stale save says, kept through the reload that answers it.
   const staleNotice = useRef<string | null>(null);
@@ -48,6 +50,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   useEffect(() => {
     if (transcript.pending) return;
     revisionRef.current = transcript.corrections.revision;
+    draft.current = transcript.corrections;
     saveQueue.current = Promise.resolve(true);
     generation.current++;
     setSaveState("idle");
@@ -56,24 +59,43 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   }, [transcript.pending, transcript.corrections]);
 
   /**
-   * Shows `next` and saves it after what is being saved; resolves with why it was not saved, or null. A save waits behind
-   * one that failed, until the person saves again (`saveNow`).
+   * Shows `next` and saves it after what is being saved, one request at a time; resolves with why it was not saved, or
+   * null. A save waits behind one that failed; an `explicit` one goes after it all the same, and sends nothing for the
+   * corrections shown once every save of them went through: Eneo has them.
    */
-  function onCorrectionsChange(next: CorrectionSet): Promise<string | null> {
+  function save(next: CorrectionSet, explicit: boolean): Promise<string | null> {
     if (!transcript.stepId || transcript.correctionProblem) return Promise.resolve(transcript.correctionProblem ?? "Transkriberingen kan inte ändras här.");
-    setCorrections(next);
-    const requestGeneration = ++generation.current;
-    setSaveState("saving");
+    // The corrections shown, saved again: nothing new to show, and they keep their generation, whichever of their saves lands.
+    const again = explicit && sameCorrections(next, draft.current);
+    if (again) next = draft.current;
+    else {
+      draft.current = next;
+      setCorrections(next);
+      generation.current++;
+      setSaveState("saving");
+    }
+    const requestGeneration = generation.current;
     // What a save that waits behind a failed one says, if it never runs.
     let refusal: string | null = "Den förra ändringen kunde inte sparas. Spara den igen först.";
-    saveQueue.current = appendCorrectionSave(saveQueue.current, async () => {
+    saveQueue.current = appendCorrectionSave(saveQueue.current, async (previousSaved) => {
+      if (again) {
+        // Their save before this went through: Eneo has them. Else they are sent again.
+        if (previousSaved) {
+          refusal = null;
+          return true;
+        }
+        setSaveState("saving");
+      }
       try {
         const saved = await saveTranscriptCorrections(flowId, runId, transcript.stepId!, correctionRequest(next, transcript.segments, revisionRef.current));
         const savedSet = correctionsFromResponse(saved, transcript.segments, next.segmentsHash);
         const problem = correctionWriteProblem(savedSet);
         if (problem) throw new Error(problem);
         revisionRef.current = saved.revision;
-        setCorrections((prev) => sameCorrections(prev, next) ? { ...prev, revision: saved.revision, updatedAt: saved.updated_at } : prev);
+        // Unless a newer change is shown, the page has the corrections as Eneo saved them.
+        const landed = { ...next, revision: saved.revision, updatedAt: saved.updated_at };
+        if (draft.current === next) draft.current = landed;
+        setCorrections((shown) => (shown === next ? landed : shown));
         if (requestGeneration === generation.current) { setSaveState("saved"); setLocalError(null); }
         setDropped(null);
         refusal = null;
@@ -90,20 +112,22 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         setLocalError(`${refusal} Dina osparade rättningar finns kvar.`);
         return false;
       }
-    }).then((saved) => { if (!saved) setSaveState("error"); return saved; });
+    }, explicit).then((saved) => { if (!saved) setSaveState("error"); return saved; });
     return saveQueue.current.then(() => refusal);
   }
+  /** A correction made on the page: shown, and saved after what is being saved. */
+  function onCorrectionsChange(next: CorrectionSet): Promise<string | null> {
+    return save(next, false);
+  }
   /**
-   * Saves `next` after what is under way, also when an earlier save failed: a save the person asks for (Försök spara igen,
-   * Spara namnen). What the page shows sends nothing once every save of it went through: Eneo has it.
+   * A save the person asks for (Försök spara igen, Spara namnen): the corrections as the page shows them, with the `names`
+   * given after the run when there are, saved after what is under way, also when an earlier save failed.
    */
-  async function saveNow(next: CorrectionSet): Promise<string | null> {
-    if ((await saveQueue.current) && sameCorrections(next, corrections)) return null;
-    saveQueue.current = Promise.resolve(true);
-    return onCorrectionsChange(next);
+  function saveNow(names?: SpeakerNames): Promise<string | null> {
+    return save(names ? { ...draft.current, speakerNames: names } : draft.current, true);
   }
   async function retryCorrections() {
-    await saveNow(corrections);
+    await saveNow();
   }
   function downloadUnsavedCorrections() {
     saveCorrectionsFile(corrections, revisionRef.current);

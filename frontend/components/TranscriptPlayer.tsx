@@ -83,19 +83,20 @@ import {
   sameCorrections,
   type CorrectedRange,
   type CorrectionSet,
+  type SpeakerNames,
 } from "@/lib/transcript-corrections";
 
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
 /**
  * Naming the speakers of a finished run: the dialog's words, where names typed and not yet saved are kept, and the save
- * of the corrections with the names, which resolves with why they were not saved, or null; and the people the run was
- * started with, offered as names.
+ * of the names, laid on the page's corrections as they are then, which resolves with why they were not saved, or null;
+ * and the people the run was started with, offered as names.
  */
 type Naming = {
   description: string;
   draftKey: { ownerId: string; name: string };
-  save: (next: CorrectionSet) => Promise<string | null>;
+  save: (names: SpeakerNames) => Promise<string | null>;
   participants: readonly string[];
 };
 
@@ -1485,9 +1486,9 @@ function SpeakerPicker({
 
 /**
  * "Namnge talare" after the run: the naming dialog with a row for each speaker the transcript shows, a split one too,
- * their passages and first words, a sample through the page's player, and the names in use to choose from. A save sends
- * the corrections with the names over the naming step's (namesAfterNaming) through the page's save, which sends nothing
- * for what Eneo has already.
+ * their passages and first words, a sample through the page's player, and the names in use to choose from. A save hands
+ * the names over the naming step's (namesAfterNaming) to the page's save, which lays them on the corrections as they are
+ * then and sends nothing for what Eneo has already.
  */
 function SpeakerNaming({
   ref,
@@ -1538,7 +1539,7 @@ function SpeakerNaming({
     setSample(null);
   }
   function save(typed: SpeakerMappingRow[]): Promise<string | null> {
-    return naming.save({ ...corrections, speakerNames: namesAfterNaming(typed, stepNames, corrections.speakerNames) });
+    return naming.save(namesAfterNaming(typed, stepNames, corrections.speakerNames));
   }
 
   return (

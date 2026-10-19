@@ -3,7 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { computeAccessibleName } from "dom-accessibility-api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
-import type { CorrectionSet } from "./transcript-corrections";
+import type { CorrectionSet, SpeakerNames } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
 
 installDom();
@@ -448,7 +448,7 @@ test("the clock on a passage plays from there, also while the recording is pause
 // ---- Naming the speakers of a finished run ----
 
 /** What a finished run's page gives the player for naming: the dialog's words, where typed names are kept, the save and the people. */
-const naming = (save: (next: CorrectionSet) => Promise<string | null> = async () => null) => ({
+const naming = (save: (names: SpeakerNames) => Promise<string | null> = async () => null) => ({
   description: "Namnen syns direkt i transkriberingen.",
   draftKey: { ownerId: "user-1", name: "names:run-1" },
   save,
@@ -495,10 +495,10 @@ test("the naming dialog has a row for each speaker the transcript shows, split o
     ...v3,
     speaker_edits: [{ segment_index: 2, char_start: null, char_end: null, original: null, original_speaker: "SPEAKER_00", speaker: "SPEAKER_02", decision: "confirmed" }],
   };
-  const saved: CorrectionSet[] = [];
+  const saved: SpeakerNames[] = [];
   const view = await player(meeting, {
     editable: true, corrections: split, speakerNames: { SPEAKER_01: "Erik Lund" }, onCorrectionsChange: () => undefined,
-    naming: naming(async (next) => (saved.push(next), null)),
+    naming: naming(async (names) => (saved.push(names), null)),
   });
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   const dialog = document.querySelector("dialog[open]")!;
@@ -511,23 +511,23 @@ test("the naming dialog has a row for each speaker the transcript shows, split o
   await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
   await view.act(async () => type(nameField("Talare 2"), ""));
   await view.act(async () => button(document.body, "Spara namnen")!.click());
-  assert.deepEqual(saved.map((next) => next.speakerNames), [{ SPEAKER_00: "Anna Berg", SPEAKER_01: null }]);
-  assert.deepEqual(saved[0].speaker_edits, split.speaker_edits, "the rest of the set as it was");
+  // The page's save lays them on its corrections as they are then (use-transcript-corrections.test.ts).
+  assert.deepEqual(saved, [{ SPEAKER_00: "Anna Berg", SPEAKER_01: null }]);
   assert.ok(!document.querySelector("dialog[open]"), "saved: the dialog closes");
 });
 
 test("Spara namnen hands the names to the page's save, and a refused save keeps the dialog and the typed names", async (t) => {
   t.after(() => window.sessionStorage.clear());
-  const sent: CorrectionSet[] = [];
+  const sent: SpeakerNames[] = [];
   let answer: string | null = null;
   const view = await player(meeting, {
     editable: true, corrections: v3, onCorrectionsChange: () => undefined,
-    naming: naming(async (next) => (sent.push(next), answer)),
+    naming: naming(async (names) => (sent.push(names), answer)),
   });
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   await view.act(async () => button(document.body, "Spara namnen")!.click());
   // Names as they were too: only the page's save knows whether Eneo has them (result-document.test.ts).
-  assert.deepEqual(sent.map((next) => next.speakerNames), [{}]);
+  assert.deepEqual(sent, [{}]);
   assert.ok(!document.querySelector("dialog[open]"));
 
   answer = "Eneo gick inte att nå just nu. Försök igen om en stund.";

@@ -28,7 +28,7 @@ const MAX_SPEAKER_NAMES = 100;
 const SPEAKER_LABEL = /^SPEAKER_\d{2,}$/;
 
 /** A raw label to the name given to it after the run: a name, or null for "no name" over a naming step's. */
-type SpeakerNames = Readonly<Record<string, string | null>>;
+export type SpeakerNames = Readonly<Record<string, string | null>>;
 
 interface CorrectionOccurrence {
   segment_index: number;
@@ -576,7 +576,10 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
   return lines.join("\n");
 }
 
-/** Once a save fails, queued replacements must wait for an explicit retry. */
-export function appendCorrectionSave(previous: Promise<boolean>, write: () => Promise<boolean>): Promise<boolean> {
-  return previous.then((saved) => saved ? write() : false);
+/**
+ * Once a save fails, queued replacements must wait for an explicit save, which goes after what is under way whatever came
+ * of it: `write` is told whether the save before it went through.
+ */
+export function appendCorrectionSave(previous: Promise<boolean>, write: (previousSaved: boolean) => Promise<boolean>, explicit = false): Promise<boolean> {
+  return previous.then((saved) => saved || explicit ? write(saved) : false);
 }
