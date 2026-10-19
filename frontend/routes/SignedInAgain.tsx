@@ -30,7 +30,7 @@ export default function SignedInAgainPage() {
 }
 
 /**
- * Where a login renewed in its own window lands ("Fortsätt arbeta" before
+ * Where a login renewed in its own window lands ("Förläng inloggningen" before
  * the session ends): it tells the module's tabs, which read the new end,
  * and closes itself. A refused renewal says why and stays: `annan-anvandare`
  * when it signed in someone else, `utgangen` when the login had already

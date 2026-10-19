@@ -6,8 +6,8 @@
  * screen reader actually says is on the manual list. The snapshots are of the page's markup as Playwright reads it,
  * the same in every engine unless the page itself differs there. Where it does, the engine has a file of its own for
  * that state, `<state>-<width>-<engine>.aria.yml`, a copy that differs in that one thing: the setup names the default
- * microphone in Chromium, whose fake device has a name, and not in WebKit and Firefox. Where there is no such file
- * the engines share the one.
+ * microphone in Chromium, whose fake devices have names, and asks there which of them to pick; WebKit and Firefox name
+ * none before a test, so they have nothing to choose from. Where there is no such file the engines share the one.
  *
  * The files are curated by hand: a pattern where a value varies, no generated id, only the nodes that say something.
  * Playwright's own update would write its raw tree over that, so this spec never lets it write. Run with

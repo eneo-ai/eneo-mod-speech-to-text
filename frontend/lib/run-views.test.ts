@@ -53,7 +53,9 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
-  assert.match(words, /Dokumentet blir klart även om du stänger sidan\. Du hittar det sedan under Tidigare körningar i flödet\./);
+  // The review ahead stops the run until the person answers: where to find it, and no promise that it finishes alone.
+  assert.match(words, /Körningen väntar på dig när det är dags att granska\. Om du stänger sidan hittar du den under Tidigare körningar i flödet\./);
+  assert.doesNotMatch(words, /även om du stänger sidan/);
   assert.doesNotMatch(words, /Du kan stänga sidan/, "reassurance, not an instruction to close");
   assert.match(words, /Avbryt körningen/);
   // The step list is an ordered list, so a screen reader hears position and state.
@@ -61,11 +63,14 @@ test("the running view names the stage once in a status region and says each ste
 });
 
 test("a flow that makes text says the text will be ready, as its action says Skapa text", () => {
+  // No review ahead: the run finishes without the person.
+  const unattended = running.map((step) => ({ ...step, note: null }));
   const words = text(
     markup(
-      createElement(RunProgress, { flowName: "Intervju", steps: running, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
+      createElement(RunProgress, { flowName: "Intervju", steps: unattended, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
     ),
   );
+  assert.doesNotMatch(words, /väntar på dig/);
   assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den sedan under Tidigare körningar i flödet\./);
   assert.doesNotMatch(words, /Dokumentet blir klart/);
   assert.match(words, /^Texten skapas /, "the heading");
@@ -201,7 +206,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
 
   const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recording: { id: "rec-1", files: 1 } });
   assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
-  assert.match(text(recording), /Avbryt Spara ljudfil/, "a recording can be kept as a file meanwhile");
+  assert.match(text(recording), /Avbryt starten Spara ljudfil/, "a recording can be kept as a file meanwhile");
   assert.match(text(recording), /Stäng inte sidan förrän flödet har startat\./);
 });
 

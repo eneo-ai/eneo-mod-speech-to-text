@@ -1125,7 +1125,7 @@ test("Back during an upload asks first and says what leaving stops; Stanna kvar 
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   await view.act(async () => void router.navigate(-1));
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
-  assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
+  assert.match(dialog()?.textContent ?? "", /Uppladdningen avbryts/);
   // The design system's convention: a native alert dialog, and the answer that loses nothing has the focus.
   assert.equal(dialog()!.tagName, "DIALOG", "a native dialog: it needs no portal and stacks above the sign-in dialog");
   assert.ok(button(dialog()!, "Lämna sidan"), "leaving is the other answer");
@@ -1146,7 +1146,7 @@ test("repeated Back while the question is open leaves one question, and Stanna k
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   function Page() {
-    return useLeaveQuestion(true, "Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.").question;
+    return useLeaveQuestion(true, "Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.").question;
   }
   const { tree, router } = await signedIn(createElement(Page), { entries: ["/start", "/flows", "/"] });
   const view = await mount(tree);
@@ -1166,7 +1166,7 @@ test("an address the page writes that keeps the page is no departure, and a page
   function Page() {
     const [active, set] = useState(true);
     setActive = set;
-    return useLeaveQuestion(active, "Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.").question;
+    return useLeaveQuestion(active, "Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.").question;
   }
   const { tree, router } = await signedIn(createElement(Page), { path: "/flows/:id", entries: ["/flows", "/flows/f1"] });
   const view = await mount(tree);
@@ -1189,7 +1189,7 @@ test("signed out, Back still asks in a native dialog that is open, focused and a
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
   function Recording() {
-    return useLeaveQuestion(true, "Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.").question;
+    return useLeaveQuestion(true, "Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.").question;
   }
   const { tree, router } = await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), { entries: ["/flows", "/"] });
   const view = await mount(tree);

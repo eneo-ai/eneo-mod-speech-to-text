@@ -41,12 +41,12 @@ Efteråt står det hur länge ljud saknades: **Mikrofonen var avstängd i …** 
 - **Fortsätt spela in** fungerar också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd och fortsätter i en ny del. På telefon och surfplatta står den först, under flödets namn. Efter **Stoppa** finns knappen bredvid **Skapa dokument** tills inspelningen börjar skickas.
 - En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
 
-## Osända inspelningar
+## Inspelningar som inte har skickats
 
 En inspelning som inte har skickats visas i flödeslistan och på flödets sida, bara för den som spelade in den.
 
 - **Knapparna:** **Skapa text** eller **Skapa dokument** (efter flödets resultat), **Spara ljudfil**, **Ta bort**, och för en avbruten inspelning **Fortsätt spela in**. Upp till 640 px bredd står de i en stapel över hela kortet, bredare i en rad, med **Ta bort** sist.
-- **Flera osända:** flödeslistan visar den senaste avbrutna, eller annars den senaste. De andra ligger under till exempel **2 inspelningar till**, stängt från början.
+- **Flera inspelningar:** flödeslistan visar den senaste avbrutna, eller annars den senaste. De andra ligger under till exempel **2 inspelningar till**, stängt från början.
 - **Spara ljudfil** sparar en fil per del och per tryck, eftersom webbläsare stoppar flera nedladdningar på ett tryck. En inspelning i delar säger **Spara som 2 ljudfiler** och sedan **Spara ljudfil 2 av 2**.
 - **Inget ljud sparades i den här inspelningen.** En sådan inspelning kan bara fortsättas eller tas bort.
 - **Ta bort** säger **Inspelningen togs bort.** till skärmläsare. Fokus går till rubriken där en ny inspelning börjar, eller i listan till listans rubrik, och till sidans rubrik när listan är tom.
@@ -70,9 +70,9 @@ Innan en del når flödets största filstorlek startar nästa del på samma mikr
 | Annat 4xx | Stoppar med Eneos felmeddelande. |
 | Fil över 4 MiB | Skickas i delar och fortsätter från den senast bekräftade delen. En inspelning fortsätter också efter en omladdning eller krasch; en vald fil bara medan sidan finns kvar. [Tidsgränserna](operations.md#uppladdningens-tillfälliga-lagring). |
 | Kvittensen saknas | Appen läser modulens kvittens och skickar inte filen igen. Saknas även den visas **Försök igen**. Inget flöde startas utan ett bekräftat fil-id. |
-| **Startar flödet** | Tio automatiska försök under ungefär fem minuter, sedan **Försök igen** och **Avbryt**, med samma fil och idempotensnyckel. |
+| **Startar flödet** | Tio automatiska försök under ungefär fem minuter, sedan **Försök igen** och **Avbryt starten**, med samma fil och idempotensnyckel. |
 
-Under överföringen och starten står det att sidan ska vara öppen tills flödet har startat. **Avbryt**, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
+Under överföringen och starten står det att sidan ska vara öppen tills flödet har startat. **Avbryt** under överföringen, **Avbryt starten** under starten, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
 
 ## Format
 

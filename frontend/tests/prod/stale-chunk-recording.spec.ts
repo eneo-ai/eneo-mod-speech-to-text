@@ -106,7 +106,7 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     // The page's own way to the list, and the page's own question: leaving stops the recording and promises it back.
     await page.getByRole("link", { name: "Alla flöden" }).filter({ visible: true }).first().click();
     const question = page.getByRole("alertdialog", { name: "Lämna sidan?" });
-    await expect(question).toContainText("Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.");
+    await expect(question).toContainText("Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.");
     await question.getByRole("button", { name: "Lämna sidan" }).click();
 
     // The list's code is gone: its page is replaced by the line and the reload, and nothing reloads by itself.

@@ -333,8 +333,8 @@ test("details a send found missing stay unfolded while they are filled in, until
 });
 
 test("leaving an upload says it stops, and what is kept of a recording", () => {
-  assert.equal(leaveWarning(true, "setup", true), "Sändningen avbryts, och filen behöver väljas igen.");
-  assert.equal(leaveWarning(true, "ready", true), "Sändningen avbryts. Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.");
+  assert.equal(leaveWarning(true, "setup", true), "Uppladdningen avbryts, och filen behöver väljas igen.");
+  assert.equal(leaveWarning(true, "ready", true), "Uppladdningen avbryts. Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.");
   // A full device keeps what came before; only the latest is in this tab, and a saved file would be refused too.
   const full = leaveWarning(false, "recording", false, "full");
   assert.match(full, /^Inspelningen stoppas\. Enheten är full, så det senaste av inspelningen finns bara i den här fliken/);
@@ -342,7 +342,7 @@ test("leaving an upload says it stops, and what is kept of a recording", () => {
   assert.doesNotMatch(full, /Spara ljudfil/);
   assert.equal(
     leaveWarning(false, "ready", true),
-    "Sändningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara ljudfil först om du vill behålla den.",
+    "Uppladdningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara ljudfil först om du vill behålla den.",
   );
 });
 
@@ -350,7 +350,7 @@ test("leaving promises the recording back only when the device keeps it, and oth
   for (const phase of ["recording", "paused", "interrupted"] as const) {
     assert.equal(
       leaveWarning(true, phase),
-      "Inspelningen stoppas. Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.",
+      "Inspelningen stoppas. Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.",
       "leaving stops the recording: it does not go on in the background",
     );
   }

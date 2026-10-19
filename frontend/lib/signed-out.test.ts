@@ -101,7 +101,7 @@ test("signed out, Logga in igen starts a new login; before the end, a renewal bo
   await warning.act(async () => {
     for (let waited = 0; !document.body.querySelector('[role="alertdialog"]') && waited < 2_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
   });
-  await warning.act(async () => button(dialog(), "Fortsätt arbeta")!.click());
+  await warning.act(async () => button(dialog(), "Förläng inloggningen")!.click());
   await warning.unmount();
   const ended = await mount(createElement(SessionEndWarning, { endsAt, signedOut: true }));
   await ended.act(async () => button(dialog(), "Logga in igen")!.click());

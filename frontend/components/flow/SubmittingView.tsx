@@ -111,7 +111,8 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
       )}
       <RetryNotice wait={wait} />
       <HStack gap={2} wrap="wrap">
-        <Button label="Avbryt" variant="secondary" onClick={onCancel} />
+        {/* What it stops: the start. The file and the details stay. */}
+        <Button label="Avbryt starten" variant="secondary" onClick={onCancel} />
         {recording && (
           <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
         )}
@@ -162,7 +163,7 @@ function UploadProgress({
           {submission.percent != null ? formatPercent(percent) : "Pågår"}
         </Text>
       </HStack>
-      {/* The next view says the document is made even if the page is closed; until the run has started, it is not. */}
+      {/* The run's own view says what a closed page means for it; until the run has started, a closed page stops it. */}
       <Text as="p" type="supporting">
         Stäng inte sidan och lås inte skärmen förrän flödet har startat.
       </Text>

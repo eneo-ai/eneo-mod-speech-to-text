@@ -5,7 +5,7 @@
   - heading "Dokumentet kunde inte skapas" [level=1]
   - paragraph: /Startad i dag \d+:\d+/
   - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att försöka igen om en stund.
-  - paragraph: Transkriberingen blev klar. Du hittar den längst ner på sidan.
+  - paragraph: Transkriberingen finns längst ner på sidan.
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - button "Försök igen":
     - text: ""

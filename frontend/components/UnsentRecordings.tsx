@@ -175,9 +175,9 @@ export function UnsentRecordings({
   const cutOff = recordings.length === 1 && resumable !== undefined;
   const shown = folded ? (resumable ?? recordings[0]) : null;
   const rest = recordings.filter((recording) => shown !== null && recording !== shown);
-  // What the send does that its name does not say, as the ready view says it; only when every row's send has one name.
-  const sendNames = new Set(recordings.map(sendLabel));
-  const sends = onSend && !cutOff && sendNames.size === 1 ? ` ${[...sendNames][0]} skickar inspelningen till Eneo.` : "";
+  // Where a send goes, said only where a row has one (UnsentRecordingRow): not for a recording another tab holds, one this
+  // browser may only save as a file, or one without audio.
+  const sendable = onSend !== undefined && recordings.some((recording) => hasAudio(recording) && !recording.exportOnly && !recording.elsewhere);
   const row = (recording: UnsentRecording) => (
     <UnsentRecordingRow
       key={recording.id}
@@ -203,15 +203,14 @@ export function UnsentRecordings({
         </Heading>
         <Text as="p" color="secondary">
           {cutOff
-            ? "Den fortsätter i samma inspelning när du väljer Fortsätt spela in."
+            ? `Den fortsätter i samma inspelning när du väljer Fortsätt spela in.${sendable ? " När den har skickats till Eneo går det inte att fortsätta." : ""}`
             : recordings.length === 1
               ? evictable
-                ? "Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den."
-                : "Den finns kvar på den här enheten tills den har skickats."
+                ? `Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den${sendable ? " till Eneo" : ""}.`
+                : `Den finns kvar på den här enheten tills den har skickats${sendable ? " till Eneo" : ""}.`
               : evictable
-                ? "De finns på den här enheten. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem."
-                : "De finns kvar på den här enheten tills de har skickats."}
-          {sends}
+                ? `De finns på den här enheten. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem${sendable ? " till Eneo" : ""}.`
+                : `De finns kvar på den här enheten tills de har skickats${sendable ? " till Eneo" : ""}.`}
         </Text>
       </VStack>
       <List hasDividers>{shown ? row(shown) : recordings.map(row)}</List>

@@ -55,23 +55,50 @@ test("an unsent recording keeps the name it was made with, then its flow and len
 test("one unsent recording is spoken of in the singular", async () => {
   const one = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))] });
   assert.equal(one.container.querySelector("h2")?.textContent, "En inspelning har inte skickats");
-  assert.match(one.container.textContent!, /Den finns kvar på den här enheten tills den har skickats\./);
+  assert.match(one.container.textContent!, /Den finns kvar på den här enheten tills den har skickats till Eneo\./);
   await one.unmount();
   const two = await render({ recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 60_000, at(23, 9, 0))] });
   assert.equal(two.container.querySelector("h2")?.textContent, "2 inspelningar har inte skickats");
-  assert.match(two.container.textContent!, /De finns kvar på den här enheten tills de har skickats\./);
+  assert.match(two.container.textContent!, /De finns kvar på den här enheten tills de har skickats till Eneo\./);
+});
+
+test("the list says a send goes to Eneo only where a row can send, and that a sent recording cannot go on", async () => {
+  const text = async (props: Parameters<typeof render>[0]) => {
+    const view = await render(props);
+    const words = view.container.textContent!;
+    await view.unmount();
+    return words;
+  };
+  const one = recording("a", 60_000, at(23, 10, 12));
+  // No send where the flow cannot run, another tab holds the recording, or this browser may only save it.
+  for (const props of [
+    { recordings: [one], onSend: undefined },
+    { recordings: [{ ...one, elsewhere: true }] },
+    { recordings: [{ ...one, exportOnly: true }] },
+  ]) {
+    const words = await text(props);
+    assert.match(words, /Den finns kvar på den här enheten tills den har skickats\./);
+    assert.doesNotMatch(words, /Eneo/);
+  }
+  // A recording a reload cut off: going on, or sending, which ends it.
+  const cutOff = { ...one, state: "paused" as const };
+  assert.match(
+    await text({ recordings: [cutOff], onContinue: () => {} }),
+    /Den fortsätter i samma inspelning när du väljer Fortsätt spela in\. När den har skickats till Eneo går det inte att fortsätta\./,
+  );
+  assert.doesNotMatch(await text({ recordings: [cutOff], onContinue: () => {}, onSend: undefined }), /Eneo/);
 });
 
 test("where the browser may delete the recordings the list does not promise they stay", async () => {
   const one = await render({ recordings: [recording("a", 60_000, at(23, 10, 12))], evictable: true });
-  assert.match(one.container.textContent!, /Den finns på den här enheten\. Webbläsaren kan ta bort den om du väntar länge med att skicka den\./);
+  assert.match(one.container.textContent!, /Den finns på den här enheten\. Webbläsaren kan ta bort den om du väntar länge med att skicka den till Eneo\./);
   assert.doesNotMatch(one.container.textContent!, /tills den har skickats/);
   await one.unmount();
   const two = await render({
     recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 60_000, at(23, 9, 0))],
     evictable: true,
   });
-  assert.match(two.container.textContent!, /De finns på den här enheten\. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem\./);
+  assert.match(two.container.textContent!, /De finns på den här enheten\. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem till Eneo\./);
 });
 
 test("each unsent recording offers Skapa dokument, Spara ljudfil and Ta bort, described by its summary", async () => {

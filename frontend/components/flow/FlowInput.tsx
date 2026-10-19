@@ -265,7 +265,7 @@ export function FlowInput({
           <VisuallyHidden as="p" role="status">
             {removed ? REMOVED : recordingAnnouncement(phase)}
           </VisuallyHidden>
-          <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true} />
+          <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true && input.capture.refused === null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
           {group === "setup" ? (
             <SetupWorkspace

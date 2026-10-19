@@ -1,6 +1,6 @@
 - alertdialog "Lämna sidan?":
   - heading "Lämna sidan?" [level=2]
-  - text: Inspelningen stoppas. Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.
+  - text: Inspelningen stoppas. Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.
   - button "Lämna sidan":
     - text: ""
     - status

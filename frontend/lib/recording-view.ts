@@ -223,9 +223,9 @@ export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: 
  * keep it is "Spara ljudfil" (after Stoppa, while recording).
  */
 export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false, refused: DeviceRefusal | null = null): string {
-  if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
+  if (sending && phase === "setup") return "Uppladdningen avbryts, och filen behöver väljas igen.";
   const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
-  const stops = sending ? "Sändningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
+  const stops = sending ? "Uppladdningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
   // A full device holds what came before; only what came after is in this tab, and a full disk would refuse a saved
   // file too: room is the way to keep it, not Spara ljudfil.
   if (refused === "full") {
@@ -234,7 +234,7 @@ export function leaveWarning(persistent: boolean | null, phase: SessionPhase, se
       "sidan. Det som spelades in innan finns kvar på enheten. Stanna kvar och frigör utrymme, så sparas resten där."
     );
   }
-  if (persistent) return `${stops}Det som spelats in finns kvar på enheten. Du hittar det överst på flödets sida.`;
+  if (persistent) return `${stops}Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.`;
   const lost = `${stops}${capturing ? "Den" : "Inspelningen"} finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"
     ? `${lost} Välj Spara ljudfil först om du vill behålla den.`

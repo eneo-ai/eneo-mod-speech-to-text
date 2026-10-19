@@ -5,7 +5,6 @@ import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
-import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
@@ -212,7 +211,7 @@ export function ReadyPanel({
       {live && <LiveDraft live={live} makesText={makesText} />}
 
       {audio ? (
-        <HStack gap={4} wrap="wrap" align="center">
+        <HStack>
           <Button
             label={saving.label}
             variant="secondary"
@@ -221,13 +220,6 @@ export function ReadyPanel({
             isInterruptible
             onClick={() => void save()}
           />
-          <StackItem size="fill">
-            <Text as="p" type="supporting">
-              {persistent
-                ? `Inspelningen finns kvar på enheten tills ${made}.`
-                : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
-            </Text>
-          </StackItem>
         </HStack>
       ) : (
         <Text as="p">Inget ljud sparades i den här inspelningen.</Text>
@@ -239,12 +231,15 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
-      {/* What the filled action does that its name does not say: the audio leaves the device, and the recording ends. */}
-      {create && (
+      {/* Where the recording is until then, and what the filled action does that its name does not say: the audio leaves
+          the device, and the recording ends. One paragraph by the actions, so a small phone has them on its first screen. */}
+      {audio && (
         <Text as="p" type="supporting">
-          {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
-          {onContinue ? " Efter det går det inte att fortsätta spela in." : ""}
-          {forwarded ? ` ${forwarded}` : ""}
+          {persistent
+            ? `Inspelningen finns kvar på enheten tills ${made}.`
+            : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
+          {create ? ` ${createActionLabel(makesText)} skickar den till Eneo${onContinue ? " och avslutar inspelningen" : ""}.` : ""}
+          {create && forwarded ? ` ${forwarded}` : ""}
         </Text>
       )}
       {(create || onContinue) && (

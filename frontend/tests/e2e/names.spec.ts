@@ -338,7 +338,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   endsIn = 8 * 60 * 60;
   refreshIn = 1;
   const popup = context.waitForEvent("page");
-  await warning.getByRole("button", { name: "Fortsätt arbeta" }).click();
+  await warning.getByRole("button", { name: "Förläng inloggningen" }).click();
   const window = await popup;
   await window.waitForEvent("close");
   await expect(warning).toBeHidden();

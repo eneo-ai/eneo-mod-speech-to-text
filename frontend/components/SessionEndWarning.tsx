@@ -90,7 +90,8 @@ export function SessionEndWarning({
   // Who signed in instead, kept while the dialog closes.
   const [other, setOther] = useState(otherUser);
   if (signedOut && other?.id !== otherUser?.id) setOther(otherUser);
-  const action = ended ? "Logga in igen" : "Fortsätt arbeta";
+  // Before the end, what the press does to the login, in words that cannot be read as closing the warning.
+  const action = ended ? "Logga in igen" : "Förläng inloggningen";
   const shown = open || signedOut;
 
   const focusTitle = () => {
@@ -164,10 +165,10 @@ export function SessionEndWarning({
                   : ended
                     ? "Inloggningen har upphört. "
                     : `Inloggningen upphör kl. ${time}. `}
-                {`${action} öppnar inloggningen i ett nytt fönster.`}{" "}
+                {`${action} öppnar ett nytt fönster där du loggar in.`}{" "}
                 {ended
                   ? "Allt på den här sidan finns kvar. En inspelning som pågår fortsätter och sparas på enheten."
-                  : "Allt på den här sidan finns kvar."}
+                  : "Allt på den här sidan finns kvar. En inspelning som pågår fortsätter."}
               </Text>
               {signedOut && <div ref={controlsRef} />}
               {problem && <Banner status="error" title={problem} collapsible={false} />}

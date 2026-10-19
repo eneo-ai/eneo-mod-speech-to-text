@@ -85,6 +85,29 @@ test("a press on Skapa dokument creates, once the text is in", async () => {
   assert.equal(view.calls.create, 1);
 });
 
+test("one line by the actions says where the recording is until then, where Skapa dokument sends it, and that it ends it", async () => {
+  const words = async (props: Record<string, unknown>) => {
+    const view = await ready(props);
+    const text = view.container.textContent ?? "";
+    await view.unmount();
+    return text;
+  };
+  assert.match(
+    await words({ onContinue: () => {} }),
+    /Inspelningen finns kvar på enheten tills dokumentet är skapat\. Skapa dokument skickar den till Eneo och avslutar inspelningen\./,
+  );
+  // Nothing to go on with: the send is said, the ending is not.
+  const alone = await words({});
+  assert.match(alone, /tills dokumentet är skapat\. Skapa dokument skickar den till Eneo\./);
+  assert.doesNotMatch(alone, /avslutar/);
+  assert.match(await words({ makesText: true }), /tills texten är skapad\. Skapa text skickar den till Eneo\./);
+  assert.match(await words({ persistent: false }), /Inspelningen finns bara i den här fliken\. Stäng inte fliken innan dokumentet är skapat\. Skapa dokument skickar den till Eneo\./);
+  // No send to speak of: only where the recording is.
+  const kept = await words({ onCreate: undefined });
+  assert.match(kept, /Inspelningen finns kvar på enheten tills dokumentet är skapat\./);
+  assert.doesNotMatch(kept, /Eneo/);
+});
+
 test("with nothing to play, the player is left out and the next steps are still there", async () => {
   // The test document's store holds no parts of the recording: as when the device has lost them.
   const view = await ready();
