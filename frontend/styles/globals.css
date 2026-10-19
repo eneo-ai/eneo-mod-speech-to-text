@@ -172,10 +172,11 @@ img[data-brand-logo] {
   object-fit: contain;
   object-position: left;
 }
-/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller to leave the account
-   button room, also with the text spacing WCAG 1.4.12 lets a reader set (tests/e2e/header-fit.spec.ts). */
+/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller (and stands closer to
+   its divider, components/Brand.tsx) to leave the account button room, also with the text spacing WCAG 1.4.12 lets a
+   reader set and a font as wide as Linux's and Android's (tests/e2e/header-fit.spec.ts). */
 @media (max-width: 359px) {
-  img[data-brand-logo] { block-size: var(--spacing-8); }
+  img[data-brand-logo] { block-size: var(--spacing-6); }
 }
 @media (min-width: 640px) {
   [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
