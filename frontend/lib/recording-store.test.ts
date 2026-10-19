@@ -259,7 +259,7 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
 
   assert.equal(await otherTab.lease(recording.id), false, "nothing keeps the two tabs apart");
   await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
-  assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["a"], "Spara som fil still reads it");
+  assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["a"], "Spara ljudfil still reads it");
   assert.equal(await recordingTab.lease(recording.id), true, "the tab that made it sends or continues it");
   recordingTab.release(recording.id);
 
@@ -745,7 +745,7 @@ test("a database connection the browser closed is reopened: what was kept is rea
   await store.append(recording.id, 0, new Blob(["b"]), 2_000);
 
   closeConnections();
-  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"], "playback, upload and Spara som fil read it");
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"], "playback, upload and Spara ljudfil read it");
   assert.equal((await store.get(recording.id))?.parts[0].chunks, 2);
 
   closeConnections();
@@ -951,7 +951,7 @@ test("a recording whose stored chunks are gone is read as far as it survived, bu
 
   closeConnections();
   wipe(); // the reopened database is a new, empty one: "ab" is gone, "cd" is all this tab has
-  assert.deepEqual(await texts(await store.readParts(recording.id)), ["cd"], "what survived is still read: Spara som fil and playback keep it");
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["cd"], "what survived is still read: Spara ljudfil and playback keep it");
   await assert.rejects(store.readPartsToSend(recording.id), { message: INCOMPLETE_ON_DEVICE });
   assert.equal((await store.get(recording.id))?.parts[0].chunks, 4, "the recording says what it should hold");
 });

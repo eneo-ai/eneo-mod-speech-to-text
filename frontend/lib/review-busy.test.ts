@@ -197,7 +197,7 @@ test("a rejection cannot start while Spara och fortsätt is under way, nor end i
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   assert.deepEqual(server.calls, ["edit"], "the save is under way");
-  const avvisa = button(view.container, "Avvisa")!;
+  const avvisa = button(view.container, "Avvisa körningen")!;
   assert.equal(avvisa.disabled, true, "no second mutation while one is in flight");
   await view.act(async () => {
     avvisa.click();
@@ -239,10 +239,10 @@ test("a control that removes or disables itself hands the focus on, never to the
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
   const focused = () => document.activeElement;
-  await press("Avvisa");
+  await press("Avvisa körningen");
   assert.ok(focused()?.matches('textarea[placeholder="Skäl…"]'), `Avvisa: the reason, not ${focused()?.tagName}`);
   await press("Avbryt");
-  assert.ok(focused() === button(view.container, "Avvisa"), `Avbryt: back on Avvisa, not ${focused()?.tagName}`);
+  assert.ok(focused() === button(view.container, "Avvisa körningen"), `Avbryt: back on Avvisa, not ${focused()?.tagName}`);
 
   const redigera = button(view.container, "Redigera")!;
   await press("Redigera");
@@ -268,12 +268,12 @@ test("who is who: Namnge talarna stands in the speakers' card's heading row; Avv
   assert.ok(card.contains(naming), "the card's own action");
   assert.ok(card.querySelector("#review-speakers")!.parentElement!.contains(naming), "in the row of the card's heading");
   const approve = button(view.container, "Godkänn och fortsätt")!;
-  assert.ok(!card.contains(approve) && !card.contains(button(view.container, "Avvisa")), "the decision is the page's, not the speakers' group");
+  assert.ok(!card.contains(approve) && !card.contains(button(view.container, "Avvisa körningen")), "the decision is the page's, not the speakers' group");
   assert.ok(card.compareDocumentPosition(approve) & window.Node.DOCUMENT_POSITION_FOLLOWING, "after the card");
   assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
   const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
-  await view.act(async () => button(view.container, "Avvisa")!.click());
+  await view.act(async () => button(view.container, "Avvisa körningen")!.click());
   const confirm = button(view.container, "Bekräfta avvisning")!;
   assert.ok(!card.contains(confirm) && confirm.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "the reason form opens in the decision's place");
 });
@@ -282,36 +282,36 @@ test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt prima
   eneo(t);
   const view = await review();
   const looks = (action: HTMLButtonElement | null) => [action?.getAttribute("data-variant"), action?.getAttribute("data-size")];
-  const avvisa = button(view.container, "Avvisa")!;
+  const avvisa = button(view.container, "Avvisa körningen")!;
   const approve = button(view.container, "Godkänn och fortsätt")!;
   assert.deepEqual([looks(avvisa), looks(approve)], [["secondary", "lg"], ["primary", "lg"]]);
   assert.ok(avvisa.nextElementSibling === approve, "side by side, Avvisa first");
   await view.act(async () => avvisa.click());
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
-  assert.ok(!button(view.container, "Avvisa") && !button(view.container, "Godkänn och fortsätt"), "the open form is the one choice on screen");
+  assert.ok(!button(view.container, "Avvisa körningen") && !button(view.container, "Godkänn och fortsätt"), "the open form is the one choice on screen");
   assert.deepEqual(looks(button(view.container, "Bekräfta avvisning")), ["destructive", "md"]);
   await view.act(async () => button(view.container, "Avbryt")!.click());
-  assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"), "Avbryt brings the pair back");
+  assert.ok(button(view.container, "Avvisa körningen") && button(view.container, "Godkänn och fortsätt"), "Avbryt brings the pair back");
 });
 
 test("an approved pause is final: a reason typed before the approval reached the page cannot reject it, also when the resume failed", async (t) => {
   rejected.length = 0;
   const server = eneo(t, { approves: true });
   const view = await review();
-  await view.act(async () => button(view.container, "Avvisa")!.click());
+  await view.act(async () => button(view.container, "Avvisa körningen")!.click());
   await view.act(async () => type(view.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Skäl…"]')!, "Fel möte."));
   await view.act(async () => showPause({ ...pause, state: "approved", revision: 2 }));
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
   assert.ok(!button(view.container, "Bekräfta avvisning"), "no rejection of an approved pause");
   assert.ok(!view.container.querySelector('textarea[placeholder="Skäl…"]'), "no reason form");
-  assert.ok(!button(view.container, "Avvisa"), "no Avvisa");
+  assert.ok(!button(view.container, "Avvisa körningen"), "no Avvisa");
   await view.act(async () => {
     button(view.container, "Fortsätt")!.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
   assert.deepEqual(server.calls, ["resume"], "only resumed, and the resume failed");
   assert.ok(button(view.container, "Fortsätt"), "the one way on is still Fortsätt");
-  assert.ok(!button(view.container, "Avvisa") && !button(view.container, "Bekräfta avvisning"));
+  assert.ok(!button(view.container, "Avvisa körningen") && !button(view.container, "Bekräfta avvisning"));
   assert.deepEqual(rejected, []);
 });
 
@@ -331,7 +331,7 @@ test("who is who with no speaker says so, and the decision is still shown", asyn
   const view = await review({ ...speakers, current_payload_json: { speaker_mapping: { inventory: [] }, structured: { speakers: [] } } });
   assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriberingen/);
   assert.equal(button(view.container, "Namnge talarna"), null, "nobody to name");
-  assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"));
+  assert.ok(button(view.container, "Avvisa körningen") && button(view.container, "Godkänn och fortsätt"));
 });
 
 test("while the transcript is being read, or cannot be read, the flow cannot go on from who is who", async (t) => {

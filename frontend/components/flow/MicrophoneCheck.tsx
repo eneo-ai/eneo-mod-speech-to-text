@@ -23,8 +23,10 @@ const STANDARD = "standard";
 const TEST = "Testa mikrofonen";
 const STOP = "Sluta testa";
 /** When to test, and what the test does with the sound (it only measures the level; nothing is kept or sent). Under the
- *  picker's label, so it stands still whatever the test is doing. */
-const BEFORE = "Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.";
+ *  picker's label, so it stands still whatever the test is doing. Which microphone to pick is said only when the list
+ *  has more than one (`choosable`): the browser names its microphones once one has been allowed. */
+const before = (choosable: boolean) =>
+  `Testa innan mötet börjar${choosable ? " och välj den mikrofon som sitter närmast talarna" : ""}. Det du säger under testet spelas inte in och skickas inte vidare.`;
 /** The browser's question about the microphone left unanswered for a moment: the same words as the start's (FlowInput). */
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 /** A muted track while it is tested: the recording's own words for it (lib/recording-view). Each status is one line on
@@ -113,6 +115,8 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   });
 
   const { choices, value, missing } = microphoneChoices(inputs, preferred);
+  // Standard and the microphone it names are one: a choice needs a second microphone.
+  const choosable = choices.length > 2;
   const testing = stream !== null || asking;
 
   // The same choice recording makes: the remembered microphone, asked for as `ideal`.
@@ -188,7 +192,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           options={choices.map((choice) => ({ value: choice.value || STANDARD, label: choice.label }))}
           value={value || STANDARD}
           onChange={(next) => choose(next === STANDARD ? "" : next)}
-          description={missing ? `Den valda mikrofonen hittades inte. Standard används. ${BEFORE}` : BEFORE}
+          description={missing ? `Den valda mikrofonen hittades inte. Standard används. ${before(choosable)}` : before(choosable)}
           width="var(--microphone-picker-width, min(100%, 24rem))"
         />
         <Button label={testing ? STOP : TEST} variant="secondary" onClick={() => (testing ? stopTest() : void test())}>
@@ -227,7 +231,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
               : tested
                 ? heard
                   ? "Mikrofonen hörde dig."
-                  : "Mikrofonen hörde inget."
+                  : `Mikrofonen hörde inget. Kontrollera att den inte är avstängd${choosable ? ", eller välj en annan i listan" : ""}.`
                 : " "}
         </Text>
       </VStack>

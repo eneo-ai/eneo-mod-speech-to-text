@@ -56,7 +56,7 @@
       - text: ""
       - status
     - status
-    - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge med att skicka den.
+    - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge efter att du har stoppat.
     - region "Tidigare körningar":
       - heading "Tidigare körningar" [level=2]
       - list:

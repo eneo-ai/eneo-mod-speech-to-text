@@ -1247,7 +1247,8 @@ test("on an iPhone or an iPad a PDF is saved from a tab of its own, which Safari
   const started = downloads(t);
   const opened = tabs(t);
   const view = await document_({ text, file: pdf });
-  const link = [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => nameOf(a)!.startsWith("Ladda ner PDF"))!;
+  const link = [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => nameOf(a)!.startsWith("Öppna PDF"))!;
+  assert.match(view.container.textContent ?? "", /PDF öppnas i en ny flik\. Spara den där med webbläsarens delaknapp\./, "the button says it opens, and how the PDF is kept");
 
   await view.act(async () => void press(link));
   assert.equal(opened.length, 1, "the tab opens at the press itself");

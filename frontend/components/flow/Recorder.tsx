@@ -93,10 +93,6 @@ export function FocusedRecorder({
           variant="wave"
           className={styles.stageMeter}
         />
-        <Text as="p" color="secondary" className={styles.note}>
-          {/* Where the recording is kept was said under Starta inspelning: once per view. */}
-          Texten skapas när du stoppar inspelningen.
-        </Text>
       </VStack>
     </Card>
   );

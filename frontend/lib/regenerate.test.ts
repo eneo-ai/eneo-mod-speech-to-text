@@ -112,8 +112,8 @@ test("the notice starts the new run only when asked, and shows a refusal with th
   };
   assert.match(
     seenText(),
-    /^Dokumentet skapades före dina rättningarDen nya versionen görs från den rättade transkriberingen\.Skapa dokumentet igen$/,
-    "a title, one short line and the button",
+    /^Dokumentet skapades före dina rättningarDen nya versionen görs från den rättade transkriberingen och tar en stund\. Dokumentet som visas nu finns kvar under Tidigare körningar\.Skapa dokumentet igen$/,
+    "a title, what the new version is and that this one stays, and the button",
   );
   // The design system's warning is an alert; this one is there when the page opens and is not announced.
   assert.ok(view.container.querySelector('[role="note"]'), "a note");
@@ -162,14 +162,14 @@ test("the notice stands while the transcript is read, its button waiting, and sa
   const reading = await mount(createElement(RegenerateNotice, { ...props, reading: true }));
   const make = button(reading.container, "Skapa dokumentet igen")!;
   assert.ok(seen(make) && make.disabled, "waits for the transcript");
-  assert.ok(seen(words(reading.container, "Den nya versionen görs från den rättade transkriberingen.")));
+  assert.ok(seen(words(reading.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.")));
   assert.ok(!seen(button(reading.container, "Läs in igen")));
   await reading.unmount();
 
   let reloads = 0;
   const settled = await mount(createElement(RegenerateNotice, { ...props, onReload: () => void reloads++ }));
   assert.ok(seen(words(settled.container, "Rättningarna kunde inte läsas just nu.")), "in the description's place");
-  assert.ok(!seen(words(settled.container, "Den nya versionen görs från den rättade transkriberingen.")));
+  assert.ok(!seen(words(settled.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.")));
   assert.ok(!seen(button(settled.container, "Skapa dokumentet igen")));
   const again = button(settled.container, "Läs in igen")!;
   assert.ok(seen(again), "in the button's place");

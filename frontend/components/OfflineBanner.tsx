@@ -11,7 +11,7 @@ export type OfflineWaiting = "recording" | "upload" | "run" | null;
 // A device with no network says so; a module that does not answer says that, and neither blames the other.
 const MESSAGES: Record<"offline" | "unreachable", Record<NonNullable<OfflineWaiting> | "nothing", string>> = {
   offline: {
-    // Where the recording is kept is said beside the recorder, only when it is true.
+    // That it is kept on the device is added only when it is (`saved`).
     recording: `${CONNECTION_LOST.offline} Inspelningen fortsätter.`,
     upload: `${CONNECTION_LOST.offline} Uppladdningen fortsätter när anslutningen är tillbaka.`,
     run: `${CONNECTION_LOST.offline} Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.`,
@@ -33,7 +33,16 @@ const MESSAGES: Record<"offline" | "unreachable", Record<NonNullable<OfflineWait
  * phone). The browser keeps what is on screen in place when something appears above it (scroll anchoring), but not at
  * the page's top and not in Safari: there the notice scrolls the window by the room it takes, so nothing on screen moves.
  */
-export function OfflineBanner({ waiting, status = onlineStatus }: { waiting: OfflineWaiting; status?: OnlineStatus }) {
+export function OfflineBanner({
+  waiting,
+  saved = false,
+  status = onlineStatus,
+}: {
+  waiting: OfflineWaiting;
+  /** The recording waiting is kept on the device as it goes, so nothing of it is lost while the network is away. */
+  saved?: boolean;
+  status?: OnlineStatus;
+}) {
   const card = useRef<HTMLDivElement>(null);
   const region = useRef<HTMLParagraphElement>(null);
   const before = useRef<{ following: Element; top: number } | null>(null);
@@ -65,7 +74,8 @@ export function OfflineBanner({ waiting, status = onlineStatus }: { waiting: Off
     }
   }, [connection]);
 
-  const message = connection === "online" ? "" : MESSAGES[connection][waiting ?? "nothing"];
+  const message =
+    connection === "online" ? "" : `${MESSAGES[connection][waiting ?? "nothing"]}${saved && waiting === "recording" ? " Den sparas på enheten." : ""}`;
   return (
     <>
       <VisuallyHidden ref={region} as="p" role="status">

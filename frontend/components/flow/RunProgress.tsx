@@ -29,6 +29,7 @@ export function RunProgress({
   startedAt,
   error = null,
   makesText = false,
+  unattended = false,
   retrying = null,
   onCancel,
 }: {
@@ -40,6 +41,8 @@ export function RunProgress({
   error?: string | null;
   /** The flow ends in text, not a file (lib/flow-output makesText). */
   makesText?: boolean;
+  /** Known to finish without the person (lib/run-progress finishesUnattended): only then is the result promised. */
+  unattended?: boolean;
   /** Set while the run's status cannot be read: the page asks again by itself, and says so. */
   retrying?: { onRetry: () => void } | null;
   onCancel: () => Promise<void>;
@@ -115,12 +118,18 @@ export function RunProgress({
             <StepList steps={steps} />
           </VStack>
         )}
-        {/* Reassurance for a page closed by mistake, not a request to close it, and where to find the result then: the
-            flow's page lists it under Tidigare körningar (EarlierRuns). */}
+        {/* Reassurance for a page closed by mistake, not a request to close it, and where to find the run then: the
+            flow's page lists it under Tidigare körningar (EarlierRuns). A review still ahead (a step with its note)
+            stops the run until the person answers; the result is promised only where the run is known to finish
+            without them, and otherwise only that it goes on. */}
         <Text as="p" type="supporting">
-          {makesText
-            ? "Texten blir klar även om du stänger sidan. Du hittar den sedan under Tidigare körningar i flödet."
-            : "Dokumentet blir klart även om du stänger sidan. Du hittar det sedan under Tidigare körningar i flödet."}
+          {steps.some((step) => step.note !== null)
+            ? "Körningen väntar på dig när det är dags att granska. Om du stänger sidan hittar du den under Tidigare körningar i flödet."
+            : !unattended
+              ? "Körningen fortsätter i Eneo om du stänger sidan. Du hittar den under Tidigare körningar i flödet."
+              : makesText
+                ? "Texten blir klar även om du stänger sidan. Du hittar den sedan under Tidigare körningar i flödet."
+                : "Dokumentet blir klart även om du stänger sidan. Du hittar det sedan under Tidigare körningar i flödet."}
         </Text>
         {error && <Banner status="error" title={error} collapsible={false} />}
         <HStack>

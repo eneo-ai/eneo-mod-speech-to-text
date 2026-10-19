@@ -167,7 +167,7 @@ test("the player's row keeps the position slider a usable width on a phone, with
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, ids.runs.reviewApproved, ids.flows.flow2);
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Avvisa" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Avvisa körningen" })).toHaveCount(0);
   // Approval has folded the transcript's corrections in; nothing corrected now would reach the document.
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: /^Rätta repliken/ })).toHaveCount(0);
@@ -218,7 +218,7 @@ test("an approved text review shows the saved decision; a draft from before it i
 test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height of at least 48 px", async ({ page }, info) => {
   for (const state of ["review", "review-text-edit"]) {
     await STATES.find((s) => s.name === state)!.go(page, info);
-    const avvisa = page.getByRole("button", { name: "Avvisa" });
+    const avvisa = page.getByRole("button", { name: "Avvisa körningen" });
     const [reject, approve, bar] = await Promise.all([
       avvisa.boundingBox(),
       page.getByRole("button", { name: "Godkänn och fortsätt" }).boundingBox(),
@@ -237,7 +237,7 @@ test("the review's text fields are labelled", async ({ page }, info) => {
   expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
     role: "textbox",
     name: "Avvisa körningen",
-    description: "Ange en kort motivering. Körningen kommer att avbrytas.",
+    description: "Körningen avbryts och flödet går inte vidare. Ange en kort motivering.",
   });
 
   await STATES.find((s) => s.name === "review-text-edit")!.go(page, info);
@@ -338,7 +338,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   endsIn = 8 * 60 * 60;
   refreshIn = 1;
   const popup = context.waitForEvent("page");
-  await warning.getByRole("button", { name: "Fortsätt arbeta" }).click();
+  await warning.getByRole("button", { name: "Förläng inloggningen" }).click();
   const window = await popup;
   await window.waitForEvent("close");
   await expect(warning).toBeHidden();
@@ -427,7 +427,7 @@ test("a renewal after the login ended is refused: the window says so, stays, and
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Inloggningen har redan gått ut");
   // The window cannot know whether the other tab's recording is on the device, so it promises nothing and says how to keep it.
   await expect(page.getByRole("main")).toContainText(
-    "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen.",
+    "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara ljudfil innan du loggar in igen.",
   );
   await expect(page.getByRole("main")).not.toContainText("finns kvar");
   await expect(page).toHaveTitle("Inloggningen har gått ut · Tal till text");

@@ -57,7 +57,7 @@ for (const review of REVIEWS) {
   test(`${review.name}: Avvisa and Godkänn och fortsätt follow the decision's rule`, async ({ page }, info) => {
     await run(page, review.id, review.flow);
     await expect(page.getByRole("heading", { name: review.heading, level: 1 })).toBeVisible();
-    const found = await layout(page.getByRole("button", { name: "Godkänn och fortsätt" }), page.getByRole("button", { name: "Avvisa", exact: true }));
+    const found = await layout(page.getByRole("button", { name: "Godkänn och fortsätt" }), page.getByRole("button", { name: "Avvisa körningen", exact: true }));
     followsTheRule(found, info.project.use.viewport!.width <= 640);
   });
 }
@@ -68,7 +68,7 @@ test("an unsent recording's actions stack across its card on a phone and stand i
   await page.reload();
   const card = page.getByRole("region", { name: "En inspelning har inte skickats" }).getByRole("listitem");
   const actions = card.getByRole("button");
-  await expect(actions).toHaveText(["Skapa dokument", "Spara som fil", "Ta bort"]);
+  await expect(actions).toHaveText(["Skapa dokument", "Spara ljudfil", "Ta bort"]);
   const boxes = await actions.evaluateAll((buttons) =>
     buttons.map((button) => {
       const { left, right, top } = button.getBoundingClientRect();

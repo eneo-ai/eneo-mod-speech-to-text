@@ -17,9 +17,9 @@ import { removeChunksNotFetched, watchForReloads } from "./gone-chunks";
 // Launch options belong to the whole file: Chromium's fake microphone, with its permission granted.
 test.use({ permissions: ["microphone"], launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] } });
 
-/** What "Spara som fil" gives: the recording's one part, as the browser's own audio file. */
+/** What "Spara ljudfil" gives: the recording's one part, as the browser's own audio file. */
 async function savedFile(page: Page) {
-  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 10_000 }), page.getByRole("button", { name: "Spara som fil" }).click()]);
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 10_000 }), page.getByRole("button", { name: "Spara ljudfil" }).click()]);
   return { name: download.suggestedFilename(), bytes: await readFile((await download.path())!) };
 }
 
@@ -68,7 +68,7 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     await page.waitForTimeout(3500);
     await page.getByRole("button", { name: "Stoppa" }).click();
     await expect(page.getByRole("heading", { name: "Inspelningen är klar" })).toBeVisible();
-    await expect(page.getByText("Inspelningen finns kvar på enheten tills dokumentet är skapat.")).toBeVisible();
+    await expect(page.getByText("finns kvar på enheten tills dokumentet är skapat.")).toBeVisible();
 
     const saved = await savedFile(page).catch((error) => {
       // A save that needs a script the page does not have gets no file: say which script, not that the file never came.
@@ -106,7 +106,7 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     // The page's own way to the list, and the page's own question: leaving stops the recording and promises it back.
     await page.getByRole("link", { name: "Alla flöden" }).filter({ visible: true }).first().click();
     const question = page.getByRole("alertdialog", { name: "Lämna sidan?" });
-    await expect(question).toContainText("Det som spelats in finns kvar bland osända inspelningar.");
+    await expect(question).toContainText("Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.");
     await question.getByRole("button", { name: "Lämna sidan" }).click();
 
     // The list's code is gone: its page is replaced by the line and the reload, and nothing reloads by itself.

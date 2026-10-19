@@ -427,7 +427,7 @@ export function ReviewView({
       <TextArea
         ref={reasonField}
         label="Avvisa körningen"
-        description="Ange en kort motivering. Körningen kommer att avbrytas."
+        description="Körningen avbryts och flödet går inte vidare. Ange en kort motivering."
         placeholder="Skäl…"
         rows={3}
         value={rejectReason}
@@ -463,7 +463,7 @@ export function ReviewView({
             ref={rejectButton}
             variant="secondary"
             size="lg"
-            label="Avvisa"
+            label="Avvisa körningen"
             isDisabled={busy}
             onClick={() => {
               handOff.current = reasonField;

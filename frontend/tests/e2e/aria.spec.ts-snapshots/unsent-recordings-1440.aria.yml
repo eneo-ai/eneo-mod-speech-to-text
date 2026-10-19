@@ -1,10 +1,10 @@
 - region "En inspelning har inte skickats":
   - heading "En inspelning har inte skickats" [level=2]
-  - paragraph: Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den.
+  - paragraph: Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den till Eneo.
   - list:
     - listitem:
       - paragraph: /Inspelning \d+ [a-zåäö]+ \d+:\d+/
       - paragraph: /Nämndmöte till rapport · \d+ s/
       - button "Skapa dokument"
-      - button "Spara som fil"
+      - button "Spara ljudfil"
       - button "Ta bort"

@@ -43,5 +43,5 @@ test("a review that ran out as Fortsätt was pressed gives way to the run as it 
   await expect(page.getByText(/Tiden för granskningen har gått ut/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Starta en ny körning" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fortsätt", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Avvisa" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Avvisa körningen" })).toHaveCount(0);
 });

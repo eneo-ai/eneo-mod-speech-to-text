@@ -530,7 +530,7 @@ export class RecordingStore {
   }
 
   /**
-   * The recording's file at `nth` of its files (its parts with audio, filesIn), read alone: Spara som fil saves one a
+   * The recording's file at `nth` of its files (its parts with audio, filesIn), read alone: Spara ljudfil saves one a
    * press. Null when the recording has no such file, or its audio is gone from the device.
    */
   readFile(id: string, nth: number): Promise<RecordingFile | null> {

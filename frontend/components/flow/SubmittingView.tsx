@@ -111,11 +111,16 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
       )}
       <RetryNotice wait={wait} />
       <HStack gap={2} wrap="wrap">
-        <Button label="Avbryt" variant="secondary" onClick={onCancel} />
+        {/* What it stops: the start. The file and the details stay. */}
+        <Button label="Avbryt starten" variant="secondary" onClick={onCancel} />
         {recording && (
           <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
         )}
       </HStack>
+      {/* The start is asked for from this page, tried again for minutes: a page closed now may start nothing. */}
+      <Text as="p" type="supporting">
+        Stäng inte sidan förrän flödet har startat.
+      </Text>
       {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>
   );
@@ -141,7 +146,10 @@ function UploadProgress({
             {submission.filename}
           </Text>
         </StackItem>
-        <Button label="Avbryt" variant="secondary" size="sm" onClick={onCancel} />
+        {/* Its name says what it stops; the word beside the file name stays short, so the name keeps its line. */}
+        <Button label="Avbryt uppladdningen" variant="secondary" size="sm" onClick={onCancel}>
+          Avbryt
+        </Button>
       </HStack>
       {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. */}
       <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null} />
@@ -155,6 +163,10 @@ function UploadProgress({
           {submission.percent != null ? formatPercent(percent) : "Pågår"}
         </Text>
       </HStack>
+      {/* The run's own view says what a closed page means for it; until the run has started, a closed page stops it. */}
+      <Text as="p" type="supporting">
+        Stäng inte sidan och lås inte skärmen förrän flödet har startat.
+      </Text>
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}
       </VisuallyHidden>

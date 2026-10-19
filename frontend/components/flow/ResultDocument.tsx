@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, ExternalLink, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Divider } from "@astryxdesign/core/Divider";
@@ -209,13 +209,15 @@ export function ResultDocument({
   const wide = useMediaQuery(LAPTOP, true);
   const room = useRoomInRow();
 
-  const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
+  // A PDF on an iPhone or an iPad opens in a tab of its own (savingWay): the button says so, and the line under it how to keep it.
+  const opensInTab = !!file && savingWay(file) === "tab";
+  const downloadLabel = file ? (opensInTab ? `Öppna ${file.typeLabel}` : `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}`) : null;
   const primaryDownload = file && download && (
     <Button
       as={DownloadLink}
       href={download}
       variant="primary"
-      icon={<Icon icon={Download} />}
+      icon={<Icon icon={opensInTab ? ExternalLink : Download} />}
       label={`${downloadLabel}, ${file.name}`}
       onClick={pressing(access, file.fileId, savingWay(file))}
       {...waiting(access, file.fileId, savingWay(file))}
@@ -283,6 +285,11 @@ export function ResultDocument({
         </HStack>
       )}
 
+      {opensInTab && (
+        <Text as="p" type="supporting">
+          {file.typeLabel} öppnas i en ny flik. Spara den där med webbläsarens delaknapp.
+        </Text>
+      )}
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>

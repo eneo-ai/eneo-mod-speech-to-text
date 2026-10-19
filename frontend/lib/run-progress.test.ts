@@ -4,6 +4,7 @@ import test from "node:test";
 import type { FlowGraph, FlowGraphNode, FlowReviewStepContract, FlowRunStep } from "./api";
 import {
   finishedRun,
+  finishesUnattended,
   runElapsed,
   runWait,
   runLabelsSpeakers,
@@ -85,6 +86,18 @@ test("a step that stops for the person says what it will ask, while it is still 
   const passed = runSteps(graph("completed", "completed", "running", null), running, [], contract);
   assert.deepEqual(notes(passed), [null, null, null, null], "said only while the step is ahead");
   assert.deepEqual(notes(runSteps(graph("running", null, null, null), running)), [null, null, null, null]);
+});
+
+test("a run is known to finish without the person only at today's version of a flow with no review step", () => {
+  const review = [{ step_id: "step-2", step_order: 2, review_mode: "view", output_type: "text" }] as FlowReviewStepContract[];
+  const plain = { published_flow_version: 4, steps_requiring_review: [] };
+  assert.equal(finishesUnattended({ flow_version: 4 }, plain), true);
+  assert.equal(finishesUnattended({ flow_version: 4 }, { published_flow_version: 4 }), true, "a contract that lists no review");
+  assert.equal(finishesUnattended({ flow_version: 4 }, { ...plain, steps_requiring_review: review }), false, "a review pauses it");
+  // Today's contract says nothing about another version: a review there is possible, so nothing is promised.
+  assert.equal(finishesUnattended({ flow_version: 3 }, plain), false, "republished since the run started");
+  assert.equal(finishesUnattended({ flow_version: null }, plain), false, "a version Eneo does not say");
+  assert.equal(finishesUnattended({ flow_version: 4 }, null), false, "no contract");
 });
 
 test("a run of an earlier version of the flow gets no review notes from today's contract, nor one whose version is unknown", () => {

@@ -45,8 +45,8 @@ function useLevel(t: TestContext) {
   return level;
 }
 
-/** The browser's question about the microphone, answered when the test says so. */
-function useMicrophone(t: TestContext) {
+/** The browser's question about the microphone, answered when the test says so; `inputs` are the devices it lists. */
+function useMicrophone(t: TestContext, inputs: Partial<MediaDeviceInfo>[] = []) {
   let answer: (stream: MediaStream) => void = () => {};
   let asked = 0;
   const devices = {
@@ -54,7 +54,7 @@ function useMicrophone(t: TestContext) {
       asked += 1;
       return new Promise<MediaStream>((resolve) => (answer = resolve));
     },
-    enumerateDevices: async () => [],
+    enumerateDevices: async () => inputs,
     addEventListener() {},
     removeEventListener() {},
   };
@@ -91,6 +91,20 @@ test("before a test the page says what the test does with the sound, and while t
   await view.act(async () => microphone.answer(late.stream));
   assert.equal(late.track.stopped, true);
   assert.ok(view.offers("Testa mikrofonen"));
+});
+
+test("which microphone to pick is said only where the list has more than one", async (t) => {
+  const mic = (deviceId: string, label: string) => ({ kind: "audioinput" as const, deviceId, groupId: deviceId, label });
+  useMicrophone(t, [mic("built-in", "Inbyggd mikrofon"), mic("table", "Konferensmikrofon")]);
+  const two = await microphoneCheck();
+  await two.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.match(two.text(), /Testa innan mötet börjar och välj den mikrofon som sitter närmast talarna\./);
+  await two.unmount();
+
+  useMicrophone(t, [mic("built-in", "Inbyggd mikrofon")]);
+  const one = await microphoneCheck();
+  await one.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.doesNotMatch(one.text(), /närmast talarna/, "Standard and the one microphone are no choice");
 });
 
 test("a long wait for the browser's answer says where the question is, and a quick one says nothing", async (t) => {

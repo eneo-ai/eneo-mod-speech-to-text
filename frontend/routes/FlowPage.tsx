@@ -53,6 +53,7 @@ import { leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-vi
 import { resultFileViews } from "@/lib/run-files";
 import {
   finishedRun,
+  finishesUnattended,
   ofContractVersion,
   runOutcome,
   runStage,
@@ -242,7 +243,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const unstored = useSyncExternalStore(unstoredDrafts.subscribe, unstoredDrafts.any, () => false);
   const leaving = useLeaveQuestion(
     submitting || holdsAudio || unstored,
-    submitting || holdsAudio ? leaveWarning(input.persistent, snapshot.phase, submitting, input.capture.refused) : UNSTORED_LEAVE,
+    submitting || holdsAudio
+      ? leaveWarning(input.persistent, snapshot.phase, submitting && (submission.kind === "starting" ? "starting" : "uploading"), input.capture.refused)
+      : UNSTORED_LEAVE,
     leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
   );
   useEffect(() => {
@@ -745,6 +748,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           retrying={pollTrouble ? { onRetry: () => void follow(run.run.id) } : null}
           // Today's contract speaks only for a run of its own version.
           makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
+          unattended={finishesUnattended(run.run, contract)}
           onCancel={() => onCancelRun(run.run.id)}
         />,
         { input: started.input, version: run.run.flow_version, offline: "run" },

@@ -2,7 +2,7 @@ context platform=ios
 open com.apple.mobilesafari "${ORIGIN}/flows/e05f8fd7-95fd-44e5-aa1d-2597881e71b9?run=825173ab-5cc4-4404-8a05-34274414d71b"
 wait text "Vem är vem?" 20000
 wait 'role="button" label="Godkänn och fortsätt"' 10000
-wait 'role="button" label="Avvisa"' 5000
+wait 'role="button" label="Avvisa körningen"' 5000
 press 'label="Namnge talarna"'
 wait 'role="button" label="Spara namnen"' 10000
 press 'role="button" label="Avbryt"'

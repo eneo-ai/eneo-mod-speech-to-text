@@ -53,19 +53,41 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
-  assert.match(words, /Dokumentet blir klart även om du stänger sidan\. Du hittar det sedan under Tidigare körningar i flödet\./);
+  // The review ahead stops the run until the person answers: where to find it, and no promise that it finishes alone.
+  assert.match(words, /Körningen väntar på dig när det är dags att granska\. Om du stänger sidan hittar du den under Tidigare körningar i flödet\./);
+  assert.doesNotMatch(words, /även om du stänger sidan/);
   assert.doesNotMatch(words, /Du kan stänga sidan/, "reassurance, not an instruction to close");
   assert.match(words, /Avbryt körningen/);
   // The step list is an ordered list, so a screen reader hears position and state.
   assert.match(html, /<ol[^>]*>(\s*<li)/);
 });
 
+test("a run not known to finish alone is promised only to go on, with no review in sight either", () => {
+  // An older flow version or one with no graph yet: no review notes, and nothing known of reviews (finishesUnattended).
+  const unknown = running.map((step) => ({ ...step, note: null }));
+  const words = text(
+    markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: unknown, stage: "Analysera mötesinnehållet", onCancel: async () => undefined })),
+  );
+  assert.match(words, /Körningen fortsätter i Eneo om du stänger sidan\. Du hittar den under Tidigare körningar i flödet\./);
+  assert.doesNotMatch(words, /blir klart|väntar på dig/);
+});
+
 test("a flow that makes text says the text will be ready, as its action says Skapa text", () => {
+  // No review ahead, and known to finish without the person.
+  const unattended = running.map((step) => ({ ...step, note: null }));
   const words = text(
     markup(
-      createElement(RunProgress, { flowName: "Intervju", steps: running, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
+      createElement(RunProgress, {
+        flowName: "Intervju",
+        steps: unattended,
+        stage: "Analysera mötesinnehållet",
+        makesText: true,
+        unattended: true,
+        onCancel: async () => undefined,
+      }),
     ),
   );
+  assert.doesNotMatch(words, /väntar på dig/);
   assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den sedan under Tidigare körningar i flödet\./);
   assert.doesNotMatch(words, /Dokumentet blir klart/);
   assert.match(words, /^Texten skapas /, "the heading");
@@ -120,6 +142,12 @@ test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt
   assert.match(words, /möte\.wav Avbryt/);
   assert.match(words, /512 B av 2 kB 33 %/);
   assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen…"], "the stage once, first");
+});
+
+test("an upload, and the run's start after it, say to keep the page open until the flow has started", () => {
+  for (const html of [uploading({ percent: 33 }), uploading({ loaded: 2048, total: 2048, percent: 100 })]) {
+    assert.match(text(html), /Stäng inte sidan och lås inte skärmen förrän flödet har startat\./);
+  }
 });
 
 test("once every byte has left, the stage says Eneo is taking the file, and a recording is called a recording", () => {
@@ -181,7 +209,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   const starting = send({ kind: "starting", wait: null });
   assert.equal(statuses(starting)[0], "Startar flödet…");
   assert.match(text(starting), /Avbryt/, "a way out from the first moment: the answer may never come");
-  assert.doesNotMatch(text(starting), /uppladdad|Spara som fil/, "nothing has gone wrong yet to explain");
+  assert.doesNotMatch(text(starting), /uppladdad|Spara ljudfil/, "nothing has gone wrong yet to explain");
 
   const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
   assert.equal(statuses(waiting)[0], "Startar flödet…");
@@ -195,7 +223,8 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
 
   const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recording: { id: "rec-1", files: 1 } });
   assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
-  assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
+  assert.match(text(recording), /Avbryt starten Spara ljudfil/, "a recording can be kept as a file meanwhile");
+  assert.match(text(recording), /Stäng inte sidan förrän flödet har startat\./);
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -387,7 +416,7 @@ test("a failure Eneo said nothing about still says what happened, and shows no s
   assert.match(words, /Körningen kunde inte slutföras Körningen kunde inte slutföras\./, "the callout's title, then its sentence");
   assert.doesNotMatch(words, /Startad/);
   assert.doesNotMatch(words, /Visa teknisk information|Stegen/, "no folded detail without Eneo's, no empty step list");
-  assert.match(words, /Kontakta support Körnings-ID run-1 Kopiera körnings-ID/, "the run id to quote, always");
+  assert.match(words, /Behöver du hjälp\? Kontakta den som ansvarar för Eneo i din verksamhet och uppge körnings-ID:t\. Körnings-ID run-1 Kopiera körnings-ID/, "the run id to quote, always");
 });
 
 test("an Eneo detail with nothing in it offers no folded technical information", () => {

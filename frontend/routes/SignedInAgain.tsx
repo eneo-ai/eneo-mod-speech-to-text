@@ -30,7 +30,7 @@ export default function SignedInAgainPage() {
 }
 
 /**
- * Where a login renewed in its own window lands ("Fortsätt arbeta" before
+ * Where a login renewed in its own window lands ("Förläng inloggningen" before
  * the session ends): it tells the module's tabs, which read the new end,
  * and closes itself. A refused renewal says why and stays: `annan-anvandare`
  * when it signed in someone else, `utgangen` when the login had already
@@ -75,7 +75,7 @@ function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
               : refusal === "utgangen"
                 ? // This window cannot know whether the other tab's recording is kept on the device (see leaveWarning):
                   // it promises nothing and says how to keep it, as "Lämna sidan?" does.
-                  "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
+                  "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara ljudfil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
                 : "Du kan stänga det här fönstret och fortsätta där du var."}
           </Text>
         </VStack>

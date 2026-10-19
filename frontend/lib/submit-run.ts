@@ -329,7 +329,7 @@ async function sendLeased(
     } else {
       // A part that ran past Eneo's time per file (a page the browser suspended past the handover) would be
       // refused only after Eneo took the run, and the device's copy with it: the recording as it is stored now
-      // stays here, unsealed, where Spara som fil keeps it.
+      // stays here, unsealed, where Spara ljudfil keeps it.
       const step = params.contract.steps_requiring_input?.find((input) => input.step_id === params.stepId);
       const limit = step?.max_duration_seconds;
       if (limit && recording.parts.some((part) => part.durationMs > limit * 1000)) {

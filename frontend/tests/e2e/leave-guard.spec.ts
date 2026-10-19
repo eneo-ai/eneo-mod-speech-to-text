@@ -232,7 +232,7 @@ test("Logga ut asks before the logout request is sent: Stanna kvar sends none, L
   await expect(question(page), "the way on is not asked a second time").toHaveCount(0);
   expect(logouts).toHaveLength(1);
   await expect(page.getByRole("heading", { name: "Du är utloggad" })).toBeFocused();
-  await expect(page.getByText(/Osända inspelningar ligger kvar/)).toBeVisible();
+  await expect(page.getByText(/Inspelningar som inte har skickats ligger kvar/)).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeFocused();
 });

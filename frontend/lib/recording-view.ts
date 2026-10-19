@@ -150,7 +150,7 @@ export function recordingNotices({
   }
   if (refused === "full") {
     // Nothing stops, and the store moves what only this tab has onto the device once it has room: freeing room is the way
-    // to keep it (a full disk would refuse Spara som fil too).
+    // to keep it (a full disk would refuse Spara ljudfil too).
     warnings.push({
       title: "Enheten är full.",
       detail:
@@ -158,13 +158,13 @@ export function recordingNotices({
         "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
     });
   } else if (refused) {
-    // Nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
+    // Nothing stops, and Spara ljudfil after Stoppa keeps what only this tab has.
     // The device's copy gone (its data cleared) is more than a device that stops keeping: what came before may be lost.
     const [cause, before] =
       refused === "lost"
         ? ["Inspelningen kan inte längre sparas på enheten.", "Det som spelats in tidigare kan ha försvunnit. "]
         : ["Enheten kan inte spara mer av inspelningen.", ""];
-    warnings.push({ title: cause, detail: `${before}Inspelningen fortsätter, men välj Spara som fil när du stoppar.` });
+    warnings.push({ title: cause, detail: `${before}Inspelningen fortsätter, men välj Spara ljudfil när du stoppar.` });
   } else if (!persistent) {
     notes.push(
       `Inspelningen sparas bara i den här fliken. Stäng inte fliken innan ${makesText ? "texten är skapad" : "dokumentet är skapat"}.`,
@@ -220,25 +220,33 @@ export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: 
  * What "Lämna sidan?" says. A running recording stops: it does not go on in
  * the background. The recording is promised back among unsent recordings
  * only when the device keeps it; otherwise leaving loses it, and the way to
- * keep it is "Spara som fil" (after Stoppa, while recording).
+ * keep it is "Spara ljudfil" (after Stoppa, while recording). A send stops at
+ * the stage it is in (`sending`), named as its Avbryt names it: the upload,
+ * or the start of the flow once the file is up.
  */
-export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false, refused: DeviceRefusal | null = null): string {
-  if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
+export function leaveWarning(
+  persistent: boolean | null,
+  phase: SessionPhase,
+  sending: false | "uploading" | "starting" = false,
+  refused: DeviceRefusal | null = null,
+): string {
+  const sendStops = sending === "starting" ? "Starten av flödet avbryts" : "Uppladdningen avbryts";
+  if (sending && phase === "setup") return `${sendStops}, och filen behöver väljas igen.`;
   const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
-  const stops = sending ? "Sändningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
+  const stops = sending ? `${sendStops}. ` : capturing ? "Inspelningen stoppas. " : "";
   // A full device holds what came before; only what came after is in this tab, and a full disk would refuse a saved
-  // file too: room is the way to keep it, not Spara som fil.
+  // file too: room is the way to keep it, not Spara ljudfil.
   if (refused === "full") {
     return (
       `${stops}Enheten är full, så det senaste av inspelningen finns bara i den här fliken och försvinner när du lämnar ` +
       "sidan. Det som spelades in innan finns kvar på enheten. Stanna kvar och frigör utrymme, så sparas resten där."
     );
   }
-  if (persistent) return `${stops}Det som spelats in finns kvar bland osända inspelningar.`;
+  if (persistent) return `${stops}Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.`;
   const lost = `${stops}${capturing ? "Den" : "Inspelningen"} finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"
-    ? `${lost} Välj Spara som fil först om du vill behålla den.`
-    : `${lost} Stoppa och välj Spara som fil först om du vill behålla den.`;
+    ? `${lost} Välj Spara ljudfil först om du vill behålla den.`
+    : `${lost} Stoppa och välj Spara ljudfil först om du vill behålla den.`;
 }
 
 /**

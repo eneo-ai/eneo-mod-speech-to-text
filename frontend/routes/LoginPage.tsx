@@ -93,7 +93,7 @@ export default function LoginPage() {
               <Heading level={1}>{signedOut ? "Du är utloggad" : "Gör samtal och filer till text och dokument."}</Heading>
               <Text as="p" color="secondary">
                 {signedOut
-                  ? "Osända inspelningar ligger kvar i den här webbläsaren tills du skickar eller tar bort dem. Logga in med samma konto för att fortsätta."
+                  ? "Inspelningar som inte har skickats ligger kvar i den här webbläsaren tills du skickar eller tar bort dem. Logga in med samma konto för att fortsätta."
                   : "Logga in via Eneo för att fortsätta."}
               </Text>
               {signedOut && <Text as="p" color="secondary">Använd en egen webbläsarprofil om du delar dator med andra.</Text>}
