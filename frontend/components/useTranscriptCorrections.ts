@@ -38,9 +38,15 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     window.addEventListener("beforeunload", ask);
     return () => window.removeEventListener("beforeunload", ask);
   }, [unsaved]);
+  // The corrections read with the transcript are the page's from the draw that has the transcript: taken in an effect,
+  // that draw would show the transcript, and what the page says of its corrections, without them.
+  const [taken, setTaken] = useState<CorrectionSet | null>(null);
+  if (!transcript.pending && taken !== transcript.corrections) {
+    setTaken(transcript.corrections);
+    setCorrections(transcript.corrections);
+  }
   useEffect(() => {
     if (transcript.pending) return;
-    setCorrections(transcript.corrections);
     revisionRef.current = transcript.corrections.revision;
     saveQueue.current = Promise.resolve(true);
     generation.current++;

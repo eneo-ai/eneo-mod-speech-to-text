@@ -1361,9 +1361,14 @@ test("an uncertain word says how to put it right where the result allows it", as
 
 /**
  * A finished run of a flow with no naming step, whose transcript's corrections are saved by `onSave` (the request's body
- * in, Eneo's answer out): the result page as it is opened. Rendered at a laptop's width unless `narrow`.
+ * in, Eneo's answer out): the result page as it is opened. Rendered at a laptop's width unless `narrow`. `saved` are the
+ * corrections as read with the run, and the transcript's read ends when `read` does.
  */
-async function namingRun(t: TestContext, onSave: (body: Record<string, unknown>) => Promise<Response>, { narrow = false } = {}) {
+async function namingRun(
+  t: TestContext,
+  onSave: (body: Record<string, unknown>) => Promise<Response>,
+  { narrow = false, saved, read = Promise.resolve() }: { narrow?: boolean; saved?: unknown[]; read?: Promise<void> } = {},
+) {
   const { createElement } = await import("react");
   const { RunResult } = await import("../components/flow/RunResult");
   if (!narrow) widthOf(t, 1440);
@@ -1374,7 +1379,7 @@ async function namingRun(t: TestContext, onSave: (body: Record<string, unknown>)
   const sent: Record<string, unknown>[] = [];
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const path = String(url);
-    if (path.includes("transcript-words")) return Response.json({ code: "not_found" }, { status: 404 });
+    if (path.includes("transcript-words")) return read.then(() => Response.json({ code: "not_found" }, { status: 404 }));
     if (path.includes("transcript-corrections") && init?.method === "PATCH") {
       const body = JSON.parse(String(init.body));
       sent.push(body);
@@ -1399,6 +1404,7 @@ async function namingRun(t: TestContext, onSave: (body: Record<string, unknown>)
     flowId: "flow-1",
     flowName: "Nämndmöte till rapport",
     run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
+    savedCorrections: saved as never,
     steps: [],
     stepResults: [transcribe] as never,
     files: [pdf],
@@ -1506,6 +1512,38 @@ test("Spara namnen sends nothing for the names Eneo has, sends refused names aga
   assert.equal(hasNamesDraft({ ownerId: "user-1", name: "names:run-1" }), false, "and lets the typed names go");
   assert.equal(button(view.container, "Försök spara igen"), null, "nothing is left unsaved");
   assert.ok(button(view.container, "Anna Berg, ändra talare"));
+});
+
+test("the notice over a document older than names says so from the first draw, and keeps its words while the transcript is read", async (t) => {
+  let read!: () => void;
+  const { open } = await namingRun(t, async () => Response.json({}), {
+    saved: [{
+      flow_run_id: "run-1", step_id: "step-1", schema_version: 3, segments_hash: "a".repeat(64), occurrences: [], speaker_edits: [],
+      speaker_names: { SPEAKER_00: "Anna Berg" }, revision: 1, stale: false, updated_at: "2026-09-24T10:00:00Z",
+    }],
+    read: new Promise<void>((resolve) => (read = resolve)),
+  });
+  const view = await open();
+  const note = view.container.querySelector('[role="note"]')!;
+  assert.match(
+    note.textContent ?? "",
+    /^Dokumentet skapades före dina ändringarNamnen syns redan i transkriberingen, och dokumentet får dem när du skapar det igen\./,
+    "by the run's own read",
+  );
+  // What the notice draws over again while the transcript is read and taken in: its words, or which of its two ways shows.
+  const redrawn: string[] = [];
+  new window.MutationObserver((records) => {
+    for (const record of records) {
+      redrawn.push(record.type === "attributes" ? `${record.attributeName} was ${record.oldValue}` : record.oldValue ?? [...record.removedNodes].map((node) => node.textContent).join(""));
+    }
+  }).observe(note, { subtree: true, childList: true, characterData: true, characterDataOldValue: true, attributeFilter: ["data-shown"], attributeOldValue: true });
+  await view.act(async () => {
+    read();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  assert.ok(button(view.container, "Anna Berg, ändra talare"), "the transcript is read");
+  assert.deepEqual(redrawn, [], "the same words throughout: never the corrections' sentence, nor that they could not be read");
+  assert.equal(button(note, "Skapa dokumentet igen")!.disabled, false, "and now it acts");
 });
 
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {
