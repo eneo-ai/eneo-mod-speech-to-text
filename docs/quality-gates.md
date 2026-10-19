@@ -11,7 +11,7 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`. **
 | backend | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | backendens app i processen, med falska Eneo-svar | Inloggning, proxy, uppladdning, filer, live-relä, statisk servering, konfiguration. |
 | gaten | `npm run test:a11y` | Vites utvecklingsserver, med stubben som backend | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. |
 | gaten, riktigt mål | `npm run test:a11y:real` | samma lägen och specar på `dist-check/`, serverad av den riktiga backenden under den strikta policyn, stubben som Eneo | Det som levereras, med en vaktpost som stoppar policybrott, omdirigeringar och oväntade fel. |
-| gaten, granskning | `npm run test:a11y:review` | samma som gaten, startad med `SPEAKER_REVIEW_ENABLED=true` | Granskningssidan med granskningen på. |
+| gaten, granskning | `npm run test:a11y:review` | samma som gaten, startad med `SPEAKER_REVIEW_ENABLED=true` | Granskningssidan, och **Namnge talare** på en färdig körnings resultat, med granskningen på. |
 | gaten, branding | `npm run test:a11y:branding` | samma som gaten, med stubben som en annan organisation | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. |
 | produktion | `npm run test:prod` | `dist/` och `dist-check/` serverade av den riktiga backenden, stubben som Eneo | Det byggda gränssnittet och backenden tillsammans: headers, routing, första målningen, gamla flikar, vikt. |
 | imagen | `npm run test:image` | den byggda imagen bakom Traefik, stubben som Eneo | Produktionsimagen: en process, headers, uppladdningar, WebSocket, minne, stopp. |

@@ -5,7 +5,7 @@
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { isLaptop, run } from "./screens";
+import { api, isLaptop, run, startedRun } from "./screens";
 import { declare } from "./sentinel";
 import ids from "../fixtures/ids.json";
 
@@ -13,29 +13,6 @@ import ids from "../fixtures/ids.json";
 const FLOW = ids.flows.flow1;
 
 test.beforeEach(({}, info) => test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop"));
-
-/** A request as the page's own code makes one: from its origin, naming its user (the real backend asks it of a write). */
-function api(page: Page, method: string, path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
-  return page.evaluate(
-    async ({ method, path, body }) => {
-      const response = await fetch(`/api/eneo/flows/${path}`, {
-        method,
-        headers: { "Content-Type": "application/json", "X-Expected-User": "user-1" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      return { status: response.status, json: await response.json() };
-    },
-    { method, path, body },
-  );
-}
-
-/** A run of the flow, started as the page starts one, and the stub's answer to its status read until it is done. */
-async function startedRun(page: Page): Promise<{ id: string; finish: () => Promise<void> }> {
-  await page.goto(`/flows/${FLOW}`);
-  const { json: started } = await api(page, "POST", `${FLOW}/runs/`, {});
-  const id = String(started.id);
-  return { id, finish: async () => void (await Promise.all([0, 1, 2].map(() => api(page, "GET", `${FLOW}/runs/${id}/status/`)))) };
-}
 
 /** Chooses an action of the transcript's heading: beside it where the row has room, in its menu where it has not. */
 async function transcriptAction(page: Page, name: string) {

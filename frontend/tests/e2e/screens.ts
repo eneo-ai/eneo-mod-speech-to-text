@@ -309,6 +309,32 @@ export async function run(page: Page, id: string, flow = ids.flows.flow1) {
   await page.goto(`/flows/${flow}?run=${id}`);
 }
 
+/** A request as the page's own code makes one: from its origin, naming its user (the real backend asks it of a write). */
+export function api(page: Page, method: string, path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
+  return page.evaluate(
+    async ({ method, path, body }) => {
+      const response = await fetch(`/api/eneo/flows/${path}`, {
+        method,
+        headers: { "Content-Type": "application/json", "X-Expected-User": "user-1" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { status: response.status, json: await response.json() };
+    },
+    { method, path, body },
+  );
+}
+
+/**
+ * A run of `flow`, started as the page starts one, and the stub's answer to its status read until it is done. The stub
+ * keeps the corrections of a run started this way, names too.
+ */
+export async function startedRun(page: Page, flow = ids.flows.flow1): Promise<{ id: string; finish: () => Promise<void> }> {
+  await page.goto(`/flows/${flow}`);
+  const { json: started } = await api(page, "POST", `${flow}/runs/`, {});
+  const id = String(started.id);
+  return { id, finish: async () => void (await Promise.all([0, 1, 2].map(() => api(page, "GET", `${flow}/runs/${id}/status/`)))) };
+}
+
 /**
  * Holds the requests to `url`: the module took them and says nothing. `letThrough` lets the requests made after it go on
  * as they would; the held ones stay held.
