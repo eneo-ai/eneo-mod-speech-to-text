@@ -181,6 +181,20 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
 
+### Strömma for a room
+- "Visa i helskärm" at the live sheet's head puts the recording's section (the sheet and the bar with Pausa and Stoppa)
+  alone on the whole screen, for a projector or a screen on the wall: a name that says what happens, where "for the
+  room" could be read as sharing. Strömma's line in the setup says it too ("också i helskärm för rummet"), so it is known
+  before the meeting. Both only where it is offered: from 768 px, in a browser that shows an element on the whole
+  screen (not an iPhone).
+- The text is sized from the screen's width (about 74 px on a 1920 px picture, 54 px on 1280: some 45 characters a
+  line), in medium weight with caption leading.
+- What the room reads speaks to no one in particular: "Preliminär text, kan innehålla fel", and live text's notices
+  without the presenter's "när du stoppar". A pause is written where the text stopped, for a room that sees the bar
+  only from afar; a screen reader hears it once, from the page, whose announcements stand inside the section. The bar
+  keeps its controls and warnings, and leaves out its calm lines to the presenter.
+- Esc or "Lämna helskärm" brings the page back, and the room view ends with the recording.
+
 ### Files
 - A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first. A row too short for the name and its actions puts the actions under the name, never a name of three lines between them.
 

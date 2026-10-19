@@ -11,6 +11,7 @@ import {
 } from "./recording-store";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus } from "./online-status";
+import { recordingNotices } from "./recording-view";
 import { mayContinue, RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
 import { submitRecording } from "./submit-run";
 
@@ -735,7 +736,7 @@ test("after Stoppa, 'Fortsätt spela in' records on in a new part of the same re
   await capture.continueStopped(stopped.id, limits);
   assert.equal(capture.getSnapshot().status, "recording");
   assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
-  assert.equal(capture.getSnapshot().remainingMs, 8_350, "in the last file the flow takes");
+  assert.equal(capture.timeLeftMs(), 8_350, "in the last file the flow takes");
   now = 3_000;
   recorders[1].emit("b");
   const again = (await capture.stop())!;
@@ -1259,7 +1260,7 @@ test("before a part is too large to send, a new part starts, and the two overlap
   assert.equal(recorders[0].state, "inactive", "until 150 ms later");
   await settle(); // its last chunk
   assert.equal(capture.elapsedMs(), 10_150, "the overlap counts once");
-  assert.equal(capture.getSnapshot().remainingMs, 16_700, "the new part and one more");
+  assert.equal(capture.timeLeftMs(), 16_700, "the new part and one more");
   assert.equal(streams.length, 1, "the same microphone: no new permission");
   assert.equal(streams[0].track.readyState, "live");
   assert.equal(capture.getSnapshot().status, "recording");
@@ -1319,19 +1320,70 @@ test("the room left in a part follows the recording's rate: a faster encoder sta
 test("the recorder tells how much recording time the flow still takes", async () => {
   const unbounded = await setup();
   await unbounded.capture.start(meeting, { maxBytes: LIMIT });
-  assert.equal(unbounded.capture.getSnapshot().remainingMs, null, "no file count, no end");
+  assert.equal(unbounded.capture.timeLeftMs(), null, "no file count, no end");
 
   const { capture, recorders } = await setup();
   await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 2 });
   // Each part holds 50 000 − 16 600 B before the next starts: 8 350 ms at 32 kbit/s.
-  assert.equal(capture.getSnapshot().remainingMs, 16_700);
+  assert.equal(capture.timeLeftMs(), 16_700);
   recorders[0].emit(CHUNK);
-  assert.equal(capture.getSnapshot().remainingMs, 14_700);
+  assert.equal(capture.timeLeftMs(), 14_700);
 
   let now = 0;
   const timed = await setup({ now: () => now });
   await timed.capture.start(meeting, { maxDurationMs: 5 * 3_600_000, maxFiles: 1 });
-  assert.equal(timed.capture.getSnapshot().remainingMs, 5 * 3_600_000 - 60_000, "a time limit alone ends it too");
+  assert.equal(timed.capture.timeLeftMs(), 5 * 3_600_000 - 60_000, "a time limit alone ends it too");
+});
+
+test("the snapshot carries the time left as the tier the page tells of, and says nothing while the tier stands", async () => {
+  const MINUTE = 60_000;
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  // 21 minutes less the minute of room: 20 minutes of recording.
+  await capture.start(meeting, { maxRecordingMs: 21 * MINUTE });
+  let told = 0;
+  capture.subscribe(() => (told += 1));
+  const noticesAt = (remainingMs: number | null) =>
+    recordingNotices({ phase: "recording", silent: false, lowSpace: false, persistent: true, refused: null, remainingMs, muted: false, wakeLock: true });
+
+  // Around every boundary the page tells exactly what it would from the exact time left.
+  for (const left of [20 * MINUTE, 15 * MINUTE + 1, 15 * MINUTE, 15 * MINUTE - 1, 5 * MINUTE + 1, 5 * MINUTE, 5 * MINUTE - 1, 1]) {
+    now = 20 * MINUTE - left;
+    recorders[0].emit("x");
+    assert.equal(capture.timeLeftMs(), left);
+    assert.deepEqual(noticesAt(capture.getSnapshot().remainingMs), noticesAt(left), `${left} ms left`);
+  }
+  assert.equal(capture.getSnapshot().remainingMs, 5 * MINUTE);
+
+  // Chunks inside a tier tell nobody.
+  now = 20 * MINUTE - 4 * MINUTE;
+  recorders[0].emit("x");
+  const settled = told;
+  for (let at = 4 * MINUTE; at > 2 * MINUTE; at -= 2_000) {
+    now = 20 * MINUTE - at;
+    recorders[0].emit("x");
+  }
+  assert.equal(told, settled, "30 s ago and now are both 'under five minutes'");
+
+  // The limit still stops the recording the moment the exact time is gone.
+  now = 20 * MINUTE - 1;
+  recorders[0].emit("x");
+  assert.equal(capture.getSnapshot().limitReached, false);
+  now = 20 * MINUTE;
+  recorders[0].emit("x");
+  assert.equal(capture.getSnapshot().limitReached, true);
+  assert.equal(capture.getSnapshot().remainingMs, 0);
+  await until(() => capture.getSnapshot().status === "stopped", "the stop at the end");
+});
+
+test("a patch that changes nothing does not notify", async () => {
+  const { capture, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT });
+  let told = 0;
+  capture.subscribe(() => (told += 1));
+  recorders[0].emit("x");
+  recorders[0].emit("x");
+  assert.equal(told, 0, "no end, so the chunks leave the snapshot as it was");
 });
 
 test("when the flow's last file is full the recording stops with that reason and keeps everything", async (t) => {
@@ -1383,7 +1435,7 @@ test("a part hands over before Eneo's time per file, in recorded time without pa
   now = 6 * HOUR - 61_000;
   recorders[0].emit("x");
   assert.equal(recorders.length, 1, "4:58:59 recorded");
-  assert.equal(capture.getSnapshot().remainingMs, 1_000 + (5 * HOUR - 60_000), "this part's last second, and one more file");
+  assert.equal(capture.timeLeftMs(), 1_000 + (5 * HOUR - 60_000), "this part's last second, and one more file");
   now = 6 * HOUR - 60_000;
   recorders[0].emit("x");
   assert.equal(recorders.length, 2, "at 4:59 a new part takes over: the last minute is room for the final chunk and the overlap");
@@ -1399,7 +1451,7 @@ test("parts turn over at Eneo's part length, and the recording stops before Eneo
   const { capture, recorders } = await setup({ now: () => now });
   await capture.start(meeting, ONE_RECORDING);
   // The room: a minute, and a second for each handover's overlap.
-  assert.equal(capture.getSnapshot().remainingMs, FIVE_HOURS - 60_000, "the recording's end, not ten times five hours");
+  assert.equal(capture.timeLeftMs(), FIVE_HOURS - 60_000, "the recording's end, not ten times five hours");
   now = 30 * 60_000 - 1;
   recorders.at(-1)!.emit("x");
   assert.equal(recorders.length, 1);
@@ -1449,7 +1501,7 @@ test("the recording's time left counts every part so far", async () => {
   recorders.at(-1)!.emit("x");
   assert.equal(recorders.length, 2);
   // 45 minutes recorded, one handover so far.
-  assert.equal(capture.getSnapshot().remainingMs, FIVE_HOURS - 45 * 60_000 - 60_000 - 1_000);
+  assert.equal(capture.timeLeftMs(), FIVE_HOURS - 45 * 60_000 - 60_000 - 1_000);
 });
 
 test("the stop comes by the recorded clock in the last part too, with its handover's room", async (t) => {
@@ -1654,7 +1706,7 @@ test("when the flow's last file reaches Eneo's time the recording stops, says wh
   await capture.start(meeting, { maxDurationMs: FIVE_HOURS, maxBytes: 10 ** 12, maxFiles: 1 });
   now = 5 * HOUR - 16 * 60_000;
   recorders[0].emit("a");
-  assert.equal(capture.getSnapshot().remainingMs, 15 * 60_000, "15 minutes left: the bar says so");
+  assert.equal(capture.timeLeftMs(), 15 * 60_000, "15 minutes left: the bar says so");
   now = 5 * HOUR - 60_000;
   recorders[0].emit("b");
   await until(() => capture.getSnapshot().status === "stopped", "the stop at the limit");
@@ -1698,7 +1750,7 @@ test("after an interruption, 'Fortsätt spela in' is refused once the flow takes
   recorders[0].emit(CHUNK);
   streams[0].track.lose("ended");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
-  assert.equal(capture.getSnapshot().remainingMs, 0, "nothing more fits");
+  assert.equal(capture.timeLeftMs(), 0, "nothing more fits");
 
   await capture.continueRecording();
   assert.equal(capture.getSnapshot().status, "interrupted");

@@ -26,6 +26,22 @@
   }
 }
 
+/* Shown to a room (Strömma's "Visa i helskärm"): the recording's section alone on the screen, on the page's own colour
+   (a whole-screen element is otherwise drawn over black), with the live text above the bar of controls. The side room is
+   the bar's widest gutter (Recorder.module.css), which it reaches into; below a laptop's width the bar runs to the
+   screen's bottom edge, as it does on the page. */
+.capture:fullscreen {
+  box-sizing: border-box;
+  padding: var(--spacing-6) var(--spacing-8);
+  background: var(--color-background-body);
+}
+
+@media (max-width: 1023.98px) {
+  .capture:fullscreen {
+    padding-block-end: 0;
+  }
+}
+
 /* A short screen: the work's parts stand closer, the height is the stage's. */
 @media (max-height: 480px) {
   .capture {

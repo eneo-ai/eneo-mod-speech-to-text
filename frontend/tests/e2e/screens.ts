@@ -816,6 +816,20 @@ export const STATES: State[] = [
     },
   },
   {
+    // Strömma shown to a room (a projector, a screen on the wall): the recording's section alone on the whole screen. From a
+    // tablet's width: a phone is not offered it.
+    name: "stromma-room",
+    only: (info) => (info.project.use.viewport?.width ?? 0) >= 768,
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Strömma");
+      await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
+      await page.getByRole("button", { name: "Visa i helskärm" }).click();
+      await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+      await expect(page.getByRole("heading", { name: "Preliminär text, kan innehålla fel" })).toBeVisible();
+    },
+  },
+  {
     name: "leave-dialog",
     go: async (page) => {
       await setup(page);

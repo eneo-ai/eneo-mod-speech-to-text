@@ -5,6 +5,7 @@ import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -14,10 +15,11 @@ import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
+import { detailRows, detailsSummary } from "@/lib/recording-view";
 import type { Playback } from "@/lib/playback";
 import { rememberPosition } from "@/lib/playback-position";
 import { fileText, runFileName, transcriptFileName, type ResultFileView } from "@/lib/run-files";
-import type { StepView } from "@/lib/run-progress";
+import { ofContractVersion, type StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
 import { correctionsNewerThanDocument, regenerationOffer } from "@/lib/regenerate";
@@ -109,6 +111,12 @@ export function RunResult({
   // Known from the run's own read, before the transcript is: the notice has its place from the first draw, so the
   // document under it does not move when the transcript arrives. It can act once the transcript is read.
   const olderThanCorrections = showTranscript && !delivered && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
+  const regenerates = Boolean(offer || olderThanCorrections);
+  // The details the run was started with (meeting name, participants), as the failure and progress views show them:
+  // only on the flow version the contract describes, and only the filled ones.
+  const fields = contract?.form_fields ?? [];
+  const details = (run.input_payload_json ?? {}) as Record<string, unknown>;
+  const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaQuery(LAPTOP, true);
@@ -155,7 +163,7 @@ export function RunResult({
           )}
         </VStack>
       )}
-      {(offer || olderThanCorrections) && (
+      {regenerates && (
         <RegenerateNotice
           offer={offer}
           reading={transcript.pending}
@@ -224,6 +232,12 @@ export function RunResult({
                     {fromReviewed && " från den rättade transkriberingen"}
                   </Text>
                 )}
+                {detailsLine && (
+                  // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
+                  <Text as="p" type="supporting" maxLines={2}>
+                    {detailsLine}
+                  </Text>
+                )}
               </VStack>
               <HStack vAlign="center" gap={2}>
                 <Button variant="ghost" icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
@@ -232,7 +246,25 @@ export function RunResult({
             <VStack gap={4}>
               {tabs && (
                 <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
-                  <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
+                  {/* The notice that the document can be made again is in this panel: while the other tab is chosen it is
+                      out of sight, and this tab carries a dot whose words go on from the tab's own ("Dokument kan
+                      skapas igen med rättningarna", the notice's own verb), and say so on hover too. With this tab chosen
+                      the notice itself is there, and the dot would only repeat it. */}
+                  <Tab
+                    value="document"
+                    id={PANELS.document.tab}
+                    panelId={PANELS.document.panel}
+                    label={words.tab}
+                    endContent={
+                      regenerates && view === "transcript" ? (
+                        <StatusDot
+                          variant="accent"
+                          label="kan skapas igen med rättningarna"
+                          tooltip={`${words.tab} kan skapas igen med rättningarna`}
+                        />
+                      ) : undefined
+                    }
+                  />
                   <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkribering" />
                 </TabList>
               )}

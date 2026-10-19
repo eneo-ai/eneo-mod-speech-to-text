@@ -9,5 +9,6 @@
     - text: /Spelar in 0:\d+/
     - button "Pausa"
     - button "Stoppa"
-  - status
+  - status:
+    - paragraph: "Lås inte skärmen och byt inte app: ljud kan saknas."
   - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.

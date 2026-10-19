@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -79,6 +79,9 @@ const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 const REMOVED = "Inspelningen togs bort.";
 
 const PHONE = "(max-width: 767.98px)";
+// A touch screen, which locks and whose apps switch under a recording, tall enough that the bar's line about it leaves the
+// text its room; on a smaller one the line stands only among the tips before the start ("Så fungerar det").
+const TOUCH = "(pointer: coarse) and (min-height: 640px)";
 // From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
 const COLUMNS = "(min-width: 1024px)";
 
@@ -248,10 +251,6 @@ export function FlowInput({
           />
         }
       >
-        {/* Recording state changes are said once here; the timer never is. */}
-        <VisuallyHidden as="p" role="status">
-          {removed ? REMOVED : recordingAnnouncement(phase)}
-        </VisuallyHidden>
         <VStack
           as="section"
           ref={workspace}
@@ -259,6 +258,12 @@ export function FlowInput({
           gap={group === "capture" ? 4 : 6}
           className={group === "capture" ? [styles.capturePane, styles.capture].join(" ") : group === "setup" ? styles.setup : undefined}
         >
+          {/* Recording state changes are said once here; the timer never is. Inside the section, so they are still heard
+              when Strömma shows the section alone on the whole screen: a browser then hides the rest of the page from
+              assistive technology. */}
+          <VisuallyHidden as="p" role="status">
+            {removed ? REMOVED : recordingAnnouncement(phase)}
+          </VisuallyHidden>
           <OfflineBanner waiting={group === "capture" ? "recording" : null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
           {group === "setup" ? (
@@ -298,6 +303,7 @@ export function FlowInput({
               input={input}
               speakers={labelsSpeakers(contract.transcription?.speaker_labels, snapshot.speakerLabels)}
               makesText={text}
+              room={workspace}
             />
           )}
         </VStack>
@@ -310,12 +316,26 @@ export function FlowInput({
   );
 }
 
-/** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
-function CaptureWorkspace({ input, speakers, makesText }: { input: Session; speakers: boolean; makesText: boolean }) {
+/**
+ * Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. `room` is
+ * the recording's section, which Strömma can show alone on the whole screen.
+ */
+function CaptureWorkspace({
+  input,
+  speakers,
+  makesText,
+  room,
+}: {
+  input: Session;
+  speakers: boolean;
+  makesText: boolean;
+  room: RefObject<HTMLElement | null>;
+}) {
   const { session, snapshot, capture, persistent } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
+  const coarsePointer = useMediaQuery(TOUCH);
   const { warnings, notes } = recordingNotices({
     phase,
     silent,
@@ -334,6 +354,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     error: problem || capture.stopping ? null : capture.error,
     wakeLock: !capture.screenMayDim,
     makesText,
+    coarsePointer,
   });
   // Stoppa asks first only where it cannot be taken back with Fortsätt spela in: the flow takes no further part of the
   // recording. Asked from the sign-in dialog, the question opens above it; asked from the page, it is closed while the
@@ -352,7 +373,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
       {streaming ? (
-        <LiveSheet live={live} recorder={capture.status} speakers={speakers} />
+        <LiveSheet live={live} recorder={capture.status} speakers={speakers} room={room} />
       ) : (
         <FocusedRecorder
           capture={session.capture}

@@ -55,8 +55,9 @@ function tagControls(selector: string): Control[] {
   };
   const modal = modals.find(onTop) ?? modals.at(-1);
   const popover = [...document.querySelectorAll("[popover]")].filter((element) => element.matches(":popover-open") && element.querySelector(selector)).at(-1);
-  // Under an open modal, or an open menu, what lies behind it cannot be reached.
-  const scope: ParentNode = modal ?? popover ?? document;
+  // Under an open modal, or an open menu, what lies behind it cannot be reached; nor can what is outside an element shown
+  // on the whole screen (Strömma's room view), which covers the rest of the page.
+  const scope: ParentNode = modal ?? popover ?? document.fullscreenElement ?? document;
   const found: Control[] = [];
   const seen = new Set<Element>();
   for (const element of scope.querySelectorAll(selector)) {

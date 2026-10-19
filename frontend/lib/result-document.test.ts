@@ -521,6 +521,7 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
   assert.equal(tab("Dokument").getAttribute("aria-selected"), "true", "the document first");
+  assert.equal(tab("Dokument").querySelector('[role="img"]'), null, "nothing to make again, so no sign on the tab");
   const panels = [...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
   assert.equal(panels.length, 2, "both views stay mounted");
   // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
@@ -589,7 +590,15 @@ test("a failed later save keeps the note that the document is older, and says wh
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const note = () => view.container.querySelector('[role="note"]');
   assert.ok(note(), "saved corrections are newer than the document");
-  assert.equal(button(note()!, "Skapa dokumentet igen med rättningarna")!.disabled, false);
+  assert.equal(button(note()!, "Skapa dokumentet igen")!.disabled, false);
+  // The notice is in the Dokument panel. With that tab chosen the notice is in view and the tab carries nothing more;
+  // while the person corrects on the other tab, the Dokument tab says so.
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
+  const dots = (name: string) => [...tab(name).querySelectorAll('[role="img"]')].map((dot) => dot.getAttribute("aria-label"));
+  assert.deepEqual(dots("Dokument"), [], "the notice is in view: no dot");
+  await view.act(async () => tab("Transkribering").click());
+  assert.deepEqual(dots("Dokument"), ["kan skapas igen med rättningarna"], "the tab is called Dokument kan skapas igen med rättningarna");
+  assert.deepEqual(dots("Transkribering"), []);
 
   // A later correction fails to save.
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
@@ -995,7 +1004,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
   assert.equal(view.container.querySelector("h1")?.textContent, "Texten är klar");
   const note = view.container.querySelector('[role="note"]')!;
   assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
-  assert.ok(button(note, "Skapa texten igen med rättningarna"), "Skapa texten igen");
+  assert.ok(button(note, "Skapa texten igen"), "Skapa texten igen");
   assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkribering"]);
   assert.ok(view.container.querySelector('[role="region"][aria-label="Texten"]'), "the text, named as such");
   assert.doesNotMatch(view.container.textContent ?? "", /[Dd]okument/);
@@ -1298,4 +1307,53 @@ test("the document's own download is checked the same way", async (t) => {
   await view.act(async () => void press(link));
   assert.deepEqual(started, []);
   assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+});
+
+test("the result says what the run was started with, when the flow's version is the contract's own", async () => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const fields = [
+    { name: "motesnamn", label: "Mötets namn", type: "text" },
+    { name: "deltagare", label: "Deltagare", type: "text" },
+  ];
+  const render = async (flow_version: number, input: unknown) =>
+    mount(
+      await asPerson(createElement(RunResult, {
+        flowId: "flow-1",
+        flowName: "Nämndmöte till rapport",
+        run: { id: "run-1", flow_id: "flow-1", flow_version, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", input_payload_json: input, result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
+        steps: [],
+        stepResults: [],
+        files: [pdf],
+        showTranscript: false,
+        contract: { published_flow_version: 3, form_fields: fields } as never,
+        onNewRecording: () => undefined,
+        onRegenerated: () => undefined,
+      })),
+    );
+  const header = (view: Awaited<ReturnType<typeof render>>) => view.container.querySelector("h1")?.parentElement?.textContent ?? "";
+  assert.match(header(await render(3, { motesnamn: "Kommunstyrelsen", deltagare: ["Anna Berg", "Erik Lund"] })), /Mötets namn: Kommunstyrelsen · Deltagare: Anna Berg, Erik Lund/);
+  await cleanup();
+  assert.doesNotMatch(header(await render(2, { motesnamn: "Kommunstyrelsen" })), /Mötets namn/, "details of another version are not labelled by today's form");
+  await cleanup();
+  assert.doesNotMatch(header(await render(3, { annat: "x" })), /Inga uppgifter/, "no line when no detail was filled in");
+  await cleanup();
+  assert.doesNotMatch(header(await render(3, null)), /Inga uppgifter/, "nor when the run has no details");
+});
+
+test("an uncertain word says how to put it right where the result allows it", async () => {
+  const { createElement } = await import("react");
+  const { TranscriptPlayer } = await import("../components/TranscriptPlayer");
+  const word = { word: "budgeten.", start: 2, end: 3, probability: 0, charStart: 0, charEnd: 9, uncertain: true };
+  const segments = [{ fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_00", text: "budgeten.", words: [word] }];
+  const base = { segments, fileCount: 1, audioSrcFor: () => "/audio", speakerNames: {}, textFallback: "" };
+  const status = async (extra: Record<string, unknown>) => {
+    const view = await mount(await asPerson(createElement(TranscriptPlayer, { ...base, ...extra } as never)));
+    const text = [...view.container.querySelectorAll("p")].find((p) => p.textContent?.includes("kunde inte hittas i ljudet"))?.textContent ?? "";
+    await cleanup();
+    return text;
+  };
+  assert.match(await status({ editable: true, onCorrectionsChange: () => undefined }), /^1 ord kunde inte hittas i ljudet\. Rätta repliken om ordet är fel\.$/);
+  assert.match(await status({ editable: true, onCorrectionsChange: () => undefined, onToggleConfirmed: () => undefined }), /Lyssna och bekräfta att de stämmer, eller rätta repliken\.$/);
+  assert.match(await status({}), /^1 ord kunde inte hittas i ljudet\. Ett klick på ordet spelar upp det\.$/);
 });

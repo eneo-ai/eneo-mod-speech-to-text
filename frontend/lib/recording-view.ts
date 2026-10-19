@@ -7,14 +7,13 @@ import type { FormField } from "./api";
 import type { Problem, SessionPhase } from "./flow-session";
 import { formatClock, formatDuration } from "./format";
 import type { LiveStatus } from "./live-transcriber";
-import type { CaptureStatus } from "./recording-session";
+import { TIME_LEFT_NOTE_MS, TIME_LEFT_WARNING_MS, type CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
 import { documentTitle } from "./product";
 
 /** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
 export const stopLine = (makesText: boolean) =>
   `Stoppa avslutar inspelningen. Sedan kan du skapa ${makesText ? "texten" : "dokumentet"}.`;
-const MINUTE = 60_000;
 
 const SILENT_AFTER_MS = 15_000;
 // Two steps of 16-bit audio (about −84 dBFS).
@@ -81,6 +80,7 @@ export function recordingNotices({
   wakeLock,
   backOnDevice = false,
   makesText = false,
+  coarsePointer = false,
 }: {
   phase: SessionPhase;
   silent: boolean;
@@ -106,6 +106,8 @@ export function recordingNotices({
   wakeLock: boolean;
   /** The flow ends in text, not a file. */
   makesText?: boolean;
+  /** A touch device: the screen locks and apps switch under a recording, which then loses audio. */
+  coarsePointer?: boolean;
 }): { warnings: Problem[]; notes: string[] } {
   const warnings: Problem[] = [];
   const notes: string[] = [];
@@ -133,11 +135,11 @@ export function recordingNotices({
       detail: "Kontrollera mikrofonen. Står varningen kvar, välj Stoppa: det som hunnit spelas in sparas, och du kan spela in vidare.",
     });
   }
-  if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
+  if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= TIME_LEFT_NOTE_MS) {
     // Two steps, never a count: a calm note from fifteen minutes, and a warning from five, when what is said after the
-    // end is close to not being recorded.
+    // end is close to not being recorded. The recorder publishes the time left in these same steps.
     const stops = "Då stoppas inspelningen och det som spelats in sparas.";
-    if (remainingMs <= 5 * MINUTE) warnings.push({ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops });
+    if (remainingMs <= TIME_LEFT_WARNING_MS) warnings.push({ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops });
     else notes.push(`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`);
   }
   if (phase === "recording" && silent && !muted) {
@@ -175,6 +177,8 @@ export function recordingNotices({
     notes.push(`Sidan låg i bakgrunden i ${formatDuration(hiddenGap)}. Ljud från den tiden kan saknas.`);
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
+  // Said before it happens; the gaps above say it after.
+  if (phase === "recording" && coarsePointer) notes.push("Lås inte skärmen och byt inte app: ljud kan saknas.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
   return { warnings, notes };
 }
@@ -278,18 +282,20 @@ export function atBottom({
  * What live text is doing, apart from the recording. Said only while the
  * recorder confirms that it records, so a delayed draft never reads as a
  * stopped microphone and "Inspelningen fortsätter" is never a guess.
+ * Shown to a room (`room`), it speaks to no one in particular.
  */
-export function liveStatusLine(live: LiveStatus, started: boolean, recorder: CaptureStatus): string | null {
+export function liveStatusLine(live: LiveStatus, started: boolean, recorder: CaptureStatus, room = false): string | null {
   if (recorder !== "recording") return null;
+  const later = room ? "" : ", och texten skapas när du stoppar";
   switch (live) {
     case "reconnecting":
       return started
         ? "Livetexten pausades. Inspelningen fortsätter."
         : "Livetexten kan inte starta just nu. Inspelningen fortsätter.";
     case "unavailable":
-      return "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.";
+      return `Livetexten kunde inte starta. Inspelningen fortsätter${later}.`;
     case "stopped":
-      return "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar.";
+      return `Livetexten stannade. Inspelningen fortsätter${later}.`;
     default:
       return null;
   }

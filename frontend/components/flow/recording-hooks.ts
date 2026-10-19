@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useInputLevel } from "@/components/flow/LevelMeter";
 import type { LiveStatus } from "@/lib/live-transcriber";
 import type { RecordingCapture } from "@/lib/recording-session";
 import { SilenceWatch } from "@/lib/recording-view";
 
-/** Recorded time from the recorder itself, refreshed while it records. */
+/** Recorded time from the recorder itself in whole seconds (all the clock and the tab title show), refreshed while it records. */
 export function useElapsed(capture: RecordingCapture, running: boolean): number {
-  const [elapsed, setElapsed] = useState(() => capture.elapsedMs());
+  const seconds = () => Math.floor(capture.elapsedMs() / 1000) * 1000;
+  const [elapsed, setElapsed] = useState(seconds);
   useEffect(() => {
-    setElapsed(capture.elapsedMs());
+    setElapsed(seconds());
     if (!running) return;
-    const timer = setInterval(() => setElapsed(capture.elapsedMs()), 250);
+    const timer = setInterval(() => setElapsed(seconds()), 250);
     return () => clearInterval(timer);
   }, [capture, running]);
   return elapsed;
@@ -65,6 +66,36 @@ export function useDocumentTitle(title: string): void {
     },
     [],
   );
+}
+
+const onFullscreenChange = (change: () => void) => {
+  document.addEventListener("fullscreenchange", change);
+  return () => document.removeEventListener("fullscreenchange", change);
+};
+
+/**
+ * `target` alone on the whole screen (the Fullscreen API): whether it is, and the way in and out (where the browser
+ * offers it at all is the caller's to ask: `document.fullscreenEnabled`). Leaving with Esc is the browser's own.
+ * Whatever the hook's owner shows ends with it: unmounted, it leaves the whole screen, so a page that moves on never
+ * stands there.
+ */
+export function useFullscreen(target: RefObject<HTMLElement | null>) {
+  const active = useSyncExternalStore(
+    onFullscreenChange,
+    () => document.fullscreenElement !== null && document.fullscreenElement === target.current,
+    () => false,
+  );
+  const toggle = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void target.current?.requestFullscreen({ navigationUI: "hide" }).catch(() => undefined);
+  }, [target]);
+  useEffect(() => {
+    const element = target.current;
+    return () => {
+      if (element && document.fullscreenElement === element) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, [target]);
+  return { active, toggle };
 }
 
 /** How long live text must be down before the sheet says so, and up again before it takes the words back. */

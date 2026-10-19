@@ -290,7 +290,7 @@ test("a recording keeps each file within the time the contract gives Eneo's audi
     );
     session.selectMode("spela-in");
     await session.start();
-    return session.capture.getSnapshot().remainingMs!;
+    return session.capture.timeLeftMs()!;
   };
   const timed = await recordFor(90 * 60);
   assert.ok(timed <= 89 * 60_000 && timed > 89 * 60_000 - 10_000, `${timed} ms: bytes alone would allow days`);

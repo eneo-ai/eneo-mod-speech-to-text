@@ -3,15 +3,18 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { useRoomViewOffered } from "@/components/flow/LiveSheet";
 import type { InputMode } from "@/lib/flow-session";
 
 export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: LucideIcon }> = {
   // Each way says what happens to the audio: Strömma sends it to Eneo as it is spoken (flow-session openLive), Spela in
   // keeps it on the device until the person sends it.
-  stromma: { name: "Strömma", line: "Se texten medan du pratar. Ljudet skickas till Eneo direkt.", icon: AudioLines },
-  "spela-in": { name: "Spela in", line: "Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.", icon: Mic },
+  stromma: { name: "Strömma", line: "Se texten medan du pratar. Ljudet skickas till Eneo direkt.", icon: AudioLines },  "spela-in": { name: "Spela in", line: "Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.", icon: Mic },
   "ladda-upp": { name: "Ladda upp", line: "Välj en ljudfil från din enhet.", icon: Upload },
 };
+
+/** Strömma's line where the live text can be shown on the whole screen (LiveSheet's "Visa i helskärm"): known before the meeting. */
+const ROOM_LINE = "Se texten medan du pratar, också i helskärm för rummet. Ljudet skickas till Eneo direkt.";
 
 /**
  * "Hur vill du lägga till ljudet?": the offered modes as one group of radios, each with its line. Selecting only
@@ -30,6 +33,7 @@ export function ModeCards({
   /** Why a way the flow takes is missing here (lib/flow-session missingModesNote). */
   note?: string | null;
 }) {
+  const roomView = useRoomViewOffered();
   return (
     <VStack gap={4}>
       <Heading level={2} data-phase-heading tabIndex={-1}>
@@ -37,7 +41,8 @@ export function ModeCards({
       </Heading>
       <RadioList label="Hur vill du lägga till ljudet?" isLabelHidden value={mode ?? ""} onChange={(value) => onSelect(value as InputMode)}>
         {modes.map((value) => {
-          const { name, line } = MODE_TEXT[value];
+          const { name } = MODE_TEXT[value];
+          const line = value === "stromma" && roomView ? ROOM_LINE : MODE_TEXT[value].line;
           return <RadioListItem key={value} value={value} label={name} description={line} />;
         })}
       </RadioList>

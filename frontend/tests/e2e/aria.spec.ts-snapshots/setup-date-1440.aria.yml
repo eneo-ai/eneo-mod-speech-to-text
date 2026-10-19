@@ -119,8 +119,8 @@
     - button "Stäng kalender":
       - text: ""
       - status
-  - status
   - region "Ljudet":
+    - status
     - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?

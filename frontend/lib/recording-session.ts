@@ -30,6 +30,10 @@ import {
 } from "./recording-store";
 
 const CHUNK_MS = 2_000;
+/** From this much recording time left the page notes it (recordingNotices); the snapshot's `remainingMs` tier. */
+export const TIME_LEFT_NOTE_MS = 15 * 60_000;
+/** From this much recording time left the page warns of it; the snapshot's `remainingMs` tier. */
+export const TIME_LEFT_WARNING_MS = 5 * 60_000;
 // The recorder is looked at every CHUNK_MS while the page is in view. After this many looks without audio from it, it is
 // asked for its audio once; one more without, and the page says that nothing is being kept.
 const QUIET_LOOKS = 3;
@@ -94,7 +98,11 @@ interface CaptureSnapshot {
   backOnDevice: boolean;
   /** The screen may go dark during the recording: the browser holds no wake lock for it (it has none, refused it, or let it go). */
   screenMayDim: boolean;
-  /** Recording time left before the flow's last allowed file is full; null when the flow sets no such limit. */
+  /**
+   * Recording time left before the flow's last allowed file is full, as the tier the page tells of (Infinity above 15
+   * minutes, then 15 minutes, 5 minutes and 0): a value that changes every chunk would render the page every chunk.
+   * null when the flow sets no such limit; `timeLeftMs()` has the exact time.
+   */
   remainingMs: number | null;
   /** The recording stopped because the flow takes no more files. */
   limitReached: boolean;
@@ -625,7 +633,7 @@ export class RecordingCapture {
       // A full part's overlap belongs to its own file, not to the running one.
       if (part !== this.part) return;
       this.largestChunk = Math.max(this.largestChunk, data.size);
-      this.set({ remainingMs: this.remaining(part) });
+      this.set({ remainingMs: this.remainingTier(part) });
       if (!part.ending) this.checkLimit(part);
     };
 
@@ -673,7 +681,7 @@ export class RecordingCapture {
     // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
     this.scheduleHandover(part);
-    this.set({ status: "recording", stream, remainingMs: this.remaining(part) });
+    this.set({ status: "recording", stream, remainingMs: this.remainingTier(part) });
     return part;
   }
 
@@ -805,6 +813,19 @@ export class RecordingCapture {
     return Math.floor(Math.min(running + later, left));
   }
 
+  /** The time left as the snapshot carries it: the highest tier it has reached, Infinity above them all, 0 when none is left. */
+  private remainingTier(part: Part | null): number | null {
+    const left = this.remaining(part);
+    if (left === null) return null;
+    if (left <= 0) return 0;
+    return left <= TIME_LEFT_WARNING_MS ? TIME_LEFT_WARNING_MS : left <= TIME_LEFT_NOTE_MS ? TIME_LEFT_NOTE_MS : Infinity;
+  }
+
+  /** The exact recording time left before the flow's last allowed file is full; null without an end. */
+  timeLeftMs(): number | null {
+    return this.remaining(this.part);
+  }
+
   /** Ends the running parts, a full part still overlapping first; true once both have stopped and their recorders said so. */
   private endParts(reason: EndReason): Promise<boolean> {
     const ended = [this.endOverlap()];
@@ -858,7 +879,7 @@ export class RecordingCapture {
       // The recorder has stopped whatever the device said: the page goes on as interrupted, and says what failed.
       kept = { error: notOnDevice(error) ? NOT_ON_DEVICE : PAUSE_UNCONFIRMED };
     }
-    this.set({ status: "interrupted", stream: null, remainingMs: this.remaining(null), ...kept });
+    this.set({ status: "interrupted", stream: null, remainingMs: this.remainingTier(null), ...kept });
   }
 
   /** The store, opened on the first start; from then on the recorder follows what it says of keeping the recording. */
@@ -1087,6 +1108,8 @@ export class RecordingCapture {
   }
 
   private set(patch: Partial<CaptureSnapshot>) {
+    // A patch that changes nothing tells nobody: the page renders on every notice.
+    if ((Object.keys(patch) as (keyof CaptureSnapshot)[]).every((key) => Object.is(this.snapshot[key], patch[key]))) return;
     this.snapshot = { ...this.snapshot, ...patch };
     this.listeners.forEach((listener) => listener());
   }

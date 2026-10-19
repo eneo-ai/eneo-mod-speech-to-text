@@ -30,8 +30,8 @@
       - text: Anna Berg
       - button "Ta bort Anna Berg"
   - status
-  - status: Spelar in.
   - region "Ljudet":
+    - status: Spelar in.
     - status
     - heading "Inspelning" [level=2]
     - text: /Spelar in 0:\d+/

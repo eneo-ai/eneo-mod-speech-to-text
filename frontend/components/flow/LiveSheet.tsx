@@ -1,7 +1,10 @@
-import { memo, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Minimize2, Presentation } from "lucide-react";
+import { memo, type RefObject, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
@@ -12,7 +15,7 @@ import type { LivePiece } from "@/lib/live-transcriber";
 import type { CaptureStatus } from "@/lib/recording-session";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
 import styles from "./LiveSheet.module.css";
-import { useSettledLiveStatus } from "./recording-hooks";
+import { useFullscreen, useSettledLiveStatus } from "./recording-hooks";
 
 export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   const out: LivePiece[][] = [];
@@ -33,36 +36,65 @@ const Pieces = memo(
 );
 
 /**
+ * Where "Visa i helskärm" is offered: from a tablet's width (on a phone its button would take a line of the text's
+ * little room), in a browser that shows an element on the whole screen (an iPhone does not). The setup's line for
+ * Strömma says so where it is.
+ */
+export function useRoomViewOffered(): boolean {
+  const wide = useMediaQuery("(min-width: 768px)", true);
+  return wide && typeof document !== "undefined" && document.fullscreenEnabled === true;
+}
+
+/**
  * Strömma's workspace: the draft on a document sheet. Committed pieces form a
  * log a screen reader hears once each; words still arriving are shown faintly
  * and not read. The sheet follows new text only while the reader is at its
  * end, keeps its size as text arrives, and never moves focus into the text.
+ *
+ * "Visa i helskärm" puts `room` (the recording's section: this sheet and the bar with Pausa and Stoppa) alone on the
+ * whole screen, for a projector or a screen on the wall: the text in a size read across a room, and what the sheet says
+ * spoken to no one in particular. Esc or "Lämna helskärm" brings the page back, and the room view ends with the
+ * recording.
  */
 export function LiveSheet({
   live,
   recorder,
   speakers = false,
+  room,
 }: {
   live: LiveSession;
   recorder: CaptureStatus;
   /** The run labels speakers, which live text does not show: say they come with the final text. */
   speakers?: boolean;
+  /** What "Visa i helskärm" shows on the whole screen. */
+  room?: RefObject<HTMLElement | null>;
 }) {
+  const offered = useRoomViewOffered();
   const snapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
   const scroller = useRef<HTMLElement>(null);
   const [following, setFollowing] = useState(true);
-  const status = liveStatusLine(useSettledLiveStatus(snapshot.status), snapshot.started, recorder);
+  const noRoom = useRef<HTMLElement>(null);
+  const fullscreen = useFullscreen(room ?? noRoom);
+  const forRoom = fullscreen.active;
+  const status = liveStatusLine(useSettledLiveStatus(snapshot.status), snapshot.started, recorder, forRoom);
   const groups = paragraphs(snapshot.pieces);
   const noText = groups.length === 0 && !snapshot.pending;
   // A failure replaces the placeholder; the persistent status region announces it once.
   const empty = noText && (status !== null || snapshot.status !== "unavailable");
+  // On the presenter's page the text is the sheet's large body text; for a room it takes the room's size (the log's).
+  const size = forRoom ? ({ type: "inherit" } as const) : ({ size: "lg" } as const);
 
-  // After each change, and only while following: keep the newest line in view.
+  // After each change, and only while following: keep the newest line in view, also after the room view resizes it.
   useLayoutEffect(() => {
     const element = scroller.current;
     if (following && element) element.scrollTop = element.scrollHeight;
-  }, [snapshot.pieces, snapshot.pending, following]);
+  }, [snapshot.pieces, snapshot.pending, following, forRoom]);
+
+  function showForRoom() {
+    setFollowing(true);
+    fullscreen.toggle();
+  }
 
   function showLatest() {
     const element = scroller.current;
@@ -75,12 +107,26 @@ export function LiveSheet({
   }
 
   return (
-    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet}>
-      <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
-        {speakers
-          ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
-          : "Preliminär text, den slutliga skapas när du är klar"}
-      </Heading>
+    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
+      <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} className={styles.head}>
+        <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
+          {forRoom
+            ? "Preliminär text, kan innehålla fel"
+            : speakers
+              ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
+              : "Preliminär text, den slutliga skapas när du är klar"}
+        </Heading>
+        {room && offered && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Icon icon={forRoom ? Minimize2 : Presentation} />}
+            label={forRoom ? "Lämna helskärm" : "Visa i helskärm"}
+            onClick={showForRoom}
+            className={styles.roomButton}
+          />
+        )}
+      </HStack>
       <div className={styles.logArea}>
         {/* The log is the scroll area: named, focusable for keyboard scrolling, heard once per piece. */}
         <StackItem
@@ -94,13 +140,13 @@ export function LiveSheet({
           className={styles.log}
         >
           {empty && (
-            <Text as="p" color="secondary" size="lg" aria-hidden={status ? true : undefined}>
-              {status ?? "Texten visas här när du börjar prata."}
+            <Text as="p" color="secondary" {...size} aria-hidden={status ? true : undefined}>
+              {status ?? (forRoom ? "Texten visas här när någon börjar prata." : "Texten visas här när du börjar prata.")}
             </Text>
           )}
           <VStack gap={4} maxWidth="68ch" className={styles.text}>
             {groups.map((group, index) => (
-              <Text as="p" size="lg" key={index}>
+              <Text as="p" {...size} key={index}>
                 <Pieces pieces={group} />
                 {index === groups.length - 1 && snapshot.pending && (
                   <Text type="inherit" color="secondary" aria-hidden>
@@ -110,7 +156,7 @@ export function LiveSheet({
               </Text>
             ))}
             {groups.length === 0 && snapshot.pending && (
-              <Text as="p" size="lg" color="secondary" aria-hidden>
+              <Text as="p" {...size} color="secondary" aria-hidden>
                 {snapshot.pending.trim()}
               </Text>
             )}
@@ -131,6 +177,13 @@ export function LiveSheet({
       <Text as="p" type="supporting" role="status" className={status && !noText ? styles.statusLine : undefined}>
         {noText ? <VisuallyHidden>{status ?? ""}</VisuallyHidden> : status ?? ""}
       </Text>
+      {/* A room sees the bar's Pausa only from afar: the pause is written where the text stopped. The page's own status
+          says it to a screen reader, once. */}
+      {forRoom && recorder === "paused" && (
+        <Text as="p" type="supporting" aria-hidden className={styles.statusLine}>
+          Inspelningen är pausad.
+        </Text>
+      )}
     </Card>
   );
 }

@@ -37,6 +37,7 @@ Runs the page can open with ?run=<id> (runs.<name>):
   corrected     finished like done, its transcript corrected after the document
   pdf           finished, the document only its PDF, previewed from the step's text
   pdfLong       like pdf, a document long enough to fold
+  long          finished like done, its transcript a meeting of about two hours (2,000 passages, three speakers)
 The paused review run has a passage split off to a third speaker, and its
 checkpoint keeps the naming step's own proposal (original_payload_json).
 A run the page starts itself runs for two polls, then finishes like done.
@@ -269,6 +270,13 @@ TIMED_STEP = dict(TRANSCRIBE_STEP, input_payload_json={"transcription": {
                   "words": [dict(w, probability=0.0 if w["word"] == "förvaltningen" else 0.92) for w in words(t, a, b)]}
                  for f, a, b, t in TIMED_SEGMENTS],
     "segments_hash": hashlib.sha256(json.dumps(TIMED_SEGMENTS, ensure_ascii=False).encode()).hexdigest()}})
+# A meeting of about two hours: 2,000 passages of three speakers, the meeting's sentences over and over, every word timed.
+LONG_SEGMENTS = [(0, i * 3.6, i * 3.6 + 3.4, f"SPEAKER_0{i % 3}", SEGMENTS[i % len(SEGMENTS)][4]) for i in range(2000)]
+LONG_STEP = dict(TRANSCRIBE_STEP, input_payload_json={"transcription": {
+    "file_ids": [FILE["audioA"]],
+    "segments": [{"file_index": f, "start": a, "end": b, "speaker": sp, "text": t, "words": words(t, a, b)}
+                 for f, a, b, sp, t in LONG_SEGMENTS],
+    "segments_hash": hashlib.sha256(json.dumps(LONG_SEGMENTS, ensure_ascii=False).encode()).hexdigest()}})
 REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
           "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 REPORT_STEP = {"id": RESULT["report"], "step_id": REPORT_STEP_ID, "step_order": 2, "status": "completed",
@@ -349,6 +357,7 @@ RUNS = {
     RUN["reviewTextApproved"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     RUN["corrected"]: DONE,
     RUN["timed"]: dict(DONE, steps=[TIMED_STEP, REPORT_STEP]),
+    RUN["long"]: dict(DONE, steps=[LONG_STEP, REPORT_STEP]),
     RUN["pdf"]: only_pdf(REPORT),
     RUN["pdfLong"]: only_pdf(LONG_REPORT),
 }

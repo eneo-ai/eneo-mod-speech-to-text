@@ -152,3 +152,59 @@ test("live text that cannot start says why where the promise of text was, and th
   // One sentence in the page's reading order, and one in the status region that announces it.
   await expect(page.getByRole("status").filter({ hasText: sentence })).toHaveCount(1);
 });
+
+test("Visa i helskärm shows the live text and the bar alone on the whole screen, in a size read across a room, and Lämna helskärm brings the page back", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "a laptop on a projector");
+  await longLiveText(page);
+  await setup(page);
+  await record(page, "Strömma");
+  const log = page.getByRole("log", { name: "Preliminär text" });
+  await expect(log).toContainText("oktober", { timeout: 30_000 });
+  const textSize = () => log.evaluate((element) => parseFloat(getComputedStyle(element.querySelector("p")!).fontSize));
+  const onPage = await textSize();
+
+  await page.getByRole("button", { name: "Visa i helskärm" }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute("aria-label") ?? null)).toBe("Ljudet");
+  expect(await textSize(), `the text is read across a room (${onPage} px on the page)`).toBeGreaterThanOrEqual(48);
+  await expect(page.getByRole("heading", { name: "Preliminär text, kan innehålla fel" }), "the room is spoken to as a room").toBeVisible();
+  await expect(page.getByRole("button", { name: "Pausa" }), "the presenter keeps the recording's controls").toBeVisible();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
+  await expect.poll(async () => (await geometry(page)).fromEnd, { message: "the newest line is in view in the larger text" }).toBeLessThan(4);
+
+  // A pause is written for the room, which sees the bar only from afar; a screen reader hears it once, from the page.
+  await page.getByRole("button", { name: "Pausa" }).click();
+  const sheet = page.getByRole("region", { name: "Preliminär text, kan innehålla fel" });
+  await expect(sheet.getByText("Inspelningen är pausad.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Inspelningen är pausad." }), "said once").toHaveCount(1);
+  // What the browser itself gives a screen reader while the section is on the whole screen, where the rest of the page is
+  // inert: the pause is in Chromium's own accessibility tree, once (the room's written line is hidden from it).
+  const cdp = await page.context().newCDPSession(page);
+  const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+  const heard = nodes.filter((node) => !node.ignored && node.role?.value === "StaticText" && node.name?.value === "Inspelningen är pausad.");
+  expect(heard, "the pause is heard in the room view").toHaveLength(1);
+  await page.getByRole("button", { name: "Fortsätt" }).click();
+  await expect(sheet.getByText("Inspelningen är pausad.", { exact: true })).toHaveCount(0);
+
+  const leave = page.getByRole("button", { name: "Lämna helskärm" });
+  await leave.click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await expect(page.getByRole("button", { name: "Visa i helskärm" }), "the focus stays where the presenter pressed").toBeFocused();
+  expect(await textSize()).toBe(onPage);
+});
+
+test("where the browser shows no element on the whole screen (a frame without the permission), the sheet offers no room view", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "a laptop, where the room view is offered");
+  await page.addInitScript(() => Object.defineProperty(Document.prototype, "fullscreenEnabled", { configurable: true, get: () => false }));
+  await setup(page);
+  await record(page, "Strömma");
+  await expect(page.getByRole("log", { name: "Preliminär text" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Visa i helskärm" })).toHaveCount(0);
+});
+
+test("on a phone the room view is not offered: its button would take a line of the text's little room", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone");
+  await setup(page);
+  await record(page, "Strömma");
+  await expect(page.getByRole("log", { name: "Preliminär text" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Visa i helskärm" })).toHaveCount(0);
+});

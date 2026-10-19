@@ -85,7 +85,8 @@ export function RegenerateNotice({
             <Button
               icon={working ? <Spinner size="sm" aria-hidden /> : <Icon icon={RotateCcw} />}
               isDisabled={working || saving || unsaved || !offer}
-              label={working ? `Skapar ${thing} igen…` : saving ? "Sparar rättningarna…" : `Skapa ${thing} igen med rättningarna`}
+              // The notice says what the new version is made from; the button says what it does, in a line a phone keeps.
+              label={working ? `Skapar ${thing} igen…` : saving ? "Sparar rättningarna…" : `Skapa ${thing} igen`}
               onClick={() => leaveFirst(start)}
             />
           }

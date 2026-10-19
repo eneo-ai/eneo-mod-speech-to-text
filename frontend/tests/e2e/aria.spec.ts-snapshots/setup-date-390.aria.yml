@@ -2,8 +2,8 @@
   - heading "Nämndmöte med mötesdatum" [level=1]
   - paragraph: Frågar efter dagen mötet hölls.
   - button "Så fungerar det 2 steg"
-  - status
   - region "Ljudet":
+    - status
     - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?

@@ -49,13 +49,13 @@ test("corrections newer than the document that cannot make a new one keep the no
   await page.route("**/transcript-words/**", async (route) => (await held, route.fallback()));
   await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.corrected}`);
   const notice = page.getByRole("note").filter({ hasText: "Dokumentet skapades före dina rättningar" });
-  await expect(notice.getByRole("button", { name: "Skapa dokumentet igen med rättningarna" })).toBeDisabled();
+  await expect(notice.getByRole("button", { name: "Skapa dokumentet igen" })).toBeDisabled();
   const documentTop = () => page.getByRole("region", { name: "Dokument" }).evaluate((element) => Math.round(element.getBoundingClientRect().top));
   const before = await documentTop();
 
   release();
   await expect(notice.getByText("Rättningarna kunde inte läsas just nu.")).toBeVisible();
   await expect(notice.getByRole("button", { name: "Läs in igen" })).toBeVisible();
-  await expect(notice.getByRole("button", { name: "Skapa dokumentet igen med rättningarna" })).toHaveCount(0);
+  await expect(notice.getByRole("button", { name: "Skapa dokumentet igen" })).toHaveCount(0);
   expect(await documentTop(), "the document stays where it was drawn").toBe(before);
 });
