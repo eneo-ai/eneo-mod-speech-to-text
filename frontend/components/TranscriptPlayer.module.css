@@ -293,6 +293,17 @@
   outline: none;
 }
 
+/* Above the text, from a tablet's width to a laptop's (PLAYER_ON_TOP in TranscriptPlayer.tsx): under the tools, stuck to
+   the window's top while the text is read, with its line between it and the passages. */
+.dockTop {
+  inset-block-start: 0;
+  inset-block-end: auto;
+  padding-block-end: var(--spacing-2);
+  border-block-start: none;
+  border-block-end: var(--border-width) solid var(--color-border);
+  border-radius: 0;
+}
+
 @media (min-width: 1024px), (max-height: 600px) {
   .dock {
     position: static;

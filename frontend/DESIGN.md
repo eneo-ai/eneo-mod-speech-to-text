@@ -205,6 +205,10 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   window (`content-visibility: auto`): an hour's meeting is tens of thousands of words.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
   column.
+- The player docks to the text. On a phone it is under the text and stays at the window's bottom, where a thumb reaches
+  it. From 640 to 1023 px, where the page scrolls and a bottom player would cover the passages the window starts on, it
+  stands above the text under the tools and stays at the window's top. From 1024 px it sits at the bottom of the
+  transcript's card, and on a screen under 600 px high at the text's end.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
