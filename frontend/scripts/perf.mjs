@@ -66,11 +66,13 @@ const table = (head, lines) => {
 };
 
 // A CLS or an INP is a regression when it is worse than before by more than the fraction AND by more than the amount (ms; CLS is
-// unitless): the fraction spares a small number on a small base, the amount spares a frame of jitter on a large one.
-const REGRESSION = { cls: [0.3, 0.02], inp: [0.3, 40], inpLong: [0.3, 40] };
+// unitless): the fraction spares a small number on a small base, the amount spares a frame of jitter on a large one. An INP that
+// stays within Web Vitals' good (200 ms) is not one: a CI runner moves a laptop's 60 to 150 ms by more than that amount with
+// nothing changed (72 -> 144 and 64 -> 136 ms on a pull request that touched no product code).
+const REGRESSION = { cls: [0.3, 0.02, 0], inp: [0.3, 40, 200], inpLong: [0.3, 40, 200] };
 const regressed = (kind, before, after) => {
-  const [fraction, amount] = REGRESSION[kind] ?? [];
-  return amount !== undefined && after - before > amount && after > before * (1 + fraction);
+  const [fraction, amount, floor] = REGRESSION[kind] ?? [];
+  return amount !== undefined && after > floor && after - before > amount && after > before * (1 + fraction);
 };
 
 const pair = option("--compare", 2);

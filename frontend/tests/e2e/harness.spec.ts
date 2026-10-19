@@ -96,6 +96,41 @@ test("a focus outline that cannot be seen is not taken for a focus indicator", a
   expect((await focusStop(page))?.indicator, "black on white").toBe(true);
 });
 
+const RINGED = `
+  <style>
+    body { background: #fff; }
+    button { background: #fff; color: #111; border: 1px solid #767676; outline: none; }
+    button:focus-visible { outline: 3px solid #111; outline-offset: 2px; }
+  </style>`;
+
+test("a control that moves while its ring is measured is measured where it stands", async ({ page }) => {
+  await page.setContent(`${RINGED}
+    <p id="above"></p>
+    <p><button id="once">Flyttas en gång</button></p>
+    <script>
+      // As a status line that wraps anew above it: the first time the probe takes focus off it, it moves 40 px down.
+      document.getElementById("once").addEventListener("blur", () => setTimeout(() => (document.getElementById("above").style.height = "40px")), { once: true });
+    </script>`);
+  await page.keyboard.press(tabKey(page));
+  expect((await focusStop(page))?.indicator, "the ring, where the control moved to").toBe(true);
+});
+
+test("a control that never stands still while its ring is measured is reported as such, not as ringless", async ({ page }) => {
+  await page.setContent(`${RINGED}
+    <p><button id="always">Står aldrig still</button></p>
+    <script>
+      // Never still through a measurement, in every engine: it moves each time focus leaves it, and the measurement
+      // takes focus off it between its two screenshots. (A timer would not do: WebKit runs none while it takes them.)
+      const always = document.getElementById("always");
+      let shift = 0;
+      always.addEventListener("blur", () => (always.style.marginInlineStart = (shift += 10) + "px"));
+    </script>`);
+  await page.keyboard.press(tabKey(page));
+  const restless = await focusStop(page);
+  expect(restless?.unsettled, "never still").toBe(true);
+  expect(stopProblems([restless!])).toEqual([`${restless!.label}: kept moving while its focus indicator was measured`]);
+});
+
 test("a region taller than the window is held to the ring on its edges that show, and a ring that shows nowhere fails", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.setContent(`

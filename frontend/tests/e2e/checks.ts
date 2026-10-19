@@ -328,6 +328,8 @@ export interface FocusStop {
   bottom: number;
   left: number;
   right: number;
+  /** The indicator's owner kept moving while it was measured, every time: the ring could not be measured. */
+  unsettled?: boolean;
 }
 
 /**
@@ -338,20 +340,45 @@ export interface FocusStop {
  * line around the element. An outline the eye cannot see is no indicator.
  */
 export async function focusStop(page: Page): Promise<FocusStop | null> {
-  const stop = await probeFocus(page);
-  if (!stop) return null;
-  const { owner, perimeter, ...rest } = stop;
-  let area = owner === null ? 0 : await seenChange(page, owner);
-  // Firefox can take two identical screenshots of a ring its styles show, so a miss is measured once more: a ring
-  // that is missing is missing both times.
-  if (owner !== null && area < perimeter) area = await seenChange(page, owner);
-  return { ...rest, indicator: area >= perimeter, indicatorArea: Math.round(area), perimeter: Math.round(perimeter) };
+  // A page that moves while its ring is photographed (a live status line, a level meter, a list arriving) puts part of
+  // the ring outside the clip: a measurement counts only when the owner stood still through both screenshots, and is
+  // taken again from a fresh probe when it did not.
+  for (let attempt = 1; ; attempt++) {
+    const stop = await probeFocus(page);
+    if (!stop) return null;
+    const { owner, perimeter, ...rest } = stop;
+    let area = owner === null ? 0 : await seenChange(page);
+    // Firefox can take two identical screenshots of a ring its styles show, so a miss is measured once more: a ring
+    // that is missing is missing both times.
+    if (owner !== null && area !== null && area < perimeter) area = await seenChange(page);
+    if (area === null && attempt < SETTLE_ATTEMPTS) continue;
+    const measured = area ?? 0;
+    return { ...rest, indicator: measured >= perimeter, indicatorArea: Math.round(measured), perimeter: Math.round(perimeter), ...(area === null ? { unsettled: true } : {}) };
+  }
 }
+
+/** How many fresh probes a stop gets while its owner keeps moving under the screenshots. */
+const SETTLE_ATTEMPTS = 5;
+
+/** The owner probeFocus marked, where it is now; null when it is gone. */
+const ownerBox = (page: Page): Promise<Rect | null> =>
+  page.evaluate(() => {
+    const box = document.querySelector("[data-a11y-owner]")?.getBoundingClientRect();
+    return box ? { x: box.left, y: box.top, width: box.width, height: box.height } : null;
+  });
+
+const sameBox = (a: Rect | null, b: Rect | null) =>
+  a !== null && b !== null && Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5 && Math.abs(a.width - b.width) <= 0.5 && Math.abs(a.height - b.height) <= 0.5;
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
-/** How much of the owner's rendering focus changes by 3:1 or more, in CSS px². */
-async function seenChange(page: Page, box: Rect): Promise<number> {
+/**
+ * How much of the owner's rendering focus changes by 3:1 or more, in CSS px², read where the owner is now; null when it
+ * moved between the screenshots, which then compare two different places.
+ */
+async function seenChange(page: Page): Promise<number | null> {
+  const box = await ownerBox(page);
+  if (!box) return 0;
   const clip = await screenClip(page, box);
   if (!clip) return 0;
   const withFocus = await shot(page, clip);
@@ -362,6 +389,7 @@ async function seenChange(page: Page, box: Rect): Promise<number> {
     current?.style.removeProperty("outline");
     current?.focus({ preventScroll: true });
   });
+  if (!sameBox(box, await ownerBox(page))) return null;
   return changedArea(page, withFocus, without, clip.width);
 }
 
@@ -484,6 +512,9 @@ function probeFocus(page: Page) {
     // The indicator's owner: the outermost of the element and its near ancestors whose look changes with
     // focus (a card's ring for its radio, a field group's edge for its input). The screenshots measure it.
     const owner = chain.findLast((_, i) => resting[i] && JSON.stringify(focused[i]) !== JSON.stringify(resting[i]));
+    // Marked, so the screenshots read where it is when they are taken (focusStop).
+    document.querySelectorAll("[data-a11y-owner]").forEach((e) => e.removeAttribute("data-a11y-owner"));
+    owner?.setAttribute("data-a11y-owner", "");
     const box = owner?.getBoundingClientRect();
 
     const r = el.getBoundingClientRect();
@@ -597,7 +628,7 @@ export async function tabWalk(page: Page, max = 90) {
 /** What is wrong with each stop: WCAG 2.4.7 and 2.4.11, and the house bar of no pinned bar over focus. */
 export function stopProblems(stops: FocusStop[]): string[] {
   return stops.flatMap((s) => [
-    ...(s.indicator ? [] : [`${s.label}: no visible focus indicator (2.4.7)`]),
+    ...(s.indicator ? [] : [s.unsettled ? `${s.label}: kept moving while its focus indicator was measured` : `${s.label}: no visible focus indicator (2.4.7)`]),
     ...(s.offscreen ? [`${s.label}: focused outside the viewport`] : []),
     ...(s.obscured === "full" ? [`${s.label}: entirely hidden by ${s.coveredBy} (2.4.11)`] : []),
     ...(s.obscured === "partial" ? [`${s.label}: partly under ${s.coveredBy} (house bar)`] : []),

@@ -198,7 +198,7 @@ Modulen loggar till containerns stdout och stderr (`docker logs <container>`, `d
 
 ## CI och utgåvor
 
-`.github/workflows/ci.yml` körs vid pull request och vid push till `main`; arbetsflödena är källan till vad som körs. `docs.yml` bygger `docs-site/` och kör dess webbläsarkontroll. Ändringar i dokumentationen på `main` publicerar sajten på [GitHub Pages](https://eneo-ai.github.io/eneo-mod-speech-to-text/).
+`.github/workflows/ci.yml` körs vid pull request och vid push till `main`; arbetsflödena är källan till vad som körs. `gate.yml` kör gatens övriga projekt varje natt på `main` ([Tester](quality-gates.md#validera-en-förbättring)). `docs.yml` bygger `docs-site/` och kör dess webbläsarkontroll. Ändringar i dokumentationen på `main` publicerar sajten på [GitHub Pages](https://eneo-ai.github.io/eneo-mod-speech-to-text/).
 
 Inför första publiceringen behöver en repoadministratör välja **Settings → Pages → Build and deployment → Source: GitHub Actions**. Arbetsflödets vanliga token kan publicera till en aktiverad sajt, men kan inte aktivera Pages. Steget **Check GitHub Pages configuration** kontrollerar inställningen före publicering.
 

@@ -19,6 +19,7 @@ import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@astryxdesign/core/DropdownMenu";
 import { Heading } from "@astryxdesign/core/Heading";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -281,6 +282,14 @@ export function SpeakerMark({ label, name, size = "md" }: { label: string | null
 }
 
 /**
+ * Where the page scrolls and the window is wide enough for the player's row of controls (a tablet, a narrow laptop
+ * window), a player stuck to the window's bottom would cover the passages the window starts on. There it stands above
+ * the text, under the tools, and stays at the window's top while the text is read. A phone keeps it under the text,
+ * where a thumb reaches it; a laptop's card and a short screen keep it at the text's end (TranscriptPlayer.module.css).
+ */
+const PLAYER_ON_TOP = "(min-width: 640px) and (max-width: 1023.98px) and (min-height: 601px)";
+
+/**
  * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
  * so following playback leaves it where it is: the text moves only when the playhead nears an edge, not at every new
  * sentence.
@@ -432,6 +441,7 @@ export function TranscriptPlayer(
 
   const [follow, setFollow] = useState(true);
   const [dock, dockRef] = useDock();
+  const playerOnTop = useMediaQuery(PLAYER_ON_TOP);
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -733,6 +743,21 @@ export function TranscriptPlayer(
   const downloadReviewed = () =>
     corrections &&
     downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt");
+  // The player docked to the text: under it, where the way past the passages ends on it, or above it (PLAYER_ON_TOP). One
+  // key in both places, so a tablet turned while it plays moves the same player, and its audio plays on.
+  const dockedPlayer = hasAudio && (
+    <div
+      key="docked-player"
+      id={playerOnTop ? undefined : pastId}
+      ref={dockRef}
+      tabIndex={playerOnTop ? undefined : -1}
+      data-docked-player
+      data-dock-edge={playerOnTop ? "top" : undefined}
+      className={join(styles.dock, playerOnTop && styles.dockTop)}
+    >
+      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} />
+    </div>
+  );
 
   return (
     <section
@@ -889,6 +914,8 @@ export function TranscriptPlayer(
 
       {/* The text and its player: the player's sticking stays within the text, never over the tools above. */}
       <div className={styles.body}>
+      {/* Above the text, Tab reaches the player before the passages. */}
+      {playerOnTop && dockedPlayer}
       {/* Each passage is a few Tab stops, a long meeting hundreds: the way past them, shown when it has focus.
           It moves focus itself, so the address and the history stay the run's. */}
       {/* A plain link: a Button's touch height would outgrow the hidden link and leave a small, invisible target. */}
@@ -972,14 +999,12 @@ export function TranscriptPlayer(
         )}
       </div>
 
-      {hasAudio ? (
+      {hasAudio && !playerOnTop ? (
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
-        <div id={pastId} ref={dockRef} tabIndex={-1} data-docked-player className={styles.dock}>
-          <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} />
-        </div>
+        dockedPlayer
       ) : (
-        // Without a player the way past the passages ends here, and Tab goes on to what follows the transcript.
+        // Without a player under the text the way past the passages ends here, and Tab goes on to what follows.
         <span id={pastId} tabIndex={-1} />
       )}
       </div>

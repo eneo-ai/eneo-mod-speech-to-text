@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { Divider } from "@astryxdesign/core/Divider";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { TopNavHeading } from "@astryxdesign/core/TopNav";
@@ -52,8 +53,11 @@ function OrganizationMark({ organization }: { organization: Organization }) {
 // The header lockup: the organisation's mark, a divider and the product name; without an organisation the product name alone.
 export function Brand({ href }: BrandProps) {
   const { organization } = useContext(BrandingContext);
+  // On the narrowest phones the mark is smaller (styles/globals.css) and stands closer to its divider: the product name
+  // and the account button then keep their room with a wide font and the reader's text spacing.
+  const narrowest = useMediaQuery("(max-width: 359px)");
   const mark = organization && (
-    <HStack gap={4} vAlign="center">
+    <HStack gap={narrowest ? 2 : 4} vAlign="center">
       <OrganizationMark organization={organization} />
       {/* A vertical rule takes the height of a box that has one; it is decoration. */}
       <HStack height="2rem" aria-hidden>

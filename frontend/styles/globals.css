@@ -92,9 +92,14 @@
   position: static;
 }
 
-html:has([data-docked-action], [data-docked-player]) {
+html:has([data-docked-action], [data-docked-player]:not([data-dock-edge="top"])) {
   /* Focus can sit on a field's inner control while its ring surrounds the padded field. Keep that whole edge clear. */
   scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
+}
+
+/* A player docked above the text (components/TranscriptPlayer.tsx) covers the window's top edge instead. */
+html:has([data-docked-player][data-dock-edge="top"]) {
+  scroll-padding-top: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 
 /* A disclosure shows what it opens at once: it fades in instead, so the eye follows what appeared. With reduced motion
@@ -172,10 +177,11 @@ img[data-brand-logo] {
   object-fit: contain;
   object-position: left;
 }
-/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller to leave the account
-   button room, also with the text spacing WCAG 1.4.12 lets a reader set (tests/e2e/header-fit.spec.ts). */
+/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller (and stands closer to
+   its divider, components/Brand.tsx) to leave the account button room, also with the text spacing WCAG 1.4.12 lets a
+   reader set and a font as wide as Linux's and Android's (tests/e2e/header-fit.spec.ts). */
 @media (max-width: 359px) {
-  img[data-brand-logo] { block-size: var(--spacing-8); }
+  img[data-brand-logo] { block-size: var(--spacing-6); }
 }
 @media (min-width: 640px) {
   [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }

@@ -81,8 +81,10 @@ jobs:
           - { suite: controls, shard: 3, total: 5 }
           - { suite: controls, shard: 4, total: 5 }
           - { suite: controls, shard: 5, total: 5 }
-          - { suite: accessibility, shard: 1, total: 2 }
-          - { suite: accessibility, shard: 2, total: 2 }
+          - { suite: accessibility, shard: 1, total: 4 }
+          - { suite: accessibility, shard: 2, total: 4 }
+          - { suite: accessibility, shard: 3, total: 4 }
+          - { suite: accessibility, shard: 4, total: 4 }
           - { suite: devices, shard: 1, total: 1 }
           - { suite: webkit, shard: 1, total: 1 }
           - { suite: firefox, shard: 1, total: 1 }
