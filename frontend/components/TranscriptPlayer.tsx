@@ -759,6 +759,20 @@ export function TranscriptPlayer(
   }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
+  // Naming the speakers after the run: at the end of the speakers' row, or on a row of its own above the review's view.
+  const namingControl = canName && (
+    <SpeakerNaming
+      ref={namingDialog}
+      naming={naming}
+      speakers={speakers}
+      shown={shown}
+      names={names}
+      stepNames={speakerNames}
+      corrections={corrections}
+      playback={playback}
+      hasAudio={hasAudio}
+    />
+  );
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Ändringar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
   const hitStatus = !searched.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
@@ -802,6 +816,11 @@ export function TranscriptPlayer(
           )}
         </HStack>
       )}
+      {reviewEnabled && namingControl && (
+        <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2}>
+          {namingControl}
+        </HStack>
+      )}
       {tools && (
         <VStack gap={3} className={styles.tools}>
           {labelled && (
@@ -843,19 +862,7 @@ export function TranscriptPlayer(
               />
             </div>
           )}
-          {canName && (
-            <SpeakerNaming
-              ref={namingDialog}
-              naming={naming}
-              speakers={speakers}
-              shown={shown}
-              names={names}
-              stepNames={speakerNames}
-              corrections={corrections}
-              playback={playback}
-              hasAudio={hasAudio}
-            />
-          )}
+          {namingControl}
           </HStack>
           )}
 

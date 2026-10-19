@@ -554,3 +554,17 @@ test("Byt namn på in a passage's Ändra talare opens the naming at that speaker
   assert.ok(!document.querySelector("dialog[open]"));
   assert.equal(document.activeElement, passage, "back on the passage's speaker, where the picker was opened");
 });
+
+test("with the speaker review's own view, a finished run's speakers are named all the same, from a row above the transcript", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const sent: SpeakerNames[] = [];
+  const view = await player(meeting, {
+    reviewEnabled: true, editable: true, corrections: v3, onCorrectionsChange: () => undefined,
+    naming: naming(async (names) => (sent.push(names), null)),
+  });
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.deepEqual(sent, [{ SPEAKER_00: "Anna Berg" }]);
+  assert.ok(!document.querySelector("dialog[open]"));
+});
