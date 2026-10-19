@@ -16,8 +16,8 @@
 //                                           a fixed list of interactions on that page
 //   list -> flow                            the time from the click on a flow to its setup page
 //   long transcript                         INP of the filter, search and correction on the run with 2,000 passages
-// CLS and INP are stable and fail the run when over budget; LCP, blocking time and times are reported, since a shared
-// machine moves them. A run writes test-results/perf/<label>.json (ignored by git).
+// CLS and INP are stable and fail the run when over budget (exit 2, apart from a run that broke, exit 1); LCP, blocking
+// time and times are reported, since a shared machine moves them. A run writes test-results/perf/<label>.json (ignored by git).
 // .github/workflows/perf.yml measures a pull request's base and head on the same runner and compares them with
 // --fail-on-regression: a number is worth failing on only relative to the other side of the same machine and minute.
 
@@ -351,5 +351,5 @@ table(
 console.log(`\n${label}: ${join("test-results", "perf", `${label}.json`)}`);
 if (over.length) {
   console.error(`\n${over.length} over budget: ${over.map((metric) => `${metric.profile} ${metric.group} ${metric.name} ${format(metric, metric.median)}`).join("; ")}`);
-  process.exit(1);
+  process.exit(2);
 }

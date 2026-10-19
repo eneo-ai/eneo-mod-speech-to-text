@@ -78,7 +78,7 @@ jobs:
           npm run build
 
       # The base first, then the head, with nothing else running. A base that cannot be measured (the pull request adds what the
-      # measurement needs) does not fail the job: the head is still held to the budget.
+      # measurement needs) does not fail the job.
       - name: Measure the base
         if: github.event_name == 'pull_request'
         working-directory: ${{ runner.temp }}/base/frontend
@@ -89,15 +89,20 @@ jobs:
           if [ -f test-results/perf/base.json ]; then
             cp test-results/perf/base.json "$GITHUB_WORKSPACE/frontend/test-results/perf/base.json"
           else
-            echo "::warning title=The base was not measured::The pull request is checked against the budget only."
+            echo "::warning title=The base was not measured::The head's numbers are reported, not compared."
           fi
-      # Exit 1 when the head is over the budget; the numbers are written first, so the steps below still have them.
+      # Exit 1 when the measurement broke. The budget is set on a developer's machine, which this runner is several times slower
+      # than: over it (exit 2) is a warning here, and only the comparison with the base below fails the job on a number.
       - name: Measure the head
         run: |
           status=0
           npm run --silent perf -- $LABEL_ARGS --runs 3 > "$RUNNER_TEMP/head.txt" 2>&1 || status=$?
           cat "$RUNNER_TEMP/head.txt"
           { echo "### Head against the budget"; echo '```'; cat "$RUNNER_TEMP/head.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = 2 ]; then
+            echo "::warning title=Over the budget on this runner::$(tail -n 1 "$RUNNER_TEMP/head.txt")"
+            status=0
+          fi
           exit $status
       # Exit 1 when a CLS or an INP of the head is clearly worse than the base's (perf.mjs: over 30 % and over 40 ms; CLS over 0.02).
       - name: Compare the head with the base
@@ -110,7 +115,7 @@ jobs:
           exit $status
       - name: Say that the base was not measured
         if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('frontend/test-results/perf/base.json') == '' }}
-        run: echo "The base could not be measured, so the head was held to the budget only." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "The base could not be measured, so nothing was compared." >> "$GITHUB_STEP_SUMMARY"
       - name: Keep the measurements
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
