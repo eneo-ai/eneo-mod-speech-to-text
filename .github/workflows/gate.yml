@@ -1,0 +1,100 @@
+name: Full gate
+
+# The accessibility gate in the projects of frontend/playwright.config.ts that a pull request's CI does not run in full. ci.yml runs
+# phone-390-light and laptop-1440-light entirely, and parts of the tablets, the phone on its side, WebKit and Firefox; this runs the rest:
+# 320 px, dark, 200 % zoom, forced colours, reduced motion, the other laptop and wide widths, and the press on every control on the
+# tablets and in WebKit and Firefox. Every night on main, by hand, and on a pull request that changes the projects or this file.
+# Every action is pinned to the commit of a release, the release in the comment (docs/operations.md has the routine).
+
+on:
+  pull_request:
+    paths: ["frontend/playwright.config.ts", ".github/workflows/gate.yml"]
+  workflow_dispatch:
+  schedule:
+    - cron: "43 1 * * *" # 01:43 UTC, on the default branch
+
+permissions:
+  contents: read
+
+# A newer push to a pull request replaces the older run; a nightly or a manual run is never cancelled.
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Every project but ci.yml's two (Playwright refuses a project with no test of the spec, so the press names only its own).
+  SCAN_PROJECTS: >-
+    --project=phone-320-light --project=phone-390-dark --project=tablet-portrait --project=tablet-landscape --project=landscape-844
+    --project=laptop-1000-light --project=laptop-1280-light --project=laptop-1440-dark --project=zoom-200 --project=forced-colors
+    --project=ultrawide-1920-light --project=ultrawide-2560-light --project=reduced-motion
+    --project=phone-390-webkit --project=tablet-landscape-webkit --project=laptop-1440-webkit --project=laptop-1440-firefox
+  CONTROLS_PROJECTS: >-
+    --project=tablet-portrait --project=tablet-landscape
+    --project=phone-390-webkit --project=tablet-landscape-webkit --project=laptop-1440-webkit --project=laptop-1440-firefox
+  PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+
+jobs:
+  gate:
+    name: gate (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # The press on every control takes about 40 s a test and the rest about 5 s: each has shards of its own, as in ci.yml.
+      matrix:
+        include:
+          - { suite: controls, shard: 1, total: 12 }
+          - { suite: controls, shard: 2, total: 12 }
+          - { suite: controls, shard: 3, total: 12 }
+          - { suite: controls, shard: 4, total: 12 }
+          - { suite: controls, shard: 5, total: 12 }
+          - { suite: controls, shard: 6, total: 12 }
+          - { suite: controls, shard: 7, total: 12 }
+          - { suite: controls, shard: 8, total: 12 }
+          - { suite: controls, shard: 9, total: 12 }
+          - { suite: controls, shard: 10, total: 12 }
+          - { suite: controls, shard: 11, total: 12 }
+          - { suite: controls, shard: 12, total: 12 }
+          - { suite: scan, shard: 1, total: 8 }
+          - { suite: scan, shard: 2, total: 8 }
+          - { suite: scan, shard: 3, total: 8 }
+          - { suite: scan, shard: 4, total: 8 }
+          - { suite: scan, shard: 5, total: 8 }
+          - { suite: scan, shard: 6, total: 8 }
+          - { suite: scan, shard: 7, total: 8 }
+          - { suite: scan, shard: 8, total: 8 }
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # A shard can hold any engine's projects.
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit firefox
+      # Firefox runs Web Audio only with a sound server (as in ci.yml).
+      - name: A sound server for Firefox
+        run: sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
+      - name: The press on every control, on the tablets and in WebKit and Firefox
+        if: matrix.suite == 'controls'
+        run: npx playwright test controls.spec.ts $CONTROLS_PROJECTS --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
+      - name: Everything else in the other projects
+        if: matrix.suite == 'scan'
+        run: npx playwright test $SCAN_PROJECTS --grep-invert='controls\.spec\.ts' --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
+      - name: Keep test results and timings
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: gate-timings-${{ matrix.suite }}-${{ matrix.shard }}
+          path: frontend/test-results/results.json
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: gate-results-${{ matrix.suite }}-${{ matrix.shard }}
+          path: frontend/test-results

@@ -106,9 +106,11 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  // The dark scheme changes colours only, never the layout, so it is scanned on one phone and one laptop (the two layouts),
+  // not at every width. Past 2286 px the page's column stops at 1600 px (--module-page-width), so 2560 stands for every
+  // wider screen at its height.
   projects: forTarget([
     { name: "phone-320-light", use: { ...touch(320, 568), colorScheme: "light" }, testIgnore: noSnapshots },
-    { name: "phone-320-dark", use: { ...touch(320, 568), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "phone-390-light", use: { ...touch(390, 844), colorScheme: "light" }, testIgnore: noHarness },
     { name: "phone-390-dark", use: { ...touch(390, 844), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "tablet-portrait", use: { ...touch(768, 1024), isMobile: false, colorScheme: "light" }, testIgnore: walksAndControls },
@@ -119,7 +121,6 @@ export default defineConfig({
     { name: "laptop-1000-light", use: { ...wide(1000, 800), colorScheme: "light" }, testIgnore: scanOnly },
     // The small laptop: 1280 × 800.
     { name: "laptop-1280-light", use: { ...wide(1280, 800), colorScheme: "light" }, testIgnore: noSnapshots },
-    { name: "laptop-1280-dark", use: { ...wide(1280, 800), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "laptop-1440-light", use: { ...laptop, colorScheme: "light" } },
     { name: "laptop-1440-dark", use: { ...laptop, colorScheme: "dark" }, testIgnore: scanOnly },
     // 200 % zoom of a 1280 × 800 window.
@@ -128,11 +129,7 @@ export default defineConfig({
     // Every per-state scan on every desktop width; keyboard order and focus management do not change past
     // 1920, so the keyboard walks and dialog focus tests run there only.
     { name: "ultrawide-1920-light", use: { ...wide(1920, 1080), colorScheme: "light" }, testIgnore: noSnapshots },
-    { name: "ultrawide-1920-dark", use: { ...wide(1920, 1080), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "ultrawide-2560-light", use: { ...wide(2560, 1440), colorScheme: "light" }, testIgnore: scanOnly },
-    { name: "ultrawide-2560-dark", use: { ...wide(2560, 1440), colorScheme: "dark" }, testIgnore: scanOnly },
-    { name: "ultrawide-3440-light", use: { ...wide(3440, 1440), colorScheme: "light" }, testIgnore: scanOnly },
-    { name: "ultrawide-3440-dark", use: { ...wide(3440, 1440), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "reduced-motion", use: { ...touch(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
     // The other engines, as engine checks and not as the products built on them (Playwright's WebKit is ahead of Safari):
     // WebKit where an iPhone, an iPad and a Mac have it, Firefox on a laptop. The tablet has no snapshots, as Chromium's.

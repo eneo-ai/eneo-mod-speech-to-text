@@ -10,7 +10,7 @@ import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) =>
   test.skip(
-    !["phone-320-light", "phone-390-dark", "laptop-1440-light", "ultrawide-3440-light", "reduced-motion"].includes(info.project.name),
+    !["phone-320-light", "phone-390-dark", "laptop-1440-light", "ultrawide-2560-light", "reduced-motion"].includes(info.project.name),
     "the phones, a laptop, the widest screen, and reduced motion for the loading state",
   ),
 );

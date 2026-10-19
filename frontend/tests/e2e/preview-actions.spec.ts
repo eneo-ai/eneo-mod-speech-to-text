@@ -35,7 +35,7 @@ test("a text's more actions stand beside Kopiera texten where they fit, and fold
 });
 
 test("copying or sharing a file-backed preview says that it is only the beginning", async ({ page }, info) => {
-  test.skip(!["phone-320-light", "phone-320-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name), "narrow and wide action bars, in both themes");
+  test.skip(!["phone-320-light", "phone-390-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name), "narrow and wide action bars, in both themes");
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text: string) => { document.body.dataset.copiedText = text; } } });
     Object.defineProperty(navigator, "share", { value: async (data: ShareData) => { document.body.dataset.sharedText = data.text; } });
