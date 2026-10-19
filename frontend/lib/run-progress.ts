@@ -102,6 +102,17 @@ export function ofContractVersion(
   return run.flow_version != null && run.flow_version === contract?.published_flow_version;
 }
 
+/**
+ * Whether the run is known to finish without the person: of the flow's version the contract describes, which has no
+ * step that pauses the run for a review. An older or unknown version is not known, so it is not promised.
+ */
+export function finishesUnattended(
+  run: { flow_version?: number | null },
+  contract: Pick<RunContract, "published_flow_version" | "steps_requiring_review"> | null | undefined,
+): boolean {
+  return ofContractVersion(run, contract) && (contract?.steps_requiring_review ?? []).length === 0;
+}
+
 /** The run contract's word for what a review step asks: naming the speakers, or looking over a result. */
 function reviewNote(review: FlowReviewStepContract | undefined): string | null {
   if (!review) return null;

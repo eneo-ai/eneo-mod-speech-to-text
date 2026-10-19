@@ -333,15 +333,18 @@ test("details a send found missing stay unfolded while they are filled in, until
 });
 
 test("leaving an upload says it stops, and what is kept of a recording", () => {
-  assert.equal(leaveWarning(true, "setup", true), "Uppladdningen avbryts, och filen behöver väljas igen.");
-  assert.equal(leaveWarning(true, "ready", true), "Uppladdningen avbryts. Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.");
+  assert.equal(leaveWarning(true, "setup", "uploading"), "Uppladdningen avbryts, och filen behöver väljas igen.");
+  assert.equal(leaveWarning(true, "ready", "uploading"), "Uppladdningen avbryts. Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.");
+  // Once the file is up, what stops is the start, as its Avbryt starten says.
+  assert.equal(leaveWarning(true, "setup", "starting"), "Starten av flödet avbryts, och filen behöver väljas igen.");
+  assert.equal(leaveWarning(true, "ready", "starting"), "Starten av flödet avbryts. Det som spelats in finns kvar på enheten. Du hittar det på flödets sida.");
   // A full device keeps what came before; only the latest is in this tab, and a saved file would be refused too.
   const full = leaveWarning(false, "recording", false, "full");
   assert.match(full, /^Inspelningen stoppas\. Enheten är full, så det senaste av inspelningen finns bara i den här fliken/);
   assert.match(full, /Det som spelades in innan finns kvar på enheten\. Stanna kvar och frigör utrymme/);
   assert.doesNotMatch(full, /Spara ljudfil/);
   assert.equal(
-    leaveWarning(false, "ready", true),
+    leaveWarning(false, "ready", "uploading"),
     "Uppladdningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara ljudfil först om du vill behålla den.",
   );
 });

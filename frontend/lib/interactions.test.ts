@@ -1117,7 +1117,7 @@ test("Back during an upload asks first and says what leaving stops; Stanna kvar 
   const { leaveWarning } = await import("./recording-view");
   function Page() {
     // A file on its way: the page holds no audio.
-    return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
+    return useLeaveQuestion(true, leaveWarning(true, "setup", "uploading")).question;
   }
   const { tree, router } = await signedIn(createElement(Page), { entries: ["/flows", "/"] });
   const view = await mount(tree);

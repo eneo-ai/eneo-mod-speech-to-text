@@ -94,14 +94,14 @@ test("one line by the actions says where the recording is until then, where Skap
   };
   assert.match(
     await words({ onContinue: () => {} }),
-    /Inspelningen finns kvar på enheten tills dokumentet är skapat\. Skapa dokument skickar den till Eneo och avslutar inspelningen\./,
+    /Skapa dokument skickar inspelningen till Eneo\. Efteråt kan du inte fortsätta spela in\. Den finns kvar på enheten tills dokumentet är skapat\./,
   );
   // Nothing to go on with: the send is said, the ending is not.
   const alone = await words({});
-  assert.match(alone, /tills dokumentet är skapat\. Skapa dokument skickar den till Eneo\./);
-  assert.doesNotMatch(alone, /avslutar/);
-  assert.match(await words({ makesText: true }), /tills texten är skapad\. Skapa text skickar den till Eneo\./);
-  assert.match(await words({ persistent: false }), /Inspelningen finns bara i den här fliken\. Stäng inte fliken innan dokumentet är skapat\. Skapa dokument skickar den till Eneo\./);
+  assert.match(alone, /Skapa dokument skickar inspelningen till Eneo\. Den finns kvar på enheten tills dokumentet är skapat\./);
+  assert.doesNotMatch(alone, /fortsätta spela in/);
+  assert.match(await words({ makesText: true }), /Skapa text skickar inspelningen till Eneo\. Den finns kvar på enheten tills texten är skapad\./);
+  assert.match(await words({ persistent: false }), /Skapa dokument skickar inspelningen till Eneo\. Den finns bara i den här fliken, så stäng inte fliken innan dokumentet är skapat\./);
   // No send to speak of: only where the recording is.
   const kept = await words({ onCreate: undefined });
   assert.match(kept, /Inspelningen finns kvar på enheten tills dokumentet är skapat\./);

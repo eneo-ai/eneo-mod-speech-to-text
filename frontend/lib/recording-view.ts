@@ -220,12 +220,20 @@ export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: 
  * What "Lämna sidan?" says. A running recording stops: it does not go on in
  * the background. The recording is promised back among unsent recordings
  * only when the device keeps it; otherwise leaving loses it, and the way to
- * keep it is "Spara ljudfil" (after Stoppa, while recording).
+ * keep it is "Spara ljudfil" (after Stoppa, while recording). A send stops at
+ * the stage it is in (`sending`), named as its Avbryt names it: the upload,
+ * or the start of the flow once the file is up.
  */
-export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false, refused: DeviceRefusal | null = null): string {
-  if (sending && phase === "setup") return "Uppladdningen avbryts, och filen behöver väljas igen.";
+export function leaveWarning(
+  persistent: boolean | null,
+  phase: SessionPhase,
+  sending: false | "uploading" | "starting" = false,
+  refused: DeviceRefusal | null = null,
+): string {
+  const sendStops = sending === "starting" ? "Starten av flödet avbryts" : "Uppladdningen avbryts";
+  if (sending && phase === "setup") return `${sendStops}, och filen behöver väljas igen.`;
   const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
-  const stops = sending ? "Uppladdningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
+  const stops = sending ? `${sendStops}. ` : capturing ? "Inspelningen stoppas. " : "";
   // A full device holds what came before; only what came after is in this tab, and a full disk would refuse a saved
   // file too: room is the way to keep it, not Spara ljudfil.
   if (refused === "full") {

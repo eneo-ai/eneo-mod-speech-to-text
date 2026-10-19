@@ -62,12 +62,29 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(html, /<ol[^>]*>(\s*<li)/);
 });
 
+test("a run not known to finish alone is promised only to go on, with no review in sight either", () => {
+  // An older flow version or one with no graph yet: no review notes, and nothing known of reviews (finishesUnattended).
+  const unknown = running.map((step) => ({ ...step, note: null }));
+  const words = text(
+    markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: unknown, stage: "Analysera mötesinnehållet", onCancel: async () => undefined })),
+  );
+  assert.match(words, /Körningen fortsätter i Eneo om du stänger sidan\. Du hittar den under Tidigare körningar i flödet\./);
+  assert.doesNotMatch(words, /blir klart|väntar på dig/);
+});
+
 test("a flow that makes text says the text will be ready, as its action says Skapa text", () => {
-  // No review ahead: the run finishes without the person.
+  // No review ahead, and known to finish without the person.
   const unattended = running.map((step) => ({ ...step, note: null }));
   const words = text(
     markup(
-      createElement(RunProgress, { flowName: "Intervju", steps: unattended, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
+      createElement(RunProgress, {
+        flowName: "Intervju",
+        steps: unattended,
+        stage: "Analysera mötesinnehållet",
+        makesText: true,
+        unattended: true,
+        onCancel: async () => undefined,
+      }),
     ),
   );
   assert.doesNotMatch(words, /väntar på dig/);

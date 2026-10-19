@@ -231,17 +231,25 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
-      {/* Where the recording is until then, and what the filled action does that its name does not say: the audio leaves
-          the device, and the recording ends. One paragraph by the actions, so a small phone has them on its first screen. */}
-      {audio && (
-        <Text as="p" type="supporting">
-          {persistent
-            ? `Inspelningen finns kvar på enheten tills ${made}.`
-            : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
-          {create ? ` ${createActionLabel(makesText)} skickar den till Eneo${onContinue ? " och avslutar inspelningen" : ""}.` : ""}
-          {create && forwarded ? ` ${forwarded}` : ""}
-        </Text>
-      )}
+      {/* One paragraph by the actions: what the filled action does that its name does not say (the audio leaves the
+          device, and nothing more can be recorded on it), then where the recording is until the result is made. */}
+      {audio &&
+        (create ? (
+          <Text as="p" type="supporting">
+            {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
+            {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
+            {persistent
+              ? ` Den finns kvar på enheten tills ${made}.`
+              : ` Den finns bara i den här fliken, så stäng inte fliken innan ${made}.`}
+            {forwarded ? ` ${forwarded}` : ""}
+          </Text>
+        ) : (
+          <Text as="p" type="supporting">
+            {persistent
+              ? `Inspelningen finns kvar på enheten tills ${made}.`
+              : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
+          </Text>
+        ))}
       {(create || onContinue) && (
         <VStack gap={0}>
           {/* Which one is main follows the recording: a very short one was most likely stopped by mistake. */}
