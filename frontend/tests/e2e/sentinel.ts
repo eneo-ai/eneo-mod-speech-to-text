@@ -37,10 +37,12 @@ export interface Expectation {
 
 /**
  * A request that the browser or the page itself cancelled, in each engine's words as Playwright reports them: Chromium's,
- * Firefox's (a cancel of its own, and one that a script or a route asked for) and WebKit's (a cancel, and a page load
- * that became a download: a PDF, which its build has no viewer for).
+ * Firefox's (a cancel of its own, one that a script or a route asked for, and the one its media layer gives an audio
+ * element's request when the element lets the source go: lib/playback.ts's length probe, the player's teardown, a page
+ * left) and WebKit's (a cancel, and a page load that became a download: a PDF, which its build has no viewer for).
+ * Playwright reports one only when the response had not finished, so whether it shows depends on the runner's speed.
  */
-const CANCELLED = new Set(["net::ERR_ABORTED", "NS_BINDING_ABORTED", "NS_ERROR_ABORT", "cancelled", "Frame load interrupted"]);
+const CANCELLED = new Set(["net::ERR_ABORTED", "NS_BINDING_ABORTED", "NS_ERROR_ABORT", "NS_ERROR_PARSED_DATA_CACHED", "cancelled", "Frame load interrupted"]);
 
 /**
  * A request that the network failed, which is what a test's `route.abort()` makes of one, in Firefox's and WebKit's words.
