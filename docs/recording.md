@@ -72,7 +72,7 @@ Innan en del når flödets största filstorlek startar nästa del på samma mikr
 | Kvittensen saknas | Appen läser modulens kvittens och skickar inte filen igen. Saknas även den visas **Försök igen**. Inget flöde startas utan ett bekräftat fil-id. |
 | **Startar flödet** | Tio automatiska försök under ungefär fem minuter, sedan **Försök igen** och **Avbryt**, med samma fil och idempotensnyckel. |
 
-Under överföringen står det att sidan ska vara öppen tills Eneo har filen. **Avbryt**, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
+Under överföringen och starten står det att sidan ska vara öppen tills flödet har startat. **Avbryt**, eller att lämna sidan inom appen, ber modulen ta bort det den har tagit emot. En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Logiken finns i `frontend/lib/submit-run.ts`, `frontend/lib/api.ts` och `frontend/lib/recording-store.ts`.
 
 ## Format
 

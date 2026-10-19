@@ -86,11 +86,9 @@ function stage(submission: SubmissionState): string {
   if (submission.kind === "starting") return "Startar flödet…";
   if (submission.kind !== "uploading") return "Skickar…";
   const what = submission.recording ? "inspelningen" : "filen";
-  return allSent(submission) ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
+  const sent = submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
+  return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
-
-/** Every byte has left; Eneo is taking the file in. */
-const allSent = ({ total, loaded }: Extract<SubmissionState, { kind: "uploading" }>) => total != null && total > 0 && loaded >= total;
 
 /**
  * Eneo has the file and is asked to start the run. It may not answer for a while, so there is a way out at once: Avbryt
@@ -118,10 +116,9 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
           <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
         )}
       </HStack>
-      {/* Eneo has the file but no run yet: a page closed now starts nothing, and Avbryt loses nothing. */}
+      {/* The start is asked for from this page, tried again for minutes: a page closed now may start nothing. */}
       <Text as="p" type="supporting">
-        Stäng inte sidan förrän flödet har startat. Avbryt stoppar sändningen, och{" "}
-        {recording ? "inspelningen finns kvar på enheten." : "filen och uppgifterna finns kvar."}
+        Stäng inte sidan förrän flödet har startat.
       </Text>
       {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>
@@ -140,7 +137,6 @@ function UploadProgress({
   onCancel: () => void;
 }) {
   const percent = Math.max(0, Math.min(100, submission.percent ?? 0));
-  const sent = allSent(submission);
   return (
     <VStack gap={2}>
       <HStack justify="between" align="start" gap={4}>
@@ -166,9 +162,9 @@ function UploadProgress({
           {submission.percent != null ? formatPercent(percent) : "Pågår"}
         </Text>
       </HStack>
-      {/* The next view says the document is made even if the page is closed; until Eneo has the file, it is not. */}
+      {/* The next view says the document is made even if the page is closed; until the run has started, it is not. */}
       <Text as="p" type="supporting">
-        {sent ? "Du kan snart stänga sidan." : "Stäng inte sidan och lås inte skärmen medan det laddas upp. När det är klart kan du stänga sidan."}
+        Stäng inte sidan och lås inte skärmen förrän flödet har startat.
       </Text>
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}

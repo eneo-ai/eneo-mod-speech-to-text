@@ -112,7 +112,7 @@ export function RunFailure({
           {/* The transcript stays last on the page (see RunTranscript below), so the card says it is there. */}
           {showTranscript && (
             <Text as="p" type="supporting">
-              Transkriberingen blev klar. Du hittar den längst ner på sidan, där du kan kopiera eller ladda ner den.
+              Transkriberingen blev klar. Du hittar den längst ner på sidan.
             </Text>
           )}
 

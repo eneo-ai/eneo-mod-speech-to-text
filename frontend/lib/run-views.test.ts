@@ -122,12 +122,10 @@ test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt
   assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen…"], "the stage once, first");
 });
 
-test("an upload says to keep the page open until Eneo has the file, and once every byte has left that it can soon be closed", () => {
-  const under = text(uploading({ percent: 33 }));
-  assert.match(under, /Stäng inte sidan och lås inte skärmen medan det laddas upp\. När det är klart kan du stänga sidan\./);
-  const sent = text(uploading({ loaded: 2048, total: 2048, percent: 100 }));
-  assert.match(sent, /Du kan snart stänga sidan\./);
-  assert.doesNotMatch(sent, /Stäng inte sidan/);
+test("an upload, and the run's start after it, say to keep the page open until the flow has started", () => {
+  for (const html of [uploading({ percent: 33 }), uploading({ loaded: 2048, total: 2048, percent: 100 })]) {
+    assert.match(text(html), /Stäng inte sidan och lås inte skärmen förrän flödet har startat\./);
+  }
 });
 
 test("once every byte has left, the stage says Eneo is taking the file, and a recording is called a recording", () => {
@@ -204,8 +202,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recording: { id: "rec-1", files: 1 } });
   assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
   assert.match(text(recording), /Avbryt Spara ljudfil/, "a recording can be kept as a file meanwhile");
-  assert.match(text(recording), /Stäng inte sidan förrän flödet har startat\. Avbryt stoppar sändningen, och inspelningen finns kvar på enheten\./);
-  assert.match(text(stopped), /Avbryt stoppar sändningen, och filen och uppgifterna finns kvar\./, "a file is kept too");
+  assert.match(text(recording), /Stäng inte sidan förrän flödet har startat\./);
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
