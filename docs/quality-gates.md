@@ -169,9 +169,11 @@ Gaten kör webbläsarmotorerna; Safari på en iPhone eller iPad är en egen webb
 | `result.ad` | Resultatet med "Dela", transkriptets "Spela upp" och "Pausa uppspelningen", ett textresultat med "Kopiera texten" och "Dela", "Sidan finns inte" |
 
 ```bash
-# en utvecklingsserver mot stubben, den adress simulatorn når (iOS-simulatorn når Macens 127.0.0.1)
-npx vite --host 127.0.0.1 --port 3491 &   # med DEV_API_BASE till en stubbe, se "Portar och flera utcheckningar"
-# varje resa på en uppstartad iPhone- eller iPad-simulator, med JUnit-rapport i test-results/device/
+# en utvecklingsserver mot stubben, på en adress simulatorn når (Macens 127.0.0.1),
+# med DEV_API_BASE till en stubbe, se "Portar och flera utcheckningar"
+npx vite --host 127.0.0.1 --port 3491 &
+# varje resa på en uppstartad iPhone- eller iPad-simulator,
+# med JUnit-rapport i test-results/device/
 npm run test:device -- --platform ios --udid <simulatorns udid>
 ```
 
