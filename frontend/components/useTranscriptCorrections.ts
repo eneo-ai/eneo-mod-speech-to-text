@@ -8,6 +8,7 @@ import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, corrections
 import { LeaveContext } from "./flow/useLeaveQuestion";
 
 const STALE_REVISION = "flow_transcript_corrections_stale_revision";
+const READ_AGAIN = "Transkriberingen har lästs in igen, så ändringen sparades inte. Den senaste versionen visas nu. Gör om ändringen där.";
 
 /** `reload` reads the transcript and its saved corrections again. */
 export function useTranscriptCorrections(flowId: string, runId: string, transcript: TranscriptContext, reload: () => void) {
@@ -16,6 +17,9 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   const [localError, setLocalError] = useState<string | null>(null);
   const revisionRef = useRef<number | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
+  // Which read of the transcript the page's corrections are made on. A save belongs to the read it was made on: once the
+  // page has read again, a save of an earlier read is not sent, and an answer to one writes nothing here.
+  const read = useRef(0);
   // The corrections the page shows, as the last save in the queue sends them, ahead of the draw that shows them.
   const draft = useRef<CorrectionSet>(EMPTY_CORRECTIONS);
   const generation = useRef(0);
@@ -49,10 +53,12 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   }
   useEffect(() => {
     if (transcript.pending) return;
+    read.current++;
     revisionRef.current = transcript.corrections.revision;
     draft.current = transcript.corrections;
-    saveQueue.current = Promise.resolve(true);
-    generation.current++;
+    // The read is what Eneo has, as a save that went through: it takes its turn behind what is under way, so requests
+    // still go one at a time, and what comes after it waits for no save of an earlier read that failed.
+    saveQueue.current = appendCorrectionSave(saveQueue.current, async () => true, true);
     setSaveState("idle");
     setLocalError(staleNotice.current);
     staleNotice.current = null;
@@ -61,7 +67,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   /**
    * Shows `next` and saves it after what is being saved, one request at a time; resolves with why it was not saved, or
    * null. A save waits behind one that failed; an `explicit` one goes after it all the same, and sends nothing for the
-   * corrections shown once every save of them went through: Eneo has them.
+   * corrections shown once every save of them went through: Eneo has them. Read again before its turn, it is not sent.
    */
   function save(next: CorrectionSet, explicit: boolean): Promise<string | null> {
     if (!transcript.stepId || transcript.correctionProblem) return Promise.resolve(transcript.correctionProblem ?? "Transkriberingen kan inte ändras här.");
@@ -77,9 +83,15 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
       setSaveState("saving");
     }
     const requestGeneration = generation.current;
+    const madeOn = read.current;
     // What a save that waits behind a failed one says, if it never runs.
     let refusal: string | null = "Den förra ändringen kunde inte sparas. Spara den igen först.";
     saveQueue.current = appendCorrectionSave(saveQueue.current, async (previousSaved) => {
+      // Read again since: the page shows the read, and these corrections would replace it unseen.
+      if (madeOn !== read.current) {
+        refusal = READ_AGAIN;
+        return false;
+      }
       if (again) {
         // Their save before this went through: Eneo has them. Else they are sent again.
         if (previousSaved) {
@@ -93,6 +105,10 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         const savedSet = correctionsFromResponse(saved, transcript.segments, next.segmentsHash);
         const problem = correctionWriteProblem(savedSet);
         if (problem) throw new Error(problem);
+        refusal = null;
+        // Read again while it was under way: Eneo has it, and the read is what the page shows. Had it landed after the
+        // read, the next save meets a newer revision, and the page reads again.
+        if (madeOn !== read.current) return true;
         revisionRef.current = saved.revision;
         // Unless a newer change is shown, the page has the corrections as Eneo saved them, its names too; names as they
         // were sent keep their object, so no passage is drawn again for them.
@@ -102,10 +118,10 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         setCorrections((shown) => (shown === next ? landed : shown));
         if (requestGeneration === generation.current) { setSaveState("saved"); setLocalError(null); }
         setDropped(null);
-        refusal = null;
         return true;
       } catch (err) {
         refusal = friendlyError(err);
+        if (madeOn !== read.current) return false;
         if (err instanceof ApiError && err.code === STALE_REVISION) {
           // Someone else saved first: their corrections are read again and replace these, which could never be saved.
           staleNotice.current = refusal;
@@ -116,7 +132,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         setLocalError(`${refusal} Dina osparade rättningar finns kvar.`);
         return false;
       }
-    }, explicit).then((saved) => { if (!saved) setSaveState("error"); return saved; });
+    }, explicit).then((saved) => { if (!saved && madeOn === read.current) setSaveState("error"); return saved; });
     return saveQueue.current.then(() => refusal);
   }
   /** A correction made on the page: shown, and saved after what is being saved. */
