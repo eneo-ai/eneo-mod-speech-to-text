@@ -50,7 +50,6 @@ import {
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { createActionLabel, forwardedLine, howItWorks, makesText } from "@/lib/flow-output";
-import { formatDuration } from "@/lib/format";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -471,11 +470,7 @@ function SetupWorkspace({
   const audio = step?.input_format?.toLowerCase() === "audio";
   // The flow runs without a file too: Skapa dokument sends the details alone, and choosing a file stays offered.
   const optionalFile = step?.required === false;
-  // Where the recording is kept, and the flow's longest recording, said before it starts rather than near its end.
-  const longest = captureLimits(contract, step).maxRecordingMs;
-  const storage = [storageLine(persistent, input.evictable), longest ? `Inspelningen kan vara högst ${formatDuration(longest)}.` : ""]
-    .filter(Boolean)
-    .join(" ");
+  const storage = storageLine(persistent, input.evictable, captureLimits(contract, step).maxRecordingMs);
   const ActionIcon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
   const text = makesText(contract.final_output);

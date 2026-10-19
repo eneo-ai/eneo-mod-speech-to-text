@@ -323,12 +323,17 @@ export function labelsSpeakers(
   return choice ?? Boolean(option?.required);
 }
 
-/** Claims the recording is kept on the device only when the device store keeps it, and says when the browser may clear it. */
-export function storageLine(persistent: boolean | null, evictable = false): string {
-  if (!persistent) return "Låt sidan vara öppen under inspelningen.";
-  return evictable
-    ? "Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge efter att du har stoppat."
-    : "Inspelningen sparas på enheten medan du spelar in.";
+/**
+ * Claims the recording is kept on the device only when the device store keeps it, and says when the browser may clear it.
+ * The flow's longest recording (`captureLimits`' maxRecordingMs) is said here, before the start, not only near its end.
+ */
+export function storageLine(persistent: boolean | null, evictable = false, longestMs?: number): string {
+  const kept = !persistent
+    ? "Låt sidan vara öppen under inspelningen."
+    : evictable
+      ? "Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge efter att du har stoppat."
+      : "Inspelningen sparas på enheten medan du spelar in.";
+  return longestMs ? `${kept} Inspelningen kan vara högst ${formatDuration(longestMs)}.` : kept;
 }
 
 /** Whether the setup asks "Antal talare": the run labels speakers, and the flow's own form asks no count. */

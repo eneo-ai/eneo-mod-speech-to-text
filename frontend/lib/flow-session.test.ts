@@ -739,6 +739,11 @@ test("the storage line says the recording is kept on the device only when the de
     "a browser that may delete it says so",
   );
   assert.equal(storageLine(false, true), "Låt sidan vara öppen under inspelningen.", "a recording only in this tab says that");
+  assert.equal(
+    storageLine(true, false, 2 * 3600_000),
+    "Inspelningen sparas på enheten medan du spelar in. Inspelningen kan vara högst 2\u00a0h.",
+    "the flow's longest recording, before the start",
+  );
 });
 
 test("each mode has its own primary action", () => {
