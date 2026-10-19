@@ -4,7 +4,7 @@ import type { CorrectionsSaveState } from "./TranscriptPlayer";
 import { ApiError, saveTranscriptCorrections } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/errors";
-import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, type CorrectionSet, type SpeakerNames } from "@/lib/transcript-corrections";
+import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, withPrunedNames, type CorrectionSet, type SpeakerNames } from "@/lib/transcript-corrections";
 import { LeaveContext } from "./flow/useLeaveQuestion";
 
 const STALE_REVISION = "flow_transcript_corrections_stale_revision";
@@ -65,6 +65,8 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
    */
   function save(next: CorrectionSet, explicit: boolean): Promise<string | null> {
     if (!transcript.stepId || transcript.correctionProblem) return Promise.resolve(transcript.correctionProblem ?? "Transkriberingen kan inte ändras här.");
+    // The page holds what it sends: a name for a speaker no passage or edit has any more goes here too.
+    next = withPrunedNames(next, transcript.segments);
     // The corrections shown, saved again: nothing new to show, and they keep their generation, whichever of their saves lands.
     const again = explicit && sameCorrections(next, draft.current);
     if (again) next = draft.current;
@@ -92,8 +94,10 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         const problem = correctionWriteProblem(savedSet);
         if (problem) throw new Error(problem);
         revisionRef.current = saved.revision;
-        // Unless a newer change is shown, the page has the corrections as Eneo saved them.
-        const landed = { ...next, revision: saved.revision, updatedAt: saved.updated_at };
+        // Unless a newer change is shown, the page has the corrections as Eneo saved them, its names too; names as they
+        // were sent keep their object, so no passage is drawn again for them.
+        const answered = { ...next, speakerNames: savedSet.speakerNames };
+        const landed = { ...(sameCorrections(answered, next) ? next : answered), revision: saved.revision, updatedAt: saved.updated_at };
         if (draft.current === next) draft.current = landed;
         setCorrections((shown) => (shown === next ? landed : shown));
         if (requestGeneration === generation.current) { setSaveState("saved"); setLocalError(null); }

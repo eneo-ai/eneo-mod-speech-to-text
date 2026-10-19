@@ -23,9 +23,12 @@ const transcript: TranscriptContext = {
   corrections: { occurrences: [], speaker_edits: [], revision: null, schemaVersion: 3, segmentsHash: "a".repeat(64) },
 };
 
-// Corrections a person makes: the first passage moved to Talare 2, a word put into the second.
+// Corrections a person makes: the first passage moved to Talare 2, a word put into the second, and its first word split
+// off to a speaker of its own (undone with no decision there).
 const moved = (set: CorrectionSet) => withSpeakerDecision(set, segments, 0, null, null, "confirmed", "SPEAKER_01");
 const corrected = (set: CorrectionSet) => withLineCorrection(set, 1, occurrencesForLine(1, segments[1].text, "Första punkten gäller hela budgeten."));
+const split = (set: CorrectionSet) => withSpeakerDecision(set, segments, 1, 0, 6, "confirmed", "SPEAKER_05");
+const unsplit = (set: CorrectionSet) => withSpeakerDecision(set, segments, 1, 0, 6, null, null);
 
 /** Eneo's answer to a save it took: the set as sent, one revision on. */
 const taken = (body: Record<string, unknown>) =>
@@ -116,4 +119,36 @@ test("Spara namnen behind a save that fails is still sent, after it, and answers
   assert.equal(most(), 1);
   assert.deepEqual(requests[2].body.speaker_edits, requests[0].body.speaker_edits, "with the move");
   assert.equal(editing().saveState, "saved");
+});
+
+test("a name for a speaker a split made goes when the split is undone, and the split made again is not named by it", async (t) => {
+  const { view, requests, answer, editing } = await correcting(t);
+  await view.act(async () => void editing().onCorrectionsChange(split(editing().corrections)));
+  await answer(0);
+  await view.act(async () => void editing().saveNow({ SPEAKER_05: "Anna Berg" }));
+  await answer(1);
+  await view.act(async () => void editing().onCorrectionsChange(unsplit(editing().corrections)));
+  await answer(2);
+  assert.deepEqual(editing().corrections.speakerNames, {}, "the page keeps no name for a speaker that is gone");
+  await view.act(async () => void editing().onCorrectionsChange(split(editing().corrections)));
+  await answer(3);
+  assert.deepEqual(requests.map(({ body }) => body.speaker_names), [{}, { SPEAKER_05: "Anna Berg" }, {}, {}], "nor sends one with the split made again");
+});
+
+test("a save's answer gives the page the names as Eneo keeps them, never over a newer change", async (t) => {
+  const { view, answer, editing } = await correcting(t);
+  // Eneo keeps a name trimmed and an emptied one as none.
+  await view.act(async () => void editing().saveNow({ SPEAKER_00: " Anna Berg ", SPEAKER_01: "" }));
+  await answer(0, (body) => taken({ ...body, speaker_names: { SPEAKER_00: "Anna Berg", SPEAKER_01: null } }));
+  assert.deepEqual(editing().corrections.speakerNames, { SPEAKER_00: "Anna Berg", SPEAKER_01: null });
+  // A correction made while names are saved: their answer leaves it, and the names it was made with, as they are.
+  await view.act(async () => void editing().saveNow({ SPEAKER_00: " Erik Lund " }));
+  const shown = editing().corrections.speakerNames;
+  await view.act(async () => void editing().onCorrectionsChange(corrected(editing().corrections)));
+  await answer(1, (body) => taken({ ...body, speaker_names: { SPEAKER_00: "Erik Lund" } }));
+  assert.deepEqual(editing().corrections.speakerNames, { SPEAKER_00: " Erik Lund " }, "the newer change's names");
+  assert.equal(editing().corrections.occurrences.length, 1, "and its correction");
+  await answer(2);
+  // Names a correction keeps, and an answer gives back as sent, stay the same object: no passage is drawn again for them.
+  assert.equal(editing().corrections.speakerNames, shown);
 });

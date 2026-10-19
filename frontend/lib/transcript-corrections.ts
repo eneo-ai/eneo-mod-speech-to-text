@@ -401,6 +401,15 @@ export function prunedSpeakerNames(
 }
 
 /**
+ * The corrections as the page keeps them and a save sends them: with the names Eneo keeps (prunedSpeakerNames), so a name
+ * dropped there is dropped here too. The same set when it keeps them all, so nothing is drawn again for them.
+ */
+export function withPrunedNames(set: CorrectionSet, segments: readonly TranscriptSegment[]): CorrectionSet {
+  const names = prunedSpeakerNames(set.speakerNames, segments, set.speaker_edits);
+  return Object.keys(names).length === Object.keys(set.speakerNames ?? {}).length ? set : { ...set, speakerNames: names };
+}
+
+/**
  * The names after a naming, over those `kept` from before: a name typed for a speaker, null where a step's name was
  * emptied, and no entry where the name is the step's own or where none was given (absent reads as the step's).
  */
