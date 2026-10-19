@@ -1128,6 +1128,26 @@ export const STATES: State[] = [
     },
   },
   {
+    // "Ändra talare" on a finished run's passage: the picker's rows and its way to rename the passage's speaker.
+    name: "result-change-speaker",
+    go: async (page, info) => {
+      await result(page);
+      if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+      await page.getByRole("button", { name: "Talare 1, ändra talare" }).first().click();
+      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("button", { name: "Byt namn på Talare 1" })).toBeVisible();
+    },
+  },
+  {
+    // "Namnge talare" after the run, from the transcript's speakers' row: the naming dialog without the review's proposals.
+    name: "result-naming-dialog",
+    go: async (page, info) => {
+      await result(page);
+      if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+      await page.getByRole("button", { name: "Namnge talare" }).click();
+      await expect(page.getByRole("dialog", { name: "Namnge talarna" })).toBeVisible();
+    },
+  },
+  {
     name: "result-pdf-preview-whole",
     go: async (page) => {
       await run(page, ids.runs.pdfLong);
