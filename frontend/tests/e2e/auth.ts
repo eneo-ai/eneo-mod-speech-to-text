@@ -19,6 +19,9 @@ export const test = base.extend<{ session: { user: string } }>({
 
     await use({ user: status.user.id });
 
-    await context.request.post("/api/auth/logout", { headers: { Origin: new URL(baseURL!).origin } });
+    // The logout reuses a connection that has been idle since the login, and the server's keep-alive can close it just as
+    // the request goes out ("socket hang up"). A logout is safe to send again, once; any other failure stands.
+    const logout = () => context.request.post("/api/auth/logout", { headers: { Origin: new URL(baseURL!).origin } });
+    await logout().catch((error: Error) => (/socket hang up|ECONNRESET/.test(error.message) ? logout() : Promise.reject(error)));
   },
 });
