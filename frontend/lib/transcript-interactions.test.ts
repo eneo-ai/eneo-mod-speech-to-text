@@ -515,7 +515,7 @@ test("the naming dialog has a row for each speaker the transcript shows, split o
   assert.ok(!document.querySelector("dialog[open]"), "saved: the dialog closes");
 });
 
-test("names saved as they were send nothing, and a refused save keeps the dialog and the typed names", async (t) => {
+test("Spara namnen hands the names to the page's save, and a refused save keeps the dialog and the typed names", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const sent: CorrectionSet[] = [];
   let answer: string | null = null;
@@ -525,14 +525,15 @@ test("names saved as they were send nothing, and a refused save keeps the dialog
   });
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   await view.act(async () => button(document.body, "Spara namnen")!.click());
-  assert.equal(sent.length, 0, "nothing changed, nothing sent");
+  // Names as they were too: only the page's save knows whether Eneo has them (result-document.test.ts).
+  assert.deepEqual(sent.map((next) => next.speakerNames), [{}]);
   assert.ok(!document.querySelector("dialog[open]"));
 
   answer = "Eneo gick inte att nå just nu. Försök igen om en stund.";
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
   await view.act(async () => button(document.body, "Spara namnen")!.click());
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 2);
   assert.ok(document.querySelector("dialog[open]"), "the dialog stays open");
   assert.match(document.querySelector("dialog[open]")?.textContent ?? "", /Eneo gick inte att nå just nu\./);
   assert.equal(nameField("Talare 1").value, "Anna Berg", "with what was typed");

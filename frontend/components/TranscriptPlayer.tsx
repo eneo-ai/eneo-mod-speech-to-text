@@ -1484,7 +1484,8 @@ function SpeakerPicker({
 /**
  * "Namnge talare" after the run: the naming dialog with a row for each speaker the transcript shows, a split one too,
  * their passages and first words, a sample through the page's player, and the names in use to choose from. A save sends
- * the corrections with the names over the naming step's (namesAfterNaming); names as they were send nothing.
+ * the corrections with the names over the naming step's (namesAfterNaming) through the page's save, which sends nothing
+ * for what Eneo has already.
  */
 function SpeakerNaming({
   ref,
@@ -1535,8 +1536,7 @@ function SpeakerNaming({
     setSample(null);
   }
   function save(typed: SpeakerMappingRow[]): Promise<string | null> {
-    const next = { ...corrections, speakerNames: namesAfterNaming(typed, stepNames, corrections.speakerNames) };
-    return sameCorrections(next, corrections) ? Promise.resolve(null) : naming.save(next);
+    return naming.save({ ...corrections, speakerNames: namesAfterNaming(typed, stepNames, corrections.speakerNames) });
   }
 
   return (

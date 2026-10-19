@@ -1475,6 +1475,39 @@ test("a save of names that fails keeps the dialog open with the names, says why 
   assert.ok(button(view.container, "Försök spara igen"), "the page's own way to save again");
 });
 
+test("Spara namnen sends nothing for the names Eneo has, sends refused names again, and lets them go only once Eneo has them", async (t) => {
+  const { type } = await import("./test-dom");
+  const { hasNamesDraft } = await import("../components/SpeakerNamingDialog");
+  const answers = [
+    () => Response.json({ code: "upstream_unreachable" }, { status: 502 }),
+    (body: Record<string, unknown>) => Response.json({ ...body, flow_run_id: "run-1", step_id: "step-1", revision: 1, stale: false, updated_at: "2026-09-24T10:00:00Z" }),
+  ];
+  const { open, sent } = await namingRun(t, async (body) => answers[sent.length - 1](body));
+  const view = await open();
+  const save = async () => {
+    await view.act(async () => button(document.body, "Spara namnen")!.click());
+    await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  };
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await save();
+  assert.equal(sent.length, 0, "the names as Eneo has them: nothing to send");
+  assert.ok(!document.querySelector("dialog[open]"));
+
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await view.act(async () => type(await nameFieldOf("Talare 1"), "Anna Berg"));
+  await save();
+  assert.equal(sent.length, 1);
+  assert.ok(document.querySelector("dialog[open]"), "refused: still open");
+
+  // The page shows the refused names as not saved; Spara namnen saves them again, never takes them for saved.
+  await save();
+  assert.deepEqual(sent.map((body) => body.speaker_names), [{ SPEAKER_00: "Anna Berg" }, { SPEAKER_00: "Anna Berg" }], "sent again");
+  assert.ok(!document.querySelector("dialog[open]"), "saved: the dialog closes");
+  assert.equal(hasNamesDraft({ ownerId: "user-1", name: "names:run-1" }), false, "and lets the typed names go");
+  assert.equal(button(view.container, "Försök spara igen"), null, "nothing is left unsaved");
+  assert.ok(button(view.container, "Anna Berg, ändra talare"));
+});
+
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {
   const { type } = await import("./test-dom");
   const { open } = await namingRun(t, () => new Promise<Response>(() => undefined), { narrow: true });

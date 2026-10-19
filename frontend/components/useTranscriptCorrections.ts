@@ -87,9 +87,12 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     }).then((saved) => { if (!saved) setSaveState("error"); return saved; });
     return saveQueue.current.then(() => refusal);
   }
-  /** Saves `next` after what is under way, also when an earlier save failed: a save the person asks for (Försök spara igen, Spara namnen). */
+  /**
+   * Saves `next` after what is under way, also when an earlier save failed: a save the person asks for (Försök spara igen,
+   * Spara namnen). What the page shows sends nothing once every save of it went through: Eneo has it.
+   */
   async function saveNow(next: CorrectionSet): Promise<string | null> {
-    await saveQueue.current;
+    if ((await saveQueue.current) && sameCorrections(next, corrections)) return null;
     saveQueue.current = Promise.resolve(true);
     return onCorrectionsChange(next);
   }
