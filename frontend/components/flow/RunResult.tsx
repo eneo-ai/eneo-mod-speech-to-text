@@ -15,6 +15,7 @@ import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
+import { participantsOf } from "@/lib/participants";
 import { detailRows, detailsSummary } from "@/lib/recording-view";
 import type { Playback } from "@/lib/playback";
 import { rememberPosition } from "@/lib/playback-position";
@@ -120,11 +121,14 @@ export function RunResult({
   // kept for this person through a reload.
   const user = useAuthenticatedUser();
   const namesDraft = { ownerId: user.id, name: `names:${run.id}` };
-  const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument } : undefined;
   // The details the run was started with (meeting name, participants), as the failure and progress views show them:
   // only on the flow version the contract describes, and only the filled ones.
   const fields = contract?.form_fields ?? [];
   const details = (run.input_payload_json ?? {}) as Record<string, unknown>;
+  // The people the run was started with, offered as names: from the field Eneo says holds them, on the contract's version.
+  const participantsField = contract && ofContractVersion(run, contract) ? contract.transcription?.max_speakers?.participants_field : null;
+  const participants = participantsField ? participantsOf(details[participantsField]) : [];
+  const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument, participants } : undefined;
   const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);

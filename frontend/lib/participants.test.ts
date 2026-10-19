@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addNames, recentNames, rememberNames, splitNames, takeNames } from "./participants";
+import { addNames, participantsOf, recentNames, rememberNames, splitNames, takeNames } from "./participants";
 
 function memoryStorage() {
   const data: Record<string, string> = {};
@@ -56,4 +56,11 @@ test("recent names are this user's own, most recent first, and a broken store ne
   };
   assert.deepEqual(recentNames(throwing, "user-1"), []);
   rememberNames(throwing, "user-1", ["Anna"]);
+});
+
+test("a run's participants are read from a list or from text, and nothing else", () => {
+  assert.deepEqual(participantsOf(["Anna Berg", " Erik Lund ", "", 7]), ["Anna Berg", "Erik Lund"]);
+  assert.deepEqual(participantsOf("Anna Berg, Erik Lund"), ["Anna Berg", "Erik Lund"]);
+  assert.deepEqual(participantsOf(null), []);
+  assert.deepEqual(participantsOf({ name: "Anna Berg" }), []);
 });

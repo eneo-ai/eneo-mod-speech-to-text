@@ -136,6 +136,10 @@ test("Byt namn på in a passage's Ändra talare opens the naming at that speaker
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeFocused();
   await expect(page.getByRole("dialog", { name: "Ändra talare" })).toHaveCount(0);
+  // The people the run was started with are offered as names, before anyone is named.
+  await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).click();
+  await expect(page.getByRole("listbox").getByRole("option", { name: "Erik Lund" })).toBeVisible();
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
   await dialog.getByRole("button", { name: "Avbryt" }).click();
   await expect(dialog).toBeHidden();
   await expect(passage).toBeFocused();

@@ -447,11 +447,12 @@ test("the clock on a passage plays from there, also while the recording is pause
 
 // ---- Naming the speakers of a finished run ----
 
-/** What a finished run's page gives the player for naming: the dialog's words, where typed names are kept, and the save. */
+/** What a finished run's page gives the player for naming: the dialog's words, where typed names are kept, the save and the people. */
 const naming = (save: (next: CorrectionSet) => Promise<string | null> = async () => null) => ({
   description: "Namnen syns direkt i transkriberingen.",
   draftKey: { ownerId: "user-1", name: "names:run-1" },
   save,
+  participants: [],
 });
 /** A field of the open naming dialog, found as a screen reader names it. */
 const nameField = (label: string) =>

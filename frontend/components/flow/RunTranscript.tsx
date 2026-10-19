@@ -97,9 +97,10 @@ export function RunTranscriptView({
   onReload: () => void;
   /**
    * The run is finished, so its speakers can be named: where names typed and not saved are kept, and what the run made
-   * (`thing`, as outputWords says it), whether it was sent on, and whether it has a document to make again.
+   * (`thing`, as outputWords says it), whether it was sent on, whether it has a document to make again, and the people
+   * it was started with.
    */
-  naming?: { draftKey: { ownerId: string; name: string }; thing: string; delivered: boolean; hasDocument: boolean };
+  naming?: { draftKey: { ownerId: string; name: string }; thing: string; delivered: boolean; hasDocument: boolean; participants: readonly string[] };
 }) {
   const { corrections, saveState, localError, hasDropped, onCorrectionsChange, saveNow, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
 
@@ -187,7 +188,7 @@ export function RunTranscriptView({
         saveState={saveState}
         confirmedWords={confirmedWords}
         playback={playback}
-        naming={naming && { description: namingDescription(naming), draftKey: naming.draftKey, save: saveNow }}
+        naming={naming && { description: namingDescription(naming), draftKey: naming.draftKey, save: saveNow, participants: naming.participants }}
       />
     </Card>
   );

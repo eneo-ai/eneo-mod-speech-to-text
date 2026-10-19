@@ -89,12 +89,14 @@ export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
 /**
  * Naming the speakers of a finished run: the dialog's words, where names typed and not yet saved are kept, and the save
- * of the corrections with the names, which resolves with why they were not saved, or null.
+ * of the corrections with the names, which resolves with why they were not saved, or null; and the people the run was
+ * started with, offered as names.
  */
 type Naming = {
   description: string;
   draftKey: { ownerId: string; name: string };
   save: (next: CorrectionSet) => Promise<string | null>;
+  participants: readonly string[];
 };
 
 const RATES = [0.75, 1, 1.25, 1.5, 2];
@@ -756,7 +758,7 @@ export function TranscriptPlayer(
   }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
-  const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
+  const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Ändringar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
   const hitStatus = !searched.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
   const canDownload = corrections && !correctionProblem;
@@ -1543,7 +1545,7 @@ function SpeakerNaming({
     <SpeakerNamingDialog
       ref={ref}
       rows={rows}
-      participants={[...new Set(Object.values(names))]}
+      participants={[...new Set([...naming.participants, ...Object.values(names)])]}
       passages={(label) => speakers.find((speaker) => speaker.label === label)?.passages ?? 0}
       quote={(label) => shown.find((segment) => segment.speaker === label)?.text ?? null}
       onListen={hasAudio ? listenTo : undefined}
