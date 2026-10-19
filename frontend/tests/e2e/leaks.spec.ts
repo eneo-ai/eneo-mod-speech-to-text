@@ -138,6 +138,13 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("dialog"),
     hide: (page) => page.keyboard.press("Escape"),
   },
+  // Naming a finished run's speakers, from its transcript's speakers' row.
+  "result naming dialog": {
+    go: (page) => result(page),
+    show: (page) => page.getByRole("button", { name: "Namnge talare" }).click(),
+    shown: (page) => page.getByRole("dialog", { name: "Namnge talarna" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
   // The transcript's speed, chosen from a menu in its docked player.
   "speed menu": {
     go: (page) => result(page),

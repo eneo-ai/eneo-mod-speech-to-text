@@ -1,4 +1,4 @@
-import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type MouseEvent } from "react";
+import { cloneElement, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactElement, type MouseEvent, type Ref } from "react";
 import { Headphones, Pause } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -11,11 +11,11 @@ import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
-import { SpeakerMark } from "@/components/TranscriptPlayer";
+import { SpeakerMark } from "@/components/SpeakerMark";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { isRecord } from "@/lib/is-record";
-import { isUnsureProposal, speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
-import { speakerDisplayLabel } from "@/lib/transcript";
+import { isUnsureProposal, type SpeakerMappingRow } from "@/lib/speaker-mapping";
+import { speakerDisplayLabel, speakerNameProblem } from "@/lib/transcript";
 
 /**
  * The keyboard on a phone covers the lower part of the screen without making
@@ -61,15 +61,20 @@ const isNamesDraft = (value: unknown): value is TypedName[] =>
 export const hasNamesDraft = (draftKey: { ownerId: string; name: string }) =>
   readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) !== null;
 
+/** Opens the dialog from elsewhere than its button: at one speaker's name, and gives the focus to `returnTo` when it closes. */
+export type SpeakerNamingHandle = { open: (label: string, returnTo: HTMLElement | null) => void };
+
 /**
- * "Namnge talarna" at the review pause: one row per speaker with a sample to
- * listen to, the first thing they say, how many passages they have, and a name
- * picked from the participants or typed. "Spara namnen" saves the names to the
- * pause's edit, which is what reaches the transcript and the document, and
- * closes the dialog. It only names: the flow goes on from the page's own
- * "Godkänn och fortsätt".
+ * "Namnge talarna": one row per speaker with a sample to listen to, the first
+ * thing they say, how many passages they have, and a name picked from the
+ * participants or typed. "Spara namnen" saves the names and closes the dialog.
+ * At the review pause it saves the pause's edit, which is what reaches the
+ * transcript and the document, and only names: the flow goes on from the page's
+ * own "Godkänn och fortsätt". After the run it saves the names with the
+ * transcript's corrections.
  */
 export function SpeakerNamingDialog({
+  ref,
   rows,
   proposals = [],
   participants,
@@ -83,8 +88,10 @@ export function SpeakerNamingDialog({
   onSave,
   decided = false,
   draftKey,
+  description = "Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriberingen och dokumentet när du fortsätter.",
   children,
 }: {
+  ref?: Ref<SpeakerNamingHandle>;
   rows: readonly SpeakerMappingRow[];
   /** What the mapping step proposed for each speaker: its name, how sure it was and why. */
   proposals?: readonly SpeakerMappingRow[];
@@ -108,6 +115,8 @@ export function SpeakerNamingDialog({
   decided?: boolean;
   /** Keeps names typed but not saved for this person through a reload, the dialog open again with them. */
   draftKey?: { ownerId: string; name: string };
+  /** What naming changes, under the title: the review's words unless the page has its own. */
+  description?: string;
   /** The button that opens the dialog; focus returns to it on close. */
   children: Trigger;
 }) {
@@ -165,13 +174,32 @@ export function SpeakerNamingDialog({
     if (draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
   };
   // Focus goes back to the button that opened the dialog, which the design system's own return cannot be trusted
-  // with: a click leaves the focus on the page's body in Safari and Firefox on a Mac.
+  // with: a click leaves the focus on the page's body in Safari and Firefox on a Mac. Opened from elsewhere (a passage's
+  // Ändra talare, which has closed), it goes back there.
   const trigger = useRef<HTMLElement | null>(null);
+  const returnTo = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(open);
   useEffect(() => {
-    if (wasOpen.current && !open) trigger.current?.focus();
+    if (wasOpen.current && !open) (returnTo.current ?? trigger.current)?.focus();
     wasOpen.current = open;
   }, [open]);
+  // Opened at one speaker: once the dialog is open (its title has the focus), that speaker's name field takes it.
+  const [startAt, setStartAt] = useState<string | null>(null);
+  useEffect(() => {
+    if (!shown || startAt === null) return;
+    const row = [...(dialogElement.current?.querySelectorAll<HTMLElement>("li[data-speaker]") ?? [])].find((li) => li.dataset.speaker === startAt);
+    row?.querySelector("input")?.focus();
+    setStartAt(null);
+  }, [shown, startAt]);
+  useImperativeHandle(ref, () => ({
+    open(label, from) {
+      returnTo.current = from;
+      setStartAt(label);
+      setProblems({});
+      setRefusal(null);
+      setOpen(true);
+    },
+  }), []);
 
   // A name given to another speaker is said quietly; only the row's own choice is checked.
   const usedBy = (name: string, label: string) => {
@@ -205,6 +233,7 @@ export function SpeakerNamingDialog({
         "aria-haspopup": "dialog",
         onClick: (event: MouseEvent<HTMLElement>) => {
           children.props.onClick?.(event);
+          returnTo.current = null;
           setProblems({});
           setRefusal(null);
           setOpen(true);
@@ -226,7 +255,7 @@ export function SpeakerNamingDialog({
           content={
             <LayoutContent>
               <Text as="p" id={descriptionId} color="secondary">
-                Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriberingen och dokumentet när du fortsätter.
+                {description}
               </Text>
               {/* Tab past the last control comes back to the first without scrolling to it (the dialog's focus trap
                   moves focus with preventScroll), so the list brings whatever takes focus into view itself. */}
@@ -242,7 +271,7 @@ export function SpeakerNamingDialog({
                     const unsure = isUnsureProposal(row, proposals);
                     const sample = playing ? "Stoppa exempel" : "Lyssna på exempel";
                     return (
-                      <li key={row.label} className={styles.row}>
+                      <li key={row.label} className={styles.row} data-speaker={row.label}>
                         <div className={styles.who}>
                           <SpeakerMark label={row.label} name={speakerDisplayLabel(row.label)} size="lg" />
                           <VStack gap={1} hAlign="start" className={styles.said}>

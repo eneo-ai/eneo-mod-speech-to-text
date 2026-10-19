@@ -1,34 +1,3 @@
-/* A speaker's round mark (SpeakerMark). Decorative: the name is always beside it. An unlabelled passage is a quiet "?",
-   a speaker has one of six colours, the same everywhere on the page. */
-.mark {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  user-select: none;
-  border-radius: var(--radius-full);
-  font-weight: var(--font-weight-semibold);
-  background: var(--tint, var(--color-text-secondary));
-  color: var(--color-background-surface);
-}
-
-.mark[data-size="sm"] {
-  inline-size: var(--spacing-6);
-  block-size: var(--spacing-6);
-  font-size: var(--font-size-xs);
-}
-
-.mark[data-size="md"] {
-  inline-size: var(--spacing-7);
-  block-size: var(--spacing-7);
-  font-size: var(--font-size-sm);
-}
-
-.mark[data-size="lg"] {
-  inline-size: var(--spacing-9);
-  block-size: var(--spacing-9);
-  font-size: var(--font-size-sm);
-}
-
 /* ---- The player (TranscriptPlayer): the text, its words, the tools above it and the player docked under it. ---- */
 
 .player {
@@ -95,7 +64,7 @@
   color: var(--color-text-primary);
 }
 
-/* ---- Tools: the speaker filter, the search ---- */
+/* ---- Tools: the speakers' row (the filter, and naming them after the run), the search ---- */
 
 .tools {
   padding: var(--spacing-1) var(--spacing-3) var(--spacing-3);
@@ -110,10 +79,21 @@
   }
 }
 
+/* The list fills its row, beside the naming where there is room for both. */
+.speakerList {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
 @media (min-width: 1024px) {
   .speakerList {
     display: none;
   }
+}
+
+/* Naming the speakers is the row's own action: at its end, apart from the filter's chips. */
+.nameSpeakers {
+  margin-inline-start: auto;
 }
 
 .reviewIcon {
@@ -752,6 +732,11 @@
 .pickerSection {
   padding: var(--spacing-3) var(--spacing-4);
   border-block-start: var(--border-width) solid var(--color-border);
+}
+
+/* A ghost button's own padding would set its pencil in from the section's words above it. */
+.rename {
+  margin-inline-start: calc(-1 * var(--spacing-3));
 }
 
 /* ---- Correcting a passage ---- */

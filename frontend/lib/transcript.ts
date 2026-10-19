@@ -409,6 +409,19 @@ export function speakerName(label: string, names: Readonly<Record<string, string
   return names[label]?.trim() || speakerDisplayLabel(label);
 }
 
+/** The longest name Eneo keeps for a speaker, in characters as it counts them (ONE_LINE_TEXT_MAX_CHARS). */
+const SPEAKER_NAME_MAX = 120;
+
+/**
+ * Why a speaker name cannot be saved, or null, by Eneo's rule for one line of text: no line break, tab, other control
+ * character or invisible format character, and at most 120 characters once trimmed.
+ */
+export function speakerNameProblem(name: string | null): string | null {
+  if (name === null) return null;
+  if (/[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u.test(name)) return "Ett namn är en rad, utan radbrytningar, tabbar eller andra styrtecken.";
+  return Array.from(name.trim()).length > SPEAKER_NAME_MAX ? `Ett namn får vara högst ${SPEAKER_NAME_MAX} tecken.` : null;
+}
+
 /** A transcript without speaker labels reads as paragraphs: one block per timed segment, never one merged block. */
 export function paragraphTurns(segments: readonly TranscriptSegment[]): TranscriptTurn[] {
   return segments.map((segment, segmentIndex) => ({

@@ -14,11 +14,21 @@
 //   - V2 avvisar no-op-byten. V3 kan bekräfta samma förslag och lämna
 //     talaren oavgjord. Återställning tar bort beslutsöverlägget.
 //   - Talaretiketter måste ha formen SPEAKER_NN.
+//   - Namn som ges efter körningen (`speaker_names`) får bara gälla en etikett
+//     i transkriberingen eller ett talarbytes talare, och ändras bara på en
+//     körning som är klar.
 
-import { effectiveSpeakerLabel, modelSpeakerOf, OVERLAP_SPEAKER, speakerName, UNDECIDED_SPEAKER, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+import { isRecord } from "./is-record";
+import { effectiveSpeakerLabel, modelSpeakerOf, OVERLAP_SPEAKER, speakerName, speakerNameProblem, UNDECIDED_SPEAKER, type SpeakerDecision, type TranscriptSegment } from "./transcript";
 
 /** Eneo's cap on the speaker edits one correction set holds (MAX_SPEAKER_EDITS in transcript_corrections.py). */
 export const MAX_SPEAKER_EDITS = 2000;
+/** Eneo's cap on the names one correction set holds. */
+const MAX_SPEAKER_NAMES = 100;
+const SPEAKER_LABEL = /^SPEAKER_\d{2,}$/;
+
+/** A raw label to the name given to it after the run: a name, or null for "no name" over a naming step's. */
+export type SpeakerNames = Readonly<Record<string, string | null>>;
 
 interface CorrectionOccurrence {
   segment_index: number;
@@ -46,6 +56,8 @@ export interface CorrectionSet {
   speaker_edits: SpeakerEdit[];
   /** Eneos revision för optimistisk låsning; null innan något sparats. */
   revision: number | null;
+  /** Names given after the run, laid over a naming step's (effectiveSpeakerNames): Eneo's `speaker_names`. */
+  speakerNames?: SpeakerNames;
 }
 
 export const EMPTY_CORRECTIONS: CorrectionSet = {
@@ -352,19 +364,79 @@ export function withSpeakerEdit(
   return { ...set, speaker_edits };
 }
 
+/** The names as a list in the labels' order, so two sets with the same names compare equal whatever order they came in. */
+const namesInOrder = (names: SpeakerNames = {}) => Object.keys(names).sort().map((label) => [label, names[label]]);
+
 export function sameCorrections(a: CorrectionSet, b: CorrectionSet): boolean {
   return (
-    JSON.stringify([a.occurrences, a.speaker_edits]) ===
-    JSON.stringify([b.occurrences, b.speaker_edits])
+    JSON.stringify([a.occurrences, a.speaker_edits, namesInOrder(a.speakerNames)]) ===
+    JSON.stringify([b.occurrences, b.speaker_edits, namesInOrder(b.speakerNames)])
   );
+}
+
+/**
+ * The names the page shows, by Eneo's one rule: a naming step's (`base`), with the names given after the run over them.
+ * A name overrides, null takes the step's name away ("Talare N" again), and a speaker without an entry keeps the step's.
+ */
+export function effectiveSpeakerNames(base: Readonly<Record<string, string>>, given: SpeakerNames | undefined): Record<string, string> {
+  const names = { ...base };
+  for (const [label, name] of Object.entries(given ?? {})) {
+    if (name === null) delete names[label];
+    else names[label] = name;
+  }
+  return names;
+}
+
+/**
+ * The names Eneo keeps: a raw label of the transcript keeps its entry, null included, also with all its passages moved;
+ * a speaker a split made keeps it while an edit still makes that speaker. What else the page holds is dropped.
+ */
+export function prunedSpeakerNames(
+  names: SpeakerNames | undefined,
+  segments: readonly TranscriptSegment[],
+  edits: readonly SpeakerEdit[],
+): Record<string, string | null> {
+  const known = new Set([...segments.map((segment) => segment.speaker), ...edits.map((edit) => edit.speaker)]);
+  return Object.fromEntries(Object.entries(names ?? {}).filter(([label]) => known.has(label)));
+}
+
+/**
+ * The corrections as the page keeps them and a save sends them: with the names Eneo keeps (prunedSpeakerNames), so a name
+ * dropped there is dropped here too. The same set when it keeps them all, so nothing is drawn again for them.
+ */
+export function withPrunedNames(set: CorrectionSet, segments: readonly TranscriptSegment[]): CorrectionSet {
+  const names = prunedSpeakerNames(set.speakerNames, segments, set.speaker_edits);
+  return Object.keys(names).length === Object.keys(set.speakerNames ?? {}).length ? set : { ...set, speakerNames: names };
+}
+
+/**
+ * The names after a naming, over those `kept` from before: a name typed for a speaker, null where a step's name was
+ * emptied, and no entry where the name is the step's own or where none was given (absent reads as the step's).
+ */
+export function namesAfterNaming(
+  rows: readonly { label: string; name: string | null }[],
+  base: Readonly<Record<string, string>>,
+  kept: SpeakerNames | undefined,
+): Record<string, string | null> {
+  const names: Record<string, string | null> = { ...kept };
+  for (const { label, name } of rows) {
+    const typed = name?.trim() || null;
+    if (typed === (base[label] ?? null)) delete names[label];
+    else names[label] = typed;
+  }
+  return names;
 }
 
 /** Validate before allowing a replace-style save. Never erase a newer overlay. */
 export function correctionsFromResponse(response: {
   schema_version?: number; segments_hash?: string | null; updated_at?: string; stale: boolean; revision: number;
-  occurrences: CorrectionOccurrence[]; speaker_edits: SpeakerEdit[];
+  occurrences: CorrectionOccurrence[]; speaker_edits: SpeakerEdit[]; speaker_names?: SpeakerNames | null;
 }, segments: readonly TranscriptSegment[], expectedHash?: string | null): CorrectionSet {
   const version = response.schema_version ?? 2;
+  const speakerNames: unknown = response.speaker_names ?? {};
+  if (!isRecord(speakerNames) || Object.entries(speakerNames).some(([label, name]) => !SPEAKER_LABEL.test(label) || (name !== null && typeof name !== "string"))) {
+    throw new Error("Talarnamnen i rättningarna har fel format. Rättningarna kan inte visas säkert.");
+  }
   if (expectedHash && response.segments_hash && expectedHash !== response.segments_hash) {
     throw new Error("Transkriberingens underlag har ändrats. Läs in det aktuella underlaget innan du fortsätter.");
   }
@@ -416,7 +488,10 @@ export function correctionsFromResponse(response: {
     spans.push([start, end]); occupiedSpeakers.set(edit.segment_index, spans);
   }
 
-  const set = { schemaVersion: version, updatedAt: response.updated_at, segmentsHash: expectedHash ?? response.segments_hash, occurrences: response.occurrences, speaker_edits: response.speaker_edits ?? [], revision: response.revision };
+  const set = {
+    schemaVersion: version, updatedAt: response.updated_at, segmentsHash: expectedHash ?? response.segments_hash, occurrences: response.occurrences,
+    speaker_edits: response.speaker_edits ?? [], revision: response.revision, speakerNames: speakerNames as SpeakerNames,
+  };
   applyCorrections(segments, set);
   return set;
 }
@@ -431,6 +506,13 @@ export function correctionWriteProblem(set: CorrectionSet): string | null {
   if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriberingens originalunderlag saknas. Läs in sidan igen innan du sparar.";
   if (version < 3 && set.speaker_edits.some((e) => e.decision === "unresolved" || e.speaker === null || e.original_speaker === null || e.speaker === e.original_speaker)) {
     return "Talarbeslut kräver Eneos uppdaterade underlag för transkriberingen.";
+  }
+  const names = Object.entries(set.speakerNames ?? {});
+  if (names.length > MAX_SPEAKER_NAMES) return `Det blir fler än ${MAX_SPEAKER_NAMES} talare med namn, fler än Eneo sparar.`;
+  if (names.some(([label]) => !SPEAKER_LABEL.test(label))) return "Ett namn kan bara ges till en talare i transkriberingen.";
+  for (const [, name] of names) {
+    const problem = speakerNameProblem(name);
+    if (problem) return problem;
   }
   return null;
 }
@@ -448,6 +530,8 @@ export function correctionRequest(set: CorrectionSet, segments: readonly Transcr
       char_start: e.char_start === null ? null : offset(e.segment_index, e.char_start),
       char_end: e.char_end === null ? null : offset(e.segment_index, e.char_end),
     })),
+    // Always sent, as the page holds them: an omitted field would keep names the page no longer shows.
+    speaker_names: prunedSpeakerNames(set.speakerNames, segments, set.speaker_edits),
   };
 }
 
@@ -484,9 +568,10 @@ function textTimestamp(seconds: number): string {
     .join(":");
 }
 
-/** Plain text uses the same effective attribution and spans as the player. */
-export function renderReviewedTranscript(segments: readonly TranscriptSegment[], set: CorrectionSet, names: Readonly<Record<string, string>> = {}): string {
+/** Plain text uses the same effective attribution, spans and names as the player; `stepNames` are a naming step's. */
+export function renderReviewedTranscript(segments: readonly TranscriptSegment[], set: CorrectionSet, stepNames: Readonly<Record<string, string>> = {}): string {
   const out = applyCorrections(segments, set).segments;
+  const names = effectiveSpeakerNames(stepNames, set.speakerNames);
   const lines: string[] = [];
   let file = -1;
   const multiple = new Set(out.map((s) => s.fileIndex)).size > 1;
@@ -500,7 +585,10 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
   return lines.join("\n");
 }
 
-/** Once a save fails, queued replacements must wait for an explicit retry. */
-export function appendCorrectionSave(previous: Promise<boolean>, write: () => Promise<boolean>): Promise<boolean> {
-  return previous.then((saved) => saved ? write() : false);
+/**
+ * Once a save fails, queued replacements must wait for an explicit save, which goes after what is under way whatever came
+ * of it: `write` is told whether the save before it went through.
+ */
+export function appendCorrectionSave(previous: Promise<boolean>, write: (previousSaved: boolean) => Promise<boolean>, explicit = false): Promise<boolean> {
+  return previous.then((saved) => saved || explicit ? write(saved) : false);
 }

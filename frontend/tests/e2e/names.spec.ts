@@ -487,7 +487,7 @@ test("a correction's save is said from its first word: the live region waits in 
   const said = page.getByRole("status").filter({ hasText: "Sparar…" });
   await expect(said).toBeAttached();
   expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element))).toBe(true);
-  await expect(page.getByRole("status").filter({ hasText: "Rättningar sparade" })).toBeAttached();
+  await expect(page.getByRole("status").filter({ hasText: "Ändringar sparade" })).toBeAttached();
 });
 
 test("a passage's actions say which part they are in, as its play button does, so no two are named alike", async ({ page }, info) => {

@@ -287,6 +287,12 @@ test("the naming dialog holds focus and gives it back", async ({ page }, info) =
   await holdsFocus(page, page.getByRole("button", { name: "Namnge talarna" }), page.getByRole("dialog", { name: "Namnge talarna" }));
 });
 
+test("the naming dialog after the run holds focus and gives it back", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "result")!.go(page, info);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await holdsFocus(page, page.getByRole("button", { name: "Namnge talare" }), page.getByRole("dialog", { name: "Namnge talarna" }));
+});
+
 test("Escape closes the name list and leaves the naming dialog open; the next one closes the dialog, with the names kept", async ({ page }, info) => {
   await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });

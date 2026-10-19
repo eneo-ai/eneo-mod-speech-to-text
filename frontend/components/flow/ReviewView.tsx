@@ -57,7 +57,8 @@ import {
 import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
 import { applyCorrections } from "@/lib/transcript-corrections";
 import { hasNamesDraft, SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
-import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
+import { SpeakerMark } from "@/components/SpeakerMark";
+import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";

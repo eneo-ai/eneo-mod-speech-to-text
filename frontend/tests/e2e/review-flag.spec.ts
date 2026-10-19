@@ -1,10 +1,11 @@
 /**
- * The review page with the speaker review switched on (SPEAKER_REVIEW_ENABLED, fixed when the app is built),
- * where the speakers sit in a card that folds away: `npm run test:a11y:review`, which starts the app that way. Only there
- * are these tests run; the gate's own app has the setting off.
+ * The app with the speaker review switched on (SPEAKER_REVIEW_ENABLED, fixed when the app is built): the review page,
+ * where the speakers sit in a card that folds away, and a finished run's result, whose transcript shows the review's own
+ * view. `npm run test:a11y:review` starts the app that way. Only there are these tests run; the gate's own app has the
+ * setting off.
  */
 import { expect, test } from "./gate";
-import { run } from "./screens";
+import { isLaptop, run, startedRun } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.skip(process.env.SPEAKER_REVIEW_ENABLED !== "true", "needs the app started with the speaker review on");
@@ -30,6 +31,31 @@ test("names typed but not saved come back as a dialog you can see and reach", as
   // A phone has no Escape: Stäng takes it away.
   await dialog.getByRole("button", { name: "Stäng", exact: true }).click();
   await expect(dialog).toBeHidden();
+});
+
+test("a finished run's speakers are named on its result: Namnge talare stands above the review's view, which shows the names at once", async ({ page }, info) => {
+  const { id, finish } = await startedRun(page);
+  await finish();
+  await run(page, id);
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+
+  const naming = page.getByRole("button", { name: "Namnge talare" });
+  await naming.click();
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  for (const [speaker, name] of [["Talare 1", "Anna Berg"], ["Talare 2", "Erik Lund"]]) {
+    await dialog.getByRole("combobox", { name: `Vem är ${speaker}?` }).fill(name);
+    // Typing opens the name list over what is below the field; a press outside it closes it first.
+    await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  }
+  await dialog.getByRole("button", { name: "Spara namnen" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(naming, "the focus is back where the naming was opened").toBeFocused();
+
+  // Each passage of the review's view says its speaker by the name.
+  await expect(page.getByRole("button", { name: "Markera stycket: Anna Berg" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Markera stycket: Erik Lund" })).toHaveCount(2);
+  await expect(page.getByRole("button", { name: /^Markera stycket: Talare/ })).toHaveCount(0);
 });
 
 test("the editor's code that cannot be fetched leaves the transcript with the person's own reload, and what was typed is back after it, with the editor", async ({ page }) => {

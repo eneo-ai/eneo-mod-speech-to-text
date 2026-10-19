@@ -214,3 +214,13 @@ test("a file Eneo no longer has says so; any other failure to fetch it says what
   assert.equal(fileProblem(new ApiError(503, "Service Unavailable", null)), "Servern kunde inte nås just nu. Försök igen om en stund.");
   assert.equal(fileProblem(new TypeError("Failed to fetch")), "Anslutningen avbröts. Kontrollera nätverket och försök igen.");
 });
+
+test("a refused name says why in its reason: a speaker the transcript no longer has, or a run that is not finished", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const refused = (reason: string) =>
+    friendlyError(new ApiError(400, "x", { code: "flow_transcript_corrections_invalid_speaker_edit", context: { reason } }, "flow_transcript_corrections_invalid_speaker_edit"));
+  assert.equal(refused("unknown_speaker_label"), "En talare som fick ett namn finns inte längre i transkriberingen. Läs in sidan igen och försök på nytt.");
+  assert.equal(refused("run_not_completed"), "Namnen kan bara ändras när körningen är klar.");
+  // Any other reason is the code's own sentence.
+  assert.equal(refused("speaker_unchanged"), "Talarbytet kunde inte sparas. Ladda om sidan och försök igen.");
+});

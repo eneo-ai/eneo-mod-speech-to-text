@@ -178,14 +178,6 @@ export function withSplitLabels(rows: readonly SpeakerMappingRow[], labels: read
   return out;
 }
 
-/** Why a speaker name cannot be saved, or null: a name is one line, without tabs or other control characters. */
-export function speakerNameProblem(name: string | null): string | null {
-  if (name === null) return null;
-  return /[\u0000-\u001f\u007f\u2028\u2029]/.test(name)
-    ? "Ett namn är en rad, utan radbrytningar, tabbar eller andra styrtecken."
-    : null;
-}
-
 /** Värdet Eneo förväntar sig som `edited_value` för checkpointen. */
 export function buildEditedMapping(
   rows: readonly SpeakerMappingRow[],

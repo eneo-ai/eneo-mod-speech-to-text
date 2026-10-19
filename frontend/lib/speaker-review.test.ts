@@ -155,10 +155,10 @@ test("failed saves preserve ordering and cannot produce approval success", async
   await approval;
   assert.equal(writes.length, 0);
   assert.equal(await second, false);
-  // Explicit retry still uses the original revision, supplied by the caller.
-  const retry = appendCorrectionSave(Promise.resolve(true), async () => { writes.push("retry"); return true; });
+  // An explicit retry goes after the failed save, told it failed; it still uses the original revision, supplied by the caller.
+  const retry = appendCorrectionSave(second, async (previousSaved) => { writes.push(`retry after ${previousSaved}`); return true; }, true);
   await retry.then((saved) => { if (saved) writes.push("approved"); });
-  assert.deepEqual(writes, ["retry", "approved"]);
+  assert.deepEqual(writes, ["retry after false", "approved"]);
 });
 
 test("successful queued replacements land before approval", async () => {

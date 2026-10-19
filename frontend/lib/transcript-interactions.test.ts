@@ -3,7 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { computeAccessibleName } from "dom-accessibility-api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
-import type { CorrectionSet } from "./transcript-corrections";
+import type { CorrectionSet, SpeakerNames } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
 
 installDom();
@@ -443,4 +443,128 @@ test("the clock on a passage plays from there, also while the recording is pause
     media.pause = pause;
     media.load = load;
   }
+});
+
+// ---- Naming the speakers of a finished run ----
+
+/** What a finished run's page gives the player for naming: the dialog's words, where typed names are kept, the save and the people. */
+const naming = (save: (names: SpeakerNames) => Promise<string | null> = async () => null) => ({
+  description: "Namnen syns direkt i transkriberingen.",
+  draftKey: { ownerId: "user-1", name: "names:run-1" },
+  save,
+  participants: [],
+});
+/** A field of the open naming dialog, found as a screen reader names it. */
+const nameField = (label: string) =>
+  [...document.querySelectorAll<HTMLInputElement>("dialog[open] input")].find((input) => computeAccessibleName(input) === `Vem är ${label}?`)!;
+
+test("Namnge talare is offered on a finished run's transcript that can be corrected, and nowhere else", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const named = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
+  assert.ok(button(named.container, "Namnge talare"), "in the speakers' row");
+  await named.act(async () => button(named.container, "Talare 2, ändra talare")!.click());
+  assert.ok(button(document.body, "Byt namn på Talare 2"), "and from a passage's Ändra talare");
+  await named.unmount();
+  for (const [what, props] of [
+    ["a transcript that cannot be corrected", { naming: naming() }],
+    ["a page that names nobody after the run (a review pause, a failed run)", { editable: true, corrections: v3, onCorrectionsChange: () => undefined }],
+  ] as const) {
+    const view = await player(meeting, props);
+    assert.equal(button(view.container, "Namnge talare"), null, what);
+    await view.unmount();
+  }
+  const review = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined });
+  await review.act(async () => button(review.container, "Talare 2, ändra talare")!.click());
+  assert.equal(button(document.body, "Byt namn på Talare 2"), null, "no renaming where nothing names");
+});
+
+test("the names given after the run are the page's names: chips, passages, their labels and the speakers to pick", async () => {
+  const set: CorrectionSet = { ...v3, speakerNames: { SPEAKER_00: "Anna Berg", SPEAKER_01: null } };
+  // The step named SPEAKER_01 Erik; the name was taken away after the run.
+  const view = await player(meeting, { editable: true, corrections: set, speakerNames: { SPEAKER_01: "Erik Lund" }, onCorrectionsChange: () => undefined });
+  assert.ok(chip(view.container, "Anna Berg"));
+  assert.ok(chip(view.container, "Talare 2"));
+  assert.deepEqual(passages(view.container), ["Anna Berg, 0:00", "Talare 2, 0:02", "Anna Berg, 0:04", "Talare 2, 0:06"]);
+  await view.act(async () => button(view.container, "Anna Berg, ändra talare")!.click());
+  assert.deepEqual(speakerRadios().map((input) => computeAccessibleName(input)), ["Anna Berg", "Talare 2"]);
+});
+
+test("the naming dialog has a row for each speaker the transcript shows, split ones too, and saves the names over the step's", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const split: CorrectionSet = {
+    ...v3,
+    speaker_edits: [{ segment_index: 2, char_start: null, char_end: null, original: null, original_speaker: "SPEAKER_00", speaker: "SPEAKER_02", decision: "confirmed" }],
+  };
+  const saved: SpeakerNames[] = [];
+  const view = await player(meeting, {
+    editable: true, corrections: split, speakerNames: { SPEAKER_01: "Erik Lund" }, onCorrectionsChange: () => undefined,
+    naming: naming(async (names) => (saved.push(names), null)),
+  });
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  const dialog = document.querySelector("dialog[open]")!;
+  assert.match(dialog.textContent ?? "", /Namnen syns direkt i transkriberingen\./, "the page's own words");
+  assert.match(dialog.textContent ?? "", /Talare 1 · 1 inlägg”Välkomna\. Vi har två punkter i dag\.”/);
+  assert.match(dialog.textContent ?? "", /Talare 2 · 2 inlägg/);
+  assert.match(dialog.textContent ?? "", /Talare 3 · 1 inlägg”Då godkänner vi den punkten\.”/, "the speaker split off has a row");
+  assert.doesNotMatch(dialog.textContent ?? "", /Osäkert förslag|Varför\?/, "no proposals after the run");
+  assert.equal(nameField("Talare 2").value, "Erik Lund", "the step's name to start from");
+  await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
+  await view.act(async () => type(nameField("Talare 2"), ""));
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  // The page's save lays them on its corrections as they are then (use-transcript-corrections.test.ts).
+  assert.deepEqual(saved, [{ SPEAKER_00: "Anna Berg", SPEAKER_01: null }]);
+  assert.ok(!document.querySelector("dialog[open]"), "saved: the dialog closes");
+});
+
+test("Spara namnen hands the names to the page's save, and a refused save keeps the dialog and the typed names", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const sent: SpeakerNames[] = [];
+  let answer: string | null = null;
+  const view = await player(meeting, {
+    editable: true, corrections: v3, onCorrectionsChange: () => undefined,
+    naming: naming(async (names) => (sent.push(names), answer)),
+  });
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  // Names as they were too: only the page's save knows whether Eneo has them (result-document.test.ts).
+  assert.deepEqual(sent, [{}]);
+  assert.ok(!document.querySelector("dialog[open]"));
+
+  answer = "Eneo gick inte att nå just nu. Försök igen om en stund.";
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.equal(sent.length, 2);
+  assert.ok(document.querySelector("dialog[open]"), "the dialog stays open");
+  assert.match(document.querySelector("dialog[open]")?.textContent ?? "", /Eneo gick inte att nå just nu\./);
+  assert.equal(nameField("Talare 1").value, "Anna Berg", "with what was typed");
+});
+
+test("Byt namn på in a passage's Ändra talare opens the naming at that speaker, and closing it gives the focus back to the passage", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const view = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
+  const passage = button(view.container, "Talare 2, ändra talare")!;
+  await view.act(async () => passage.click());
+  await view.act(async () => button(document.body, "Byt namn på Talare 2")!.click());
+  const open = [...document.querySelectorAll("dialog[open]")];
+  assert.equal(open.length, 1, "the picker closed, the naming opened");
+  assert.match(open[0].textContent ?? "", /Namnge talarna/);
+  assert.equal(document.activeElement, nameField("Talare 2"), "at the speaker's own name");
+  await view.act(async () => button(document.body, "Avbryt")!.click());
+  assert.ok(!document.querySelector("dialog[open]"));
+  assert.equal(document.activeElement, passage, "back on the passage's speaker, where the picker was opened");
+});
+
+test("with the speaker review's own view, a finished run's speakers are named all the same, from a row above the transcript", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const sent: SpeakerNames[] = [];
+  const view = await player(meeting, {
+    reviewEnabled: true, editable: true, corrections: v3, onCorrectionsChange: () => undefined,
+    naming: naming(async (names) => (sent.push(names), null)),
+  });
+  await view.act(async () => button(view.container, "Namnge talare")!.click());
+  await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.deepEqual(sent, [{ SPEAKER_00: "Anna Berg" }]);
+  assert.ok(!document.querySelector("dialog[open]"));
 });

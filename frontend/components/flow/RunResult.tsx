@@ -15,6 +15,7 @@ import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
+import { participantsOf } from "@/lib/participants";
 import { detailRows, detailsSummary } from "@/lib/recording-view";
 import type { Playback } from "@/lib/playback";
 import { rememberPosition } from "@/lib/playback-position";
@@ -22,7 +23,9 @@ import { fileText, runFileName, transcriptFileName, type ResultFileView } from "
 import { ofContractVersion, type StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
-import { correctionsNewerThanDocument, regenerationOffer } from "@/lib/regenerate";
+import { useAuthenticatedUser } from "@/components/AuthGate";
+import { hasNamesDraft } from "@/components/SpeakerNamingDialog";
+import { correctionsNewerThanDocument, namesOnly, regenerationOffer, savedTranscriptCorrections } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
 import { LAPTOP, ResultFiles } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
@@ -94,7 +97,7 @@ export function RunResult({
   const others = files.filter((file) => file !== primary);
   // A document that is only its file shows what the file says under it.
   const preview = !text && primary ? fileText(primary, stepResults) : null;
-  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript, savedCorrections);
+  const { transcript, confirmedWords, editing } = useRunTranscript(flowId, run.id, stepResults, showTranscript, savedCorrections);
   const hasDocument = Boolean(text || files.length);
   const offer =
     // Whether the document is older than the saved corrections does not depend on the latest save.
@@ -112,10 +115,20 @@ export function RunResult({
   // document under it does not move when the transcript arrives. It can act once the transcript is read.
   const olderThanCorrections = showTranscript && !delivered && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
   const regenerates = Boolean(offer || olderThanCorrections);
+  // What the newer corrections change, said from the first draw: by the run's own read until the transcript is read.
+  const newer = transcript.pending ? savedTranscriptCorrections(stepResults, savedSets(savedCorrections)) : editing.corrections;
+  // A finished run's speakers can be named (Eneo changes names only on a completed run); names typed and not saved are
+  // kept for this person through a reload.
+  const user = useAuthenticatedUser();
+  const namesDraft = { ownerId: user.id, name: `names:${run.id}` };
   // The details the run was started with (meeting name, participants), as the failure and progress views show them:
   // only on the flow version the contract describes, and only the filled ones.
   const fields = contract?.form_fields ?? [];
   const details = (run.input_payload_json ?? {}) as Record<string, unknown>;
+  // The people the run was started with, offered as names: from the field Eneo says holds them, on the contract's version.
+  const participantsField = contract && ofContractVersion(run, contract) ? contract.transcription?.max_speakers?.participants_field : null;
+  const participants = participantsField ? participantsOf(details[participantsField]) : [];
+  const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument, participants } : undefined;
   const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
@@ -130,7 +143,8 @@ export function RunResult({
   useEffect(() => (sources.length ? rememberPosition(playback, run.id, browserStorage()) : undefined), [playback, run.id, sources]);
   const tabs = !wide && showTranscript;
   const sideBySide = wide && showTranscript;
-  const [view, setView] = useState<View>("document");
+  // Names typed and not saved bring their dialog back, open: on a phone it is in the transcript's tab.
+  const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : "document"));
   const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab.
   const positions = useRef<Partial<Record<View, number>>>({});
@@ -169,8 +183,9 @@ export function RunResult({
           reading={transcript.pending}
           saveState={editing.saveState}
           onStarted={onRegenerated}
-          onReload={reload}
+          onReload={editing.readAgain}
           thing={words.thing}
+          namesOnly={Boolean(newer && namesOnly(newer))}
         />
       )}
       {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} downloadName={runFileName(flowName, run.created_at)} />}
@@ -188,8 +203,9 @@ export function RunResult({
       transcript={transcript}
       confirmedWords={confirmedWords}
       editing={editing}
-      onReload={reload}
+      onReload={editing.readAgain}
       playback={playback}
+      naming={naming}
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side

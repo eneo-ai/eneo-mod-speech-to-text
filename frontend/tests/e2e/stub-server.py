@@ -40,7 +40,10 @@ Runs the page can open with ?run=<id> (runs.<name>):
   long          finished like done, its transcript a meeting of about two hours (2,000 passages, three speakers)
 The paused review run has a passage split off to a third speaker, and its
 checkpoint keeps the naming step's own proposal (original_payload_json).
-A run the page starts itself runs for two polls, then finishes like done.
+A run the page starts itself runs for two polls, then finishes like done. Its transcript's corrections are kept, and
+checked as Eneo checks them (names only for the transcript's speakers and its edits', changed only once the run is
+done); a fixture run's are what they are, so tests side by side see the same. A run made again from the reviewed
+transcript gets its source's corrections, names too, and a document that is the transcript under the given names.
 An upload whose file name starts with "langsam" is answered after 6 s; one
 starting with "for-lang" is refused as longer than the flow takes.
 flow3 refuses a new run as a newer published version (409); flow4 needs
@@ -371,12 +374,98 @@ CORRECTIONS = {
 }
 
 
+# Corrections saved by the page for a run it started, by run id (see corrections, save_corrections).
+SAVED = {}
+SAVING = threading.Lock()
+# A run made again from a reviewed transcript, by its id: the run as it is once done.
+REGENERATED = {}
+RAW_LABELS = {speaker for *_, speaker, _ in SEGMENTS}
+SPEAKER_LABEL = re.compile(r"^SPEAKER_\d{2,}$")
+
+
 def corrections(run_id):
+    """The run's saved corrections as Eneo lists them: the page's own for a run it started, a fixture run's as it is."""
+    if run_id in SAVED:
+        return [public_corrections(run_id, SAVED[run_id])]
     if run_id not in CORRECTIONS:
         return []
-    return [{"flow_run_id": run_id, "step_id": AUDIO_STEP_ID, "schema_version": 3, "segments_hash": SEGMENTS_HASH,
-             "occurrences": [], "speaker_edits": [], "revision": 1, "stale": False, "updated_at": "2026-09-24T09:30:00Z",
-             **CORRECTIONS[run_id]}]
+    return [public_corrections(run_id, {"occurrences": [], "speaker_edits": [], "speaker_names": {}, "revision": 1,
+                                        "updated_at": "2026-09-24T09:30:00Z", **CORRECTIONS[run_id]})]
+
+
+def public_corrections(run_id, saved):
+    return {"flow_run_id": run_id, "step_id": AUDIO_STEP_ID, "schema_version": 3, "segments_hash": SEGMENTS_HASH, "stale": False, **saved}
+
+
+def one_line(name):
+    """Eneo's rule for a name: no character that breaks the line or cannot be seen, at most 120 once trimmed."""
+    return not any(unicodedata.category(char) in ("Cc", "Cf", "Cs", "Zl", "Zp") for char in name) and len(name.strip()) <= 120
+
+
+def save_corrections(run_id, body):
+    """A save of a run's corrections, checked and stored as Eneo does: (status, answer). Names are kept only for a raw
+    label of the transcript or a speaker an edit of this save makes; omitted, the stored ones are kept, so pruned."""
+    refused = lambda code, reason: (400, {"code": code, "message": "Refused.", "context": {"reason": reason}})  # noqa: E731
+    with SAVING:
+        stored = SAVED.get(run_id)
+        if body.get("segments_hash") != SEGMENTS_HASH:
+            return refused("flow_transcript_corrections_stale_revision", "stale_segments")
+        if body.get("expected_revision") != (stored["revision"] if stored else None):
+            return refused("flow_transcript_corrections_stale_revision", "stale_revision")
+        edits = body.get("speaker_edits") or []
+        known = RAW_LABELS | {edit.get("speaker") for edit in edits if edit.get("speaker")}
+        kept = {label: name for label, name in (stored or {}).get("speaker_names", {}).items() if label in known}
+        names = body.get("speaker_names")
+        if names is None:
+            names = kept
+        elif not isinstance(names, dict) or len(names) > 100:
+            return refused("flow_transcript_corrections_invalid_speaker_edit", "too_many_speaker_names")
+        else:
+            given = {}
+            for label, name in names.items():
+                if not SPEAKER_LABEL.match(label) or label not in known:
+                    return refused("flow_transcript_corrections_invalid_speaker_edit", "unknown_speaker_label")
+                if name is not None and (not isinstance(name, str) or not one_line(name)):
+                    return refused("flow_transcript_corrections_invalid_speaker_edit", "invalid_speaker_name")
+                given[label] = name.strip() or None if isinstance(name, str) else None
+            names = given
+        # Only a finished run's names change; what a save prunes (a split undone) is no change of them.
+        if names != kept and run_state(run_id)["status"] != "completed":
+            return refused("flow_transcript_corrections_invalid_speaker_edit", "run_not_completed")
+        SAVED[run_id] = {"occurrences": body.get("occurrences") or [], "speaker_edits": edits, "speaker_names": names,
+                         "revision": (stored["revision"] if stored else 0) + 1, "updated_at": datetime.now(timezone.utc).isoformat()}
+        return 200, public_corrections(run_id, SAVED[run_id])
+
+
+def regenerated(source_id, run_id):
+    """A run made again from `source_id`'s reviewed transcript: its corrections copied, names too, saved before the new run
+    finished (so they offer nothing), and a document laid out from the transcript as Eneo seeds it without a naming step."""
+    source = next(iter(corrections(source_id)), None)
+    copied = {key: source[key] for key in ("occurrences", "speaker_edits", "speaker_names")} if source else None
+    if copied:
+        with SAVING:
+            SAVED[run_id] = {**copied, "revision": 1, "updated_at": "2026-09-24T09:01:30Z"}
+    report = dict(REPORT_STEP, output_payload_json={"text": named_transcript(copied or {})}, model_parameters_json={"mode": "render_verbatim"})
+    REGENERATED[run_id] = dict(DONE, steps=[TRANSCRIBE_STEP, report])
+
+
+def named_transcript(saved):
+    """The transcript's lines with the corrections folded in and each speaker under the name given after the run.
+    ponytail: text corrections and whole-passage speaker edits only; a split passage keeps its speaker, add it when a
+    spec reads one."""
+    names = saved.get("speaker_names") or {}
+    moved = {edit["segment_index"]: edit["speaker"] for edit in saved.get("speaker_edits", []) if edit.get("char_start") is None}
+    clock = lambda seconds: "%02d:%02d:%02d" % (seconds // 3600, seconds % 3600 // 60, seconds % 60)  # noqa: E731
+    lines, part = [], None
+    for index, (file_index, start, end, label, text) in enumerate(SEGMENTS):
+        for occurrence in sorted((o for o in saved.get("occurrences", []) if o["segment_index"] == index), key=lambda o: -o["char_start"]):
+            text = text[:occurrence["char_start"]] + occurrence["corrected"] + text[occurrence["char_end"]:]
+        label = moved.get(index, label)
+        if file_index != part:
+            lines += ([""] if lines else []) + [f"## Del {file_index + 1}", ""]
+            part = file_index
+        lines.append(f"[{clock(int(start))} - {clock(int(end))}] {names.get(label) or label}: {text}")
+    return "\n".join(lines)
 CHECKPOINT = {
     "id": CHECKPOINT_ID["review"], "flow_id": F2, "flow_run_id": RUN["review"], "step_id": REVIEW_STEP_ID, "step_order": 2,
     "attempt_no": 1, "schema_version": 1, "step_label": "Talare", "state": "awaiting_review", "revision": 1,
@@ -450,10 +539,10 @@ STATE = State()
 
 
 def run_state(run_id, poll=False):
-    """A started run counts its status polls: running for two, then done."""
+    """A started run counts its status polls: running for two, then done (one made again as REGENERATED has it)."""
     if run_id in STARTED:
         STARTED[run_id] += poll
-        return DONE if STARTED[run_id] > 2 else RUNS[RUN["running"]]
+        return REGENERATED.get(run_id, DONE) if STARTED[run_id] > 2 else RUNS[RUN["running"]]
     return RUNS.get(run_id)
 
 
@@ -922,6 +1011,8 @@ class Handler(BaseHTTPRequestHandler):
                 body.update(finished_at="2026-09-24T09:02:00Z", result=run.get("result"),
                             result_files=run.get("result_files", []), error=run.get("error"),
                             input_payload_json={"deltagare": ["Anna Berg", "Erik Lund"]} if fid == F1 else {})
+                if run_id in REGENERATED:
+                    body["input_payload_json"]["transcript_regeneration"] = {"source": "reviewed_transcript"}
             return self.send(200, body)
         if what == ["steps"]:
             return self.send(200, run["steps"])
@@ -961,6 +1052,7 @@ class Handler(BaseHTTPRequestHandler):
             fid, rest = parts[3], parts[4:]
             if len(rest) == 5 and rest[0] == "runs" and rest[2] == "steps" and rest[4] == "transcript-regenerations":
                 run_id = new_run_id(next(NEW_RUN))
+                regenerated(rest[1], run_id)
                 STARTED[run_id] = 0
                 return self.send(201, {"run": {"id": run_id, "flow_id": fid, "status": "queued", "revision": 1},
                                        "created": True, "source_run_id": rest[1], "correction_revision": 1,
@@ -998,6 +1090,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = json.loads(self.raw or b"{}")
         parts = urlparse(self.path).path.strip("/").split("/")
+        # Saving the transcript's corrections of a run the page started (a fixture run's stay as they are: 404).
+        if len(parts) == 9 and parts[:3] == ["api", "eneo", "flows"] and parts[4] == "runs" and parts[6] == "steps" \
+                and parts[8] == "transcript-corrections" and parts[5] in STARTED:
+            return self.send(*save_corrections(parts[5], body))
         # Saving a pause's edit (the names): the edited value comes back as the pause's own, one revision on.
         if len(parts) == 8 and parts[:3] == ["api", "eneo", "flows"] and parts[4] == "runs" and parts[6] == "review-checkpoints":
             checkpoint = PAUSES[parts[5]]

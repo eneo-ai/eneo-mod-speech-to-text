@@ -1227,6 +1227,8 @@ export interface TranscriptCorrectionsPublic {
     speaker: string | null;
     decision?: "confirmed" | "unresolved";
   }[];
+  /** Names given after the run, per raw label: a name, or null for none over a naming step's ({} when none). */
+  speaker_names?: Record<string, string | null>;
   revision: number;
   stale: boolean;
   edited_by_principal_type?: string;
@@ -1250,6 +1252,8 @@ interface TranscriptCorrectionsEditRequest {
   expected_revision: number | null;
   occurrences: TranscriptCorrectionsPublic["occurrences"];
   speaker_edits: TranscriptCorrectionsPublic["speaker_edits"];
+  /** Replaces the stored names; omitted, Eneo keeps them (and drops those no speaker has any more). */
+  speaker_names?: Record<string, string | null>;
 }
 
 /** Ersätter hela uppsättningen för steget (replace-semantik). */
@@ -1259,7 +1263,7 @@ export async function saveTranscriptCorrections(
   stepId: string,
   body: TranscriptCorrectionsEditRequest,
 ) {
-  const problem = correctionWriteProblem({ ...body, schemaVersion: body.schema_version, segmentsHash: body.segments_hash, revision: body.expected_revision });
+  const problem = correctionWriteProblem({ ...body, schemaVersion: body.schema_version, segmentsHash: body.segments_hash, revision: body.expected_revision, speakerNames: body.speaker_names });
   if (problem) throw new Error(problem);
   return request<TranscriptCorrectionsPublic>(
     `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-corrections/`,

@@ -20,6 +20,13 @@ export function splitNames(text: string): string[] {
     .filter(Boolean);
 }
 
+/** The names a run was started with in its participants field: a list of names, or text with separators. */
+export function participantsOf(value: unknown): string[] {
+  if (typeof value === "string") return splitNames(value);
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((name) => (typeof name === "string" && name.trim() ? [name.trim()] : []));
+}
+
 /** The complete names in typed text, and what follows the last separator. */
 export function takeNames(text: string): { names: string[]; rest: string } {
   const parts = text.split(SEPARATOR);

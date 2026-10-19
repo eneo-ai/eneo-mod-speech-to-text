@@ -25,7 +25,10 @@ import { CopyButton, useCopy } from "./CopyButton";
 import { useRoomInRow } from "./useRoomInRow";
 import styles from "./RunTranscript.module.css";
 
-/** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
+/**
+ * The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them, and read
+ * again through the corrections (`editing.readAgain`), which a read replaces.
+ */
 export function useRunTranscript(
   flowId: string,
   runId: string,
@@ -39,7 +42,7 @@ export function useRunTranscript(
     transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
   const editing = useTranscriptCorrections(flowId, runId, transcript, reload);
-  return { transcript, confirmedWords, editing, reload };
+  return { transcript, confirmedWords, editing };
 }
 
 /**
@@ -59,7 +62,7 @@ export function RunTranscript({
   /** The .txt the download saves, see transcriptFileName. */
   fileName: string;
 }) {
-  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, runId, steps);
+  const { transcript, confirmedWords, editing } = useRunTranscript(flowId, runId, steps);
   return (
     <RunTranscriptView
       flowId={flowId}
@@ -68,7 +71,7 @@ export function RunTranscript({
       transcript={transcript}
       confirmedWords={confirmedWords}
       editing={editing}
-      onReload={reload}
+      onReload={editing.readAgain}
     />
   );
 }
@@ -83,6 +86,7 @@ export function RunTranscriptView({
   editing,
   onReload,
   playback,
+  naming,
 }: {
   flowId: string;
   runId: string;
@@ -94,8 +98,14 @@ export function RunTranscriptView({
   editing: ReturnType<typeof useTranscriptCorrections>;
   /** Reads the transcript and its saved corrections again. */
   onReload: () => void;
+  /**
+   * The run is finished, so its speakers can be named: where names typed and not saved are kept, and what the run made
+   * (`thing`, as outputWords says it), whether it was sent on, whether it has a document to make again, and the people
+   * it was started with.
+   */
+  naming?: { draftKey: { ownerId: string; name: string }; thing: string; delivered: boolean; hasDocument: boolean; participants: readonly string[] };
 }) {
-  const { corrections, saveState, localError, hasDropped, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
+  const { corrections, saveState, localError, hasDropped, onCorrectionsChange, saveNow, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
 
   if (transcript.pending) {
     return (
@@ -181,9 +191,24 @@ export function RunTranscriptView({
         saveState={saveState}
         confirmedWords={confirmedWords}
         playback={playback}
+        naming={naming && { description: namingDescription(naming), draftKey: naming.draftKey, save: saveNow, participants: naming.participants }}
       />
     </Card>
   );
+}
+
+/**
+ * What naming after the run changes, said in its dialog: the transcript, its copy and its download at once (said by
+ * their actions, never "texten", which a flow that makes text calls its result); the document only when it is made
+ * again, and one already sent on not at all.
+ */
+function namingDescription({ thing, delivered, hasDocument }: { thing: string; delivered: boolean; hasDocument: boolean }): string {
+  const later = delivered
+    ? " Dokumentet som redan har skickats ändras inte."
+    : hasDocument
+      ? ` ${thing[0].toUpperCase() + thing.slice(1)} får namnen när du skapar ${thing === "texten" ? "den" : "det"} igen.`
+      : "";
+  return `Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text.${later}`;
 }
 
 /**
