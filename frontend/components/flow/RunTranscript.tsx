@@ -25,7 +25,10 @@ import { CopyButton, useCopy } from "./CopyButton";
 import { useRoomInRow } from "./useRoomInRow";
 import styles from "./RunTranscript.module.css";
 
-/** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
+/**
+ * The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them, and read
+ * again through the corrections (`editing.readAgain`), which a read replaces.
+ */
 export function useRunTranscript(
   flowId: string,
   runId: string,
@@ -39,7 +42,7 @@ export function useRunTranscript(
     transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
   const editing = useTranscriptCorrections(flowId, runId, transcript, reload);
-  return { transcript, confirmedWords, editing, reload };
+  return { transcript, confirmedWords, editing };
 }
 
 /**
@@ -59,7 +62,7 @@ export function RunTranscript({
   /** The .txt the download saves, see transcriptFileName. */
   fileName: string;
 }) {
-  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, runId, steps);
+  const { transcript, confirmedWords, editing } = useRunTranscript(flowId, runId, steps);
   return (
     <RunTranscriptView
       flowId={flowId}
@@ -68,7 +71,7 @@ export function RunTranscript({
       transcript={transcript}
       confirmedWords={confirmedWords}
       editing={editing}
-      onReload={reload}
+      onReload={editing.readAgain}
     />
   );
 }

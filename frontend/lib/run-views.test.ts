@@ -683,6 +683,7 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     downloadUnsavedCorrections: () => undefined,
     hasDropped: false,
     downloadDropped: () => undefined,
+    readAgain: () => undefined,
   };
   const render = (correctionProblem: string | null) =>
     markup(
@@ -752,6 +753,7 @@ function transcriptView(overrides: Record<string, unknown>) {
         downloadUnsavedCorrections: () => undefined,
         hasDropped: false,
         downloadDropped: () => undefined,
+        readAgain: () => undefined,
       },
       onReload: () => undefined,
     }),

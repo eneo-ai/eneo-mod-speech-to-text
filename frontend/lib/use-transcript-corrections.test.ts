@@ -36,13 +36,25 @@ const theirs: CorrectionSet = { ...withLineCorrection(transcript.corrections, 0,
 const taken = (body: Record<string, unknown>) =>
   Response.json({ ...body, flow_run_id: "run-1", step_id: "step-1", revision: Number(body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-24T10:00:00Z" });
 const unreachable = () => Response.json({ code: "upstream_unreachable" }, { status: 502 });
+/** Eneo's refusal of a save made on a revision someone else has saved over. */
+const stale = () => Response.json({ code: "flow_transcript_corrections_stale_revision" }, { status: 409 });
+const READ_AGAIN = "Transkriberingen har lästs in igen, så ändringen sparades inte. Den senaste versionen visas nu. Gör om ändringen där.";
+
+/** Whether leaving now would ask the browser's own question. */
+const asksBeforeLeaving = () => {
+  const event = new window.Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
 
 /**
  * The page's corrections, saved to an Eneo that answers each request when the test says: the requests as sent, and the
- * most that were under way at once. `editing()` is the hook as the latest draw has it.
+ * most that were under way at once. `editing()` is the hook as the latest draw has it. The transcript is read again as
+ * useTranscriptContext reads it: the hook's `reload` puts a read under way (`reloads()` counts them), and `landed` is its
+ * answer.
  */
 async function correcting(t: TestContext) {
-  const { createElement } = await import("react");
+  const { createElement, useState } = await import("react");
   const { useTranscriptCorrections } = await import("../components/useTranscriptCorrections");
   const original = globalThis.fetch;
   t.after(() => void (globalThis.fetch = original));
@@ -56,11 +68,18 @@ async function correcting(t: TestContext) {
     });
   }) as typeof fetch;
   let editing!: ReturnType<typeof useTranscriptCorrections>;
-  function Probe({ read }: { read: TranscriptContext }) {
-    editing = useTranscriptCorrections("flow-1", "run-1", read, () => undefined);
+  let land!: (read: TranscriptContext) => void;
+  let reloads = 0;
+  function Probe() {
+    const [read, setRead] = useState(transcript);
+    land = setRead;
+    editing = useTranscriptCorrections("flow-1", "run-1", read, () => {
+      reloads++;
+      setRead(INITIAL_TRANSCRIPT);
+    });
     return null;
   }
-  const view = await mount(createElement(Probe, { read: transcript }));
+  const view = await mount(createElement(Probe));
   /** What a save sets going runs on: its request goes out, or an answer is read and the next save starts. */
   const settle = () => view.act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
   /** Eneo answers request `index` (takes it, by default). */
@@ -68,12 +87,22 @@ async function correcting(t: TestContext) {
     requests[index].answer(response(requests[index].body));
     await settle();
   };
-  /** The page reads the transcript again, and Eneo has `corrections`: read, then shown. */
+  /** The read under way lands: Eneo has `corrections`. */
+  const landed = (corrections: CorrectionSet) => view.act(async () => land({ ...transcript, corrections }));
+  /** The person reads the transcript again (Läs in igen), and Eneo has `corrections`: asked for, then read. */
   const reread = async (corrections: CorrectionSet) => {
-    await view.act(async () => view.rerender(createElement(Probe, { read: INITIAL_TRANSCRIPT })));
-    await view.act(async () => view.rerender(createElement(Probe, { read: { ...transcript, corrections } })));
+    await view.act(async () => editing.readAgain());
+    await landed(corrections);
   };
-  return { view, requests, most: () => most, settle, answer, reread, editing: () => editing };
+  /** What the page offers the person to take with them (`downloadDropped`), as the file they get. */
+  const takeDropped = async () => {
+    const download = await import("./download");
+    const files: Blob[] = [];
+    t.mock.method(download, "downloadBlob", (blob: Blob) => void files.push(blob));
+    await view.act(async () => editing.downloadDropped());
+    return JSON.parse(await files[0].text()) as CorrectionSet;
+  };
+  return { view, requests, most: () => most, reloads: () => reloads, settle, answer, landed, reread, takeDropped, editing: () => editing };
 }
 
 test("Spara namnen during a save waits for it, and a correction made meanwhile waits for the names: one request at a time", async (t) => {
@@ -181,20 +210,22 @@ test("a save's answer that comes after the transcript is read again leaves the p
   assert.equal(editing().corrections, theirs, "the corrections read");
   assert.equal(editing().saveState, "idle");
   assert.equal(editing().localError, null);
+  assert.equal(editing().hasDropped, false, "Eneo has the move: nothing is kept as lost");
   await view.act(async () => void editing().onCorrectionsChange(corrected(editing().corrections)));
   await settle();
   assert.equal(requests[1].body.expected_revision, 4, "the next save is made on the revision read, and Eneo decides");
 });
 
-test("a save that fails after the transcript is read again holds back nothing made since", async (t) => {
+test("a save that fails after the transcript is read again holds back nothing made since, and its correction is kept to take", async (t) => {
   const { view, requests, answer, reread, editing } = await correcting(t);
   await view.act(async () => void editing().onCorrectionsChange(moved(editing().corrections)));
   await reread(theirs);
   await view.act(async () => void editing().onCorrectionsChange(corrected(editing().corrections)));
   await answer(0, unreachable);
   assert.equal(requests.length, 2, "the correction made since goes");
-  assert.equal(editing().saveState, "saving", "the page says what it is doing, not what failed before it read again");
-  assert.equal(editing().localError, null);
+  assert.equal(editing().saveState, "saving", "the page says what it is doing");
+  assert.equal(editing().localError, READ_AGAIN, "and that the move, gone with the read, was not saved");
+  assert.equal(editing().hasDropped, true, "the move, to take with them");
   await answer(1);
   assert.equal(requests[1].body.expected_revision, 4);
   assert.equal(editing().saveState, "saved");
@@ -209,11 +240,7 @@ test("a save still waiting when the transcript is read again is not sent: it was
   await answer(0);
   await settle();
   assert.equal(requests.length, 1, "the names are not sent over the corrections read");
-  assert.equal(
-    await named,
-    "Transkriberingen har lästs in igen, så ändringen sparades inte. Den senaste versionen visas nu. Gör om ändringen där.",
-    "Spara namnen says why, so the naming stays open",
-  );
+  assert.equal(await named, READ_AGAIN, "Spara namnen says why, so the naming stays open");
   // Named again, on what the page read: saved.
   await view.act(async () => void (named = editing().saveNow({ SPEAKER_00: "Anna Berg" })));
   await answer(1);
@@ -221,4 +248,52 @@ test("a save still waiting when the transcript is read again is not sent: it was
   assert.equal(requests[1].body.expected_revision, 4);
   assert.deepEqual(requests[1].body.speaker_edits, [], "the passage moved before is not in it");
   assert.equal((requests[1].body.occurrences as unknown[]).length, 1, "their correction is");
+});
+
+test("a correction still waiting when the person reads the transcript again is not sent, and is kept for them to take, with why", async (t) => {
+  const { view, requests, settle, answer, reread, takeDropped, editing } = await correcting(t);
+  await view.act(async () => void editing().onCorrectionsChange(moved(editing().corrections)));
+  await view.act(async () => void editing().onCorrectionsChange(corrected(editing().corrections)));
+  await reread(theirs);
+  await answer(0);
+  await settle();
+  assert.equal(requests.length, 1, "the correction is not sent over the corrections read");
+  assert.equal(editing().corrections, theirs, "the page shows the read");
+  assert.equal(editing().localError, READ_AGAIN, "and says the correction was not saved");
+  assert.equal(asksBeforeLeaving(), true, "closing the page asks first: the correction is nowhere else");
+  const kept = await takeDropped();
+  assert.equal(kept.occurrences.length, 1, "the correction, to take with them");
+  assert.deepEqual(kept.speaker_edits, moved(transcript.corrections).speaker_edits, "with the move made before it");
+});
+
+test("a save refused as stale reads again at once, and once: Spara namnen waiting behind it is not sent on the revision Eneo refused", async (t) => {
+  const { view, requests, settle, answer, landed, reloads, takeDropped, editing } = await correcting(t);
+  await view.act(async () => void editing().onCorrectionsChange(moved(editing().corrections)));
+  let named!: Promise<string | null>;
+  await view.act(async () => void (named = editing().saveNow({ SPEAKER_00: "Anna Berg" })));
+  await answer(0, stale);
+  assert.equal(requests.length, 1, "the names are not sent while the transcript is read again");
+  assert.equal(await named, READ_AGAIN, "Spara namnen says why, so the naming stays open");
+  await landed(theirs);
+  await settle();
+  assert.equal(reloads(), 1, "the transcript is read once");
+  assert.equal(requests.length, 1);
+  assert.equal(editing().corrections, theirs);
+  assert.match(editing().localError ?? "", /ändrats av någon annan/, "the page says why its corrections were replaced");
+  const kept = await takeDropped();
+  assert.deepEqual(kept.speakerNames, { SPEAKER_00: "Anna Berg" }, "the names, the newest the person made, to take with them");
+  assert.deepEqual(kept.speaker_edits, moved(transcript.corrections).speaker_edits, "with the move");
+});
+
+test("Spara namnen with the names a save under way sends answers, once it lands, that Eneo has them, though the page read again meanwhile", async (t) => {
+  const { view, requests, answer, reread, editing } = await correcting(t);
+  await view.act(async () => void editing().saveNow({ SPEAKER_00: "Anna Berg" }));
+  let again!: Promise<string | null>;
+  await view.act(async () => void (again = editing().saveNow({ SPEAKER_00: "Anna Berg" })));
+  await reread(theirs);
+  await answer(0);
+  assert.equal(await again, null, "the names are with Eneo: the naming closes");
+  assert.equal(requests.length, 1, "and nothing more is sent");
+  assert.equal(editing().localError, null, "nothing is said to be lost");
+  assert.equal(editing().hasDropped, false);
 });

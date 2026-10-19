@@ -97,7 +97,7 @@ export function RunResult({
   const others = files.filter((file) => file !== primary);
   // A document that is only its file shows what the file says under it.
   const preview = !text && primary ? fileText(primary, stepResults) : null;
-  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript, savedCorrections);
+  const { transcript, confirmedWords, editing } = useRunTranscript(flowId, run.id, stepResults, showTranscript, savedCorrections);
   const hasDocument = Boolean(text || files.length);
   const offer =
     // Whether the document is older than the saved corrections does not depend on the latest save.
@@ -183,7 +183,7 @@ export function RunResult({
           reading={transcript.pending}
           saveState={editing.saveState}
           onStarted={onRegenerated}
-          onReload={reload}
+          onReload={editing.readAgain}
           thing={words.thing}
           namesOnly={Boolean(newer && namesOnly(newer))}
         />
@@ -203,7 +203,7 @@ export function RunResult({
       transcript={transcript}
       confirmedWords={confirmedWords}
       editing={editing}
-      onReload={reload}
+      onReload={editing.readAgain}
       playback={playback}
       naming={naming}
     />
