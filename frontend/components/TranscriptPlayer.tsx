@@ -222,8 +222,8 @@ function PlayerControls({
   dock: HTMLElement | null;
   follow: boolean;
   onFollow: () => void;
-  /** Whether K, J and L act (lib/letter-keys.ts). */
-  letterKeys: boolean;
+  /** Whether K, J and L act (lib/letter-keys.ts); null where they are not said, and do nothing (KEYS_SAID). */
+  letterKeys: boolean | null;
   onLetterKeys: (on: boolean) => void;
 }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
@@ -241,17 +241,23 @@ function PlayerControls({
     <>
       {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
           row from 640 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
-          where there is a keyboard to press them: with a mouse, never on a touch screen. The line's own button turns
-          the letters off, and on again: the focus stays on it, and the line's new words are said. */}
+          where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
+          which turns the letters off, and on again: the focus stays on it, and the line's new words are said. */}
       <div className={styles.dockTools}>
-        <div className={styles.keys}>
-          <Text type="supporting">
-            {letterKeys ? "Tangenter: K spelar och pausar, J och L hoppar 10 sekunder." : "Tangenterna K, J och L är avstängda."}
-          </Text>{" "}
-          <Button variant="ghost" size="sm" label={letterKeys ? "Stäng av tangenterna" : "Slå på tangenterna"} onClick={() => onLetterKeys(!letterKeys)}>
-            {letterKeys ? "Stäng av" : "Slå på"}
-          </Button>
-        </div>
+        {letterKeys !== null && (
+          <Text type="supporting" className={styles.keys}>
+            {letterKeys ? "Tangenter: K spelar och pausar, J och L hoppar 10 sekunder." : "Tangenterna K, J och L är avstängda."}{" "}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={styles.keysToggle}
+              label={letterKeys ? "Stäng av tangenterna" : "Slå på tangenterna"}
+              onClick={() => onLetterKeys(!letterKeys)}
+            >
+              {letterKeys ? "Stäng av" : "Slå på"}
+            </Button>
+          </Text>
+        )}
         {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
         <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
       </div>
@@ -312,6 +318,13 @@ function LazyTranscriptEditor(props: EditorProps) {
  * where a thumb reaches it; a laptop's card and a short screen keep it at the text's end (TranscriptPlayer.module.css).
  */
 const PLAYER_ON_TOP = "(min-width: 640px) and (max-width: 1023.98px) and (min-height: 601px)";
+
+/**
+ * Where the player's letter keys are said, and so where they act: with a mouse, where there is a keyboard to press them.
+ * A touch screen has no line for them, and so nothing to turn them off with (WCAG 2.1.4): there K, J and L do nothing,
+ * and the player's buttons play, as do Space and the arrows with the focus in it.
+ */
+const KEYS_SAID = "(hover: hover) and (pointer: fine)";
 
 /**
  * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
@@ -583,12 +596,14 @@ export function TranscriptPlayer(
   );
 
   // K, J and L work from anywhere on the page, so K plays before anything in the player has been clicked; what types
-  // or picks with letters keeps them, and so does a dialog over the page. They can be turned off on the line that says
-  // them (WCAG 2.1.4): a letter said to speech input, or pressed by mistake, then does nothing. Space and the arrows
-  // scroll the page and work its controls: they are the player's only with the focus on it or its text, and the slider
-  // moves by its own.
+  // or picks with letters keeps them, and so does a dialog over the page. They act only where the line that says them
+  // is (KEYS_SAID), which turns them off (WCAG 2.1.4): a letter said to speech input, or pressed by mistake, then does
+  // nothing. Space and the arrows scroll the page and work its controls: they are the player's only with the focus on it
+  // or its text, and the slider moves by its own.
   const playerRef = useRef<HTMLElement | null>(null);
+  const keysSaid = useMediaQuery(KEYS_SAID, true);
   const [letterKeys, setLetterKeys] = useState(() => (ownerId ? letterKeysOn(browserStorage(), ownerId) : true));
+  const lettersAct = keysSaid && letterKeys;
   const announce = useAnnounce();
   const turnLetterKeys = useSteady((on: boolean) => {
     setLetterKeys(on);
@@ -601,7 +616,7 @@ export function TranscriptPlayer(
       if (!action || e.defaultPrevented || !(e.target instanceof Element)) return;
       const target = e.target;
       if (e.key.length === 1 && e.key !== " ") {
-        if (!letterKeys || target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
+        if (!lettersAct || target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
       } else if (!playerRef.current?.contains(target) || target.closest("button, a, input, select, textarea, summary, [role=button], [role=slider], [role=menuitemradio], [role=radio], [role=listbox], [role=option], [contenteditable]")) {
         return;
       }
@@ -612,7 +627,7 @@ export function TranscriptPlayer(
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [hasAudio, playback, letterKeys]);
+  }, [hasAudio, playback, lettersAct]);
 
   // The sentence being played stays in view, while following and not editing a line.
   const following = useRef({ follow, editing: editingIndex >= 0 });
@@ -827,7 +842,7 @@ export function TranscriptPlayer(
       data-dock-edge={playerOnTop ? "top" : undefined}
       className={join(styles.dock, playerOnTop && styles.dockTop)}
     >
-      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={letterKeys} onLetterKeys={turnLetterKeys} />
+      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={keysSaid ? letterKeys : null} onLetterKeys={turnLetterKeys} />
     </div>
   );
 

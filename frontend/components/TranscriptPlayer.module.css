@@ -301,18 +301,17 @@
   }
 }
 
-/* The player's keys: one quiet line where there is a keyboard to press them, with a mouse; never on a touch screen.
-   The button that turns the letters off, and on again, follows its words as a link follows a sentence: on the line
-   where they end, and on the next only where that line is full. */
+/* The player's keys: one quiet line, only where there is a keyboard to press them (KEYS_SAID in TranscriptPlayer.tsx). */
 .keys {
-  display: none;
   margin-inline-end: auto;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .keys {
-    display: block;
-  }
+/* The button that turns the letters off, and on again, ends the line as a link ends a sentence: in the line's type, on
+   its baseline, and laid over the lines around it, so its line is no taller than the others. */
+.keysToggle {
+  font-size: inherit;
+  line-height: inherit;
+  margin-block: calc((1lh - var(--size-element-sm)) / 2);
 }
 
 /* Speed: in the player's row from 640 px, above it below. */

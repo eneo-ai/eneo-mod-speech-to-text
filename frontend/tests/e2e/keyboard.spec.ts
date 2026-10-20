@@ -126,6 +126,25 @@ test("K, J and L are turned off from the line that says them, stay off after a r
   await expect(pause, "on again").toBeVisible();
 });
 
+test("on a touch screen no line says K, J and L, so they do nothing there and no button names them", async ({ page }, info) => {
+  test.skip(
+    !["phone-390-light", "tablet-landscape", "phone-390-webkit", "tablet-landscape-webkit"].includes(info.project.name),
+    "a phone and a tablet with a keyboard of their own, in Chromium and in Safari's engine",
+  );
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const play = page.getByRole("button", { name: "Spela upp", exact: true });
+  await expect(play).toBeVisible();
+  await expect(page.getByRole("button", { name: /tangenterna$/ }), "nothing to turn them off with").toHaveCount(0);
+  await expect(play, "the button names no key").not.toHaveAttribute("aria-keyshortcuts");
+  // Pressed from the page, where K plays on a laptop: what a key did is drawn by the next frames.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (const key of ["k", "l"]) await page.keyboard.press(key);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(page.getByRole("button", { name: "Pausa uppspelningen" }), "K played nothing").toHaveCount(0);
+  await expect(page.getByRole("slider", { name: "Position i inspelningen" }), "L moved nothing").toHaveAttribute("aria-valuenow", "0");
+});
+
 test("Avbryt redigering with a change asks first: Fortsätt redigera gives the focus back to it, Ta bort ändringen to Redigera", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
   await STATES.find((s) => s.name === "review-text-changed")!.go(page, info);

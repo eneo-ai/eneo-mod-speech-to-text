@@ -224,9 +224,10 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   stands above the text under the tools and stays at the window's top. From 1024 px it sits at the bottom of the
   transcript's card, and on a screen under 600 px high at the text's end.
 - With a mouse, one quiet line above the player's row says its keys: "Tangenter: K spelar och pausar, J och L hoppar 10
-  sekunder." K, J and L work from anywhere on the page; the line ends with "Stäng av", and off it says "Tangenterna K,
-  J och L är avstängda." and offers "Slå på". The choice is kept for the person in the browser. Space and the arrows are
-  the player's only with the focus on it, and are never turned off.
+  sekunder." K, J and L work from anywhere on the page, and only where the line is: a touch screen has none, and there
+  they do nothing. The line ends with "Stäng av", set in the line's own size, and off it says "Tangenterna K, J och L
+  är avstängda." and offers "Slå på". The choice is kept for the person in the browser. Space and the arrows are the
+  player's only with the focus on it, and are never turned off.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
