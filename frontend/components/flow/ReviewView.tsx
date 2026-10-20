@@ -537,6 +537,27 @@ export function ReviewView({
       {flowName} · Väntar på din granskning
     </Text>
   );
+  // The flow and the heading read as one, what to do and by when as the lines under them, all at the body's size.
+  const intro = (
+    <VStack gap={2}>
+      <VStack gap={1}>
+        {paused}
+        <Heading level={1} ref={heading} tabIndex={-1}>
+          {title}
+        </Heading>
+      </VStack>
+      <Text as="p" color="secondary" className={styles.description}>
+        {isSpeakerMapping
+          ? SPEAKER_REVIEW_ENABLED
+            ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten."
+            : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."
+          : editable
+            ? "Du kan ändra texten innan du godkänner och fortsätter."
+            : "Granska innehållet och välj om flödet ska fortsätta."}
+      </Text>
+      {deadline}
+    </VStack>
+  );
 
   if (isSpeakerMapping) {
     // Who is who at a glance; naming happens in "Namnge talarna", the card's own action at the end of its heading's row.
@@ -602,19 +623,6 @@ export function ReviewView({
       <Text as="p" type="supporting">
         Talare utan namn behåller sin etikett i transkriberingen.
       </Text>
-    );
-
-    const intro = (
-      <VStack gap={1}>
-        {paused}
-        <Heading level={1} ref={heading} tabIndex={-1}>
-          {title}
-        </Heading>
-        <Text as="p" color="secondary" className={styles.description}>
-          {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
-        </Text>
-        {deadline}
-      </VStack>
     );
 
     return (
@@ -699,18 +707,7 @@ export function ReviewView({
 
   return (
     <VStack gap={6} className={styles.reading}>
-      <VStack gap={1}>
-        {paused}
-        <Heading level={1} ref={heading} tabIndex={-1}>
-          {title}
-        </Heading>
-        <Text as="p" type="supporting">
-          {editable
-            ? "Du kan ändra texten innan du godkänner och fortsätter."
-            : "Granska innehållet och välj om flödet ska fortsätta."}
-        </Text>
-        {deadline}
-      </VStack>
+      {intro}
 
       {/* An edit that was set aside is said before the text it is about, with the edit itself to read, copy or take. */}
       {draft.yours && (
@@ -752,9 +749,10 @@ export function ReviewView({
             {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
             {dirty && <Text as="p" type="supporting">Ändrad, inte sparad</Text>}
           </VStack>
-          {/* The editor's own buttons, no decision: small, beside the text's name. Spara ändring keeps a change in Eneo
-              without going on, and is there only while there is one; Avbryt redigering stays where it is when it comes,
-              and asks first when there is a change to throw away. */}
+          {/* The editor's own buttons, no decision: small, at the end of the text's name where the row has room, and
+              under it, from its start, where it has not. Spara ändring keeps a change in Eneo without going on, and is
+              there only while there is one; Avbryt redigering stays where it is when it comes, and asks first when
+              there is a change to throw away. */}
           {editable && (
             <HStack gap={2} wrap="wrap">
               {editing ? (
@@ -763,6 +761,7 @@ export function ReviewView({
                     key="avbryt"
                     variant="ghost"
                     size="sm"
+                    className={styles.headCancel}
                     label="Avbryt redigering"
                     isDisabled={busy}
                     onClick={() => (dirty ? setAskingDiscard(true) : stopEditing())}

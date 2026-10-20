@@ -4,20 +4,19 @@
   max-inline-size: 65ch;
 }
 
-/* The text review is a reading column from a laptop's width; below it, it has the whole column, as the speaker review
-   and every result do. */
-@media (min-width: 1024px) {
-  .reading {
-    max-inline-size: 42rem;
-  }
-}
-
 /* The editing field grows with the text, from four lines: a long text is one page to scroll, not a box inside it. Its
    focus frame keeps clear of the header above and the docked decision below. */
 .reviewText textarea {
   field-sizing: content;
   min-block-size: 4lh;
   scroll-margin-block: var(--spacing-12);
+}
+
+/* A field that grows with its text has no size to drag: browsers that cannot grow it keep the grip. */
+@supports (field-sizing: content) {
+  .reviewText textarea {
+    resize: none;
+  }
 }
 
 /* The text as it is read: a line a reader follows, as a result's document keeps it. */
@@ -31,11 +30,17 @@
   inset-block-start: 0;
   z-index: 1;
   margin: calc(var(--spacing-4) * -1) calc(var(--spacing-4) * -1) 0;
-  padding: var(--spacing-4) var(--spacing-4) var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
   border-start-start-radius: var(--radius-container);
   border-start-end-radius: var(--radius-container);
   border-block-end: var(--border-width) solid var(--color-border);
   background: var(--color-background-card);
+}
+
+/* A ghost button's own padding would set its words in from the text's name, where the editor's buttons stand under it:
+   they start at the name's edge. Beside the name, at the row's end, it stays where it is. */
+.headCancel {
+  margin-inline-start: calc(-1 * var(--spacing-3));
 }
 
 /* The decision: in the page after the text, and at the window's bottom edge while a long text is above it. A short
@@ -54,6 +59,19 @@
   .cardHead,
   .dock {
     position: static;
+  }
+}
+
+/* The text review is a reading column from a laptop's width, and the decision's rule ends with it; below it, it has the
+   whole column, as the speaker review and every result do, and the rule meets the window's edges. */
+@media (min-width: 1024px) {
+  .reading {
+    max-inline-size: 42rem;
+  }
+
+  .dock {
+    margin-inline: 0;
+    padding-inline: 0;
   }
 }
 
@@ -111,12 +129,15 @@
   background: var(--color-background-card);
 }
 
+/* Its top border meets the capital of the flow's line beside it (its line's leading is 6 px), and it is that much
+   shorter, so it still ends one gutter above the window's bottom. */
 @media (min-width: 1024px) {
   .transcriptCard {
     position: sticky;
     inset-block-start: var(--spacing-6);
+    margin-block-start: var(--spacing-1-5);
     min-block-size: var(--module-transcript-min-height);
-    max-block-size: calc(var(--view-fit-height, 100dvh) - var(--spacing-6));
+    max-block-size: calc(var(--view-fit-height, 100dvh) - var(--spacing-6) - var(--spacing-1-5));
     overflow: hidden;
   }
 }
