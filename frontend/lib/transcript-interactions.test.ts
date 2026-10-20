@@ -390,10 +390,12 @@ test("an approval that arrives while a passage is being corrected ends the corre
   assert.equal(button(view.container, "Talare 1, ändra talare"), null, "nor changing a speaker");
 });
 
+/** A meeting of six speakers: more than the chips a narrow screen shows. */
+const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
+  fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
+}));
+
 test("more than five speakers: chips from a laptop's width, a list to pick one below it", async () => {
-  const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
-    fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
-  }));
   const view = await player(six);
   assert.ok(view.container.querySelector("[data-many]"), "the chips know there are many, so a narrow screen hides them");
   const list = [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
@@ -476,6 +478,37 @@ test("Namnge talare is offered on a finished run's transcript that can be correc
   const review = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined });
   await review.act(async () => button(review.container, "Talare 2, ändra talare")!.click());
   assert.equal(button(document.body, "Byt namn på Talare 2"), null, "no renaming where nothing names");
+});
+
+/**
+ * The speakers' part of the tools as a screen reader meets it, in order: the word shown above the chips, the naming and
+ * the chips' group by its name; whether the word and the naming share one row of their own, and the naming's look.
+ */
+function speakersPart(within: ParentNode) {
+  const group = within.querySelector('[role="group"]')!;
+  const precedes = (node: Node) => Boolean(node.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const label = [...within.querySelectorAll("span")].find((el) => el.textContent === "Talare" && precedes(el));
+  const naming = button(within, "Namnge talare");
+  return {
+    order: [label && "Talare", naming && precedes(naming) && "Namnge talare", `group ${computeAccessibleName(group)}`].filter(Boolean),
+    oneRow: Boolean(label && naming && label.parentElement === naming.parentElement && !label.parentElement!.contains(group)),
+    variant: naming?.getAttribute("data-variant") ?? null,
+  };
+}
+
+test("where the speakers can be named, a row above their filter says Talare, which names the filter, and ends with Namnge talare", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const named = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
+  assert.deepEqual(speakersPart(named.container), { order: ["Talare", "Namnge talare", "group Talare"], oneRow: true, variant: "ghost" });
+  await named.unmount();
+  // More than five: the list that stands in for the chips below a laptop's width is named by the word too.
+  const many = await player(six, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
+  const lists = [...many.container.querySelectorAll("[role=combobox]")].map((el) => computeAccessibleName(el));
+  assert.deepEqual(lists, ["Talare"]);
+  await many.unmount();
+  // Where the speakers cannot be named the chips stand alone, the group named by what it does.
+  const plain = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined });
+  assert.deepEqual(speakersPart(plain.container), { order: ["group Visa talare"], oneRow: false, variant: null });
 });
 
 test("the names given after the run are the page's names: chips, passages, their labels and the speakers to pick", async () => {
@@ -562,6 +595,8 @@ test("with the speaker review's own view, a finished run's speakers are named al
     reviewEnabled: true, editable: true, corrections: v3, onCorrectionsChange: () => undefined,
     naming: naming(async (names) => (sent.push(names), null)),
   });
+  // The naming alone: no chips follow for the speakers' word to name.
+  assert.ok(![...view.container.querySelectorAll("span")].some((el) => el.textContent === "Talare"), "no speakers' word on the row");
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
   await view.act(async () => button(document.body, "Spara namnen")!.click());

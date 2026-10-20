@@ -33,7 +33,11 @@
     - button "Kopiera transkriberingen"
     - button "Ladda ner som text, transkriberingen"
     - region "Inspelning och transkribering":
-      - group "Visa talare":
+      - text: Talare
+      - button "Namnge talare":
+        - text: ""
+        - status
+      - group "Talare":
         - button "Alla" [pressed]:
           - text: ""
           - status
@@ -43,9 +47,6 @@
         - button "Talare 2":
           - text: ""
           - status
-      - button "Namnge talare":
-        - text: ""
-        - status
       - text: Sök i transkriberingen
       - textbox "Sök i transkriberingen"
       - status

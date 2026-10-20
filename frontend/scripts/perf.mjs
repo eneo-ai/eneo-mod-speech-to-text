@@ -163,8 +163,10 @@ const PROFILES = {
 
 const click = (role, text, options) => (page) => page.getByRole(role, { name: text, ...options }).first().click();
 // A speaker chip, found inside its group: a role query over the whole long transcript names thousands of buttons, which
-// on CI's throttled phone outlasts the click's timeout. What is measured is the click, not the finding.
-const chip = (text) => (page) => page.getByRole("group", { name: "Visa talare" }).getByRole("button", { name: text, exact: true }).click();
+// on CI's throttled phone outlasts the click's timeout. What is measured is the click, not the finding. The group is
+// named Talare, by the word above it, where the speakers can be named, and Visa talare where they cannot.
+const chip = (text) => (page) =>
+  page.getByRole("group", { name: /^(Talare|Visa talare)$/ }).getByRole("button", { name: text, exact: true }).click();
 const type = (text, label) => (page) => page.getByRole("textbox", { name: label }).first().pressSequentially(text, { delay: 60 });
 // The page folds its columns into tabs below a laptop's width (1024 px): there the tab must be there and is pressed (a
 // tab that is gone fails the step); on a laptop the columns stand side by side and there is nothing to press.
