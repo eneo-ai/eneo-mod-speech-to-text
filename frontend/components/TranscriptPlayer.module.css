@@ -473,6 +473,7 @@
 }
 
 .text {
+  max-inline-size: 75ch;
   margin-block-start: var(--spacing-0-5);
   font-size: var(--font-size-base);
   line-height: 1.65;
@@ -712,6 +713,7 @@
   border-block-end: var(--border-width) solid var(--color-border);
 }
 
+/* The speakers start at the same edge as the quote above them and the scope below them. */
 .pickerList {
   max-block-size: 16rem;
   overflow-y: auto;
