@@ -93,7 +93,7 @@ test("the text review's editor: its buttons stand small in the text's header, Sp
   await run(page, ids.runs.reviewText);
   await page.getByRole("button", { name: "Redigera" }).click();
   const field = page.getByRole("textbox", { name: "Innehåll för granskning" });
-  const cancel = page.getByRole("button", { name: "Avbryt", exact: true });
+  const cancel = page.getByRole("button", { name: "Avbryt redigering" });
   const save = page.getByRole("button", { name: "Spara ändring" });
   await expect(cancel).toBeVisible();
   await expect(save, "nothing to save yet").toHaveCount(0);
@@ -142,5 +142,5 @@ test("a long text under review keeps Redigera and the decision in view, and open
   await expect(field).toBeFocused();
   const box = await field.evaluate((element) => ({ scroll: element.scrollHeight - element.clientHeight, at: scrollY }));
   expect({ oneScroll: box.scroll <= 1, stays: Math.abs(box.at - reading) <= 2 }, JSON.stringify({ ...box, reading })).toEqual({ oneScroll: true, stays: true });
-  expect(await inView(page.getByRole("button", { name: "Avbryt", exact: true })), "Avbryt in view").toBe(true);
+  expect(await inView(page.getByRole("button", { name: "Avbryt redigering" })), "Avbryt redigering in view").toBe(true);
 });

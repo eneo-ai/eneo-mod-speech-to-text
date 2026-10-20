@@ -762,7 +762,6 @@ export function ReviewView({
                     key="avbryt"
                     variant="ghost"
                     size="sm"
-                    className={styles.headCancel}
                     label="Avbryt redigering"
                     isDisabled={busy}
                     onClick={() => (dirty ? setAskingDiscard(true) : stopEditing())}

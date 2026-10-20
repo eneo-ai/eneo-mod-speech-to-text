@@ -37,12 +37,6 @@
   background: var(--color-background-card);
 }
 
-/* A ghost button's own padding would set its words in from the text's name, where the editor's buttons stand under it:
-   they start at the name's edge. Beside the name, at the row's end, it stays where it is. */
-.headCancel {
-  margin-inline-start: calc(-1 * var(--spacing-3));
-}
-
 /* The decision: in the page after the text, and at the window's bottom edge while a long text is above it. A short
    window (a phone on its side, 200 % zoom) keeps it in the page, where docking would leave the text no room. */
 .dock {
