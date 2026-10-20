@@ -837,7 +837,7 @@ export function TranscriptPlayer(
               named by that word, one name to see and to hear (ToggleButtonGroup is named by its label, never by
               aria-labelledby). */}
           <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
-            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" size="sm" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
+            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
               <ToggleButton value="all" label="Alla" />
               {speakers.map((speaker) => (
                 <ToggleButton

@@ -98,8 +98,9 @@ export const eneoTheme = defineTheme({
     },
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
     'slider-control': {base: {minBlockSize: MOUSE_TARGET}},
-    // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
-    'toggle-button-group': {base: {flexWrap: 'wrap'}},
+    // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line. Chips stand 8 px apart
+    // at every pointer: a tap meant for one does not land on the next, and with a mouse they read as separate filters.
+    'toggle-button-group': {base: {flexWrap: 'wrap', gap: 'var(--spacing-2)'}},
     // A chip (the transcript's speaker filter) is a ghost button, which shows no edge at rest: only the pressed one had a
     // shape. Each has a control's edge, and the pressed one the accent's edge. Astryx owns the fill and its matching
     // label colour so the selected state also keeps their system-colour pair in forced colours. The
@@ -175,8 +176,6 @@ export const eneoTheme = defineTheme({
             'slider-control': {base: {minBlockSize: TOUCH}},
             'collapsible-trigger': {base: {minHeight: TOUCH}},
             'radio-list-item': {base: {minHeight: TOUCH}},
-            // Chips a finger presses stand 8 px apart, not side by side: a tap meant for one does not land on the next.
-            'toggle-button-group': {base: {flexWrap: 'wrap', gap: 'var(--spacing-2)'}},
             // A one-line correction can shrink to 32 px on a tablet. The field itself remains a touch target.
             'text-area-control': {base: {minBlockSize: TOUCH}},
           },
