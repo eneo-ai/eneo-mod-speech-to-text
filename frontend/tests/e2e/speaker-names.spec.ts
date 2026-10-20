@@ -103,6 +103,34 @@ test("names given to a finished run's speakers show in its transcript, its copy 
   await expect(page.getByRole("button", { name: "Anna Berg, ändra talare" })).toHaveCount(3);
 });
 
+test("Namnge talare ends the speakers' own row above their chips, and the word at the row's start names the chips", async ({ page }, info) => {
+  await run(page, ids.runs.done);
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const player = page.getByRole("region", { name: "Inspelning och transkribering" });
+  const label = player.getByText("Talare", { exact: true });
+  const naming = player.getByRole("button", { name: "Namnge talare" });
+  const chips = player.getByRole("group", { name: "Talare", exact: true });
+  await expect(label).toBeVisible();
+  await expect(chips).toBeVisible();
+  // A phone at its narrowest too, where the row has the least room.
+  for (const width of isLaptop(info) ? [1440] : [390, 320]) {
+    await page.setViewportSize({ width, height: info.project.use.viewport!.height });
+    const [region, word, action, group] = await Promise.all([player, label, naming, chips].map(async (part) => (await part.boundingBox())!));
+    const middle = (box: typeof region) => box.y + box.height / 2;
+    expect(
+      {
+        oneRow: Math.abs(middle(word) - middle(action)) <= 1,
+        atStart: Math.round(word.x) === Math.round(group.x),
+        // The row's end mirrors its start: the naming is as far from the transcript's edge as the word is from the other.
+        atEnd: Math.round(region.x + region.width - (action.x + action.width)) === Math.round(word.x - region.x),
+        aboveChips: action.y + action.height <= group.y && word.y + word.height <= group.y,
+      },
+      `${width} px`,
+    ).toEqual({ oneRow: true, atStart: true, atEnd: true, aboveChips: true });
+  }
+});
+
 test("Byt namn på in a passage's Ändra talare opens the naming at that speaker, and Avbryt gives the focus back to the passage", async ({ page }, info) => {
   await run(page, ids.runs.done);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();

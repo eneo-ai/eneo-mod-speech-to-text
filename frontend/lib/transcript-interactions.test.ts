@@ -478,6 +478,32 @@ test("Namnge talare is offered on a finished run's transcript that can be correc
   assert.equal(button(document.body, "Byt namn på Talare 2"), null, "no renaming where nothing names");
 });
 
+/**
+ * The speakers' part of the tools as a screen reader meets it, in order: the word shown above the chips, the naming and
+ * the chips' group by its name; whether the word and the naming share one row of their own, and the naming's look.
+ */
+function speakersPart(within: ParentNode) {
+  const group = within.querySelector('[role="group"]')!;
+  const precedes = (node: Node) => Boolean(node.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const label = [...within.querySelectorAll("span")].find((el) => el.textContent === "Talare" && precedes(el));
+  const naming = button(within, "Namnge talare");
+  return {
+    order: [label && "Talare", naming && precedes(naming) && "Namnge talare", `group ${computeAccessibleName(group)}`].filter(Boolean),
+    oneRow: Boolean(label && naming && label.parentElement === naming.parentElement && !label.parentElement!.contains(group)),
+    variant: naming?.getAttribute("data-variant") ?? null,
+  };
+}
+
+test("where the speakers are named, a row above their chips says Talare, which names the chips, and ends with Namnge talare", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const named = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
+  assert.deepEqual(speakersPart(named.container), { order: ["Talare", "Namnge talare", "group Talare"], oneRow: true, variant: "ghost" });
+  await named.unmount();
+  // Where nobody is named the chips stand alone, the group named by what it does.
+  const plain = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined });
+  assert.deepEqual(speakersPart(plain.container), { order: ["group Visa talare"], oneRow: false, variant: null });
+});
+
 test("the names given after the run are the page's names: chips, passages, their labels and the speakers to pick", async () => {
   const set: CorrectionSet = { ...v3, speakerNames: { SPEAKER_00: "Anna Berg", SPEAKER_01: null } };
   // The step named SPEAKER_01 Erik; the name was taken away after the run.
@@ -562,6 +588,8 @@ test("with the speaker review's own view, a finished run's speakers are named al
     reviewEnabled: true, editable: true, corrections: v3, onCorrectionsChange: () => undefined,
     naming: naming(async (names) => (sent.push(names), null)),
   });
+  // The naming alone: no chips follow for the speakers' word to name.
+  assert.ok(![...view.container.querySelectorAll("span")].some((el) => el.textContent === "Talare"), "no speakers' word on the row");
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
   await view.act(async () => button(document.body, "Spara namnen")!.click());

@@ -201,9 +201,12 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ### Transcript
 - The transcript's Kopiera and Ladda ner som text stand beside its heading where the row has room and fold into one
   "Fler alternativ" menu where it has not, as the document's own actions do. Passages stand 32 px apart.
-- On a finished run the speakers' row ends with "Namnge talare", the row's own action at its end, apart from the
-  filter's chips (on a phone it wraps under them). A passage's "Ändra talare" offers "Byt namn på" its speaker after the
-  choice and what it applies to; both open the review's naming dialog, and the focus goes back where it was opened.
+- On a finished run the speakers have a row of their own above the filter's chips, at every width: "Talare" at its
+  start, which is also the chips' group's name, and "Namnge talare" at its end, a ghost button with its icon as the
+  heading's Kopiera and Ladda ner som text are. Where nobody is named the chips stand alone. The speaker review's own
+  view has no chips for the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's
+  "Ändra talare" offers "Byt namn på" its speaker after the choice and what it applies to; both open the review's naming
+  dialog, and the focus goes back where it was opened.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
   window (`content-visibility: auto`): an hour's meeting is tens of thousands of words.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or

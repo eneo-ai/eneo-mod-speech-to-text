@@ -759,7 +759,8 @@ export function TranscriptPlayer(
   }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
-  // Naming the speakers after the run: at the end of the speakers' row, or on a row of its own above the review's view.
+  // Naming the speakers after the run: at the end of the speakers' own row above their chips, or on a row of its own
+  // above the review's view, which has no chips for the speakers' word to name.
   const namingControl = canName && (
     <SpeakerNaming
       ref={namingDialog}
@@ -824,10 +825,19 @@ export function TranscriptPlayer(
       {tools && (
         <VStack gap={3} className={styles.tools}>
           {labelled && (
-          <HStack gap={2} vAlign="center" wrap="wrap">
-          {/* The speaker filter: chips that wrap, so none is cut off on a phone. Naming the speakers ends the row. */}
+          <VStack gap={2}>
+          {/* Where the speakers are named, a row of their own above the chips: their word, and the naming at its end. */}
+          {canName && (
+            <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+              <Text type="label">Talare</Text>
+              {namingControl}
+            </HStack>
+          )}
+          {/* The speaker filter: chips that wrap, so none is cut off on a phone. Under the speakers' word the group is
+              named by that word, one name to see and to hear (ToggleButtonGroup is named by its label, never by
+              aria-labelledby). */}
           <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
-            <ToggleButtonGroup label="Visa talare" type="single" size="sm" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
+            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" size="sm" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
               <ToggleButton value="all" label="Alla" />
               {speakers.map((speaker) => (
                 <ToggleButton
@@ -862,8 +872,7 @@ export function TranscriptPlayer(
               />
             </div>
           )}
-          {namingControl}
-          </HStack>
+          </VStack>
           )}
 
           <HStack gap={2} vAlign="center">
@@ -1564,7 +1573,7 @@ function SpeakerNaming({
       draftKey={naming.draftKey}
       description={naming.description}
     >
-      <Button variant="secondary" size="sm" icon={<UsersRound aria-hidden />} label="Namnge talare" className={styles.nameSpeakers} />
+      <Button variant="ghost" size="sm" icon={<UsersRound aria-hidden />} label="Namnge talare" />
     </SpeakerNamingDialog>
   );
 }

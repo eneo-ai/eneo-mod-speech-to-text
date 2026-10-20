@@ -64,7 +64,7 @@
   color: var(--color-text-primary);
 }
 
-/* ---- Tools: the speakers' row (the filter, and naming them after the run), the search ---- */
+/* ---- Tools: the speakers (naming them after the run, and the filter), the search ---- */
 
 .tools {
   padding: var(--spacing-1) var(--spacing-3) var(--spacing-3);
@@ -79,21 +79,10 @@
   }
 }
 
-/* The list fills its row, beside the naming where there is room for both. */
-.speakerList {
-  flex: 1 1 12rem;
-  min-inline-size: 0;
-}
-
 @media (min-width: 1024px) {
   .speakerList {
     display: none;
   }
-}
-
-/* Naming the speakers is the row's own action: at its end, apart from the filter's chips. */
-.nameSpeakers {
-  margin-inline-start: auto;
 }
 
 .reviewIcon {
