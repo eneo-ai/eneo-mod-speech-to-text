@@ -759,8 +759,8 @@ export function TranscriptPlayer(
   }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
-  // Naming the speakers after the run: at the end of the speakers' own row above their chips, or on a row of its own
-  // above the review's view, which has no chips for the speakers' word to name.
+  // Naming the speakers after the run: at the end of the speakers' own row above their filter, or on a row of its own
+  // above the review's view, which has no filter for the speakers' word to name.
   const namingControl = canName && (
     <SpeakerNaming
       ref={namingDialog}
@@ -826,7 +826,7 @@ export function TranscriptPlayer(
         <VStack gap={3} className={styles.tools}>
           {labelled && (
           <VStack gap={2}>
-          {/* Where the speakers are named, a row of their own above the chips: their word, and the naming at its end. */}
+          {/* Where the speakers can be named, a row of their own above the filter: their word, and the naming at its end. */}
           {canName && (
             <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
               <Text type="label">Talare</Text>
@@ -856,11 +856,12 @@ export function TranscriptPlayer(
               )}
             </ToggleButtonGroup>
           </div>
-          {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. */}
+          {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. In their place under
+              the speakers' word, the list is named by that word as they are. */}
           {speakers.length > CHIP_LIMIT && (
             <div className={styles.speakerList}>
               <Selector
-                label="Filtrera talare"
+                label={canName ? "Talare" : "Filtrera talare"}
                 isLabelHidden
                 value={shownFilter}
                 onChange={setFilter}

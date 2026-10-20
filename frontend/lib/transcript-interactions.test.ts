@@ -390,10 +390,12 @@ test("an approval that arrives while a passage is being corrected ends the corre
   assert.equal(button(view.container, "Talare 1, ändra talare"), null, "nor changing a speaker");
 });
 
+/** A meeting of six speakers: more than the chips a narrow screen shows. */
+const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
+  fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
+}));
+
 test("more than five speakers: chips from a laptop's width, a list to pick one below it", async () => {
-  const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
-    fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
-  }));
   const view = await player(six);
   assert.ok(view.container.querySelector("[data-many]"), "the chips know there are many, so a narrow screen hides them");
   const list = [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
@@ -494,12 +496,17 @@ function speakersPart(within: ParentNode) {
   };
 }
 
-test("where the speakers are named, a row above their chips says Talare, which names the chips, and ends with Namnge talare", async (t) => {
+test("where the speakers can be named, a row above their filter says Talare, which names the filter, and ends with Namnge talare", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const named = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
   assert.deepEqual(speakersPart(named.container), { order: ["Talare", "Namnge talare", "group Talare"], oneRow: true, variant: "ghost" });
   await named.unmount();
-  // Where nobody is named the chips stand alone, the group named by what it does.
+  // More than five: the list that stands in for the chips below a laptop's width is named by the word too.
+  const many = await player(six, { editable: true, corrections: v3, onCorrectionsChange: () => undefined, naming: naming() });
+  const lists = [...many.container.querySelectorAll("[role=combobox]")].map((el) => computeAccessibleName(el));
+  assert.deepEqual(lists, ["Talare"]);
+  await many.unmount();
+  // Where the speakers cannot be named the chips stand alone, the group named by what it does.
   const plain = await player(meeting, { editable: true, corrections: v3, onCorrectionsChange: () => undefined });
   assert.deepEqual(speakersPart(plain.container), { order: ["group Visa talare"], oneRow: false, variant: null });
 });
