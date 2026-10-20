@@ -463,7 +463,6 @@ export function ReviewView({
           <Button
             ref={rejectButton}
             variant="secondary"
-            size="lg"
             label="Avvisa körningen"
             isDisabled={busy}
             onClick={() => {
@@ -474,7 +473,6 @@ export function ReviewView({
         )}
         <Button
           variant="primary"
-          size="lg"
           icon={<CheckCircle2 aria-hidden />}
           label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
           isLoading={working === "approve"}

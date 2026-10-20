@@ -56,7 +56,10 @@ design system for every value. The page is one surface colour from the bar to th
 hierarchy comes from type size, weight and spacing, not from colour or containers.
 
 **Key Characteristics:**
-- One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone.
+- One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone. A
+  review's decision is the design system's middle size (32 px with a mouse, 44 px on touch). The speaker review keeps
+  its decision in the page on a phone too, under the speakers: the transcript's player docks at the bottom there, and
+  two bars would cover a fifth of the screen.
 - The flow page is a 20rem column for the flow (name, description, how it works, classification, details) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's
   description and how it works, and the details and the classification follow the choice.
@@ -129,8 +132,9 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ## Components
 
 ### Buttons
-- **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating. A dialog
-  has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
+- **Primary:** accent fill, 48 px for the one action a screen exists for, the middle size in a review's decision;
+  labels wrap instead of truncating. A dialog has one too: what else stays in reach in it (a recording's Pausa and
+  Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning).
 - **Decisions** (a review's Avvisa and its approval, a ready recording's Fortsätt spela in and Skapa dokument, a

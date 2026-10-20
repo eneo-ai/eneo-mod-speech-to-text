@@ -278,13 +278,13 @@ test("who is who: Namnge talarna stands in the speakers' card's heading row; Avv
   assert.ok(!card.contains(confirm) && confirm.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "the reason form opens in the decision's place");
 });
 
-test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both large; the reason form takes its place, with a destructive confirm", async (t) => {
+test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both the middle size; the reason form takes its place, with a destructive confirm", async (t) => {
   eneo(t);
   const view = await review();
   const looks = (action: HTMLButtonElement | null) => [action?.getAttribute("data-variant"), action?.getAttribute("data-size")];
   const avvisa = button(view.container, "Avvisa körningen")!;
   const approve = button(view.container, "Godkänn och fortsätt")!;
-  assert.deepEqual([looks(avvisa), looks(approve)], [["secondary", "lg"], ["primary", "lg"]]);
+  assert.deepEqual([looks(avvisa), looks(approve)], [["secondary", "md"], ["primary", "md"]]);
   assert.ok(avvisa.nextElementSibling === approve, "side by side, Avvisa first");
   await view.act(async () => avvisa.click());
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.

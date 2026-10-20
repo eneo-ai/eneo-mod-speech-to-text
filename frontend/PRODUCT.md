@@ -43,7 +43,8 @@ Sundsvalls kommun with the Eneo blue.
 
 ## Product Principles
 
-- One primary action per state, large and in reach (docked at the bottom on a phone).
+- One primary action per state, prominent and in reach (docked at the bottom on a phone; the speaker review keeps it
+  under the speakers, where the transcript's player docks).
 - Say what happens to the person's audio and data, in plain Swedish, where they decide.
 - Calm public-sector density: clear hierarchy and progressive disclosure, no decoration.
 
