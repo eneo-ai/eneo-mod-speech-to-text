@@ -21,6 +21,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
 import { useAuthenticatedUser } from "@/components/AuthGate";
@@ -292,7 +293,6 @@ export function ReviewView({
   const dirty = isSpeakerMapping ? speakersDirty : textDirty;
 
   const speakerNames = useMemo(() => speakerNamesFromRows(speakerRows), [speakerRows]);
-  const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(speakerRows) : [];
   const hasAudio = transcript.fileIds.length > 0 && transcript.segments.length > 0;
   const speakerLabels = useMemo(() => speakerRows.map((r) => r.label), [speakerRows]);
 
@@ -328,6 +328,8 @@ export function ReviewView({
     [transcript.pending, savedCorrections, source.stepId, corrections.speaker_edits],
   );
   const namingRows = useMemo(() => withSplitLabels(speakerRows, splitSpeakers), [speakerRows, splitSpeakers]);
+  // Every speaker the list shows without a name, a split one too: each keeps its label in the transcript.
+  const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(namingRows) : [];
   const passageCounts = useMemo(
     () => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s.passages])),
     [shownSegments],
@@ -518,20 +520,17 @@ export function ReviewView({
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it.
-        <List aria-label="Talare" density="compact" hasDividers>
+        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. A
+        // name the flow was not sure of is a status at the row's end. The rows are read, not pressed: no Tab stop of
+        // their own. They set themselves apart, and the card's edge closes the list: no rule under the last one.
+        <List aria-label="Talare" density="compact">
           {namingRows.map((row) => (
             <ListItem
               key={row.label}
               label={row.name ?? speakerDisplayLabel(row.label)}
               startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-              description={
-                !row.name
-                  ? "Inget namn"
-                  : isUnsureProposal(row, modelProposals)
-                    ? `${speakerDisplayLabel(row.label)} · Osäkert förslag`
-                    : speakerDisplayLabel(row.label)
-              }
+              description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
+              endContent={isUnsureProposal(row, modelProposals) ? <Token size="sm" color="yellow" label="Osäkert förslag" /> : undefined}
             />
           ))}
         </List>
