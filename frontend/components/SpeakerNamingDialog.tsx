@@ -123,8 +123,8 @@ export function SpeakerNamingDialog({
   /** The button that opens the dialog; focus returns to it on close. */
   children: Trigger;
 }) {
-  // Names typed but not saved: kept through closing the dialog and through a reload (it opens again with them);
-  // saving them or Avbryt ends them.
+  // Names typed but not saved: kept through closing the dialog, by any of its ways out, and through a reload (it opens
+  // again with them); saving them ends them.
   const [typed, setTyped] = useState<TypedName[] | null>(() =>
     draftKey ? readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) : null,
   );
@@ -167,12 +167,12 @@ export function SpeakerNamingDialog({
   // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
   const narrow = useMediaQuery("(max-width: 479.98px)");
 
-  // Esc, Stäng or a click beside only close: what was typed is there when it opens again.
+  // Esc, Stäng, Avbryt or the ×: what was typed is there when it opens again.
   const close = () => {
     setOpen(false);
     onStopListening?.();
   };
-  /** Avbryt, and a save that went through: the dialog closes and what was typed is thrown away. */
+  /** A save that went through: the dialog closes and what was typed is done with. */
   const end = () => {
     close();
     setTyped(null);
@@ -249,7 +249,7 @@ export function SpeakerNamingDialog({
         ref={dialogElement}
         isOpen={shown}
         onOpenChange={(next) => !next && close()}
-        purpose="info"
+        purpose="form"
         variant={narrow ? "fullscreen" : "standard"}
         width="42rem"
         className={covered && !narrow ? styles.atVisibleTop : undefined}
@@ -346,7 +346,7 @@ export function SpeakerNamingDialog({
                 {refusal && <Banner status="error" title={refusal} collapsible={false} />}
                 {decided && <Text as="p" color="secondary">Namnen är redan sparade.</Text>}
                 <ActionRow>
-                  {!decided && <Button variant="ghost" label="Avbryt" onClick={end} />}
+                  {!decided && <Button variant="ghost" label="Avbryt" onClick={close} />}
                   {decided ? (
                     <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (
