@@ -36,6 +36,7 @@ export function NameCombobox({
   writeLabel,
   optionNote,
   label,
+  description,
   problem,
 }: {
   /** The chosen or typed name, or null for none. */
@@ -53,6 +54,8 @@ export function NameCombobox({
   optionNote?: (name: string) => string | null;
   /** The field's name, for a screen reader; the list's is "Förslag: <label>". */
   label: string;
+  /** What a screen reader hears about the name with the field's name, e.g. that it is an unsure proposal. */
+  description?: string;
   /** Why the name is refused, said under the field. */
   problem?: string;
 }) {
@@ -159,6 +162,7 @@ export function NameCombobox({
         ref={inputRef}
         label={label}
         isLabelHidden
+        description={description}
         role="combobox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}

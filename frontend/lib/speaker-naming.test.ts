@@ -3,7 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { ApiError } from "./api";
 import { buildEditedMapping, namingRefusal, withSplitLabels, type SpeakerMappingRow } from "./speaker-mapping";
-import { computeAccessibleName } from "dom-accessibility-api";
+import { computeAccessibleDescription, computeAccessibleName } from "dom-accessibility-api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
 
 installDom();
@@ -306,6 +306,7 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   const { view, field } = await dialog({ rows: proposals, proposals });
   const rowOf = (label: string) => field(label).closest("li")!;
   assert.match(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/, "medium confidence is marked");
+  assert.match(computeAccessibleDescription(field("Talare 1")), /Osäkert förslag/, "and the field says it to a screen reader");
   assert.doesNotMatch(rowOf("Talare 2").textContent ?? "", /Osäkert förslag/, "a sure proposal is not");
   const why = button(rowOf("Talare 1"), "Varför?")!;
   assert.equal(why.getAttribute("aria-expanded"), "false", "the evidence waits behind Varför?");
