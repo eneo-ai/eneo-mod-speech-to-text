@@ -407,6 +407,7 @@ export function TranscriptPlayer(
     title,
     playback: shared,
     naming,
+    onRenameSpeaker,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
@@ -446,9 +447,14 @@ export function TranscriptPlayer(
     playback?: Playback;
     /**
      * Naming the speakers of a finished run: "Namnge talare" in the speakers' row and "Byt namn på" in a passage's
-     * Ändra talare. Without it nobody is named here (the review pause names in its own dialog).
+     * Ändra talare. Without it nobody is named here (the review pause names in its own dialog, `onRenameSpeaker`).
      */
     naming?: Naming;
+    /**
+     * Where the page names its speakers itself (the review pause's dialog): "Byt namn på" in a passage's Ändra talare
+     * opens that, at the passage's speaker, and the focus goes back to `returnTo`.
+     */
+    onRenameSpeaker?: (label: string, returnTo: HTMLElement | null) => void;
   },
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -711,7 +717,9 @@ export function TranscriptPlayer(
   const commitTurnLine = useSteady(commitLine);
   const revertTurnLine = useSteady(revertLine);
   const reassignTurn = useSteady(reassign);
-  const renameSpeaker = useSteady((label: string, returnTo: HTMLElement | null) => namingDialog.current?.open(label, returnTo));
+  const renameSpeaker = useSteady((label: string, returnTo: HTMLElement | null) =>
+    canName ? namingDialog.current?.open(label, returnTo) : onRenameSpeaker?.(label, returnTo),
+  );
   // "Spela från": it plays, also from a pause.
   const seekTurn = useSteady((turn: TranscriptTurn) => seekTo(turn.fileIndex, turn.start, true));
   const clickPart = useSteady(onPartClick);
@@ -1041,7 +1049,7 @@ export function TranscriptPlayer(
                     onCommitLine={commitTurnLine}
                     onRevertLine={revertTurnLine}
                     onReassign={reassignTurn}
-                    onRename={canName ? renameSpeaker : undefined}
+                    onRename={canName || onRenameSpeaker ? renameSpeaker : undefined}
                     onSeekTurn={seekTurn}
                     onPartClick={clickPart}
                   />

@@ -148,6 +148,19 @@ test("a correction that cannot be saved says so, and offers another try and the 
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 });
 
+test("in the review, Byt namn på in a passage's Ändra talare opens Namnge talarna at that speaker, and Avbryt gives the focus back to the passage", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  const passage = page.getByRole("button", { name: "Erik Lund, ändra talare" }).first();
+  await passage.click();
+  await page.getByRole("dialog", { name: "Ändra talare" }).getByRole("button", { name: "Byt namn på Erik Lund" }).click();
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Ändra talare" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(passage).toBeFocused();
+});
+
 test("the player's row keeps the position slider a usable width on a phone, with Följ shown", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);

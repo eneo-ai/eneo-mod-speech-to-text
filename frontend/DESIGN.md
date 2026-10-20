@@ -211,8 +211,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   heading's Kopiera and Ladda ner som text are. Where they cannot be named (a run waiting for its review, a failed run, a
   transcript that cannot be corrected) the chips stand alone, named "Visa talare". The speaker review's own view has no
   filter for the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's "Ändra
-  talare" offers "Byt namn på" its speaker after the choice and what it applies to; both open the review's naming
-  dialog, and the focus goes back where it was opened.
+  talare" offers "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's
+  pause alike: it opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
   window (`content-visibility: auto`): an hour's meeting is tens of thousands of words.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or

@@ -56,7 +56,7 @@ import {
 } from "@/lib/speaker-mapping";
 import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
 import { applyCorrections } from "@/lib/transcript-corrections";
-import { hasNamesDraft, SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
+import { hasNamesDraft, SpeakerNamingDialog, type SpeakerNamingHandle } from "@/components/SpeakerNamingDialog";
 import { SpeakerMark } from "@/components/SpeakerMark";
 import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
@@ -162,6 +162,8 @@ export function ReviewView({
   const saving = working === "save";
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
+  // The naming dialog, opened at one speaker by Byt namn på in a passage's Ändra talare.
+  const namingDialog = useRef<SpeakerNamingHandle>(null);
 
   // A control that removes or disables itself hands the focus on once the view has changed, never to the page
   // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
@@ -537,6 +539,7 @@ export function ReviewView({
     const namingAction =
       speakerRows.length === 0 ? null : (
           <SpeakerNamingDialog
+            ref={namingDialog}
             rows={namingRows}
             proposals={modelProposals}
             participants={participants}
@@ -661,6 +664,7 @@ export function ReviewView({
             saveState={saveState}
             confirmedWords={confirmedWords}
             onToggleConfirmed={toggleConfirmed}
+            onRenameSpeaker={namingAction ? (label, returnTo) => namingDialog.current?.open(label, returnTo) : undefined}
           />
         </div>
       </VStack>
