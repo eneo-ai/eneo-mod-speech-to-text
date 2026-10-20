@@ -685,11 +685,43 @@ export function ReviewView({
         {deadline}
       </VStack>
 
-      <VStack as="section" gap={3} className={styles.card}>
+      {/* An edit that was set aside is said before the text it is about, with the edit itself to read, copy or take. */}
+      {draft.yours && (
+        <Banner
+          status="warning"
+          title={decided ? "Din ändring sparades inte" : "Någon har ändrat texten medan du redigerade"}
+          description={
+            decided
+              ? "Granskningen godkändes med texten nedan. Din version visas här om du vill kopiera den."
+              : "Här visas den senaste versionen. Din ändring är inte sparad i Eneo, men finns kvar i den här fliken."
+          }
+          collapsible={false}
+        >
+          <VStack gap={2}>
+            {draft.yours.text !== undefined && <Text as="p" className={styles.yours}>{draft.yours.text}</Text>}
+            <HStack gap={2} wrap="wrap">
+              {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
+              {/* Approved, the version is kept to copy, never to continue with: the approved text is the decision. */}
+              {decided ? (
+                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+              ) : (
+                <>
+                  <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
+                  <Button size="sm" variant="ghost" label="Släng din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+                </>
+              )}
+            </HStack>
+          </VStack>
+        </Banner>
+      )}
+
+      <VStack as="section" gap={3} className={styles.card} aria-labelledby="review-content">
         {/* The text's name and the editor's buttons stay at the top of the window while a long text is read or edited. */}
         <HStack gap={2} wrap="wrap" hAlign="between" vAlign="center" className={styles.cardHead}>
           <VStack gap={1}>
-            <Text weight="semibold">Innehåll för granskning</Text>
+            <Heading level={2} id="review-content">
+              Innehåll för granskning
+            </Heading>
             {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
           </VStack>
           {/* The editor's own buttons, no decision: small, beside the text's name. Spara ändring keeps a change in Eneo
@@ -758,36 +790,6 @@ export function ReviewView({
       </VStack>
 
       <VStack gap={3} className={styles.notices}>
-        {draft.yours && decided && (
-          // Kept to copy, never to continue with: the approved text above is the decision.
-          <Banner
-            status="warning"
-            title="Din ändring sparades inte"
-            description="Granskningen godkändes med texten ovan. Din version visas här om du vill kopiera den."
-            collapsible={false}
-          >
-            <VStack gap={2}>
-              {draft.yours.text !== undefined && <Text as="p" className={styles.yours}>{draft.yours.text}</Text>}
-              <HStack gap={2} wrap="wrap">
-                {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
-                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
-              </HStack>
-            </VStack>
-          </Banner>
-        )}
-        {draft.yours && !decided && (
-          <Banner
-            status="warning"
-            title="Din ändring sparades inte"
-            description="Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar."
-            collapsible={false}
-          >
-            <HStack gap={2} wrap="wrap">
-              <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
-              <Button size="sm" variant="ghost" label="Behåll den senaste" isDisabled={busy} onClick={() => draft.dropYours()} />
-            </HStack>
-          </Banner>
-        )}
         {runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>

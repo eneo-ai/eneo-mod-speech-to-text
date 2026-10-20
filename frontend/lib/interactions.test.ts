@@ -1308,7 +1308,7 @@ test("a review edit comes back on its revision; once the review changed it is ne
   assert.deepEqual(draft.initial, { text: "Min text" });
   await later.act(async () => setRevision(6));
   await later.act(async () => draft.dropYours());
-  assert.equal(draft.yours, null, "Behåll den senaste lets it go");
+  assert.equal(draft.yours, null, "Släng din version lets it go");
   await later.unmount();
   assert.equal(window.sessionStorage.length, 0, "nothing left behind");
 });
