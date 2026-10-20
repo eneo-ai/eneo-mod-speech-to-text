@@ -595,15 +595,15 @@ export function TranscriptPlayer(
     [hasAudio, playback],
   );
 
-  // K, J and L work from anywhere on the page, so K plays before anything in the player has been clicked; what types
-  // or picks with letters keeps them, and so does a dialog over the page. They act only where the line that says them
-  // is (KEYS_SAID), which turns them off (WCAG 2.1.4): a letter said to speech input, or pressed by mistake, then does
-  // nothing. Space and the arrows scroll the page and work its controls: they are the player's only with the focus on it
-  // or its text, and the slider moves by its own.
+  // K, J and L work from anywhere on the page where the line that says them is (KEYS_SAID), so K plays before anything
+  // in the player has been clicked, and that line turns them off (WCAG 2.1.4): a letter said to speech input, or pressed
+  // by mistake, then does nothing. Where no line says them (a touch screen with a keyboard of its own) they act only
+  // with the focus in the player, which 2.1.4 allows. What types or picks with letters keeps them, and so does a dialog
+  // over the page. Space and the arrows scroll the page and work its controls: they are the player's only with the focus
+  // on it or its text, and the slider moves by its own.
   const playerRef = useRef<HTMLElement | null>(null);
   const keysSaid = useMediaQuery(KEYS_SAID, true);
   const [letterKeys, setLetterKeys] = useState(() => (ownerId ? letterKeysOn(browserStorage(), ownerId) : true));
-  const lettersAct = keysSaid && letterKeys;
   const announce = useAnnounce();
   const turnLetterKeys = useSteady((on: boolean) => {
     setLetterKeys(on);
@@ -616,7 +616,8 @@ export function TranscriptPlayer(
       if (!action || e.defaultPrevented || !(e.target instanceof Element)) return;
       const target = e.target;
       if (e.key.length === 1 && e.key !== " ") {
-        if (!lettersAct || target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
+        const letters = keysSaid ? letterKeys : Boolean(playerRef.current?.contains(target));
+        if (!letters || target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
       } else if (!playerRef.current?.contains(target) || target.closest("button, a, input, select, textarea, summary, [role=button], [role=slider], [role=menuitemradio], [role=radio], [role=listbox], [role=option], [contenteditable]")) {
         return;
       }
@@ -627,7 +628,7 @@ export function TranscriptPlayer(
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [hasAudio, playback, lettersAct]);
+  }, [hasAudio, playback, keysSaid, letterKeys]);
 
   // The sentence being played stays in view, while following and not editing a line.
   const following = useRef({ follow, editing: editingIndex >= 0 });

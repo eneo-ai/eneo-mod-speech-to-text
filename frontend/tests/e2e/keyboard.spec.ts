@@ -126,7 +126,7 @@ test("K, J and L are turned off from the line that says them, stay off after a r
   await expect(pause, "on again").toBeVisible();
 });
 
-test("on a touch screen no line says K, J and L, so they do nothing there and no button names them", async ({ page }, info) => {
+test("on a touch screen no line says K, J and L: they do nothing from the page and act with the focus in the player", async ({ page }, info) => {
   test.skip(
     !["phone-390-light", "tablet-landscape", "phone-390-webkit", "tablet-landscape-webkit"].includes(info.project.name),
     "a phone and a tablet with a keyboard of their own, in Chromium and in Safari's engine",
@@ -143,6 +143,10 @@ test("on a touch screen no line says K, J and L, so they do nothing there and no
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   await expect(page.getByRole("button", { name: "Pausa uppspelningen" }), "K played nothing").toHaveCount(0);
   await expect(page.getByRole("slider", { name: "Position i inspelningen" }), "L moved nothing").toHaveAttribute("aria-valuenow", "0");
+  // With the focus in the player, as a keyboard of the tablet's own puts it there (WCAG 2.1.4: active only on focus).
+  await play.focus();
+  await page.keyboard.press("k");
+  await expect(page.getByRole("button", { name: "Pausa uppspelningen" }), "K from the player plays").toBeVisible();
 });
 
 test("Avbryt redigering with a change asks first: Fortsätt redigera gives the focus back to it, Ta bort ändringen to Redigera", async ({ page }, info) => {
