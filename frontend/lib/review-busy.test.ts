@@ -159,7 +159,7 @@ test("while Spara och fortsätt is under way the text cannot change, so nothing 
   await view.act(async () => going);
   assert.deepEqual(server.calls, ["edit"], "the save is under way, its answer held");
   assert.equal(field().readOnly, true, "the text is locked while it is being sent");
-  assert.equal(button(view.container, "Avbryt")?.disabled ?? true, true);
+  assert.equal(button(view.container, "Avbryt redigering")?.disabled, true);
   await view.act(async () => type(field(), "Second edit typed while waiting."));
   assert.equal(field().value, "First edit", "no second edit slips in under the save");
 
@@ -254,7 +254,7 @@ test("a control that removes or disables itself hands the focus on, never to the
   assert.ok(focused() === view.container.querySelector("textarea"), `Redigera: the text, not ${focused()?.tagName}`);
   const opened = view.container.querySelector("textarea")!;
   assert.equal(opened.selectionStart, opened.value.length, "the caret waits at the text's end, where a reviewer adds");
-  await press("Avbryt");
+  await press("Avbryt redigering");
   assert.ok(focused() === button(view.container, "Redigera"), `Avbryt: back on Redigera, not ${focused()?.tagName}`);
   await press("Redigera");
   await view.act(async () => type(view.container.querySelector("textarea")!, "Utkast som granskats."));
@@ -315,6 +315,30 @@ test("Bekräfta avvisning with no reason says at the field what is missing and t
   await view.act(async () => button(view.container, "Avbryt")!.click());
   await view.act(async () => button(view.container, "Avvisa körningen")!.click());
   assert.equal(reasonField(view.container)!.value, "Fel möte.", "the reason is there when the form opens again");
+});
+
+test("Avbryt redigering ends an unchanged edit at once and asks first when there is a change to throw away", async (t) => {
+  eneo(t);
+  const view = await review();
+  const question = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
+  await view.act(async () => button(view.container, "Redigera")!.click());
+  await view.act(async () => button(view.container, "Avbryt redigering")!.click());
+  assert.ok(!question() && !view.container.querySelector("textarea"), "nothing to lose: no question");
+
+  await view.act(async () => button(view.container, "Redigera")!.click());
+  await view.act(async () => type(view.container.querySelector("textarea")!, "Ändrad text."));
+  assert.match(view.container.querySelector("section")?.textContent ?? "", /Ändrad, inte sparad/, "the card says its text is changed");
+  await view.act(async () => button(view.container, "Avbryt redigering")!.click());
+  assert.ok(question(), "asked first");
+  await view.act(async () => button(question()!, "Fortsätt redigera")!.click());
+  assert.ok(!question());
+  assert.equal(view.container.querySelector("textarea")?.value, "Ändrad text.", "Fortsätt redigera keeps the change");
+  await view.act(async () => button(view.container, "Avbryt redigering")!.click());
+  await view.act(async () => button(question()!, "Ta bort ändringen")!.click());
+  assert.equal(view.container.querySelector("textarea"), null, "the edit has ended");
+  assert.ok(document.activeElement === button(view.container, "Redigera"), `the focus is back on Redigera, not ${document.activeElement?.tagName}`);
+  assert.match(view.container.querySelector("article")?.textContent ?? "", /Utkast från flödet\./, "with the pause's own text");
+  assert.doesNotMatch(view.container.textContent ?? "", /Ändrad, inte sparad/);
 });
 
 test("an approved pause is final: a reason typed before the approval reached the page cannot reject it, also when the resume failed", async (t) => {

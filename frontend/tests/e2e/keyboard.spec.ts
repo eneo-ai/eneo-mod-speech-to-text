@@ -86,6 +86,24 @@ test("K plays and pauses from anywhere on the page, before the player is clicked
   await expect(play, "typed, not played").toBeVisible();
 });
 
+test("Avbryt redigering with a change asks first: Fortsätt redigera gives the focus back to it, Ta bort ändringen to Redigera", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await STATES.find((s) => s.name === "review-text-changed")!.go(page, info);
+  const cancel = page.getByRole("button", { name: "Avbryt redigering" });
+  const question = page.getByRole("alertdialog", { name: "Avbryta redigeringen?" });
+  await cancel.focus();
+  await page.keyboard.press("Enter");
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Fortsätt redigera" }).press("Enter");
+  await expect(question).toBeHidden();
+  await expect(cancel, "nothing thrown away: back where it was").toBeFocused();
+  await page.keyboard.press("Enter");
+  await question.getByRole("button", { name: "Ta bort ändringen" }).press("Enter");
+  await expect(question).toBeHidden();
+  await expect(page.getByRole("main").locator("textarea")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Redigera" }), "the control that took the edit's place").toBeFocused();
+});
+
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
   const { stops, left } = await tabWalk(page);

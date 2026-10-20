@@ -141,8 +141,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   dialog's Avbryt and Spara): one row at the end of their space, the main action last; up to 640 px wide a stack across
   the whole width, the main action on top and first for the keyboard (`components/ActionRow.tsx`, as Astryx's alert
   dialog lays out its own). An editor's own buttons are no decision: small, Avbryt before Spara, in the text's header
-  above the field (the review's Redigera, Avbryt and Spara ändring) or under a passage being corrected. A long text
-  under review keeps that header at the window's top and the decision at its bottom, with one page scroll.
+  above the field (the review's Redigera, Avbryt redigering and Spara ändring) or under a passage being corrected. A long
+  text under review keeps that header at the window's top and the decision at its bottom, with one page scroll.
 - **A card's own action** stands at the end of the card's heading row, never on a row of its own between rules:
   "Transkribering … Ladda ner", "Talare … Namnge talarna". The review's decision is the page's, under the speakers' card
   and not in its group.

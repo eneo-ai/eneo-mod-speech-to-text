@@ -241,6 +241,18 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("listbox"),
     hide: (page) => page.keyboard.press("Escape"),
   },
+  // The text review's own question: Avbryt redigering asks first when a change would be thrown away.
+  "discard question": {
+    go: async (page) => {
+      await run(page, ids.runs.reviewText);
+      await expect(page.getByRole("heading", { level: 1, name: "Sammanfattning" })).toBeVisible();
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+    },
+    show: (page) => page.getByRole("button", { name: "Avbryt redigering" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Avbryta redigeringen?" }),
+    hide: (page) => page.getByRole("button", { name: "Fortsätt redigera" }).click(),
+  },
   // A page dialog on the page that owns it: the run's own view while it runs.
   "cancel question": {
     go: (page) => run(page, ids.runs.running),

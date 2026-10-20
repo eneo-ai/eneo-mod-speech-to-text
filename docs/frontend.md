@@ -46,7 +46,7 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 ## Layout och handlingar
 
 - **Ett beslut** (granskningens Avvisa och godkännande, en dialogs Avbryt och Spara) är `components/ActionRow.tsx`: en rad i slutet av ytan med huvudåtgärden sist, och upp till 640 px en stapel över hela bredden med huvudåtgärden överst, som `AlertDialog`. Barnen skrivs i radens ordning.
-- **Ett fälts egna knappar** är inget beslut: små, i textens rubrikrad ovanför fältet (granskningens Redigera, Avbryt och Spara ändring, den sista bara när något har ändrats).
+- **Ett fälts egna knappar** är inget beslut: små, i textens rubrikrad ovanför fältet (granskningens Redigera, Avbryt redigering och Spara ändring, den sista bara när något har ändrats). Avbryt redigering frågar först när en ändring skulle kastas.
 - **En lång text under granskning** har en enda scroll: rubrikraden stannar överst i fönstret och beslutet nederst, fältet växer med texten och Redigera öppnar där man läser. Ett lågt fönster (telefon på sidan, 200 % zoom) håller båda i sidan.
 - **Läsbredd:** granskad text och resultatets dokument högst 75 tecken per rad; textgranskningen är en läskolumn från 1024 px.
 - **Resultatet:** huvudåtgärden först (nedladdningen, eller Kopiera för en text utan fil), de två andra bredvid när raden har plats och annars i menyn **Fler alternativ** (`components/flow/ResultDocument.tsx`). En PDF öppnas i en dialog bara med mus (från 640 px, från filens namn från 1024 px); på en pekskärm och i ett smalare fönster i en egen flik (`components/flow/ResultFiles.tsx`).

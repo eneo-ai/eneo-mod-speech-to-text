@@ -11,6 +11,7 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -24,7 +25,7 @@ import { TextArea } from "@astryxdesign/core/TextArea";
 import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
-import { useAuthenticatedUser } from "@/components/AuthGate";
+import { useAuthenticatedUser, useSignedOut } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
@@ -165,6 +166,9 @@ export function ReviewView({
   const [rejectReason, setRejectReason] = useState<string>("");
   // Bekräfta avvisning pressed with no reason: said at the field, never a button that does nothing.
   const [reasonMissing, setReasonMissing] = useState<boolean>(false);
+  // Avbryt redigering with a change: asked first, since the change is thrown away.
+  const [askingDiscard, setAskingDiscard] = useState<boolean>(false);
+  const signedOut = useSignedOut();
   // The naming dialog, opened at one speaker by Byt namn på in a passage's Ändra talare.
   const namingDialog = useRef<SpeakerNamingHandle>(null);
 
@@ -423,6 +427,14 @@ export function ReviewView({
       return;
     }
     void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()), undefined);
+  }
+
+  /** The edit's Avbryt redigering: the text as the pause holds it, and the focus back on Redigera. */
+  function stopEditing() {
+    handOff.current = editButton;
+    setText(initialText);
+    setEditing(false);
+    draft.drop();
   }
 
   const busy = working !== null;
@@ -738,9 +750,11 @@ export function ReviewView({
               Innehåll för granskning
             </Heading>
             {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
+            {dirty && <Text as="p" type="supporting">Ändrad, inte sparad</Text>}
           </VStack>
           {/* The editor's own buttons, no decision: small, beside the text's name. Spara ändring keeps a change in Eneo
-              without going on, and is there only while there is one; Avbryt stays where it is when it comes. */}
+              without going on, and is there only while there is one; Avbryt redigering stays where it is when it comes,
+              and asks first when there is a change to throw away. */}
           {editable && (
             <HStack gap={2} wrap="wrap">
               {editing ? (
@@ -749,14 +763,9 @@ export function ReviewView({
                     key="avbryt"
                     variant="ghost"
                     size="sm"
-                    label="Avbryt"
+                    label="Avbryt redigering"
                     isDisabled={busy}
-                    onClick={() => {
-                      handOff.current = editButton;
-                      setText(initialText);
-                      setEditing(false);
-                      draft.drop();
-                    }}
+                    onClick={() => (dirty ? setAskingDiscard(true) : stopEditing())}
                   />
                   {dirty && <Button key="spara" variant="secondary" size="sm" label="Spara ändring" isLoading={saving} isDisabled={busy} onClick={saveOnly} />}
                 </>
@@ -816,6 +825,18 @@ export function ReviewView({
           {actions}
         </div>
       )}
+      <AlertDialog
+        isOpen={askingDiscard && !signedOut}
+        onOpenChange={setAskingDiscard}
+        title="Avbryta redigeringen?"
+        description="Ändringen tas bort."
+        cancelLabel="Fortsätt redigera"
+        actionLabel="Ta bort ändringen"
+        onAction={() => {
+          setAskingDiscard(false);
+          stopEditing();
+        }}
+      />
     </VStack>
   );
 }

@@ -167,7 +167,7 @@ Gaten kör webbläsarmotorerna; Safari på en iPhone eller iPad är en egen webb
 | Resa | Går igenom |
 |---|---|
 | `record-to-result.ad` | Flödeslistan, ett flöde, "Spela in", mikrofonfrågan, "Pausa", "Fortsätt", "Stoppa", "Skapa dokument", resultatet med PDF:en |
-| `review.ad` | "Vem är vem?" med beslutsraden, "Namnge talarna" och dess Avbryt, textgranskningens "Redigera" och Avbryt |
+| `review.ad` | "Vem är vem?" med beslutsraden, "Namnge talarna" och dess Avbryt, textgranskningens "Redigera" och "Avbryt redigering" |
 | `result.ad` | Resultatet med "Dela", transkriptets "Spela upp" och "Pausa uppspelningen", ett textresultat med "Kopiera texten" och "Dela", "Sidan finns inte" |
 
 ```bash
