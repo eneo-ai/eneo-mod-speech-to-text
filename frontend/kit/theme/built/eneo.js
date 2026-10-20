@@ -340,7 +340,8 @@ export const eneoTheme = {
     },
     "toggle-button-group": {
       "base": {
-        "flexWrap": "wrap"
+        "flexWrap": "wrap",
+        "gap": "var(--spacing-2)"
       }
     },
     "toggle-button": {
@@ -479,12 +480,6 @@ export const eneoTheme = {
             "radio-list-item": {
               "base": {
                 "minHeight": "44px"
-              }
-            },
-            "toggle-button-group": {
-              "base": {
-                "flexWrap": "wrap",
-                "gap": "var(--spacing-2)"
               }
             },
             "text-area-control": {

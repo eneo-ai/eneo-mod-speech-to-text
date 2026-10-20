@@ -4,8 +4,11 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { HStack } from "@astryxdesign/core/HStack";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
@@ -88,7 +91,7 @@ export function SpeakerNamingDialog({
   onSave,
   decided = false,
   draftKey,
-  description = "Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriberingen och dokumentet när du fortsätter.",
+  description = "Lyssna på ett exempel och välj vem som talar.",
   children,
 }: {
   ref?: Ref<SpeakerNamingHandle>;
@@ -120,8 +123,8 @@ export function SpeakerNamingDialog({
   /** The button that opens the dialog; focus returns to it on close. */
   children: Trigger;
 }) {
-  // Names typed but not saved: kept through closing the dialog and through a reload (it opens again with them);
-  // saving them or Avbryt ends them.
+  // Names typed but not saved: kept through closing the dialog, by any of its ways out, and through a reload (it opens
+  // again with them); saving them ends them.
   const [typed, setTyped] = useState<TypedName[] | null>(() =>
     draftKey ? readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) : null,
   );
@@ -161,13 +164,15 @@ export function SpeakerNamingDialog({
     if (covered) dialogElement.current?.style.setProperty("--visible-top", `${visible.top}px`);
   }, [covered, visible?.top]);
   const descriptionId = useId();
+  // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
+  const narrow = useMediaQuery("(max-width: 479.98px)");
 
-  // Esc, Stäng or a click beside only close: what was typed is there when it opens again.
+  // Esc, Stäng, Avbryt or the ×: what was typed is there when it opens again.
   const close = () => {
     setOpen(false);
     onStopListening?.();
   };
-  /** Avbryt, and a save that went through: the dialog closes and what was typed is thrown away. */
+  /** A save that went through: the dialog closes and what was typed is done with. */
   const end = () => {
     close();
     setTyped(null);
@@ -244,9 +249,10 @@ export function SpeakerNamingDialog({
         ref={dialogElement}
         isOpen={shown}
         onOpenChange={(next) => !next && close()}
-        purpose="info"
+        purpose="form"
+        variant={narrow ? "fullscreen" : "standard"}
         width="42rem"
-        className={covered ? styles.atVisibleTop : undefined}
+        className={covered && !narrow ? styles.atVisibleTop : undefined}
         maxHeight={height ? `min(90dvh, 48rem, calc(${height}px - 2 * var(--spacing-4)))` : "min(90dvh, 48rem)"}
         aria-describedby={descriptionId}
       >
@@ -304,6 +310,7 @@ export function SpeakerNamingDialog({
                         <div className={styles.name}>
                           <NameCombobox
                             label={`Vem är ${speakerDisplayLabel(row.label)}?`}
+                            description={unsure ? "Osäkert förslag" : undefined}
                             value={row.name}
                             options={names}
                             disabled={disabled || decided || saving}
@@ -314,7 +321,12 @@ export function SpeakerNamingDialog({
                             problem={problems[row.label]}
                             onChange={(name) => rename(row.label, name)}
                           />
-                          {unsure && <Text as="p" type="supporting">Osäkert förslag</Text>}
+                          {/* A status, as on the page's list; the field says it to a screen reader. */}
+                          {unsure && (
+                            <HStack aria-hidden>
+                              <Token size="sm" color="yellow" label="Osäkert förslag" />
+                            </HStack>
+                          )}
                           {proposal?.evidence && (
                             <Collapsible defaultIsOpen={false} chevronPosition="start" trigger={<Text type="supporting" weight="medium">Varför?</Text>}>
                               <Text as="p" type="supporting">{proposal.evidence}</Text>
@@ -334,7 +346,7 @@ export function SpeakerNamingDialog({
                 {refusal && <Banner status="error" title={refusal} collapsible={false} />}
                 {decided && <Text as="p" color="secondary">Namnen är redan sparade.</Text>}
                 <ActionRow>
-                  {!decided && <Button variant="ghost" label="Avbryt" onClick={end} />}
+                  {!decided && <Button variant="ghost" label="Avbryt" onClick={close} />}
                   {decided ? (
                     <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (

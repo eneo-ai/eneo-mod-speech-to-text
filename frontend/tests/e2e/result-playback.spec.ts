@@ -216,14 +216,28 @@ test("a speed is chosen in one step from the player's menu, and the audio plays 
   expect(await page.locator("audio").first().evaluate((audio: HTMLAudioElement) => audio.playbackRate)).toBe(0.75);
 });
 
-test("the player's keys are said once where there is a keyboard to press them, and not on a touch screen", async ({ page }, info) => {
+test("the player's keys are said once where there is a keyboard to press them, in the line's own type, and not on a touch screen", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a touch screen and a mouse");
   await result(page);
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
   const keys = page.getByText(/^Tangenter: K spelar och pausar/);
-  if (info.project.use.hasTouch) await expect(keys).toBeHidden();
-  else await expect(keys).toBeVisible();
-  await expect(page.getByRole("button", { name: "Spela upp", exact: true })).toHaveAttribute("aria-keyshortcuts", "K");
+  const play = page.getByRole("button", { name: "Spela upp", exact: true });
+  if (info.project.use.hasTouch) {
+    await expect(keys).toHaveCount(0);
+    await expect(play, "a key that does nothing is named nowhere").not.toHaveAttribute("aria-keyshortcuts");
+    return;
+  }
+  await expect(keys).toBeVisible();
+  await expect(play).toHaveAttribute("aria-keyshortcuts", "K");
+  // Its Stäng av ends the line as a link ends a sentence: in the line's size, and no taller than one of its lines.
+  const fit = await page.getByRole("button", { name: "Stäng av tangenterna" }).evaluate((button, line) => {
+    const own = getComputedStyle(button);
+    const its = getComputedStyle(line!);
+    const height = button.getBoundingClientRect().height + parseFloat(own.marginBlockStart) + parseFloat(own.marginBlockEnd);
+    return { size: [own.fontSize, its.fontSize], noTaller: Math.round(height) <= Math.round(parseFloat(its.lineHeight)) };
+  }, await keys.elementHandle());
+  expect(fit.size[0], "one size on the line").toBe(fit.size[1]);
+  expect(fit.noTaller, "the line keeps its height").toBe(true);
 });
 
 /** Safari's writer, independently of lib/webm-keyframes: every SimpleBlock's keyframe flag off, in place. */

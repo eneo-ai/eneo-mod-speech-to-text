@@ -458,6 +458,7 @@
 
   .astryx-toggle-button-group {
     flex-wrap: wrap;
+    gap: var(--spacing-2);
   }
 
   .astryx-toggle-button {
@@ -612,11 +613,6 @@
 
     .astryx-radio-list-item {
       min-height: 44px;
-    }
-
-    .astryx-toggle-button-group {
-      flex-wrap: wrap;
-      gap: var(--spacing-2);
     }
 
     .astryx-text-area-control {

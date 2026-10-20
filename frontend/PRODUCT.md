@@ -43,11 +43,14 @@ Sundsvalls kommun with the Eneo blue.
 
 ## Product Principles
 
-- One primary action per state, large and in reach (docked at the bottom on a phone).
+- One primary action per state, prominent and in reach (docked at the bottom on a phone; the speaker review keeps it
+  under the speakers, where the transcript's player docks).
 - Say what happens to the person's audio and data, in plain Swedish, where they decide.
 - Calm public-sector density: clear hierarchy and progressive disclosure, no decoration.
 
 ## Accessibility & Inclusion
 
 WCAG 2.2 AA, 44 px touch targets on a coarse pointer, 24 px with a mouse, a visible focus ring, reflow at 320 px and
-200 % zoom, text spacing, forced colours and reduced motion. `npm run test:a11y` in `frontend/` is the proof.
+200 % zoom, text spacing, forced colours and reduced motion. A single letter that acts by itself (the player's K, J and
+L) acts only where it is said, with a mouse; it can be turned off there, and stays off for the person.
+`npm run test:a11y` in `frontend/` is the proof.

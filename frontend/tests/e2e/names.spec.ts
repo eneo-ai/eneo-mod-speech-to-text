@@ -148,6 +148,19 @@ test("a correction that cannot be saved says so, and offers another try and the 
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 });
 
+test("in the review, Byt namn på in a passage's Ändra talare opens Namnge talarna at that speaker, and Avbryt gives the focus back to the passage", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  const passage = page.getByRole("button", { name: "Erik Lund, ändra talare" }).first();
+  await passage.click();
+  await page.getByRole("dialog", { name: "Ändra talare" }).getByRole("button", { name: "Byt namn på Erik Lund" }).click();
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Ändra talare" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(passage).toBeFocused();
+});
+
 test("the player's row keeps the position slider a usable width on a phone, with Följ shown", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);
@@ -215,7 +228,7 @@ test("an approved text review shows the saved decision; a draft from before it i
   expect(writes).toEqual(["resume"]);
 });
 
-test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height of at least 48 px", async ({ page }, info) => {
+test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height: the middle size, 44 px under a finger", async ({ page }, info) => {
   for (const state of ["review", "review-text-edit"]) {
     await STATES.find((s) => s.name === state)!.go(page, info);
     const avvisa = page.getByRole("button", { name: "Avvisa körningen" });
@@ -225,7 +238,7 @@ test("the decision is a pair at the end of its bar, Avvisa then Godkänn och for
       avvisa.locator("..").boundingBox(),
     ]);
     expect(reject!.height, `${state}: one height`).toBe(approve!.height);
-    expect(approve!.height, `${state}: the height of the action a screen exists for`).toBeGreaterThanOrEqual(48);
+    expect(approve!.height, `${state}: the design system's middle size`).toBe(info.project.use.hasTouch ? 44 : 32);
     expect(approve!.x + approve!.width, `${state}: Godkänn och fortsätt ends the bar`).toBeCloseTo(bar!.x + bar!.width, 0);
     // Beside it, or above it where the bar wraps: never at the bar's other end.
     expect(approve!.x - (reject!.x + reject!.width), `${state}: Avvisa stands next to it`).toBeLessThanOrEqual(16);
@@ -236,7 +249,7 @@ test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
   expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
     role: "textbox",
-    name: "Avvisa körningen",
+    name: "Skäl till avvisningen",
     description: "Körningen avbryts och flödet går inte vidare. Ange en kort motivering.",
   });
 

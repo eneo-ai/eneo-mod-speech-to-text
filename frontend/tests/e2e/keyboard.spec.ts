@@ -86,6 +86,87 @@ test("K plays and pauses from anywhere on the page, before the player is clicked
   await expect(play, "typed, not played").toBeVisible();
 });
 
+test("K, J and L are turned off from the line that says them, stay off after a reload, and come back with Slå på", async ({ page }, info) => {
+  test.skip(!["laptop-1440-light", "laptop-1440-firefox", "laptop-1440-webkit"].includes(info.project.name), "a laptop's keyboard, in each engine");
+  await result(page);
+  const play = page.getByRole("button", { name: "Spela upp", exact: true });
+  const pause = page.getByRole("button", { name: "Pausa uppspelningen" });
+  const turnOff = page.getByRole("button", { name: "Stäng av tangenterna" });
+  const turnOn = page.getByRole("button", { name: "Slå på tangenterna" });
+  // K pressed where it would act: what it did is drawn by the next frames, so nothing drawn by then is nothing done.
+  const pressK = async () => {
+    await page.keyboard.press("k");
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  };
+  const box = await turnOff.boundingBox();
+  expect(Math.min(box?.width ?? 0, box?.height ?? 0), "a 24 px target with a mouse (WCAG 2.5.8)").toBeGreaterThanOrEqual(24);
+
+  // The way past the passages leads to the player, where the line's control is the first stop, its focus in sight.
+  await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press(tabKey(page));
+  await expect(turnOff).toBeFocused();
+  const stop = await focusStop(page);
+  expect(stopProblems(stop ? [stop] : []), "visible and not covered").toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect(turnOn, "the focus stays on the control, which now turns them on").toBeFocused();
+  await expect(page.getByRole("region", { name: "Inspelning och transkribering" }).getByText("Tangenterna K, J och L är avstängda.")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Tangenterna K, J och L är avstängda." }), "and said").toBeAttached();
+  await expect(play, "the button names no key that does nothing").not.toHaveAttribute("aria-keyshortcuts");
+  await pressK();
+  await expect(pause, "off from the line's own control").toHaveCount(0);
+
+  await page.reload();
+  await expect(turnOn, "the choice is kept for this person").toBeVisible();
+  await pressK();
+  await expect(pause, "off from the page after a reload").toHaveCount(0);
+  await turnOn.click();
+  await expect(turnOff).toBeVisible();
+  await pressK();
+  await expect(pause, "on again").toBeVisible();
+});
+
+test("on a touch screen no line says K, J and L: they do nothing from the page and act with the focus in the player", async ({ page }, info) => {
+  test.skip(
+    !["phone-390-light", "tablet-landscape", "phone-390-webkit", "tablet-landscape-webkit"].includes(info.project.name),
+    "a phone and a tablet with a keyboard of their own, in Chromium and in Safari's engine",
+  );
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const play = page.getByRole("button", { name: "Spela upp", exact: true });
+  await expect(play).toBeVisible();
+  await expect(page.getByRole("button", { name: /tangenterna$/ }), "nothing to turn them off with").toHaveCount(0);
+  await expect(play, "the button names no key").not.toHaveAttribute("aria-keyshortcuts");
+  // Pressed from the page, where K plays on a laptop: what a key did is drawn by the next frames.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (const key of ["k", "l"]) await page.keyboard.press(key);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(page.getByRole("button", { name: "Pausa uppspelningen" }), "K played nothing").toHaveCount(0);
+  await expect(page.getByRole("slider", { name: "Position i inspelningen" }), "L moved nothing").toHaveAttribute("aria-valuenow", "0");
+  // With the focus in the player, as a keyboard of the tablet's own puts it there (WCAG 2.1.4: active only on focus).
+  await play.focus();
+  await page.keyboard.press("k");
+  await expect(page.getByRole("button", { name: "Pausa uppspelningen" }), "K from the player plays").toBeVisible();
+});
+
+test("Avbryt redigering with a change asks first: Fortsätt redigera gives the focus back to it, Ta bort ändringen to Redigera", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await STATES.find((s) => s.name === "review-text-changed")!.go(page, info);
+  const cancel = page.getByRole("button", { name: "Avbryt redigering" });
+  const question = page.getByRole("alertdialog", { name: "Avbryta redigeringen?" });
+  await cancel.focus();
+  await page.keyboard.press("Enter");
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Fortsätt redigera" }).press("Enter");
+  await expect(question).toBeHidden();
+  await expect(cancel, "nothing thrown away: back where it was").toBeFocused();
+  await page.keyboard.press("Enter");
+  await question.getByRole("button", { name: "Ta bort ändringen" }).press("Enter");
+  await expect(question).toBeHidden();
+  await expect(page.getByRole("main").locator("textarea")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Redigera" }), "the control that took the edit's place").toBeFocused();
+});
+
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
   const { stops, left } = await tabWalk(page);

@@ -11,6 +11,7 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -21,9 +22,10 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
-import { useAuthenticatedUser } from "@/components/AuthGate";
+import { useAuthenticatedUser, useSignedOut } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
@@ -56,7 +58,7 @@ import {
 } from "@/lib/speaker-mapping";
 import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
 import { applyCorrections } from "@/lib/transcript-corrections";
-import { hasNamesDraft, SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
+import { hasNamesDraft, SpeakerNamingDialog, type SpeakerNamingHandle } from "@/components/SpeakerNamingDialog";
 import { SpeakerMark } from "@/components/SpeakerMark";
 import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
@@ -162,6 +164,13 @@ export function ReviewView({
   const saving = working === "save";
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
+  // Bekräfta avvisning pressed with no reason: said at the field, never a button that does nothing.
+  const [reasonMissing, setReasonMissing] = useState<boolean>(false);
+  // Avbryt redigering with a change: asked first, since the change is thrown away.
+  const [askingDiscard, setAskingDiscard] = useState<boolean>(false);
+  const signedOut = useSignedOut();
+  // The naming dialog, opened at one speaker by Byt namn på in a passage's Ändra talare.
+  const namingDialog = useRef<SpeakerNamingHandle>(null);
 
   // A control that removes or disables itself hands the focus on once the view has changed, never to the page
   // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
@@ -290,7 +299,6 @@ export function ReviewView({
   const dirty = isSpeakerMapping ? speakersDirty : textDirty;
 
   const speakerNames = useMemo(() => speakerNamesFromRows(speakerRows), [speakerRows]);
-  const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(speakerRows) : [];
   const hasAudio = transcript.fileIds.length > 0 && transcript.segments.length > 0;
   const speakerLabels = useMemo(() => speakerRows.map((r) => r.label), [speakerRows]);
 
@@ -326,6 +334,8 @@ export function ReviewView({
     [transcript.pending, savedCorrections, source.stepId, corrections.speaker_edits],
   );
   const namingRows = useMemo(() => withSplitLabels(speakerRows, splitSpeakers), [speakerRows, splitSpeakers]);
+  // Every speaker the list shows without a name, a split one too: each keeps its label in the transcript.
+  const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(namingRows) : [];
   const passageCounts = useMemo(
     () => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s.passages])),
     [shownSegments],
@@ -409,8 +419,22 @@ export function ReviewView({
 
   function submitReject() {
     // Approved, the pause is final: only resuming is left, never a rejection typed before it.
-    if (decided || !rejectReason.trim()) return;
+    if (decided) return;
+    // No reason yet: the field says so and takes the focus.
+    if (!rejectReason.trim()) {
+      setReasonMissing(true);
+      reasonField.current?.focus();
+      return;
+    }
     void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()), undefined);
+  }
+
+  /** The edit's Avbryt redigering: the text as the pause holds it, and the focus back on Redigera. */
+  function stopEditing() {
+    handOff.current = editButton;
+    setText(initialText);
+    setEditing(false);
+    draft.drop();
   }
 
   const busy = working !== null;
@@ -427,14 +451,18 @@ export function ReviewView({
     <VStack as="section" gap={3} className={isSpeakerMapping ? undefined : styles.card}>
       <TextArea
         ref={reasonField}
-        label="Avvisa körningen"
+        label="Skäl till avvisningen"
         description="Körningen avbryts och flödet går inte vidare. Ange en kort motivering."
-        placeholder="Skäl…"
         rows={3}
         value={rejectReason}
-        onChange={setRejectReason}
+        status={reasonMissing ? { type: "error", message: "Skriv ett skäl." } : undefined}
+        onChange={(next) => {
+          setRejectReason(next);
+          if (next.trim()) setReasonMissing(false);
+        }}
       />
       <ActionRow>
+        {/* What was typed stays for the next time the form is opened. */}
         <Button
           variant="ghost"
           label="Avbryt"
@@ -442,10 +470,10 @@ export function ReviewView({
           onClick={() => {
             handOff.current = rejectButton;
             setShowReject(false);
-            setRejectReason("");
+            setReasonMissing(false);
           }}
         />
-        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
+        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={busy} onClick={submitReject} />
       </ActionRow>
     </VStack>
   ) : null;
@@ -453,6 +481,9 @@ export function ReviewView({
   // The choice as a pair of one height: Avvisa, then the action the page exists for (ActionRow places them).
   const actions = rejecting ? null : (
     <VStack gap={3}>
+      {/* The text review's decision is docked: what stops it is said there, where it was pressed, not after a long
+          text. The speaker review says it in its decision (below). */}
+      {!isSpeakerMapping && runError && <Banner status="error" title={runError} collapsible={false} />}
       {decided && (
         <Text as="p" type="supporting">
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
@@ -463,7 +494,6 @@ export function ReviewView({
           <Button
             ref={rejectButton}
             variant="secondary"
-            size="lg"
             label="Avvisa körningen"
             isDisabled={busy}
             onClick={() => {
@@ -474,7 +504,6 @@ export function ReviewView({
         )}
         <Button
           variant="primary"
-          size="lg"
           icon={<CheckCircle2 aria-hidden />}
           label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
           isLoading={working === "approve"}
@@ -508,6 +537,27 @@ export function ReviewView({
       {flowName} · Väntar på din granskning
     </Text>
   );
+  // The flow and the heading read as one, what to do and by when as the lines under them, all at the body's size.
+  const intro = (
+    <VStack gap={2}>
+      <VStack gap={1}>
+        {paused}
+        <Heading level={1} ref={heading} tabIndex={-1}>
+          {title}
+        </Heading>
+      </VStack>
+      <Text as="p" color="secondary" className={styles.description}>
+        {isSpeakerMapping
+          ? SPEAKER_REVIEW_ENABLED
+            ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten."
+            : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."
+          : editable
+            ? "Du kan ändra texten innan du godkänner och fortsätter."
+            : "Granska innehållet och välj om flödet ska fortsätta."}
+      </Text>
+      {deadline}
+    </VStack>
+  );
 
   if (isSpeakerMapping) {
     // Who is who at a glance; naming happens in "Namnge talarna", the card's own action at the end of its heading's row.
@@ -518,20 +568,17 @@ export function ReviewView({
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it.
-        <List aria-label="Talare" density="compact" hasDividers>
+        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. A
+        // name the flow was not sure of is a status at the row's end. The rows are read, not pressed: no Tab stop of
+        // their own. They set themselves apart, and the card's edge closes the list: no rule under the last one.
+        <List aria-label="Talare" density="compact">
           {namingRows.map((row) => (
             <ListItem
               key={row.label}
               label={row.name ?? speakerDisplayLabel(row.label)}
               startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-              description={
-                !row.name
-                  ? "Inget namn"
-                  : isUnsureProposal(row, modelProposals)
-                    ? `${speakerDisplayLabel(row.label)} · Osäkert förslag`
-                    : speakerDisplayLabel(row.label)
-              }
+              description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
+              endContent={isUnsureProposal(row, modelProposals) ? <Token size="sm" color="yellow" label="Osäkert förslag" /> : undefined}
             />
           ))}
         </List>
@@ -539,6 +586,7 @@ export function ReviewView({
     const namingAction =
       speakerRows.length === 0 ? null : (
           <SpeakerNamingDialog
+            ref={namingDialog}
             rows={namingRows}
             proposals={modelProposals}
             participants={participants}
@@ -575,19 +623,6 @@ export function ReviewView({
       <Text as="p" type="supporting">
         Talare utan namn behåller sin etikett i transkriberingen.
       </Text>
-    );
-
-    const intro = (
-      <VStack gap={1}>
-        {paused}
-        <Heading level={1} ref={heading} tabIndex={-1}>
-          {title}
-        </Heading>
-        <Text as="p" color="secondary" className={styles.description}>
-          {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
-        </Text>
-        {deadline}
-      </VStack>
     );
 
     return (
@@ -663,6 +698,8 @@ export function ReviewView({
             saveState={saveState}
             confirmedWords={confirmedWords}
             onToggleConfirmed={toggleConfirmed}
+            onRenameSpeaker={namingAction ? (label, returnTo) => namingDialog.current?.open(label, returnTo) : undefined}
+            ownerId={user.id}
           />
         </div>
       </VStack>
@@ -671,28 +708,52 @@ export function ReviewView({
 
   return (
     <VStack gap={6} className={styles.reading}>
-      <VStack gap={1}>
-        {paused}
-        <Heading level={1} ref={heading} tabIndex={-1}>
-          {title}
-        </Heading>
-        <Text as="p" type="supporting">
-          {editable
-            ? "Du kan ändra texten innan du godkänner och fortsätter."
-            : "Granska innehållet och välj om flödet ska fortsätta."}
-        </Text>
-        {deadline}
-      </VStack>
+      {intro}
 
-      <VStack as="section" gap={3} className={styles.card}>
+      {/* An edit that was set aside is said before the text it is about, with the edit itself to read, copy or take. */}
+      {draft.yours && (
+        <Banner
+          status="warning"
+          title={decided ? "Din ändring sparades inte" : "Någon har ändrat texten medan du redigerade"}
+          description={
+            decided
+              ? "Granskningen godkändes med texten nedan. Din version visas här om du vill kopiera den."
+              : "Här visas den senaste versionen. Din ändring är inte sparad i Eneo, men finns kvar i den här fliken."
+          }
+          collapsible={false}
+        >
+          <VStack gap={2}>
+            {draft.yours.text !== undefined && <Text as="p" className={styles.yours}>{draft.yours.text}</Text>}
+            <HStack gap={2} wrap="wrap">
+              {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
+              {/* Approved, the version is kept to copy, never to continue with: the approved text is the decision. */}
+              {decided ? (
+                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+              ) : (
+                <>
+                  <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
+                  <Button size="sm" variant="ghost" label="Släng din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+                </>
+              )}
+            </HStack>
+          </VStack>
+        </Banner>
+      )}
+
+      <VStack as="section" gap={3} className={styles.card} aria-labelledby="review-content">
         {/* The text's name and the editor's buttons stay at the top of the window while a long text is read or edited. */}
         <HStack gap={2} wrap="wrap" hAlign="between" vAlign="center" className={styles.cardHead}>
           <VStack gap={1}>
-            <Text weight="semibold">Innehåll för granskning</Text>
+            <Heading level={2} id="review-content">
+              Innehåll för granskning
+            </Heading>
             {!editable && <Text as="p" type="supporting">Skrivskyddat</Text>}
+            {dirty && <Text as="p" type="supporting">Ändrad, inte sparad</Text>}
           </VStack>
-          {/* The editor's own buttons, no decision: small, beside the text's name. Spara ändring keeps a change in Eneo
-              without going on, and is there only while there is one; Avbryt stays where it is when it comes. */}
+          {/* The editor's own buttons, no decision: small, at the end of the text's name where the row has room, and
+              under it, from its start, where it has not. Spara ändring keeps a change in Eneo without going on, and is
+              there only while there is one; Avbryt redigering stays where it is when it comes, and asks first when
+              there is a change to throw away. */}
           {editable && (
             <HStack gap={2} wrap="wrap">
               {editing ? (
@@ -701,14 +762,9 @@ export function ReviewView({
                     key="avbryt"
                     variant="ghost"
                     size="sm"
-                    label="Avbryt"
+                    label="Avbryt redigering"
                     isDisabled={busy}
-                    onClick={() => {
-                      handOff.current = editButton;
-                      setText(initialText);
-                      setEditing(false);
-                      draft.drop();
-                    }}
+                    onClick={() => (dirty ? setAskingDiscard(true) : stopEditing())}
                   />
                   {dirty && <Button key="spara" variant="secondary" size="sm" label="Spara ändring" isLoading={saving} isDisabled={busy} onClick={saveOnly} />}
                 </>
@@ -756,38 +812,9 @@ export function ReviewView({
         )}
       </VStack>
 
+      {/* While the reason for a rejection is written, what stops it is said with it. */}
       <VStack gap={3} className={styles.notices}>
-        {draft.yours && decided && (
-          // Kept to copy, never to continue with: the approved text above is the decision.
-          <Banner
-            status="warning"
-            title="Din ändring sparades inte"
-            description="Granskningen godkändes med texten ovan. Din version visas här om du vill kopiera den."
-            collapsible={false}
-          >
-            <VStack gap={2}>
-              {draft.yours.text !== undefined && <Text as="p" className={styles.yours}>{draft.yours.text}</Text>}
-              <HStack gap={2} wrap="wrap">
-                {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
-                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
-              </HStack>
-            </VStack>
-          </Banner>
-        )}
-        {draft.yours && !decided && (
-          <Banner
-            status="warning"
-            title="Din ändring sparades inte"
-            description="Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar."
-            collapsible={false}
-          >
-            <HStack gap={2} wrap="wrap">
-              <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
-              <Button size="sm" variant="ghost" label="Behåll den senaste" isDisabled={busy} onClick={() => draft.dropYours()} />
-            </HStack>
-          </Banner>
-        )}
-        {runError && <Banner status="error" title={runError} collapsible={false} />}
+        {rejecting && runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>
       {/* The decision stays in reach at the window's bottom edge however long the text is. While the reason for a
@@ -797,6 +824,18 @@ export function ReviewView({
           {actions}
         </div>
       )}
+      <AlertDialog
+        isOpen={askingDiscard && !signedOut}
+        onOpenChange={setAskingDiscard}
+        title="Avbryta redigeringen?"
+        description="Ändringen tas bort."
+        cancelLabel="Fortsätt redigera"
+        actionLabel="Ta bort ändringen"
+        onAction={() => {
+          setAskingDiscard(false);
+          stopEditing();
+        }}
+      />
     </VStack>
   );
 }

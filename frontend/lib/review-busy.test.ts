@@ -82,6 +82,10 @@ const speakers: FlowRunReviewCheckpointPublic = {
 
 const rejected: string[] = [];
 
+/** The rejection's reason field, found by its name as a screen reader finds it. */
+const reasonField = (within: ParentNode) =>
+  [...within.querySelectorAll("textarea")].find((field) => field.labels?.[0]?.textContent?.trim() === "Skäl till avvisningen") ?? null;
+
 /** A newer state of the pause reaching the page, as the page's reading of Eneo brings one (another tab approved it). */
 let showPause: (checkpoint: FlowRunReviewCheckpointPublic) => void = () => undefined;
 
@@ -155,7 +159,7 @@ test("while Spara och fortsätt is under way the text cannot change, so nothing 
   await view.act(async () => going);
   assert.deepEqual(server.calls, ["edit"], "the save is under way, its answer held");
   assert.equal(field().readOnly, true, "the text is locked while it is being sent");
-  assert.equal(button(view.container, "Avbryt")?.disabled ?? true, true);
+  assert.equal(button(view.container, "Avbryt redigering")?.disabled, true);
   await view.act(async () => type(field(), "Second edit typed while waiting."));
   assert.equal(field().value, "First edit", "no second edit slips in under the save");
 
@@ -203,7 +207,7 @@ test("a rejection cannot start while Spara och fortsätt is under way, nor end i
     avvisa.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
-  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl…"]'), "no reason form opens");
+  assert.ok(!reasonField(view.container), "no reason form opens");
   assert.deepEqual(rejected, [], "the rejection did not start");
   assert.equal(field().readOnly, true, "still locked: only the save's own end unlocks it");
   await view.act(async () => type(field(), "Newer text."));
@@ -240,7 +244,7 @@ test("a control that removes or disables itself hands the focus on, never to the
     });
   const focused = () => document.activeElement;
   await press("Avvisa körningen");
-  assert.ok(focused()?.matches('textarea[placeholder="Skäl…"]'), `Avvisa: the reason, not ${focused()?.tagName}`);
+  assert.ok(focused() === reasonField(view.container), `Avvisa: the reason, not ${focused()?.tagName}`);
   await press("Avbryt");
   assert.ok(focused() === button(view.container, "Avvisa körningen"), `Avbryt: back on Avvisa, not ${focused()?.tagName}`);
 
@@ -250,7 +254,7 @@ test("a control that removes or disables itself hands the focus on, never to the
   assert.ok(focused() === view.container.querySelector("textarea"), `Redigera: the text, not ${focused()?.tagName}`);
   const opened = view.container.querySelector("textarea")!;
   assert.equal(opened.selectionStart, opened.value.length, "the caret waits at the text's end, where a reviewer adds");
-  await press("Avbryt");
+  await press("Avbryt redigering");
   assert.ok(focused() === button(view.container, "Redigera"), `Avbryt: back on Redigera, not ${focused()?.tagName}`);
   await press("Redigera");
   await view.act(async () => type(view.container.querySelector("textarea")!, "Utkast som granskats."));
@@ -278,13 +282,13 @@ test("who is who: Namnge talarna stands in the speakers' card's heading row; Avv
   assert.ok(!card.contains(confirm) && confirm.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "the reason form opens in the decision's place");
 });
 
-test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both large; the reason form takes its place, with a destructive confirm", async (t) => {
+test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both the middle size; the reason form takes its place, with a destructive confirm", async (t) => {
   eneo(t);
   const view = await review();
   const looks = (action: HTMLButtonElement | null) => [action?.getAttribute("data-variant"), action?.getAttribute("data-size")];
   const avvisa = button(view.container, "Avvisa körningen")!;
   const approve = button(view.container, "Godkänn och fortsätt")!;
-  assert.deepEqual([looks(avvisa), looks(approve)], [["secondary", "lg"], ["primary", "lg"]]);
+  assert.deepEqual([looks(avvisa), looks(approve)], [["secondary", "md"], ["primary", "md"]]);
   assert.ok(avvisa.nextElementSibling === approve, "side by side, Avvisa first");
   await view.act(async () => avvisa.click());
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
@@ -294,16 +298,59 @@ test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt prima
   assert.ok(button(view.container, "Avvisa körningen") && button(view.container, "Godkänn och fortsätt"), "Avbryt brings the pair back");
 });
 
+test("Bekräfta avvisning with no reason says at the field what is missing and takes the focus there; Avbryt keeps what was typed", async (t) => {
+  rejected.length = 0;
+  eneo(t);
+  const view = await review();
+  await view.act(async () => button(view.container, "Avvisa körningen")!.click());
+  const confirm = button(view.container, "Bekräfta avvisning")!;
+  assert.equal(confirm.disabled, false, "never a button that does nothing");
+  await view.act(async () => confirm.click());
+  assert.deepEqual(rejected, [], "nothing is sent");
+  assert.ok(document.activeElement === reasonField(view.container), "the focus is on the field");
+  assert.match(view.container.textContent ?? "", /Skriv ett skäl\./);
+  assert.equal(reasonField(view.container)!.getAttribute("aria-invalid"), "true");
+  await view.act(async () => type(reasonField(view.container)!, "Fel möte."));
+  assert.doesNotMatch(view.container.textContent ?? "", /Skriv ett skäl\./, "gone once there is a reason");
+  await view.act(async () => button(view.container, "Avbryt")!.click());
+  await view.act(async () => button(view.container, "Avvisa körningen")!.click());
+  assert.equal(reasonField(view.container)!.value, "Fel möte.", "the reason is there when the form opens again");
+});
+
+test("Avbryt redigering ends an unchanged edit at once and asks first when there is a change to throw away", async (t) => {
+  eneo(t);
+  const view = await review();
+  const question = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
+  await view.act(async () => button(view.container, "Redigera")!.click());
+  await view.act(async () => button(view.container, "Avbryt redigering")!.click());
+  assert.ok(!question() && !view.container.querySelector("textarea"), "nothing to lose: no question");
+
+  await view.act(async () => button(view.container, "Redigera")!.click());
+  await view.act(async () => type(view.container.querySelector("textarea")!, "Ändrad text."));
+  assert.match(view.container.querySelector("section")?.textContent ?? "", /Ändrad, inte sparad/, "the card says its text is changed");
+  await view.act(async () => button(view.container, "Avbryt redigering")!.click());
+  assert.ok(question(), "asked first");
+  await view.act(async () => button(question()!, "Fortsätt redigera")!.click());
+  assert.ok(!question());
+  assert.equal(view.container.querySelector("textarea")?.value, "Ändrad text.", "Fortsätt redigera keeps the change");
+  await view.act(async () => button(view.container, "Avbryt redigering")!.click());
+  await view.act(async () => button(question()!, "Ta bort ändringen")!.click());
+  assert.equal(view.container.querySelector("textarea"), null, "the edit has ended");
+  assert.ok(document.activeElement === button(view.container, "Redigera"), `the focus is back on Redigera, not ${document.activeElement?.tagName}`);
+  assert.match(view.container.querySelector("article")?.textContent ?? "", /Utkast från flödet\./, "with the pause's own text");
+  assert.doesNotMatch(view.container.textContent ?? "", /Ändrad, inte sparad/);
+});
+
 test("an approved pause is final: a reason typed before the approval reached the page cannot reject it, also when the resume failed", async (t) => {
   rejected.length = 0;
   const server = eneo(t, { approves: true });
   const view = await review();
   await view.act(async () => button(view.container, "Avvisa körningen")!.click());
-  await view.act(async () => type(view.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Skäl…"]')!, "Fel möte."));
+  await view.act(async () => type(reasonField(view.container)!, "Fel möte."));
   await view.act(async () => showPause({ ...pause, state: "approved", revision: 2 }));
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
   assert.ok(!button(view.container, "Bekräfta avvisning"), "no rejection of an approved pause");
-  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl…"]'), "no reason form");
+  assert.ok(!reasonField(view.container), "no reason form");
   assert.ok(!button(view.container, "Avvisa körningen"), "no Avvisa");
   await view.act(async () => {
     button(view.container, "Fortsätt")!.click();

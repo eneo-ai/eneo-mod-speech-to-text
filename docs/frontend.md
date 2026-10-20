@@ -46,11 +46,11 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 ## Layout och handlingar
 
 - **Ett beslut** (granskningens Avvisa och godkännande, en dialogs Avbryt och Spara) är `components/ActionRow.tsx`: en rad i slutet av ytan med huvudåtgärden sist, och upp till 640 px en stapel över hela bredden med huvudåtgärden överst, som `AlertDialog`. Barnen skrivs i radens ordning.
-- **Ett fälts egna knappar** är inget beslut: små, i textens rubrikrad ovanför fältet (granskningens Redigera, Avbryt och Spara ändring, den sista bara när något har ändrats).
+- **Ett fälts egna knappar** är inget beslut: små, i textens rubrikrad ovanför fältet (granskningens Redigera, Avbryt redigering och Spara ändring, den sista bara när något har ändrats). Avbryt redigering frågar först när en ändring skulle kastas.
 - **En lång text under granskning** har en enda scroll: rubrikraden stannar överst i fönstret och beslutet nederst, fältet växer med texten och Redigera öppnar där man läser. Ett lågt fönster (telefon på sidan, 200 % zoom) håller båda i sidan.
 - **Läsbredd:** granskad text och resultatets dokument högst 75 tecken per rad; textgranskningen är en läskolumn från 1024 px.
 - **Resultatet:** huvudåtgärden först (nedladdningen, eller Kopiera för en text utan fil), de två andra bredvid när raden har plats och annars i menyn **Fler alternativ** (`components/flow/ResultDocument.tsx`). En PDF öppnas i en dialog bara med mus (från 640 px, från filens namn från 1024 px); på en pekskärm och i ett smalare fönster i en egen flik (`components/flow/ResultFiles.tsx`).
-- **Transkriberingens talare** på en färdig körning: en egen rad ovanför talarfiltret, med **Talare** först (också filtrets namn för en skärmläsare) och **Namnge talare** sist; en repliks **Ändra talare** har **Byt namn på** dess talare efter valet och vad det gäller. Båda öppnar granskningens namndialog (`components/SpeakerNamingDialog.tsx`), och fokus går tillbaka dit den öppnades.
+- **Transkriberingens talare** på en färdig körning: en egen rad ovanför talarfiltret, med **Talare** först (också filtrets namn för en skärmläsare) och **Namnge talare** sist. En repliks **Ändra talare** har **Byt namn på** dess talare efter valet och vad det gäller, på en färdig körning och i granskningen; den öppnar namndialogen (`components/SpeakerNamingDialog.tsx`) vid den talaren. Fokus går tillbaka dit dialogen öppnades.
 - **Inspelningar som inte har skickats** (`components/UnsentRecordings.tsx`): upp till 640 px en stapel över hela kortet, bredare en rad med **Ta bort** sist; frågan om att ta bort är ett beslut.
 - **Rörelse** tar `--duration-fast` och `--ease-standard`, bara opacitet: en vy av flödet som ersätter en annan tonar in (`components/flow/FlowFrame.module.css`), liksom en utfällnings innehåll (`styles/globals.css`). Med reducerad rörelse tonar inget.
 
@@ -75,6 +75,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Om vi är uppkopplade, och vad sidan säger när vi inte är det: "Ingen anslutning." när enheten saknar nät, annars "Tal till text svarar inte just nu." | `lib/online-status.ts` |
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
 | Mikrofonval | `lib/microphone.ts` |
+| Om spelarens bokstavstangenter (K, J och L) är på | `lib/letter-keys.ts` (`localStorage`, per person) |
 
 Skärmarnas lägen finns i `frontend/tests/e2e/screens.ts`; flödessidans adressparametrar är `?run=<id>` (öppnar en körning), `?recording=<id>` (en osänd inspelning skickas) och `?continue=<id>` (en avbruten inspelning spelas in vidare).
 

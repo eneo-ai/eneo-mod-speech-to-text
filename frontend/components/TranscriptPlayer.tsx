@@ -21,7 +21,7 @@ import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@astryxdesign/core/DropdownMenu";
 import { Heading } from "@astryxdesign/core/Heading";
-import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
@@ -41,7 +41,9 @@ import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/
 import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
+import { browserStorage } from "@/lib/browser-storage";
 import { downloadBlob } from "@/lib/download";
+import { letterKeysOn, setLetterKeysOn } from "@/lib/letter-keys";
 import { scrollBehavior } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { useSignedOut } from "@/components/AuthGate";
@@ -204,19 +206,25 @@ function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: nu
 
 /**
  * The controls docked under the transcript: the keys, Följ, speed, the player and its skips, as playback stands. Each
- * control names its key (`shortcut`) to a screen reader; the line above them names the keys to the eye. No tooltip:
- * shown on keyboard focus, one lies over its neighbours in this row.
+ * control names its key (`shortcut`) to a screen reader while the letter keys are on; the line above them names the
+ * keys to the eye, and turns the letters off and on. No tooltip: shown on keyboard focus, one lies over its neighbours
+ * in this row.
  */
 function PlayerControls({
   playback,
   dock,
   follow,
   onFollow,
+  letterKeys,
+  onLetterKeys,
 }: {
   playback: Playback;
   dock: HTMLElement | null;
   follow: boolean;
   onFollow: () => void;
+  /** Whether K, J and L act (lib/letter-keys.ts); null where they are not said, and do nothing (KEYS_SAID). */
+  letterKeys: boolean | null;
+  onLetterKeys: (on: boolean) => void;
 }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
 
@@ -233,21 +241,33 @@ function PlayerControls({
     <>
       {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
           row from 640 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
-          where there is a keyboard to press them: with a mouse, never on a touch screen. */}
+          where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
+          which turns the letters off, and on again: the focus stays on it, and the line's new words are said. */}
       <div className={styles.dockTools}>
-        <Text type="supporting" className={styles.keys}>
-          Tangenter: K spelar och pausar, J och L hoppar 10 sekunder.
-        </Text>
+        {letterKeys !== null && (
+          <Text type="supporting" className={styles.keys}>
+            {letterKeys ? "Tangenter: K spelar och pausar, J och L hoppar 10 sekunder." : "Tangenterna K, J och L är avstängda."}{" "}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={styles.keysToggle}
+              label={letterKeys ? "Stäng av tangenterna" : "Slå på tangenterna"}
+              onClick={() => onLetterKeys(!letterKeys)}
+            >
+              {letterKeys ? "Stäng av" : "Slå på"}
+            </Button>
+          </Text>
+        )}
         {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
         <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
       </div>
-      <AudioPlayer playback={playback} label="Inspelningen" playKey="K">
+      <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined}>
         <IconButton
           variant="ghost"
           className={styles.skip}
           isDisabled={unavailable || atStart}
           label={`Bakåt ${SKIP_SECONDS} sekunder`}
-          aria-keyshortcuts="J"
+          aria-keyshortcuts={letterKeys ? "J" : undefined}
           icon={<RotateCcw aria-hidden />}
           onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
         />
@@ -256,7 +276,7 @@ function PlayerControls({
           className={styles.skip}
           isDisabled={unavailable || atEnd}
           label={`Framåt ${SKIP_SECONDS} sekunder`}
-          aria-keyshortcuts="L"
+          aria-keyshortcuts={letterKeys ? "L" : undefined}
           icon={<RotateCw aria-hidden />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
@@ -298,6 +318,13 @@ function LazyTranscriptEditor(props: EditorProps) {
  * where a thumb reaches it; a laptop's card and a short screen keep it at the text's end (TranscriptPlayer.module.css).
  */
 const PLAYER_ON_TOP = "(min-width: 640px) and (max-width: 1023.98px) and (min-height: 601px)";
+
+/**
+ * Where the player's letter keys are said, and so where they act: with a mouse, where there is a keyboard to press them.
+ * A touch screen has no line for them, and so nothing to turn them off with (WCAG 2.1.4): there K, J and L do nothing,
+ * and the player's buttons play, as do Space and the arrows with the focus in it.
+ */
+const KEYS_SAID = "(hover: hover) and (pointer: fine)";
 
 /**
  * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
@@ -407,6 +434,8 @@ export function TranscriptPlayer(
     title,
     playback: shared,
     naming,
+    onRenameSpeaker,
+    ownerId,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
@@ -446,9 +475,16 @@ export function TranscriptPlayer(
     playback?: Playback;
     /**
      * Naming the speakers of a finished run: "Namnge talare" in the speakers' row and "Byt namn på" in a passage's
-     * Ändra talare. Without it nobody is named here (the review pause names in its own dialog).
+     * Ändra talare. Without it nobody is named here (the review pause names in its own dialog, `onRenameSpeaker`).
      */
     naming?: Naming;
+    /**
+     * Where the page names its speakers itself (the review pause's dialog): "Byt namn på" in a passage's Ändra talare
+     * opens that, at the passage's speaker, and the focus goes back to `returnTo`.
+     */
+    onRenameSpeaker?: (label: string, returnTo: HTMLElement | null) => void;
+    /** The signed-in person, whose choice of the letter keys this browser keeps; without one it lasts while shown. */
+    ownerId?: string;
   },
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -559,17 +595,29 @@ export function TranscriptPlayer(
     [hasAudio, playback],
   );
 
-  // K, J and L work from anywhere on the page, so K plays before anything in the player has been clicked; what types
-  // or picks with letters keeps them, and so does a dialog over the page. Space and the arrows scroll the page and
-  // work its controls: they are the player's only with the focus on it or its text, and the slider moves by its own.
+  // K, J and L work from anywhere on the page where the line that says them is (KEYS_SAID), so K plays before anything
+  // in the player has been clicked, and that line turns them off (WCAG 2.1.4): a letter said to speech input, or pressed
+  // by mistake, then does nothing. Where no line says them (a touch screen with a keyboard of its own) they act only
+  // with the focus in the player, which 2.1.4 allows. What types or picks with letters keeps them, and so does a dialog
+  // over the page. Space and the arrows scroll the page and work its controls: they are the player's only with the focus
+  // on it or its text, and the slider moves by its own.
   const playerRef = useRef<HTMLElement | null>(null);
+  const keysSaid = useMediaQuery(KEYS_SAID, true);
+  const [letterKeys, setLetterKeys] = useState(() => (ownerId ? letterKeysOn(browserStorage(), ownerId) : true));
+  const announce = useAnnounce();
+  const turnLetterKeys = useSteady((on: boolean) => {
+    setLetterKeys(on);
+    if (ownerId) setLetterKeysOn(browserStorage(), ownerId, on);
+    announce(on ? "Tangenterna K, J och L är påslagna." : "Tangenterna K, J och L är avstängda.");
+  });
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const action = shortcut(e);
       if (!action || e.defaultPrevented || !(e.target instanceof Element)) return;
       const target = e.target;
       if (e.key.length === 1 && e.key !== " ") {
-        if (target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
+        const letters = keysSaid ? letterKeys : Boolean(playerRef.current?.contains(target));
+        if (!letters || target.closest("input, textarea, select, [contenteditable], [role=textbox], [role=combobox], [role=listbox], [role=option], [role=menu], [role=menuitem], [role=menuitemradio], dialog, [role=dialog], [role=alertdialog]")) return;
       } else if (!playerRef.current?.contains(target) || target.closest("button, a, input, select, textarea, summary, [role=button], [role=slider], [role=menuitemradio], [role=radio], [role=listbox], [role=option], [contenteditable]")) {
         return;
       }
@@ -580,7 +628,7 @@ export function TranscriptPlayer(
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [hasAudio, playback]);
+  }, [hasAudio, playback, keysSaid, letterKeys]);
 
   // The sentence being played stays in view, while following and not editing a line.
   const following = useRef({ follow, editing: editingIndex >= 0 });
@@ -711,7 +759,9 @@ export function TranscriptPlayer(
   const commitTurnLine = useSteady(commitLine);
   const revertTurnLine = useSteady(revertLine);
   const reassignTurn = useSteady(reassign);
-  const renameSpeaker = useSteady((label: string, returnTo: HTMLElement | null) => namingDialog.current?.open(label, returnTo));
+  const renameSpeaker = useSteady((label: string, returnTo: HTMLElement | null) =>
+    canName ? namingDialog.current?.open(label, returnTo) : onRenameSpeaker?.(label, returnTo),
+  );
   // "Spela från": it plays, also from a pause.
   const seekTurn = useSteady((turn: TranscriptTurn) => seekTo(turn.fileIndex, turn.start, true));
   const clickPart = useSteady(onPartClick);
@@ -793,7 +843,7 @@ export function TranscriptPlayer(
       data-dock-edge={playerOnTop ? "top" : undefined}
       className={join(styles.dock, playerOnTop && styles.dockTop)}
     >
-      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} />
+      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={keysSaid ? letterKeys : null} onLetterKeys={turnLetterKeys} />
     </div>
   );
 
@@ -837,7 +887,7 @@ export function TranscriptPlayer(
               named by that word, one name to see and to hear (ToggleButtonGroup is named by its label, never by
               aria-labelledby). */}
           <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
-            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" size="sm" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
+            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
               <ToggleButton value="all" label="Alla" />
               {speakers.map((speaker) => (
                 <ToggleButton
@@ -1041,7 +1091,7 @@ export function TranscriptPlayer(
                     onCommitLine={commitTurnLine}
                     onRevertLine={revertTurnLine}
                     onReassign={reassignTurn}
-                    onRename={canName ? renameSpeaker : undefined}
+                    onRename={canName || onRenameSpeaker ? renameSpeaker : undefined}
                     onSeekTurn={seekTurn}
                     onPartClick={clickPart}
                   />
@@ -1435,10 +1485,10 @@ function SpeakerPicker({
             content={
               <LayoutContent padding={0}>
                 <div className={styles.pickerHead}>
-                  <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
+                  <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>”{quote}”</Text>
                 </div>
                 <div className={styles.pickerList}>
-                  <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
+                  <RadioList label="Vem talar?" value={choice} onChange={setChoice}>
                     {suggested && (
                       <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
                     )}

@@ -50,11 +50,13 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   assert.doesNotMatch(html, /<audio[^>]*controls|type="range"/, "never the browser's own controls");
 });
 
-test("the player's keys are named on its controls and said once in a line; speed is chosen from a menu", () => {
+test("the player's keys are named on its controls and said once in a line, which turns the letters off; speed is chosen from a menu", () => {
   const doc = parse(render(1));
   const keyOf = (name: string) => doc.querySelector(`button[aria-label="${name}"]`)?.getAttribute("aria-keyshortcuts");
   assert.deepEqual([keyOf("Spela upp"), keyOf("Bakåt 10 sekunder"), keyOf("Framåt 10 sekunder")], ["K", "J", "L"]);
   assert.match(doc.body.textContent ?? "", /Tangenter: K spelar och pausar, J och L hoppar 10 sekunder\./);
+  const turnOff = [...doc.querySelectorAll("button")].find((b) => computeAccessibleName(b) === "Stäng av tangenterna");
+  assert.equal(turnOff?.textContent?.trim(), "Stäng av", "the line's own button, its words the start of its name");
   const speeds = [...doc.querySelectorAll('button[aria-label="Hastighet 1×"]')];
   assert.equal(speeds.length, 2, "one in the row, one above it on a phone");
   assert.ok(speeds.every((speed) => speed.getAttribute("aria-haspopup") === "menu"), "any speed in one step, not a round through them");

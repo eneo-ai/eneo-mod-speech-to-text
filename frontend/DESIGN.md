@@ -56,7 +56,10 @@ design system for every value. The page is one surface colour from the bar to th
 hierarchy comes from type size, weight and spacing, not from colour or containers.
 
 **Key Characteristics:**
-- One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone.
+- One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone. A
+  review's decision is the design system's middle size (32 px with a mouse, 44 px on touch). The speaker review keeps
+  its decision in the page on a phone too, under the speakers: the transcript's player docks at the bottom there, and
+  two bars would cover a fifth of the screen.
 - The flow page is a 20rem column for the flow (name, description, how it works, classification, details) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's
   description and how it works, and the details and the classification follow the choice.
@@ -129,16 +132,19 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ## Components
 
 ### Buttons
-- **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating. A dialog
-  has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
+- **Primary:** accent fill, 48 px for the one action a screen exists for, the middle size in a review's decision;
+  labels wrap instead of truncating. A dialog has one too: what else stays in reach in it (a recording's Pausa and
+  Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning).
 - **Decisions** (a review's Avvisa and its approval, a ready recording's Fortsätt spela in and Skapa dokument, a
   dialog's Avbryt and Spara): one row at the end of their space, the main action last; up to 640 px wide a stack across
   the whole width, the main action on top and first for the keyboard (`components/ActionRow.tsx`, as Astryx's alert
   dialog lays out its own). An editor's own buttons are no decision: small, Avbryt before Spara, in the text's header
-  above the field (the review's Redigera, Avbryt and Spara ändring) or under a passage being corrected. A long text
-  under review keeps that header at the window's top and the decision at its bottom, with one page scroll.
+  above the field (the review's Redigera, Avbryt redigering and Spara ändring) or under a passage being corrected. In
+  the header they stand at the end of the text's name where the row has room, and under it, from its start, where it
+  has not: never one button alone at the far end of a row. A long text under review keeps that header at the window's
+  top and the decision at its bottom, with one page scroll.
 - **A card's own action** stands at the end of the card's heading row, never on a row of its own between rules:
   "Transkribering … Ladda ner", "Talare … Namnge talarna". The review's decision is the page's, under the speakers' card
   and not in its group.
@@ -207,8 +213,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   heading's Kopiera and Ladda ner som text are. Where they cannot be named (a run waiting for its review, a failed run, a
   transcript that cannot be corrected) the chips stand alone, named "Visa talare". The speaker review's own view has no
   filter for the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's "Ändra
-  talare" offers "Byt namn på" its speaker after the choice and what it applies to; both open the review's naming
-  dialog, and the focus goes back where it was opened.
+  talare" offers "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's
+  pause alike: it opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
   window (`content-visibility: auto`): an hour's meeting is tens of thousands of words.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
@@ -217,13 +223,22 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   it. From 640 to 1023 px, where the page scrolls and a bottom player would cover the passages the window starts on, it
   stands above the text under the tools and stays at the window's top. From 1024 px it sits at the bottom of the
   transcript's card, and on a screen under 600 px high at the text's end.
+- With a mouse, one quiet line above the player's row says its keys: "Tangenter: K spelar och pausar, J och L hoppar 10
+  sekunder." Where the line is, K, J and L work from anywhere on the page. A touch screen has no line, so there they act
+  only with the focus in the player (a keyboard of the tablet's own). The line ends with "Stäng av", set in the line's
+  own size, and off it says "Tangenterna K, J och L är avstängda." and offers "Slå på". The choice is kept for the
+  person in the browser. Space and the arrows are the player's only with the focus on it, and are never turned off.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
 
 ### Choice
-- Radio lists for one choice of a few; a switch with its label for an option that is on or off.
-- Filter chips (toggle buttons, the transcript's speakers) have a control's edge at rest and the accent's edge and tint when pressed, as a chosen radio row has.
+- Radio lists for one choice of a few; a switch with its label for an option that is on or off. A line that says a
+  state in its words offers the one action that changes it instead, as the player's line of keys does (Stäng av, Slå
+  på) beside its Följ.
+- Filter chips (toggle buttons, the transcript's speakers) are the middle size, as tall as the search field under them,
+  and stand 8 px apart with any pointer. They have a control's edge at rest and the accent's edge and tint when pressed,
+  as a chosen radio row has.
 
 ### Bespoke surfaces
 - Transcript text with per-word spans, the level meter, the docked player, the live text sheet: CSS Modules with

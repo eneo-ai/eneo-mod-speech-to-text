@@ -301,16 +301,17 @@
   }
 }
 
-/* The player's keys: one quiet line where there is a keyboard to press them, with a mouse; never on a touch screen. */
+/* The player's keys: one quiet line, only where there is a keyboard to press them (KEYS_SAID in TranscriptPlayer.tsx). */
 .keys {
-  display: none;
   margin-inline-end: auto;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .keys {
-    display: block;
-  }
+/* The button that turns the letters off, and on again, ends the line as a link ends a sentence: in the line's type, on
+   its baseline, and laid over the lines around it, so its line is no taller than the others. */
+.keysToggle {
+  font-size: inherit;
+  line-height: inherit;
+  margin-block: calc((1lh - var(--size-element-sm)) / 2);
 }
 
 /* Speed: in the player's row from 640 px, above it below. */
@@ -472,7 +473,9 @@
   margin-block-start: var(--spacing-1);
 }
 
+/* A passage keeps a line a reader follows on a wide screen, as a document does; its head's Rätta stays at the row's end. */
 .text {
+  max-inline-size: 75ch;
   margin-block-start: var(--spacing-0-5);
   font-size: var(--font-size-base);
   line-height: 1.65;
@@ -712,10 +715,11 @@
   border-block-end: var(--border-width) solid var(--color-border);
 }
 
+/* The speakers start at the same edge as the quote above them and the scope below them. */
 .pickerList {
   max-block-size: 16rem;
   overflow-y: auto;
-  padding: var(--spacing-1-5);
+  padding: var(--spacing-3) var(--spacing-4);
 }
 
 .pickerSection {
