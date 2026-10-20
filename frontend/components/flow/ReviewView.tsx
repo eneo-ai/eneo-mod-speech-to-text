@@ -457,6 +457,9 @@ export function ReviewView({
   // The choice as a pair of one height: Avvisa, then the action the page exists for (ActionRow places them).
   const actions = rejecting ? null : (
     <VStack gap={3}>
+      {/* The text review's decision is docked: what stops it is said there, where it was pressed, not after a long
+          text. The speaker review says it in its decision (below). */}
+      {!isSpeakerMapping && runError && <Banner status="error" title={runError} collapsible={false} />}
       {decided && (
         <Text as="p" type="supporting">
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
@@ -789,8 +792,9 @@ export function ReviewView({
         )}
       </VStack>
 
+      {/* While the reason for a rejection is written, what stops it is said with it. */}
       <VStack gap={3} className={styles.notices}>
-        {runError && <Banner status="error" title={runError} collapsible={false} />}
+        {rejecting && runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>
       {/* The decision stays in reach at the window's bottom edge however long the text is. While the reason for a
