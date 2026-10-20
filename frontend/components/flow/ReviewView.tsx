@@ -699,6 +699,7 @@ export function ReviewView({
             confirmedWords={confirmedWords}
             onToggleConfirmed={toggleConfirmed}
             onRenameSpeaker={namingAction ? (label, returnTo) => namingDialog.current?.open(label, returnTo) : undefined}
+            ownerId={user.id}
           />
         </div>
       </VStack>

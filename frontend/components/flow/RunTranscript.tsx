@@ -63,10 +63,12 @@ export function RunTranscript({
   fileName: string;
 }) {
   const { transcript, confirmedWords, editing } = useRunTranscript(flowId, runId, steps);
+  const user = useAuthenticatedUser();
   return (
     <RunTranscriptView
       flowId={flowId}
       runId={runId}
+      ownerId={user.id}
       fileName={fileName}
       transcript={transcript}
       confirmedWords={confirmedWords}
@@ -87,6 +89,7 @@ export function RunTranscriptView({
   onReload,
   playback,
   naming,
+  ownerId,
 }: {
   flowId: string;
   runId: string;
@@ -104,6 +107,8 @@ export function RunTranscriptView({
    * it was started with.
    */
   naming?: { draftKey: { ownerId: string; name: string }; thing: string; delivered: boolean; hasDocument: boolean; participants: readonly string[] };
+  /** The signed-in person, whose choices this browser keeps for the transcript's player (its letter keys). */
+  ownerId?: string;
 }) {
   const { corrections, saveState, localError, hasDropped, onCorrectionsChange, saveNow, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
 
@@ -192,6 +197,7 @@ export function RunTranscriptView({
         confirmedWords={confirmedWords}
         playback={playback}
         naming={naming && { description: namingDescription(naming), draftKey: naming.draftKey, save: saveNow, participants: naming.participants }}
+        ownerId={ownerId}
       />
     </Card>
   );

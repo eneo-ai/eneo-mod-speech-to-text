@@ -223,12 +223,18 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   it. From 640 to 1023 px, where the page scrolls and a bottom player would cover the passages the window starts on, it
   stands above the text under the tools and stays at the window's top. From 1024 px it sits at the bottom of the
   transcript's card, and on a screen under 600 px high at the text's end.
+- With a mouse, one quiet line above the player's row says its keys: "Tangenter: K spelar och pausar, J och L hoppar 10
+  sekunder." K, J and L work from anywhere on the page; the line ends with "Stäng av", and off it says "Tangenterna K,
+  J och L är avstängda." and offers "Slå på". The choice is kept for the person in the browser. Space and the arrows are
+  the player's only with the focus on it, and are never turned off.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
 
 ### Choice
-- Radio lists for one choice of a few; a switch with its label for an option that is on or off.
+- Radio lists for one choice of a few; a switch with its label for an option that is on or off. A line that says a
+  state in its words offers the one action that changes it instead, as the player's line of keys does (Stäng av, Slå
+  på) beside its Följ.
 - Filter chips (toggle buttons, the transcript's speakers) are the middle size, as tall as the search field under them,
   and stand 8 px apart with any pointer. They have a control's edge at rest and the accent's edge and tint when pressed,
   as a chosen radio row has.

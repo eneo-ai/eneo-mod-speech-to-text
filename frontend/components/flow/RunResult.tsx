@@ -206,6 +206,7 @@ export function RunResult({
       onReload={editing.readAgain}
       playback={playback}
       naming={naming}
+      ownerId={user.id}
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side

@@ -51,4 +51,5 @@ Sundsvalls kommun with the Eneo blue.
 ## Accessibility & Inclusion
 
 WCAG 2.2 AA, 44 px touch targets on a coarse pointer, 24 px with a mouse, a visible focus ring, reflow at 320 px and
-200 % zoom, text spacing, forced colours and reduced motion. `npm run test:a11y` in `frontend/` is the proof.
+200 % zoom, text spacing, forced colours and reduced motion. A single letter that acts by itself (the player's K, J and
+L) can be turned off where it is said, and stays off for the person. `npm run test:a11y` in `frontend/` is the proof.

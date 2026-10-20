@@ -75,6 +75,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Om vi är uppkopplade, och vad sidan säger när vi inte är det: "Ingen anslutning." när enheten saknar nät, annars "Tal till text svarar inte just nu." | `lib/online-status.ts` |
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
 | Mikrofonval | `lib/microphone.ts` |
+| Om spelarens bokstavstangenter (K, J och L) är på | `lib/letter-keys.ts` (`localStorage`, per person) |
 
 Skärmarnas lägen finns i `frontend/tests/e2e/screens.ts`; flödessidans adressparametrar är `?run=<id>` (öppnar en körning), `?recording=<id>` (en osänd inspelning skickas) och `?continue=<id>` (en avbruten inspelning spelas in vidare).
 
