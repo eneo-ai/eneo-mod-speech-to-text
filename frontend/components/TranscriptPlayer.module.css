@@ -715,7 +715,7 @@
 .pickerList {
   max-block-size: 16rem;
   overflow-y: auto;
-  padding: var(--spacing-1-5);
+  padding: var(--spacing-3) var(--spacing-4);
 }
 
 .pickerSection {

@@ -1435,10 +1435,10 @@ function SpeakerPicker({
             content={
               <LayoutContent padding={0}>
                 <div className={styles.pickerHead}>
-                  <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
+                  <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>”{quote}”</Text>
                 </div>
                 <div className={styles.pickerList}>
-                  <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
+                  <RadioList label="Vem talar?" value={choice} onChange={setChoice}>
                     {suggested && (
                       <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
                     )}
