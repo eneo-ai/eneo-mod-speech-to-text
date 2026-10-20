@@ -163,6 +163,8 @@ export function ReviewView({
   const saving = working === "save";
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
+  // Bekräfta avvisning pressed with no reason: said at the field, never a button that does nothing.
+  const [reasonMissing, setReasonMissing] = useState<boolean>(false);
   // The naming dialog, opened at one speaker by Byt namn på in a passage's Ändra talare.
   const namingDialog = useRef<SpeakerNamingHandle>(null);
 
@@ -413,7 +415,13 @@ export function ReviewView({
 
   function submitReject() {
     // Approved, the pause is final: only resuming is left, never a rejection typed before it.
-    if (decided || !rejectReason.trim()) return;
+    if (decided) return;
+    // No reason yet: the field says so and takes the focus.
+    if (!rejectReason.trim()) {
+      setReasonMissing(true);
+      reasonField.current?.focus();
+      return;
+    }
     void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()), undefined);
   }
 
@@ -431,14 +439,18 @@ export function ReviewView({
     <VStack as="section" gap={3} className={isSpeakerMapping ? undefined : styles.card}>
       <TextArea
         ref={reasonField}
-        label="Avvisa körningen"
+        label="Skäl till avvisningen"
         description="Körningen avbryts och flödet går inte vidare. Ange en kort motivering."
-        placeholder="Skäl…"
         rows={3}
         value={rejectReason}
-        onChange={setRejectReason}
+        status={reasonMissing ? { type: "error", message: "Skriv ett skäl." } : undefined}
+        onChange={(next) => {
+          setRejectReason(next);
+          if (next.trim()) setReasonMissing(false);
+        }}
       />
       <ActionRow>
+        {/* What was typed stays for the next time the form is opened. */}
         <Button
           variant="ghost"
           label="Avbryt"
@@ -446,10 +458,10 @@ export function ReviewView({
           onClick={() => {
             handOff.current = rejectButton;
             setShowReject(false);
-            setRejectReason("");
+            setReasonMissing(false);
           }}
         />
-        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
+        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={busy} onClick={submitReject} />
       </ActionRow>
     </VStack>
   ) : null;

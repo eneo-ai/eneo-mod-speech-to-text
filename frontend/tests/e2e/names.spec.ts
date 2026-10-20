@@ -249,7 +249,7 @@ test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
   expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
     role: "textbox",
-    name: "Avvisa körningen",
+    name: "Skäl till avvisningen",
     description: "Körningen avbryts och flödet går inte vidare. Ange en kort motivering.",
   });
 
