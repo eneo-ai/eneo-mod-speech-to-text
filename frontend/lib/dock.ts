@@ -32,17 +32,19 @@ export function observeDock(dock: HTMLElement): () => void {
   };
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
-  // in a dialog or a popover (a sheet over the dock) does not move with the page.
+  // in a dialog or a popover (a sheet over the dock) does not move with the page. One taller than the room the padding
+  // leaves (a long text being edited) cannot be shown whole: it stays where it is read, as its own focus handling keeps it.
   const uncover = ({ target }: FocusEvent) => {
     if (!docks.get(dock) || !(target instanceof Element) || dock.contains(target) || target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
     const edge = dock.getBoundingClientRect();
     if (box.bottom <= edge.top || box.top >= edge.bottom) return;
     const padding = getComputedStyle(document.documentElement);
+    const above = Number.parseFloat(padding.scrollPaddingTop) || 0;
+    const below = Number.parseFloat(padding.scrollPaddingBottom) || 0;
+    if (box.height > window.innerHeight - above - below) return;
     const atTop = edge.top + edge.bottom < window.innerHeight;
-    const top = atTop
-      ? box.top - (Number.parseFloat(padding.scrollPaddingTop) || 0)
-      : box.bottom - window.innerHeight + (Number.parseFloat(padding.scrollPaddingBottom) || 0);
+    const top = atTop ? box.top - above : box.bottom - window.innerHeight + below;
     window.scrollBy({ top, behavior: "instant" });
   };
   const observer = new ResizeObserver(measure);

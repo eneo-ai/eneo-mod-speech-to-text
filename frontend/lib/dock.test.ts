@@ -95,6 +95,14 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   button.focus();
   assert.deepEqual(scrolled, [118], "the dock's own controls stay put");
 
+  // A text being edited that is taller than the room above the dock opens where it is read (ReviewView).
+  const editor = document.createElement("textarea");
+  document.body.append(editor);
+  t.mock.method(editor, "getBoundingClientRect", () => box(200, 1200));
+  editor.focus({ preventScroll: true });
+  assert.deepEqual(scrolled, [118], "a field the window cannot hold whole is not moved");
+  editor.remove();
+
   stop();
   field.remove();
   bar.remove();
