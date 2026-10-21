@@ -92,6 +92,8 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   t.mock.method(field, "getBoundingClientRect", () => box(window.innerHeight - 30, 24));
   field.focus();
   assert.deepEqual(scrolled, [118], "under the dock: up until its bottom edge meets the scroll padding");
+  // A control in the dock is under it by its nature: it stays put (the speed menu opens from where it is).
+  t.mock.method(button, "getBoundingClientRect", () => box(window.innerHeight - 80, 44));
   button.focus();
   assert.deepEqual(scrolled, [118], "the dock's own controls stay put");
 
@@ -102,6 +104,18 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   editor.focus({ preventScroll: true });
   assert.deepEqual(scrolled, [118], "a field the window cannot hold whole is not moved");
   editor.remove();
+
+  // The region that holds the dock (a player focused by a press on its text) cannot be uncovered by moving the page: the
+  // dock moves with it, and a press that scrolled between its down and up would land beside what was pressed.
+  const region = document.createElement("section");
+  region.tabIndex = 0;
+  document.body.append(region);
+  region.append(bar);
+  t.mock.method(region, "getBoundingClientRect", () => box(300, 400));
+  region.focus();
+  assert.deepEqual(scrolled, [118], "what holds the dock is left where it is");
+  document.body.append(bar);
+  region.remove();
 
   stop();
   field.remove();

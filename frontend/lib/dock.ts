@@ -34,8 +34,11 @@ export function observeDock(dock: HTMLElement): () => void {
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
   // in a dialog or a popover (a sheet over the dock) does not move with the page. One taller than the room the padding
   // leaves (a long text being edited) cannot be shown whole: it stays where it is read, as its own focus handling keeps it.
+  // What holds the dock (a player's region, focused by a press on its text) moves with it: no scroll uncovers it, and one
+  // between a press's down and up would land the press beside what was pressed.
   const uncover = ({ target }: FocusEvent) => {
-    if (!docks.get(dock) || !(target instanceof Element) || dock.contains(target) || target.closest("dialog, [popover]")) return;
+    if (!docks.get(dock) || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
+    if (target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
     const edge = dock.getBoundingClientRect();
     if (box.bottom <= edge.top || box.top >= edge.bottom) return;

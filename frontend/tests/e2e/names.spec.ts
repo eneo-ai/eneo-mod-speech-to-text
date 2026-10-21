@@ -45,10 +45,8 @@ test("the sending view is a page with a heading that takes focus, a named progre
   await sending(page);
   await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeFocused();
-  // Every byte has left: the named bar moves without a value while Eneo takes the file, and the stage says so.
   const bar = page.getByRole("progressbar", { name: "Uppladdning" });
-  await expect(bar).toBeAttached();
-  await expect(bar).not.toHaveAttribute("aria-valuenow");
+  await expect(bar).toHaveAttribute("aria-valuenow", /^\d+$/);
   await expect(page.getByRole("status").filter({ hasText: "Eneo tar emot filen…" })).toBeAttached();
   await expect(page).toHaveTitle("Dokumentet skapas · Tal till text");
 });
