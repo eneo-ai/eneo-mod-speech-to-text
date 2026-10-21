@@ -288,8 +288,11 @@ export const eneoTheme = defineTheme({
     // track and its forced-colours tracks stay the design system's.
     switch: {base: {'--color-background-gray': 'var(--color-border-emphasized)'}},
     // A dialog opens over the medium band's longest step (--duration-medium-max, 550 ms), which reads as the page
-    // catching up with the press: the fast band's longest is enough to show where it came from.
-    dialog: {base: {animationDuration: 'var(--duration-fast-max)'}},
+    // catching up with the press: the fast band's longest is enough to show where it came from. A dialog that has the
+    // focus itself (Firefox and Safari stop on it, Shift+Tab from its first control) rings itself inside its edge, on its
+    // own surface: outside it the ring stands on the dimmed page, which the accent is not checked against (Eneo's blue
+    // changes it by less than 3:1 there).
+    dialog: {base: {animationDuration: 'var(--duration-fast-max)', ':focus-visible': rowFocusRing}},
     // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
     // A disclosure is quieter than the headings around it: body size and medium weight, not the design system's large
     // semibold row.

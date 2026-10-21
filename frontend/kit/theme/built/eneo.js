@@ -486,7 +486,11 @@ export const eneoTheme = {
     },
     "dialog": {
       "base": {
-        "animationDuration": "var(--duration-fast-max)"
+        "animationDuration": "var(--duration-fast-max)",
+        ":focus-visible": {
+          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
+          "outlineOffset": "calc(var(--focus-outline-width) * -1)"
+        }
       }
     },
     "collapsible-trigger": {

@@ -496,7 +496,7 @@ class BuildIdentityTests(unittest.TestCase):
         self.folder = Path(folder.name)
 
     def record(self, name: str, content: str | bytes | None) -> Path:
-        """A build record of its own name: the record of a path is read once, so each test has its own."""
+        """A build record of its own name in the test's folder."""
         path = self.folder / name
         if content is not None:
             path.write_bytes(content.encode() if isinstance(content, str) else content)
@@ -532,9 +532,6 @@ class BuildIdentityTests(unittest.TestCase):
         self.assertEqual((settings.revision, settings.build_date), (None, None))
         self.assertEqual(len(logs.output), 1)
         self.assertIn(str(record), logs.output[0])
-        # Read once: the launcher and the app both load the settings, and the second reading says nothing again.
-        with self.assertNoLogs("eneo_config"):
-            self.assertEqual(self.load(record).revision, None)
 
     def test_a_record_that_cannot_be_used_says_so_once_and_gives_neither_value(self) -> None:
         for number, content in enumerate(

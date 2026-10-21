@@ -99,11 +99,9 @@ function stage(submission: SubmissionState): string {
   if (submission.kind === "starting") return "Startar flödet…";
   if (submission.kind !== "uploading") return "Skickar…";
   const what = submission.recording ? "inspelningen" : "filen";
-  return allSent(submission) ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
+  const sent = submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
+  return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
-
-/** Every byte of the upload has left: what is under way now is Eneo receiving it. */
-const allSent = ({ loaded, total }: Extract<SubmissionState, { kind: "uploading" }>) => total != null && total > 0 && loaded >= total;
 
 /**
  * Eneo has the file and is asked to start the run. It may not answer for a while, so there is a way out at once: Avbryt
@@ -156,8 +154,9 @@ function UploadProgress({
         {submission.filename}
       </Text>
       {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. Once every byte has left it
-          moves again while Eneo receives the file: a full bar that stands still reads as done, or as stuck. */}
-      <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null || allSent(submission)} />
+          stands full, and the spinner beside the stage says that Eneo is receiving the file: a moving bar's fill slides
+          past its track's clipped edge, which the gate's reflow check reads as content cut off. */}
+      <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null} />
       {/* Tabular figures: the counting digits keep their width, so the words do not shift as they count. */}
       <HStack justify="between" gap={2}>
         <Text type="supporting" hasTabularNumbers>

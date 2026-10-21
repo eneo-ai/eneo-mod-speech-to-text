@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import errno
-import functools
 import json
 import logging
 import math
@@ -352,13 +351,13 @@ _BUILD_DATE = "%Y-%m-%dT%H:%M:%SZ"
 VERSION_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 
 
-@functools.cache
 def read_build_record(path: Path) -> tuple[str | None, str | None]:
     """The commit and the time of the build in the record at ``path``, each None when the record says null for it (a build
     without arguments says null for both).
 
     A record that is missing or says anything else is logged and gives neither value: which build runs is never a reason
-    not to start. Read once for each path, so the launcher and the app, which both load the settings, log it once.
+    not to start. The launcher and the app both load the settings; the launcher's read is quiet (app/serve.py), so it is
+    said once, by the app.
     """
     try:
         record = json.loads(path.read_bytes())

@@ -68,3 +68,35 @@ test("a dock taller than a third of the window stands in the page instead of cov
   stop();
   bar.remove();
 });
+
+test("a control the keyboard focuses under a dock, inside the window, is scrolled clear of it, as Safari does not", async (t) => {
+  const { observeDock } = await import("./dock");
+  const bar = dock(100);
+  const stop = observeDock(bar);
+  // The page's scroll padding: the dock's height and a margin (styles/globals.css).
+  document.documentElement.style.scrollPaddingBottom = "124px";
+  const box = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 100, width: 100, height, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+  t.mock.method(bar, "getBoundingClientRect", () => box(window.innerHeight - 100, 100));
+  const scrolled: (number | undefined)[] = [];
+  t.mock.method(window, "scrollBy", (options: ScrollToOptions) => void scrolled.push(options.top));
+  const field = document.createElement("input");
+  const button = document.createElement("button");
+  bar.append(button);
+  document.body.append(field);
+
+  t.mock.method(field, "getBoundingClientRect", () => box(window.innerHeight - 200, 24));
+  field.focus();
+  assert.deepEqual(scrolled, [], "clear of the dock: left where it is");
+  field.blur();
+
+  t.mock.method(field, "getBoundingClientRect", () => box(window.innerHeight - 30, 24));
+  field.focus();
+  assert.deepEqual(scrolled, [118], "under the dock: up until its bottom edge meets the scroll padding");
+  button.focus();
+  assert.deepEqual(scrolled, [118], "the dock's own controls stay put");
+
+  stop();
+  field.remove();
+  bar.remove();
+  document.documentElement.style.removeProperty("scroll-padding-bottom");
+});

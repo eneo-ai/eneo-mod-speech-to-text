@@ -154,11 +154,11 @@ test("an upload, and the run's start after it, say to keep the page open until t
   }
 });
 
-test("once every byte has left, the bar moves again without a value while Eneo takes the file, and its words stay", () => {
+test("once every byte has left, the bar stands full while the stage's spinner says Eneo takes the file, and its words stay", () => {
   const value = (html: string) => /aria-valuenow="(\d+)"/.exec(html)?.[1] ?? null;
-  assert.equal(value(uploading({ loaded: 2047, total: 2048, percent: 100 })), "100", "a rounded 100 % is not the end");
   const sent = uploading({ loaded: 2048, total: 2048, percent: 100 });
-  assert.equal(value(sent), null, "no value: the wait is not a share of anything");
+  // A moving bar's fill slides past its track's clipped edge: the gate's reflow check reads that as content cut off.
+  assert.equal(value(sent), "100", "full and still, not moving");
   assert.match(text(sent), /2 kB av 2 kB 100 %/);
 });
 

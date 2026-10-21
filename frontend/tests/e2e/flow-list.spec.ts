@@ -118,7 +118,9 @@ test("a failed list is tried again from the notice, and the flows then replace i
   await expect(alert(page)).toHaveCount(0);
 });
 
-test("long names stay whole, descriptions keep to two lines, and every row is a target for a finger", async ({ page }) => {
+test("long names stay whole, descriptions keep to three lines on a phone and two from 768 px, and every row is a target for a finger", async ({ page }, info) => {
+  // FlowList: a narrow row has the room of a third line before its description is cut.
+  const most = info.project.use.viewport!.width < 768 ? 3 : 2;
   const unbroken = "Sammanträdesprotokoll".repeat(5).slice(0, 90);
   const spaced = "Nämndmöte till strukturerat protokoll med beslut reservationer och bilagor för alla ".repeat(2).slice(0, 120).trim();
   const long = "Transkriberar mötet och skapar ett protokoll med beslut och sammanfattning. ".repeat(4).slice(0, 300).trim();
@@ -158,9 +160,9 @@ test("long names stay whole, descriptions keep to two lines, and every row is a 
   for (const row of rows) {
     for (const cut of row.cuts) expect(cut, `${row.name}: not ellipsised, not one line`).toMatch(/^clip\/(?!nowrap)[a-z-]+\/visible$/);
     expect(row.nameWhole, `${row.name}: whole`).toBe(true);
-    expect(row.descriptionLines, `${row.name}: at most two lines`).toBeLessThanOrEqual(2);
+    expect(row.descriptionLines, `${row.name}: at most ${most} lines`).toBeLessThanOrEqual(most);
   }
-  expect(rows[1].descriptionLines, "a 300-character description fills its two lines").toBe(2);
+  expect(rows[1].descriptionLines, `a 300-character description fills its ${most} lines`).toBe(most);
   expect(rows[2].description).toBeNull();
 
   const layout = await reflow(page);
