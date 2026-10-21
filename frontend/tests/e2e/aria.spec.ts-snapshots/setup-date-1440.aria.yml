@@ -7,118 +7,6 @@
       - listitem: Du spelar in eller laddar upp ljud.
       - listitem: Du får resultatet här när flödet är klart.
     - button "Tips för bra ljud"
-  - text: Mötesdatum Valfritt
-  - button "Stäng kalender"
-  - combobox "Mötesdatum Valfritt" [expanded]
-  - alert
-  - dialog "Välj datum":
-    - button "Föregående månad":
-      - status
-    - text: september 2026
-    - button "Nästa månad":
-      - status
-    - grid "september 2026":
-      - row "må ti on to fr lö sö":
-        - columnheader "må"
-        - columnheader "ti"
-        - columnheader "on"
-        - columnheader "to"
-        - columnheader "fr"
-        - columnheader "lö"
-        - columnheader "sö"
-      - row "måndag 31 augusti 2026 tisdag 1 september 2026 onsdag 2 september 2026 torsdag 3 september 2026 fredag 4 september 2026 lördag 5 september 2026 söndag 6 september 2026":
-        - gridcell "måndag 31 augusti 2026":
-          - button "måndag 31 augusti 2026" [disabled]: "31"
-        - gridcell "tisdag 1 september 2026":
-          - button "tisdag 1 september 2026": "1"
-        - gridcell "onsdag 2 september 2026":
-          - button "onsdag 2 september 2026": "2"
-        - gridcell "torsdag 3 september 2026":
-          - button "torsdag 3 september 2026": "3"
-        - gridcell "fredag 4 september 2026":
-          - button "fredag 4 september 2026": "4"
-        - gridcell "lördag 5 september 2026":
-          - button "lördag 5 september 2026": "5"
-        - gridcell "söndag 6 september 2026":
-          - button "söndag 6 september 2026": "6"
-      - row "måndag 7 september 2026 tisdag 8 september 2026 onsdag 9 september 2026 torsdag 10 september 2026 fredag 11 september 2026 lördag 12 september 2026 söndag 13 september 2026":
-        - gridcell "måndag 7 september 2026":
-          - button "måndag 7 september 2026": "7"
-        - gridcell "tisdag 8 september 2026":
-          - button "tisdag 8 september 2026": "8"
-        - gridcell "onsdag 9 september 2026":
-          - button "onsdag 9 september 2026": "9"
-        - gridcell "torsdag 10 september 2026":
-          - button "torsdag 10 september 2026": "10"
-        - gridcell "fredag 11 september 2026":
-          - button "fredag 11 september 2026": "11"
-        - gridcell "lördag 12 september 2026":
-          - button "lördag 12 september 2026": "12"
-        - gridcell "söndag 13 september 2026":
-          - button "söndag 13 september 2026": "13"
-      - row "måndag 14 september 2026 tisdag 15 september 2026 onsdag 16 september 2026 torsdag 17 september 2026 fredag 18 september 2026 lördag 19 september 2026 söndag 20 september 2026":
-        - gridcell "måndag 14 september 2026":
-          - button "måndag 14 september 2026": "14"
-        - gridcell "tisdag 15 september 2026":
-          - button "tisdag 15 september 2026": "15"
-        - gridcell "onsdag 16 september 2026":
-          - button "onsdag 16 september 2026": "16"
-        - gridcell "torsdag 17 september 2026":
-          - button "torsdag 17 september 2026": "17"
-        - gridcell "fredag 18 september 2026":
-          - button "fredag 18 september 2026": "18"
-        - gridcell "lördag 19 september 2026":
-          - button "lördag 19 september 2026": "19"
-        - gridcell "söndag 20 september 2026":
-          - button "söndag 20 september 2026": "20"
-      - row "måndag 21 september 2026 tisdag 22 september 2026 onsdag 23 september 2026 torsdag 24 september 2026 fredag 25 september 2026 lördag 26 september 2026 söndag 27 september 2026":
-        - gridcell "måndag 21 september 2026":
-          - button "måndag 21 september 2026": "21"
-        - gridcell "tisdag 22 september 2026":
-          - button "tisdag 22 september 2026": "22"
-        - gridcell "onsdag 23 september 2026":
-          - button "onsdag 23 september 2026": "23"
-        - gridcell "torsdag 24 september 2026":
-          - button "torsdag 24 september 2026": "24"
-        - gridcell "fredag 25 september 2026":
-          - button "fredag 25 september 2026": "25"
-        - gridcell "lördag 26 september 2026":
-          - button "lördag 26 september 2026": "26"
-        - gridcell "söndag 27 september 2026":
-          - button "söndag 27 september 2026": "27"
-      - row "måndag 28 september 2026 tisdag 29 september 2026 onsdag 30 september 2026 torsdag 1 oktober 2026 fredag 2 oktober 2026 lördag 3 oktober 2026 söndag 4 oktober 2026":
-        - gridcell "måndag 28 september 2026":
-          - button "måndag 28 september 2026": "28"
-        - gridcell "tisdag 29 september 2026":
-          - button "tisdag 29 september 2026": "29"
-        - gridcell "onsdag 30 september 2026":
-          - button "onsdag 30 september 2026": "30"
-        - gridcell "torsdag 1 oktober 2026":
-          - button "torsdag 1 oktober 2026" [disabled]: "1"
-        - gridcell "fredag 2 oktober 2026":
-          - button "fredag 2 oktober 2026" [disabled]: "2"
-        - gridcell "lördag 3 oktober 2026":
-          - button "lördag 3 oktober 2026" [disabled]: "3"
-        - gridcell "söndag 4 oktober 2026":
-          - button "söndag 4 oktober 2026" [disabled]: "4"
-      - row "måndag 5 oktober 2026 tisdag 6 oktober 2026 onsdag 7 oktober 2026 torsdag 8 oktober 2026 fredag 9 oktober 2026 lördag 10 oktober 2026 söndag 11 oktober 2026":
-        - gridcell "måndag 5 oktober 2026":
-          - button "måndag 5 oktober 2026" [disabled]: "5"
-        - gridcell "tisdag 6 oktober 2026":
-          - button "tisdag 6 oktober 2026" [disabled]: "6"
-        - gridcell "onsdag 7 oktober 2026":
-          - button "onsdag 7 oktober 2026" [disabled]: "7"
-        - gridcell "torsdag 8 oktober 2026":
-          - button "torsdag 8 oktober 2026" [disabled]: "8"
-        - gridcell "fredag 9 oktober 2026":
-          - button "fredag 9 oktober 2026" [disabled]: "9"
-        - gridcell "lördag 10 oktober 2026":
-          - button "lördag 10 oktober 2026" [disabled]: "10"
-        - gridcell "söndag 11 oktober 2026":
-          - button "söndag 11 oktober 2026" [disabled]: "11"
-    - button "Stäng kalender":
-      - text: ""
-      - status
   - region "Ljudet":
     - status
     - status
@@ -129,12 +17,124 @@
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Mikrofon Testa innan mötet börjar och välj den mikrofon som sitter närmast talarna. Det du säger under testet spelas inte in och skickas inte vidare.
+    - text: Mikrofon Testa mikrofonen före mötet. Testet spelas inte in och skickas inte.
     - combobox "Mikrofon": Standard (Fake Default Audio Input)
     - button "Testa mikrofonen":
       - text: ""
       - status
-    - status
+    - status: Testet visar här om mikrofonen hör dig.
+    - text: Mötesdatum Valfritt
+    - button "Stäng kalender"
+    - combobox "Mötesdatum Valfritt" [expanded]
+    - alert
+    - dialog "Välj datum":
+      - button "Föregående månad":
+        - status
+      - text: september 2026
+      - button "Nästa månad":
+        - status
+      - grid "september 2026":
+        - row "må ti on to fr lö sö":
+          - columnheader "må"
+          - columnheader "ti"
+          - columnheader "on"
+          - columnheader "to"
+          - columnheader "fr"
+          - columnheader "lö"
+          - columnheader "sö"
+        - row "måndag 31 augusti 2026 tisdag 1 september 2026 onsdag 2 september 2026 torsdag 3 september 2026 fredag 4 september 2026 lördag 5 september 2026 söndag 6 september 2026":
+          - gridcell "måndag 31 augusti 2026":
+            - button "måndag 31 augusti 2026" [disabled]: "31"
+          - gridcell "tisdag 1 september 2026":
+            - button "tisdag 1 september 2026": "1"
+          - gridcell "onsdag 2 september 2026":
+            - button "onsdag 2 september 2026": "2"
+          - gridcell "torsdag 3 september 2026":
+            - button "torsdag 3 september 2026": "3"
+          - gridcell "fredag 4 september 2026":
+            - button "fredag 4 september 2026": "4"
+          - gridcell "lördag 5 september 2026":
+            - button "lördag 5 september 2026": "5"
+          - gridcell "söndag 6 september 2026":
+            - button "söndag 6 september 2026": "6"
+        - row "måndag 7 september 2026 tisdag 8 september 2026 onsdag 9 september 2026 torsdag 10 september 2026 fredag 11 september 2026 lördag 12 september 2026 söndag 13 september 2026":
+          - gridcell "måndag 7 september 2026":
+            - button "måndag 7 september 2026": "7"
+          - gridcell "tisdag 8 september 2026":
+            - button "tisdag 8 september 2026": "8"
+          - gridcell "onsdag 9 september 2026":
+            - button "onsdag 9 september 2026": "9"
+          - gridcell "torsdag 10 september 2026":
+            - button "torsdag 10 september 2026": "10"
+          - gridcell "fredag 11 september 2026":
+            - button "fredag 11 september 2026": "11"
+          - gridcell "lördag 12 september 2026":
+            - button "lördag 12 september 2026": "12"
+          - gridcell "söndag 13 september 2026":
+            - button "söndag 13 september 2026": "13"
+        - row "måndag 14 september 2026 tisdag 15 september 2026 onsdag 16 september 2026 torsdag 17 september 2026 fredag 18 september 2026 lördag 19 september 2026 söndag 20 september 2026":
+          - gridcell "måndag 14 september 2026":
+            - button "måndag 14 september 2026": "14"
+          - gridcell "tisdag 15 september 2026":
+            - button "tisdag 15 september 2026": "15"
+          - gridcell "onsdag 16 september 2026":
+            - button "onsdag 16 september 2026": "16"
+          - gridcell "torsdag 17 september 2026":
+            - button "torsdag 17 september 2026": "17"
+          - gridcell "fredag 18 september 2026":
+            - button "fredag 18 september 2026": "18"
+          - gridcell "lördag 19 september 2026":
+            - button "lördag 19 september 2026": "19"
+          - gridcell "söndag 20 september 2026":
+            - button "söndag 20 september 2026": "20"
+        - row "måndag 21 september 2026 tisdag 22 september 2026 onsdag 23 september 2026 torsdag 24 september 2026 fredag 25 september 2026 lördag 26 september 2026 söndag 27 september 2026":
+          - gridcell "måndag 21 september 2026":
+            - button "måndag 21 september 2026": "21"
+          - gridcell "tisdag 22 september 2026":
+            - button "tisdag 22 september 2026": "22"
+          - gridcell "onsdag 23 september 2026":
+            - button "onsdag 23 september 2026": "23"
+          - gridcell "torsdag 24 september 2026":
+            - button "torsdag 24 september 2026": "24"
+          - gridcell "fredag 25 september 2026":
+            - button "fredag 25 september 2026": "25"
+          - gridcell "lördag 26 september 2026":
+            - button "lördag 26 september 2026": "26"
+          - gridcell "söndag 27 september 2026":
+            - button "söndag 27 september 2026": "27"
+        - row "måndag 28 september 2026 tisdag 29 september 2026 onsdag 30 september 2026 torsdag 1 oktober 2026 fredag 2 oktober 2026 lördag 3 oktober 2026 söndag 4 oktober 2026":
+          - gridcell "måndag 28 september 2026":
+            - button "måndag 28 september 2026": "28"
+          - gridcell "tisdag 29 september 2026":
+            - button "tisdag 29 september 2026": "29"
+          - gridcell "onsdag 30 september 2026":
+            - button "onsdag 30 september 2026": "30"
+          - gridcell "torsdag 1 oktober 2026":
+            - button "torsdag 1 oktober 2026" [disabled]: "1"
+          - gridcell "fredag 2 oktober 2026":
+            - button "fredag 2 oktober 2026" [disabled]: "2"
+          - gridcell "lördag 3 oktober 2026":
+            - button "lördag 3 oktober 2026" [disabled]: "3"
+          - gridcell "söndag 4 oktober 2026":
+            - button "söndag 4 oktober 2026" [disabled]: "4"
+        - row "måndag 5 oktober 2026 tisdag 6 oktober 2026 onsdag 7 oktober 2026 torsdag 8 oktober 2026 fredag 9 oktober 2026 lördag 10 oktober 2026 söndag 11 oktober 2026":
+          - gridcell "måndag 5 oktober 2026":
+            - button "måndag 5 oktober 2026" [disabled]: "5"
+          - gridcell "tisdag 6 oktober 2026":
+            - button "tisdag 6 oktober 2026" [disabled]: "6"
+          - gridcell "onsdag 7 oktober 2026":
+            - button "onsdag 7 oktober 2026" [disabled]: "7"
+          - gridcell "torsdag 8 oktober 2026":
+            - button "torsdag 8 oktober 2026" [disabled]: "8"
+          - gridcell "fredag 9 oktober 2026":
+            - button "fredag 9 oktober 2026" [disabled]: "9"
+          - gridcell "lördag 10 oktober 2026":
+            - button "lördag 10 oktober 2026" [disabled]: "10"
+          - gridcell "söndag 11 oktober 2026":
+            - button "söndag 11 oktober 2026" [disabled]: "11"
+      - button "Stäng kalender":
+        - text: ""
+        - status
     - button "Starta inspelning":
       - text: ""
       - status

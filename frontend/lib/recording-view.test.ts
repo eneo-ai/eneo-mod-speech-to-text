@@ -85,23 +85,29 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
     muted: false,
     wakeLock: true,
   };
-  const none = { warnings: [], notes: [] };
+  const none = { warnings: [], cautions: [], notes: [] };
   assert.deepEqual(recordingNotices(base), none);
   assert.deepEqual(recordingNotices({ ...base, silent: true }), {
     warnings: [{ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." }],
+    cautions: [],
     notes: [],
   });
   const lockNote = "Lås inte skärmen och byt inte app: ljud kan saknas.";
-  assert.deepEqual(recordingNotices({ ...base, coarsePointer: true }), { warnings: [], notes: [lockNote] }, "said on a touch device before it happens");
+  assert.deepEqual(
+    recordingNotices({ ...base, coarsePointer: true }),
+    { warnings: [], cautions: [lockNote], notes: [] },
+    "said on a touch device before it happens, above the controls",
+  );
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", coarsePointer: true }), none, "audio is not at risk while paused");
   assert.deepEqual(
-    recordingNotices({ ...base, coarsePointer: true, wakeLock: false }).notes,
-    [lockNote, "Låt skärmen vara tänd under inspelningen."],
-    "beside the note that the screen may dim",
+    recordingNotices({ ...base, coarsePointer: true, wakeLock: false }),
+    { warnings: [], cautions: [lockNote], notes: ["Låt skärmen vara tänd under inspelningen."] },
+    "apart from the note that the screen may dim",
   );
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), none, "no silence warning while paused");
   assert.deepEqual(recordingNotices({ ...base, lowSpace: true, persistent: false, wakeLock: false }), {
     warnings: [{ title: "Det finns lite lagringsutrymme kvar på enheten.", detail: "Frigör utrymme om du ska spela in länge." }],
+    cautions: [],
     notes: [
       "Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.",
       "Låt skärmen vara tänd under inspelningen.",
@@ -113,7 +119,7 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
       "Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma Hämtade filer och " +
       "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
   };
-  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), { warnings: [full], notes: [] });
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), { warnings: [full], cautions: [], notes: [] });
   assert.deepEqual(
     recordingNotices({ ...base, persistent: false, refused: "full", lowSpace: true }).warnings,
     [full],
@@ -121,7 +127,7 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   );
   assert.deepEqual(
     recordingNotices({ ...base, backOnDevice: true }),
-    { warnings: [], notes: ["Det finns plats igen, och inspelningen sparas på enheten."] },
+    { warnings: [], cautions: [], notes: ["Det finns plats igen, och inspelningen sparas på enheten."] },
     "back on the device: a calm note in the bar's line",
   );
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
@@ -137,8 +143,8 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   const timed = (options: Partial<Parameters<typeof recordingNotices>[0]>) => recordingNotices({ ...base, ...options });
   assert.deepEqual(timed({ remainingMs: minutes(16) }), none, "nothing yet");
   const stops = "Då stoppas inspelningen och det som spelats in sparas.";
-  const fifteen = { warnings: [], notes: [`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`] };
-  const five = { warnings: [{ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops }], notes: [] };
+  const fifteen = { warnings: [], cautions: [], notes: [`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`] };
+  const five = { warnings: [{ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops }], cautions: [], notes: [] };
   assert.deepEqual(timed({ remainingMs: minutes(15) }), fifteen);
   assert.deepEqual(timed({ remainingMs: minutes(6) }), fifteen, "a quiet line, not a count");
   assert.deepEqual(timed({ remainingMs: minutes(5) }), five, "near the end it is a warning: what is said after it is not recorded");
@@ -146,7 +152,7 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   const gone = { title: "Inspelningen pausades när mikrofonen försvann.", detail: "Det som spelats in finns kvar." };
   assert.deepEqual(
     recordingNotices({ ...base, phase: "interrupted", remainingMs: 0 }),
-    { warnings: [gone], notes: [] },
+    { warnings: [gone], cautions: [], notes: [] },
     "interrupted, the flow's end is not what the user needs to know",
   );
   assert.deepEqual(recordingNotices({ ...base, muted: true }).warnings, [
@@ -186,12 +192,14 @@ test("the bar says when no audio is kept, when the microphone stays muted, how l
   const lost = "Det som sades då kom inte med i inspelningen.";
   assert.deepEqual(recordingNotices({ ...base, mutedGap: { ms: 40_000, away: true } }), {
     warnings: [],
+    cautions: [],
     notes: [`Mikrofonen var avstängd i 40 s medan sidan låg i bakgrunden. ${lost}`],
   });
   assert.deepEqual(recordingNotices({ ...base, mutedGap: { ms: 4 * 60_000, away: false } }).notes, [`Mikrofonen var avstängd i 4 min. ${lost}`]);
   // Away with no audio from the recorder, and no muted microphone to say why: what is missing may be.
   assert.deepEqual(recordingNotices({ ...base, hiddenGap: 12_000 }), {
     warnings: [],
+    cautions: [],
     notes: ["Sidan låg i bakgrunden i 12 s. Ljud från den tiden kan saknas."],
   });
 
@@ -224,7 +232,10 @@ test("the details collapse to one line that names what is filled in", () => {
     detailsSummary(fields, { deltagare: ["Anna Berg", "Erik Lund", "Sara Holm"], motesnamn: "KS" }),
     "Deltagare: Anna Berg, Erik Lund, Sara Holm · Mötets namn: KS",
   );
-  assert.equal(detailsSummary(fields, { deltagare: [] }), "Inga uppgifter ifyllda");
+  // Nothing filled in: the fields there are, so the row says what can be filled in from it.
+  assert.equal(detailsSummary(fields, { deltagare: [] }), "Deltagare, Mötets namn, Datum: inte ifyllda");
+  assert.equal(detailsSummary(fields.slice(0, 1), {}), "Deltagare: inga tillagda");
+  assert.equal(detailsSummary(fields.slice(1, 2), { motesnamn: " " }), "Mötets namn: inget ifyllt");
 });
 
 test("pause excludes time: the timer counts only recorded time", async () => {

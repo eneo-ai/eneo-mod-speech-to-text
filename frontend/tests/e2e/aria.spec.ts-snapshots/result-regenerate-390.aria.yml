@@ -1,6 +1,7 @@
 - main:
   - heading "Dokumentet är klart" [level=1]
-  - paragraph: /Nämndmöte till rapport · Skapad i dag \d+:\d+/
+  - paragraph: Nämndmöte till rapport
+  - paragraph: /Skapad i dag \d+:\d+/
   - paragraph: "Deltagare: Anna Berg, Erik Lund"
   - button "Ny inspelning"
   - tablist "Visa":
@@ -10,12 +11,13 @@
     - note:
       - text: Dokumentet skapades före dina ändringar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.
       - button "Skapa dokumentet igen"
-    - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
-      - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=attachment
     - region "Dokumentet":
       - link /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf i en ny flik/:
         - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=inline
       - text: /PDF, \d+ B/
+      - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
+        - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=attachment
+      - button "Dela"
       - region "Förhandsvisning av texten i filen":
         - paragraph: Förhandsvisning av texten i filen
         - article:

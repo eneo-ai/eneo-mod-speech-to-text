@@ -62,7 +62,8 @@ export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: stri
 
 /**
  * What the recording bar says now: warnings of what can lose the meeting (no sound, no microphone, no room on
- * the device), shown as alerts above the controls, and calmer notes in its line.
+ * the device), shown as alerts above the controls; cautions, what the person can do that would lose sound, said calmly
+ * above them too; and calmer notes in its line under them.
  */
 export function recordingNotices({
   phase,
@@ -108,8 +109,9 @@ export function recordingNotices({
   makesText?: boolean;
   /** A touch device: the screen locks and apps switch under a recording, which then loses audio. */
   coarsePointer?: boolean;
-}): { warnings: Problem[]; notes: string[] } {
+}): { warnings: Problem[]; cautions: string[]; notes: string[] } {
   const warnings: Problem[] = [];
+  const cautions: string[] = [];
   const notes: string[] = [];
   if (phase === "interrupted") {
     // When the device could not keep the pause, that is said in place of the promise.
@@ -178,9 +180,9 @@ export function recordingNotices({
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
   // Said before it happens; the gaps above say it after.
-  if (phase === "recording" && coarsePointer) notes.push("Lås inte skärmen och byt inte app: ljud kan saknas.");
+  if (phase === "recording" && coarsePointer) cautions.push("Lås inte skärmen och byt inte app: ljud kan saknas.");
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
-  return { warnings, notes };
+  return { warnings, cautions, notes };
 }
 
 /** Said once when the recording's state changes; never the timer. */
@@ -267,10 +269,16 @@ export function detailRows(fields: FormField[], values: Record<string, unknown>)
   });
 }
 
-/** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
+/**
+ * "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. With nothing filled in it names the
+ * fields there are ("Deltagare: inga tillagda"), so the folded row says what can be filled in from it.
+ */
 export function detailsSummary(fields: FormField[], details: Record<string, unknown>): string {
   const rows = detailRows(fields, details);
-  return rows.length > 0 ? rows.map(({ label, text }) => `${label}: ${text}`).join(" · ") : "Inga uppgifter ifyllda";
+  if (rows.length > 0) return rows.map(({ label, text }) => `${label}: ${text}`).join(" · ");
+  const labels = fields.map((field) => field.label || field.name);
+  if (labels.length !== 1) return `${labels.join(", ")}: inte ifyllda`;
+  return `${labels[0]}: ${fields[0].type === "list" ? "inga tillagda" : "inget ifyllt"}`;
 }
 
 /** The reader is at the end of the draft (a line's height short still counts): new text may scroll it. */

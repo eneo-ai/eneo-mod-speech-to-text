@@ -2,9 +2,9 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
+    - link "Tal till text – Eneo":
       - /url: /flows
-      - img "Sundsvalls kommun"
+      - img "Eneo"
       - text: Tal till text
     - link "Alla flöden":
       - /url: /flows
@@ -22,15 +22,6 @@
       - listitem: Du får ett dokument att ladda ner.
     - button "Tips för bra ljud"
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
-  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
-  - group "Deltagare Valfritt":
-    - text: Lägg till namn
-    - textbox "Deltagare Valfritt Lägg till namn":
-      - /placeholder: Lägg till namn
-    - button "Lägg till" [disabled]:
-      - text: ""
-      - status
-  - status
   - region "Ljudet":
     - status
     - status
@@ -43,15 +34,23 @@
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Mikrofon Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.
+    - text: Mikrofon Testa mikrofonen före mötet. Testet spelas inte in och skickas inte.
     - combobox "Mikrofon": Standard
     - button "Testa mikrofonen":
       - text: ""
       - status
+    - status: Testet visar här om mikrofonen hör dig.
+    - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
+    - group "Deltagare Valfritt":
+      - text: Lägg till namn
+      - textbox "Deltagare Valfritt Lägg till namn":
+        - /placeholder: Lägg till namn
+      - button "Lägg till" [disabled]:
+        - text: ""
+        - status
     - status
     - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter inspelningen.
     - switch "Märk upp talare"
-    - text: "Flödet får ta emot: Öppen information"
     - button "Starta strömning":
       - text: ""
       - status

@@ -2,7 +2,7 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - img "Sundsvalls kommun"
+    - img "Eneo"
     - text: ""
 - main:
   - heading "Tal till text" [level=1]

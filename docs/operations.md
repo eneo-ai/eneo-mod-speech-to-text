@@ -99,7 +99,7 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 | `MAX_BODY_BYTES` | `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. |
 | `MAX_UPLOAD_BYTES` | `1073741824` (1 GiB) | Tak för hela request-bodyn i en uppladdning (multipart-överhuvud inräknat, så en fil tar något mindre). Höj den om flödena tar emot större ljudfiler. |
 | `MAX_RESPONSE_BYTES` | `33554432` (32 MiB) | Mest som läses av ett enskilt svar från Eneo; längre svar blir 502. En fil som strömmas räknas inte. |
-| `ORGANIZATION_*`, `SHOW_ORGANIZATION` | tomma, `true` | Namn, logga och accentfärg: [Byt organisation](branding.md). |
+| `ORGANIZATION_*`, `SHOW_ORGANIZATION` | tomma (Eneo), `true` | Namn, logga och accentfärg: [Byt organisation](branding.md). |
 | `SPEAKER_REVIEW_ENABLED` | `false` | Byggargument, ingen körningsinställning: den fastställs när imagen byggs (`docker build --build-arg SPEAKER_REVIEW_ENABLED=true`), och en publicerad image har granskningen av. Att skriva talare kräver stöd för v3 i Eneo. |
 
 De tre `MAX_*_BYTES` är heltal från 1 till 2^40; ett värde utanför det stoppar starten. Compose skickar standardvärdena, och ett tomt värde i Compose blir standardvärdet.

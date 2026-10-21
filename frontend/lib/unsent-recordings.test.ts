@@ -32,7 +32,8 @@ const render = ({
   ...props
 }: Partial<Omit<ComponentProps<typeof UnsentRecordings>, "list">> & { recordings: UnsentRecording[] }) =>
   mount(createElement(UnsentRecordings, { list: { recordings, unreadable: false, retry: () => {} }, onSend: () => {}, sendLabel: () => "Skapa dokument", ...props }));
-const rowsOf = (container: HTMLElement) => [...container.querySelectorAll("li")];
+/** Each recording: the one that leads the card, then the rows of the list under it. */
+const rowsOf = (container: HTMLElement) => [...container.querySelectorAll("[data-recording]")];
 const labels = (row: Element) => [...row.querySelectorAll("button")].map((b) => b.textContent!.trim());
 /** The element the row's actions say they are described by: what a screen reader reads after each button's name. */
 const summaryOf = (row: Element) => {
@@ -47,9 +48,14 @@ const filled = (container: HTMLElement) =>
 test("an unsent recording keeps the name it was made with, then its flow and length", async () => {
   assert.equal(recordingDetails(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }), "Nämndmöte till rapport · 42\u00a0min");
   assert.equal(recordingDetails(recording("b", 65 * 60_000, at(22, 16, 40))), "1\u00a0h\u00a05\u00a0min");
-  const { container } = await render({ recordings: [recording("c", 30_000, at(20, 9, 5))], withFlowName: true });
-  // The name the ready panel shows (lib/format recordingName), then its flow and length.
-  assert.deepEqual([...summaryOf(rowsOf(container)[0]).children].map((line) => line.textContent), ["Inspelning 20 sep 09:05", "Nämndmöte till rapport · 30\u00a0s"]);
+  const { container } = await render({ recordings: [recording("c", 30_000, at(20, 9, 5)), recording("d", 60_000, at(19, 8, 0))], withFlowName: true });
+  const [lead, next] = rowsOf(container);
+  // The name the ready panel shows (lib/format recordingName), then its flow and length: on one line under the card's
+  // heading, each part whole, and in the list under it the name over the rest.
+  const line = summaryOf(lead).firstElementChild!;
+  assert.equal(line.textContent, "Inspelning 20 sep 09:05 · Nämndmöte till rapport · 30\u00a0s");
+  assert.deepEqual([...line.children].map((part) => part.textContent), ["Inspelning 20 sep 09:05 ·", "Nämndmöte till rapport ·", "30\u00a0s"]);
+  assert.deepEqual([...summaryOf(next).children].map((line) => line.textContent), ["Inspelning 19 sep 08:00", "Nämndmöte till rapport · 1\u00a0min"]);
 });
 
 test("one unsent recording is spoken of in the singular", async () => {

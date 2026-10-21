@@ -1,5 +1,7 @@
+import { User } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
 import { InputGroup } from "@astryxdesign/core/InputGroup";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -19,8 +21,9 @@ const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter", spellCheck: "false" } as Record<string, string>;
 
 /**
- * A `list` field as chips. "Lägg till" stands beside the input, off until a
- * name is typed, so a tap adds it on any device and the input keeps its width;
+ * A `list` field as chips. "Lägg till" stands beside the input, one piece with
+ * it, off until a name is typed, so a tap adds it on any device and the input
+ * keeps its width;
  * Enter (a phone's return key) or a comma adds it too, a pasted list is split
  * on commas, semicolons and line breaks,
  * Backspace in the empty input removes the last chip, and each chip has its
@@ -191,8 +194,12 @@ export function ParticipantsInput({
         >
           {names.map((name) => (
             <li key={name}>
+              {/* A person, not yet a speaker: a chip in the deployment's tint with a person icon in its colour, rather than
+                  a speaker's colour, which only the review maps. */}
               <Token
                 label={name}
+                color="blue"
+                icon={<Icon icon={User} size="sm" color="accent" />}
                 onRemove={() => {
                   remove(name);
                   if (pressedWith.current !== "touch") input.current?.focus();

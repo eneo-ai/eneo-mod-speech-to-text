@@ -491,7 +491,8 @@ function speakersPart(within: ParentNode) {
   const naming = button(within, "Namnge talare");
   return {
     order: [label && "Talare", naming && precedes(naming) && "Namnge talare", `group ${computeAccessibleName(group)}`].filter(Boolean),
-    oneRow: Boolean(label && naming && label.parentElement === naming.parentElement && !label.parentElement!.contains(group)),
+    // The word's row holds the naming (at its end, with the page's actions after it where they are given), not the filter.
+    oneRow: Boolean(label && naming && label.parentElement!.contains(naming) && !label.parentElement!.contains(group)),
     variant: naming?.getAttribute("data-variant") ?? null,
   };
 }

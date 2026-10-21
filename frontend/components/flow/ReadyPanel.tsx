@@ -1,13 +1,14 @@
-import { Download, FileText, Trash2 } from "lucide-react";
+import { Download, FileText, Mic, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { ActionRow } from "@/components/ActionRow";
+import { ActionRow, STACKED } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
@@ -15,7 +16,7 @@ import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { StoppedWhileSignedOut } from "@/components/flow/Recorder";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { StateCard } from "@/components/flow/StateCard";
+import { StateCard, StateHead } from "@/components/flow/StateCard";
 import { useSaveRecording } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import type { LiveSession, Problem } from "@/lib/flow-session";
@@ -189,6 +190,35 @@ export function ReadyPanel({
     />
   );
 
+  const stacked = useMediaQuery(STACKED);
+  // The quiet ways: keeping the audio as a file and deleting it. A ghost button's own padding would set its icon in from
+  // the card's content edge, where the words above start: the group stands out by that much.
+  const quiet = (
+    <HStack gap={2} wrap="wrap" className={audio || !sent ? styles.quiet : undefined}>
+      {audio && (
+        <Button
+          label={saving.label}
+          variant="ghost"
+          icon={<Icon icon={Download} size="sm" />}
+          isLoading={saving.busy}
+          isInterruptible
+          onClick={() => void save()}
+        />
+      )}
+      <Button
+        ref={trigger}
+        label={sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
+        variant={sent ? "secondary" : "ghost"}
+        icon={<Icon icon={Trash2} size="sm" />}
+        onClick={() => setConfirming(true)}
+      />
+    </HStack>
+  );
+  // Which one is main follows the recording: a very short one was most likely stopped by mistake.
+  const decision = (create || onContinue) && (
+    <ActionRow>{(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}</ActionRow>
+  );
+
   async function save() {
     setSaveProblem(null);
     if (!(await saving.save())) setSaveProblem({ title: "Inspelningen kunde inte sparas som fil.", detail: "Försök igen." });
@@ -197,10 +227,14 @@ export function ReadyPanel({
   return (
     <StateCard>
       <StoppedWhileSignedOut />
+      {/* The same head as the sending and the run that follow it in this card: a tile beside the heading. An h2 at its
+          level's size: the flow's name beside it is the page's heading. */}
       <VStack gap={1}>
-        <Heading level={2} data-phase-heading tabIndex={-1}>
-          Inspelningen är klar
-        </Heading>
+        <StateHead icon={Mic}>
+          <Heading level={2} data-phase-heading tabIndex={-1}>
+            Inspelningen är klar
+          </Heading>
+        </StateHead>
         <Text as="p" color="secondary">
           {name} · {formatDuration(recording.durationMs)}
         </Text>
@@ -210,20 +244,7 @@ export function ReadyPanel({
       {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
       {live && <LiveDraft live={live} makesText={makesText} />}
 
-      {audio ? (
-        <HStack>
-          <Button
-            label={saving.label}
-            variant="secondary"
-            icon={<Icon icon={Download} size="sm" />}
-            isLoading={saving.busy}
-            isInterruptible
-            onClick={() => void save()}
-          />
-        </HStack>
-      ) : (
-        <Text as="p">Inget ljud sparades i den här inspelningen.</Text>
-      )}
+      {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {awaitingStop && <ProblemAlert problem={{ title: "Webbläsaren har inte bekräftat inspelningens stopp.", detail: "Spara ljudet som fil för att behålla det. Du kan sedan ladda upp filen i en ny inspelning." }} />}
@@ -235,14 +256,17 @@ export function ReadyPanel({
           device, and nothing more can be recorded on it), then where the recording is until the result is made. */}
       {audio &&
         (create ? (
-          <Text as="p" type="supporting">
-            {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
-            {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
-            {persistent
-              ? ` Den finns kvar på enheten tills ${made}.`
-              : ` Den finns bara i den här fliken, så stäng inte fliken innan ${made}.`}
-            {forwarded ? ` ${forwarded}` : ""}
-          </Text>
+          // What the filled action does is read before it is pressed: at the body's size, at a reading measure.
+          <VStack maxWidth="65ch">
+            <Text as="p" color="secondary">
+              {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
+              {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
+              {persistent
+                ? ` Den finns kvar på enheten tills ${made}.`
+                : ` Den finns bara i den här fliken, så stäng inte fliken innan ${made}.`}
+              {forwarded ? ` ${forwarded}` : ""}
+            </Text>
+          </VStack>
         ) : (
           <Text as="p" type="supporting">
             {persistent
@@ -250,28 +274,27 @@ export function ReadyPanel({
               : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
           </Text>
         ))}
-      {(create || onContinue) && (
-        <VStack gap={0}>
-          {/* Which one is main follows the recording: a very short one was most likely stopped by mistake. */}
-          <ActionRow>
-            {(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}
-          </ActionRow>
-          {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
+      {/* One footer: the quiet ways at its start and the decision at its end; on a phone the decision on top, its main
+          action first, and the quiet ways under it at their own widths. */}
+      <VStack gap={0}>
+        {stacked ? (
+          <VStack gap={2}>
+            {decision}
+            {quiet}
+          </VStack>
+        ) : (
+          <HStack hAlign="between" vAlign="center" gap={2} wrap="wrap">
+            {quiet}
+            {decision}
+          </HStack>
+        )}
+        {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
+        {(create || onContinue) && (
           <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
             {finishing ? (finishQueued ? "Slutför texten… Det skapas så snart den är klar." : "Slutför texten…") : ""}
           </Text>
-        </VStack>
-      )}
-
-      <HStack hAlign="start">
-        <Button
-          ref={trigger}
-          label={sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
-          variant={sent ? "secondary" : "ghost"}
-          icon={<Icon icon={Trash2} size="sm" />}
-          onClick={() => setConfirming(true)}
-        />
-      </HStack>
+        )}
+      </VStack>
       <AlertDialog
         isOpen={confirming && !signedOut}
         onOpenChange={setConfirming}

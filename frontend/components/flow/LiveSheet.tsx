@@ -8,6 +8,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
@@ -110,11 +111,17 @@ export function LiveSheet({
     <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
       <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} className={styles.head}>
         <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
-          {forRoom
-            ? "Preliminär text, kan innehålla fel"
-            : speakers
-              ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
-              : "Preliminär text, den slutliga skapas när du är klar"}
+          {forRoom ? (
+            "Preliminär text, kan innehålla fel"
+          ) : (
+            // What the text is, as a pill, and when the final one comes, as the line that runs on beside it and under
+            // it. Read as one sentence: "Preliminär text. …".
+            <>
+              <Token size="sm" label="Preliminär" className={styles.pill} />
+              <VisuallyHidden> text.</VisuallyHidden>{" "}
+              {speakers ? "Talare och den slutliga texten kommer när du är klar." : "Den slutliga texten skapas när du är klar."}
+            </>
+          )}
         </Heading>
         {room && offered && (
           <Button

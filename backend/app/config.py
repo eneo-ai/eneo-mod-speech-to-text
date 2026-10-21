@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import functools
 import json
 import logging
@@ -14,7 +15,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.accent import Accent, resolve_accent
+from app.accent import Accent, accent_warning, resolve_accent
 
 
 logger = logging.getLogger("eneo_config")
@@ -35,7 +36,7 @@ class LogoSizes(BaseModel):
 class Organization(BaseModel):
     """The organisation beside "Tal till text": its name, and its logo.
 
-    ``logo`` is ``default`` for Sundsvall's bundled logo, ``custom`` for the
+    ``logo`` is ``default`` for Eneo's bundled logo, ``custom`` for the
     deployment's own (served by /api/branding/logo/{light,dark}), or None for
     the name as text. A custom logo has its size, and so has its dark one when
     there is one: the page cannot reserve room for a file it knows nothing of.
@@ -62,7 +63,7 @@ class LogoFile(BaseModel):
     content: bytes
 
 
-DEFAULT_ORGANIZATION = Organization(name="Sundsvalls kommun", logo="default")
+DEFAULT_ORGANIZATION = Organization(name="Eneo", logo="default")
 _LOGO_MAX_BYTES = 1024 * 1024
 UPSTREAM_CONNECTION_LIMIT = 100
 MAX_HEAVY_IO_LIMIT = UPSTREAM_CONNECTION_LIMIT - 4
@@ -98,7 +99,7 @@ class Settings(BaseModel):
     organization: Organization | None = DEFAULT_ORGANIZATION
     organization_logo: LogoFile | None = None
     organization_logo_dark: LogoFile | None = None
-    # None keeps the theme's own accent (Sundsvall's blue): GET /api/branding/theme.css is then an empty stylesheet.
+    # None keeps the theme's own accent (Eneo's blue): GET /api/branding/theme.css is then an empty stylesheet.
     accent: Accent | None = None
     # Which build runs, as /health answers it. The commit and the time of the build are the image's own (its build record);
     # the release is the deployment's (MODULE_VERSION), because a release gives a tested image its version without
@@ -250,42 +251,60 @@ def _logo_size(media_type: str, content: bytes) -> LogoSize | None:
     return LogoSize(width=int(width), height=int(height))
 
 
+# Why a logo file could not be read, in the words of the operator's guide (docs/branding.md); others as the system says it.
+_UNREADABLE = {errno.ENOENT: "filen saknas", errno.EACCES: "filen får inte läsas", errno.EISDIR: "det är en mapp"}
+
+
 def _read_logo(variable: str, raw_path: str) -> tuple[LogoFile, LogoSize] | None:
     """The logo file at ``raw_path`` and its size, if it is an SVG or a PNG, as its name says and with a size the page can
-    use; otherwise logs why and gives None."""
+    use; otherwise logs why, in one Swedish sentence as the accent's are, and gives None."""
     path = Path(raw_path)
     try:
         # Read at most one byte past the limit, so a large file mounted by mistake is never loaded whole.
         with path.open("rb") as file:
             content = file.read(_LOGO_MAX_BYTES + 1)
     except OSError as error:
-        logger.error("%s=%s cannot be read (%s); the organisation's name is shown instead.", variable, raw_path, error.strerror)
+        why = _UNREADABLE.get(error.errno or 0, error.strerror)
+        logger.error("%s=%s kan inte läsas (%s). Namnet visas i stället. Kontrollera sökvägen och volymen.", variable, raw_path, why)
         return None
     head = content[:1024].lstrip(b"\xef\xbb\xbf \t\r\n")
     suffix = path.suffix.lower()
     media_type: Literal["image/svg+xml", "image/png"] | None = None
     if len(content) > _LOGO_MAX_BYTES:
-        problem = "is larger than 1 MiB"
+        problem = "är större än 1 MiB"
     elif suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n"):
         media_type = "image/png"
     elif suffix == ".svg" and head.startswith((b"<?xml", b"<svg", b"<!--", b"<!DOCTYPE")) and re.search(rb"<svg[\s>]", head):
         media_type = "image/svg+xml"
     else:
-        problem = "is not an SVG or PNG file (by its name and its content)"
+        problem = "är ingen SVG- eller PNG-fil (till namn och innehåll)"
     if media_type is not None:
         size = _logo_size(media_type, content)
         if size is not None:
             return LogoFile(media_type=media_type, content=content), size
-        problem = "has no size the page can use (an SVG needs a viewBox, or a width and a height in px; a PNG a readable header)"
-    logger.error("%s=%s %s; the organisation's name is shown instead.", variable, raw_path, problem)
+        problem = "har ingen storlek som sidan kan använda (en SVG behöver en viewBox, eller width och height i px; en PNG ett läsbart huvud)"
+    logger.error("%s=%s %s. Namnet visas i stället.", variable, raw_path, problem)
     return None
+
+
+# The bar's room for a logo on a phone (frontend/styles/globals.css): 40 px high, at most 6.5 rem (104 px) wide.
+_PHONE_LOGO_BOX = (104, 40)
+
+
+def _warn_if_wide(variable: str, size: LogoSize) -> None:
+    """A logo wider than 6:1 is used, with a warning of how low it is on a phone, where it is first fitted to the width."""
+    ratio = size.width / size.height
+    if ratio > 6:
+        low = min(_PHONE_LOGO_BOX[1], _PHONE_LOGO_BOX[0] / ratio)
+        shown = f"{round(ratio, 1):g}".replace(".", ",")
+        logger.warning("%s är %s:1; på en telefon blir den %d px hög. Använd ett märke på högst 4:1.", variable, shown, low)
 
 
 def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | None]:
     """The organisation shown beside the product name, from ORGANIZATION_* and SHOW_ORGANIZATION.
 
-    With none of them set it is Sundsvall with its bundled logo. A name alone is
-    shown as text, never beside Sundsvall's logo. A logo that cannot be used is
+    With none of them set it is Eneo with its bundled logo. A name alone is
+    shown as text, never beside Eneo's logo. A logo that cannot be used is
     logged once at start and the name stands in for it.
     """
     if not _parse_bool(os.environ.get("SHOW_ORGANIZATION"), default=True, name="SHOW_ORGANIZATION"):
@@ -297,12 +316,15 @@ def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | No
         raise RuntimeError("ORGANIZATION_NAME must be at most 100 characters")
     if not name:
         if logo_path or dark_path:
-            raise RuntimeError("ORGANIZATION_LOGO needs ORGANIZATION_NAME: the name is the logo's text alternative")
+            raise RuntimeError("ORGANIZATION_LOGO kräver ORGANIZATION_NAME: namnet är loggans alternativtext.")
         return DEFAULT_ORGANIZATION, None, None
     light = _read_logo("ORGANIZATION_LOGO", logo_path) if logo_path else None
     if light is None:
         return Organization(name=name, logo=None), None, None
     dark = _read_logo("ORGANIZATION_LOGO_DARK", dark_path) if dark_path else None
+    _warn_if_wide("ORGANIZATION_LOGO", light[1])
+    if dark:
+        _warn_if_wide("ORGANIZATION_LOGO_DARK", dark[1])
     sizes = LogoSizes(light=light[1], dark=dark[1] if dark else None)
     return (
         Organization(name=name, logo="custom", dark_logo=dark is not None, logo_sizes=sizes),
@@ -312,9 +334,13 @@ def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | No
 
 
 def _accent() -> Accent | None:
-    """The accent from ORGANIZATION_ACCENT and ORGANIZATION_ACCENT_DARK, apart from the organisation's name and logo."""
+    """The accent from ORGANIZATION_ACCENT and ORGANIZATION_ACCENT_DARK, apart from the organisation's name and logo. One
+    that meets the contrast but is near the error colour starts, with a warning."""
     light, dark = (os.environ.get(name, "").strip() for name in ("ORGANIZATION_ACCENT", "ORGANIZATION_ACCENT_DARK"))
-    return resolve_accent(light, dark)
+    accent = resolve_accent(light, dark)
+    if accent is not None and (warning := accent_warning(accent)):
+        logger.warning(warning)
+    return accent
 
 
 # The image's build record: the Dockerfile writes it from the build arguments it writes the image's labels from, so the

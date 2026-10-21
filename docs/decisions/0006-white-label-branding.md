@@ -2,13 +2,13 @@
 
 ## Sammanhang
 
-Modulen byggdes för Sundsvalls kommun med dess logotyp i sidhuvudet och dess blå som accent, men andra kommuner och myndigheter kör samma image. Ett eget bygge per organisation skulle kräva egna images och en egen byggkedja.
+Modulen levereras som Eneo, med Eneos logga i sidhuvudet och Eneos blå som accent, och kommuner och myndigheter kör samma image under sitt eget namn. Ett eget bygge per organisation skulle kräva egna images och en egen byggkedja.
 
 Accentfärgen är inte dekoration: den är färgen på knappar, länkar, ikoner, fokusramen och valda rader. En accent som inte går att läsa mot sidan gör länkar och text oläsliga och fokus osynligt, och en organisation kan inte själv se det innan det är i drift.
 
 ## Beslut
 
-Organisationens namn, logotyp och accentfärg är inställningar för driftsättningen, inte en byggparameter ([Byt organisation](../branding.md)). Backend läser dem vid start och skriver märket in i sidans markör, så att första bildrutan redan visar det. Accenten måste nå 4,5:1 mot sidans ytor i båda lägena, och backend stoppar starten med ett enda svenskt felmeddelande om den inte gör det: ett fel som syns vid driftsättningen är bättre än oläsliga länkar hos användarna. 4,5:1 är högre än WCAG:s 3:1 för ramar, eftersom accenten också är text- och länkfärgen: ett enda krav som håller för det värsta bruket är enklare än ett per användning, och det håller fokusramen läsbar på köpet. Allt annat i utseendet är modulens.
+Organisationens namn, logotyp och accentfärg är inställningar för driftsättningen, inte en byggparameter ([Byt organisation](../branding.md)). Backend läser dem vid start och skriver märket in i sidans markör, så att första bildrutan redan visar det. Accenten måste nå 4,5:1 mot sidans ytor i båda lägena, och backend stoppar starten med ett enda svenskt felmeddelande om den inte gör det: ett fel som syns vid driftsättningen är bättre än oläsliga länkar hos användarna. 4,5:1 är högre än WCAG:s 3:1 för ramar, eftersom accenten också är text- och länkfärgen: ett enda krav som håller för det värsta bruket är enklare än ett per användning, och det håller fokusramen läsbar på köpet. Sidans gråa ytor, textfärger och kanter tar accentens ton med samma ljushet, så att inget blir kvar i Eneos blå, och backend håller deras kontrast mot varje yta. Allt annat i utseendet är modulens.
 
 ## Konsekvenser
 

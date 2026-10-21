@@ -140,6 +140,13 @@ class BuiltUiTests(unittest.TestCase):
 
         run.assert_called_once_with("app.main:app", **FIXED)
 
+    def test_the_launchers_own_read_of_the_settings_is_quiet_so_the_app_says_each_problem_once(self) -> None:
+        # The app reads the settings again when it starts, and logs there, in its own format.
+        logo = {"ORGANIZATION_NAME": "Umeå kommun", "ORGANIZATION_LOGO": "/nowhere/logo.svg"}
+        with built_ui() as folder, patch.dict(os.environ, {**CONFIGURATION, **logo, "STATIC_DIR": folder}, clear=True), patch("uvicorn.run"):
+            with self.assertNoLogs("eneo_config"):
+                launcher.serve("app.main:app")
+
     def test_api_only_starts_with_no_ui_and_reads_no_settings(self) -> None:
         with patch.dict(os.environ, {}, clear=True), patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)

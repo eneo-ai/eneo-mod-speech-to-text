@@ -1,5 +1,5 @@
-import { useContext, useState } from "react";
-import { Plus, RotateCcw, Upload } from "lucide-react";
+import { useContext, useState, type MouseEvent } from "react";
+import { ArrowDown, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Code } from "@astryxdesign/core/Code";
@@ -7,7 +7,6 @@ import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Divider } from "@astryxdesign/core/Divider";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
-import { Section } from "@astryxdesign/core/Section";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
@@ -22,6 +21,8 @@ import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
+// The result's quiet ghost start: a ghost button's icon on the edge the card's words start from.
+import styles from "./RunResult.module.css";
 import { usePhaseHeading } from "./usePhaseHeading";
 import { LeaveContext } from "./useLeaveQuestion";
 
@@ -75,6 +76,14 @@ export function RunFailure({
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
 
+  // The transcript's heading takes the focus, which brings it into view; before it is read the link is a plain one.
+  function toTranscript(event: MouseEvent) {
+    const target = document.getElementById("run-transcript");
+    if (!target) return;
+    event.preventDefault();
+    target.focus();
+  }
+
   async function retry() {
     setRetrying(true);
     try {
@@ -89,6 +98,7 @@ export function RunFailure({
       {/* What happened and what can be done, in the card; what the run left behind follows it. */}
       <StateCard>
         <VStack gap={6}>
+          {/* No tile: the note under the heading carries the state, and a second mark would say it twice. */}
           <VStack gap={1}>
             <Heading level={1} ref={heading} tabIndex={-1}>
               {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
@@ -109,13 +119,6 @@ export function RunFailure({
             description={failure?.summary ?? "Körningen kunde inte slutföras."}
             collapsible={false}
           />
-          {/* The transcript stays last on the page (see RunTranscript below), so the card says it is there. */}
-          {showTranscript && (
-            <Text as="p" type="supporting">
-              Transkriberingen finns längst ner på sidan.
-            </Text>
-          )}
-
           <VStack gap={3}>
             {/* One alert for each sentence, however many ways of saying it there are. */}
             {[...new Set([refusal?.message, error].filter(Boolean))].map((message) => (
@@ -132,9 +135,10 @@ export function RunFailure({
                 En ny körning använder samma ljud och uppgifter och gör om alla steg.
               </Text>
             )}
-            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
+            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the
+                card. At its own width from the card's start, as the progress has Avbryt körningen; across a phone. */}
             {(offerChooseInput || offerRetry || offerStartAgain) && (
-              <ActionRow>
+              <ActionRow align="start">
                 {offerChooseInput && (
                   <Button label="Välj nytt ljud" variant="primary" size="lg" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
                 )}
@@ -154,6 +158,13 @@ export function RunFailure({
                 )}
               </ActionRow>
             )}
+            {/* What the run did finish stays last on the page (RunTranscript below): the way to it, which takes the focus
+                to its heading. A button's target, as the card's other ways on have, at its own width from the card's start. */}
+            {showTranscript && (
+              <HStack>
+                <Button href="#run-transcript" variant="ghost" label="Gå till transkriberingen" icon={<Icon icon={ArrowDown} size="sm" color="inherit" />} onClick={toTranscript} className={styles.quietStart} />
+              </HStack>
+            )}
           </VStack>
         </VStack>
       </StateCard>
@@ -163,9 +174,7 @@ export function RunFailure({
           <Heading level={2} id="run-steps">
             Stegen
           </Heading>
-          <Section>
-            <StepList steps={steps} />
-          </Section>
+          <StepList steps={steps} />
         </VStack>
       )}
 

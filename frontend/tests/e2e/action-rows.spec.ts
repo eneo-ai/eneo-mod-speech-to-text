@@ -62,27 +62,38 @@ for (const review of REVIEWS) {
   });
 }
 
-test("an unsent recording's actions stack across its card on a phone and stand in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
+test("an unsent recording's way on and Spara ljudfil stand across its card on a phone with Ta bort under them at its own width, and all in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
   await page.goto("/flows");
   await keptRecording(page, 1_000);
   await page.reload();
-  const card = page.getByRole("region", { name: "En inspelning har inte skickats" }).getByRole("listitem");
+  const card = page.getByRole("region", { name: "En inspelning har inte skickats" });
   const actions = card.getByRole("button");
   await expect(actions).toHaveText(["Skapa dokument", "Spara ljudfil", "Ta bort"]);
   const boxes = await actions.evaluateAll((buttons) =>
     buttons.map((button) => {
-      const { left, right, top } = button.getBoundingClientRect();
-      return { left: Math.round(left), right: Math.round(right), top: Math.round(top) };
+      const { left, right, top, bottom } = button.getBoundingClientRect();
+      // Where its icon starts, for one that has one.
+      const icon = button.querySelector("svg")?.getBoundingClientRect().left ?? left;
+      return { left: Math.round(left), right: Math.round(right), top: Math.round(top), middle: Math.round((top + bottom) / 2), icon: Math.round(icon) };
     }),
   );
   const stacked = info.project.use.viewport!.width <= 640;
-  const seen = {
-    oneEdge: boxes.every((box) => box.left === boxes[0].left && box.right === boxes[0].right),
-    oneRow: boxes.every((box) => box.top === boxes[0].top),
-    inOrder: boxes.every((box, i) => i === 0 || (stacked ? box.top > boxes[i - 1].top : box.left > boxes[i - 1].right)),
-  };
+  const [send, save, remove] = boxes;
+  const seen = stacked
+    ? {
+        // Skapa dokument and Spara ljudfil across the card, one edge for both; Ta bort under them at its own width, its
+        // icon on their edge (a ghost button's padding stands outside it).
+        quietUnder: save.top > send.top && remove.top > save.top,
+        fromTheStart: save.left === send.left && remove.icon === send.left,
+        ownWidths: save.right === send.right && remove.right < save.right,
+      }
+    : {
+        // One line through their middles: the filled one is the page's own size, the quiet ones the middle size.
+        oneRow: boxes.every((box) => Math.abs(box.middle - boxes[0].middle) <= 1),
+        inOrder: boxes.every((box, i) => i === 0 || box.left > boxes[i - 1].right),
+      };
   expect(seen, JSON.stringify(boxes)).toEqual(
-    stacked ? { oneEdge: true, oneRow: false, inOrder: true } : { oneEdge: false, oneRow: true, inOrder: true },
+    stacked ? { quietUnder: true, fromTheStart: true, ownWidths: true } : { oneRow: true, inOrder: true },
   );
 
   await card.getByRole("button", { name: "Ta bort" }).click();

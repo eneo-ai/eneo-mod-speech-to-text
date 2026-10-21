@@ -754,12 +754,12 @@ test("a recording that was ready when the flow became blocked keeps Spara ljudfi
   try {
     await view.act(async () => makeReady());
     const before = offered();
-    assert.deepEqual(before, ["Spara ljudfil", "Fortsätt spela in", "Skapa dokument", "Ta bort"], "ready, while the labels can be made");
+    assert.deepEqual(before, ["Spara ljudfil", "Ta bort", "Fortsätt spela in", "Skapa dokument"], "ready, while the labels can be made: the quiet ways, then the decision");
 
     await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
     // Neither press could do anything: the session takes no run and no new part of a flow that cannot run.
-    assert.deepEqual(offered(), ["Spara ljudfil", "Alla flöden", "Ta bort"], "saved or deleted, or on to another flow");
+    assert.deepEqual(offered(), ["Alla flöden", "Spara ljudfil", "Ta bort"], "on to another flow, or saved or deleted");
     const reasons = [...audio.querySelectorAll('[role="alert"]')].filter((alert) => alert.textContent?.includes("Flödet kan inte användas just nu."));
     assert.equal(reasons.length, 1, "the reason, as the answer to the flow's change");
     assert.match(reasons[0].textContent ?? "", /tjänsten som gör det går inte att använda\. Kontakta den som ansvarar för flödet\./);
@@ -832,7 +832,7 @@ test("a recording a reload cut off stands first on the page in one column, under
         if (twoColumns) assert.ok(audio.contains(recovery), "in the work, beside the flow");
         else {
           assert.ok(!audio.contains(recovery) && recovery.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING, "above the details, under the flow's name");
-          assert.equal(recovery.previousElementSibling?.tagName, "H1");
+          assert.equal(recovery.previousElementSibling?.firstElementChild?.tagName, "H1", "right after the flow's name and its description");
         }
       } finally {
         await view.unmount();
@@ -858,8 +858,8 @@ test("a recording the flow takes no further part of offers no Fortsätt spela in
   const part = { index: 0, startedAt: 0, durationMs: 60_000, bytes: 1_000, chunks: 30, fileId: null };
   try {
     for (const [maxFiles, expected] of [
-      [1, ["Spara ljudfil", "Skapa dokument", "Ta bort"]],
-      [2, ["Spara ljudfil", "Fortsätt spela in", "Skapa dokument", "Ta bort"]],
+      [1, ["Spara ljudfil", "Ta bort", "Skapa dokument"]],
+      [2, ["Spara ljudfil", "Ta bort", "Fortsätt spela in", "Skapa dokument"]],
     ] as const) {
       const { view, offered, makeReady } = await mountAudioSetup(labels, { step: { max_files: maxFiles }, parts: [part] });
       try {
@@ -1055,9 +1055,14 @@ test("upload under way: the header offers no way off the page, which would abort
   await view.unmount();
 });
 
-test("every state of the flow's page keeps the same bar: the way back, the brand and the account (signing out asks first while something would be lost)", async () => {
+test("every state of the flow's page keeps the same bar: the way back, the brand from a tablet's width and the account (signing out asks first while something would be lost)", async (t) => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
+  const phone = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
+  assert.deepEqual(exits(phone.container), { links: 1, account: 1 }, "a phone's bar keeps its room for the way back and the account");
+  await phone.unmount();
+  const media = window.matchMedia;
+  t.mock.method(window, "matchMedia", (query: string) => ({ ...media(query), matches: query === "(min-width: 768px)" }));
   const view = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
   assert.deepEqual(exits(view.container), { links: 2, account: 1 });
   await view.unmount();

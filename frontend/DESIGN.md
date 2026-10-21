@@ -2,30 +2,36 @@
 name: Tal till text
 description: An Eneo module that turns a recorded or uploaded conversation into text or a document.
 colors:
-  accent: "light-dark(#004595, #52B1FF)"
-  on-accent: "light-dark(#FFFFFF, #0B1118)"
-  background-body: "light-dark(#F0F0F6, #0E1115)"
-  background-surface: "light-dark(#FBFCFF, #191C1F)"
-  text-primary: "light-dark(#1B1B1F, #DFE3E8)"
-  text-secondary: "light-dark(#454650, #A5ACB6)"
-  border: "light-dark(#1B1B1F1A, #EDF1F61A)"
-  border-emphasized: "light-dark(#85868F, #626972)"
+  accent: "light-dark(#1563BC, #52B1FF)"
+  on-accent: "light-dark(#FFFFFF, #06101C)"
+  background-body: "light-dark(#F4F7FB, #070C16)"
+  background-surface: "light-dark(#FFFFFF, #0B1322)"
+  background-card: "light-dark(#FFFFFF, #0F1828)"
+  text-primary: "light-dark(#141A26, #E4E9F0)"
+  text-secondary: "light-dark(#4F5A6B, #9AA8BC)"
+  border: "light-dark(rgba(20,40,80,.08), rgba(255,255,255,.07))"
+  border-emphasized: "light-dark(#758093, #6E7E96)"
   error: "light-dark(#AA181D, #F47B7F)"
   record: "light-dark(#dc2828, #dd2c2c)"
 typography:
   body:
-    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif"
+    fontFamily: "Figtree Variable, -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif"
     fontSize: "1rem"
     lineHeight: 1.5
+  display:
+    fontFamily: "Figtree Variable"
+    fontSize: "clamp(1.75rem, 1.35rem + 1.6vw, 2.5rem)"
+    fontWeight: 700
   headline:
-    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif"
+    fontFamily: "Figtree Variable"
     fontSize: "1.75rem"
-    fontWeight: 600
+    fontWeight: 700
   supporting:
     fontSize: "0.875rem"
 rounded:
-  element: "8px"
-  container: "12px"
+  inner: "6px"
+  element: "10px"
+  container: "16px"
   full: "9999px"
 spacing:
   "1": "4px"
@@ -48,21 +54,24 @@ components:
 
 ## Overview
 
-**Creative North Star: "The quiet municipal desk"**
+**Creative North Star: "Eneo, luftig"**
 
-A calm, plain work surface for public-sector staff: Astryx components on the module's theme
-(`kit/theme/eneo.theme.ts`), one accent (the deployment's, Eneo blue by default), system fonts, and the tokens of the
-design system for every value. The page is one surface colour from the bar to the window's end. Density is moderate;
-hierarchy comes from type size, weight and spacing, not from colour or containers.
+A calm public-sector tool in Eneo's look: Astryx components on the module's theme (`kit/theme/eneo.theme.ts`), one
+accent (the deployment's, Eneo blue by default), Figtree, and the tokens of the design system for every value. White
+cards with a soft drop rest on a blue-white ground, with a wash of the accent at the page's head under a white bar. One
+bold move per kind of moment: arriving has the display title, the wash and the icon tiles; recording has the stage and
+its clock; reading has the speakers' colours and the file as the hero. Everything else stays quiet.
 
 **Key Characteristics:**
 - One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone. A
   review's decision is the design system's middle size (32 px with a mouse, 44 px on touch). The speaker review keeps
   its decision in the page on a phone too, under the speakers: the transcript's player docks at the bottom there, and
   two bars would cover a fifth of the screen.
-- The flow page is a 20rem column for the flow (name, description, how it works, classification, details) beside the
+- The flow page is a column of 20 to 24 rem for the flow (name, description, how it works, classification) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's
-  description and how it works, and the details and the classification follow the choice.
+  description and how it works, and the classification follows the choice. The setup's details (Deltagare) stand in
+  the working card at every width, by the speaker controls they fill in; while the page holds audio or a run they are
+  the flow's, folded on a phone or tablet.
 - Status uses icons and text together; colour never carries meaning alone.
 
 ## Colors
@@ -70,29 +79,38 @@ hierarchy comes from type size, weight and spacing, not from colour or container
 One accent and neutral surfaces, declared once for both colour modes with `light-dark()`.
 
 ### Primary
-- **Eneo blue** (`#004595` / `#52B1FF`): the primary action, the selection, links and the focus ring. A deployment
-  replaces it (`ORGANIZATION_ACCENT`), at 4.5:1 or more.
+- **Eneo blue** (`#1563BC` / `#52B1FF`): the primary action, the selection, links, the focus ring, the `accent` icon
+  tiles and the wash at the page's head. A deployment replaces it (`ORGANIZATION_ACCENT`), at 4.5:1 or more on every
+  ground, its own wash included.
 
 ### Neutral
-- **Body and surface** (`#F0F0F6`/`#0E1115`, `#FBFCFF`/`#191C1F`): the page rests on the surface colour.
-- **Text** (`#1B1B1F`/`#DFE3E8`, secondary `#454650`/`#A5ACB6`).
-- **Borders** (`#1B1B1F1A`; a control's edge `#85868F`/`#626972`, 3:1).
+- **Body, surface and card** (`#F4F7FB`/`#070C16`, `#FFFFFF`/`#0B1322`, `#FFFFFF`/`#0F1828`): the page rests on the
+  body colour; the bar is the surface; cards are white. In dark mode a surface lightens as it rises.
+- **Text** (`#141A26`/`#E4E9F0`, secondary `#4F5A6B`/`#9AA8BC`).
+- **Borders** (a hairline `rgba(20,40,80,.08)`; a control's edge `#758093`/`#6E7E96`, 3:1 on every ground).
+
+### Categorical hues
+- web-next's purple, teal and green, as a tile's tint and icon (`components/IconTile.tsx`), and its yellow for "Osäkert
+  förslag". A hue says what a thing is (purple a document, teal a file, green a success), never a hash of its name.
 
 ### Domain colours (`styles/globals.css`)
-- The recording dot, never the error red; six speaker tints, none the brand's blue; the review mark and the done green.
+- The recording dot, never the error red; six speaker colours (web-next's purple, teal, amber, rose and green, then
+  olive), none the brand's blue; the review mark and the done green; the sunken well.
 
 ## Typography
 
-**Body Font:** system-ui with platform fallbacks; scale base 16 px, ratio 1.2.
+**Body Font:** Figtree (bundled, same-origin) with platform fallbacks; scale base 16 px, ratio 1.2.
 
-- **Headline** (600, 28 px): the flow's name and a state's heading (h1).
-- **Title** (600, 23 px / 19 px): h2 section headings ("Hur vill du lägga till ljudet?", "Tidigare körningar"). A
+- **Display** (700, 28 to 40 px fluid, −0.02 em): an arrival's title ("Välj ett flöde", the flow's name, the sign-in).
+- **Headline** (700, 28 px, −0.01 em): a state's heading (h1).
+- **Title** (700, 23 px; h3 600, 19 px): h2 section headings ("Hur vill du lägga till ljudet?", "Tidigare körningar"). A
   heading's look follows its level in the outline: an h3 that says it is an h2 (`aria-level`) reads as an h3 in some
   assistive technology.
 - **Body** (400, 16 px, 1.5).
 - **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions. What has a consequence
-  (the review's deadline and what to do) is body text in the secondary colour, never a footnote. Nothing read is set
-  below 14 px; 11 px is the speaker marks' numerals only.
+  (the review's deadline and what to do, what Skapa dokument does to a recording, that a page closed during an upload
+  stops it) is body text in the secondary colour, never a footnote. Nothing read is set below 14 px; 11 px is the
+  speaker marks' numerals only. A field's words wrap with no word alone on their last line (`text-wrap: pretty`).
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
 A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone, and a long
@@ -110,33 +128,43 @@ the setup's form included, is as wide as its column, so each ends at the same ed
 column with its prose capped at the reading measure, and the text review keeps a reading column (672 px). From 1024 px the transcript's card of the result and the review stands
 beside the heading from the page's top, keeps to the window as the page scrolls and is as tall as the window below the
 bar (`--view-fit-height`, FlowFrame) less a gutter, so its player is in view before anything is scrolled. The flow's
-column is the same in every state: from 1024 px its name is the headline's size also where a run's card holds the
-page's heading. A row that holds a field and a button
-measures itself (a container query at 36 rem): the field fills the row below it, the two stand beside each other from
-it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
-inside a group, 8 px between a label and its control. A control that pairs a label with a switch is no wider than the
-microphone row (36 rem): across a laptop's column the two would stand 800 px apart. The recording's stage fills the
+column is the same in every state: its name is the display title, also where a run's card holds the page's heading
+(sending, progress, failure), where it is words at that size rather than a heading. A recording's page starts as far
+under the bar as every other view, so the flow's name stays where it is when a recording starts and stops. A row that
+holds a control and what it drives measures itself (a container query at 30 rem): the microphone's test and its level
+stand beside each other from it, each takes the row below it. Section rhythm uses the spacing tokens: 24 px between a
+card's sections (the working card's too, so the setup's action is on a laptop's first screen), 16 px
+inside a group, 8 px between a label and its control. A control that pairs a label with a switch is as wide as the working
+card's content, so it ends where the ways in and the microphone's well end. The recording's stage fills the
 window's height up to 44 rem, and its bar follows it: a window-high card around one clock is empty on a 4K display.
 Controls a finger presses stand at least 8 px apart (WCAG 2.5.8 asks 24 px targets; the house asks 44 px and room
 between them): chips, a passage's name and time, a file's actions, the player's tools.
 
 ## Elevation & Depth
 
-Flat. Depth is tonal: bordered containers (12 px radius) on the surface colour. Shadows appear only on overlays
-(menus, popovers, dialogs) from the design system.
+White cards on the tinted ground carry the low shadow (`--shadow-low`); a muted card inside one is not lifted again.
+Rows inside a card never lift; they tint on hover. Menus, popovers and dialogs keep the medium and high shadows. In dark
+mode a card has a one-pixel rim of light instead of a heavier shadow. Wells are sunken: the microphone's a lower colour
+and a hairline, as its controls want an edge; a run's steps the lower colour alone, so they do not read as a card in the
+card. A card is never drawn inside another: in the working card the classification is its tile and words alone.
 
 ## Shapes
 
-Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders are `var(--border-width)`.
+Concentric: cards 16 px, a row or well inside a card 12 px, controls 10 px, tiles 6 or 10 px; pills, avatars and
+switches round. One-pixel borders are `var(--border-width)`.
 
 ## Components
 
 ### Buttons
-- **Primary:** accent fill, 48 px for the one action a screen exists for, the middle size in a review's decision;
+- **Primary:** in light mode the accent deepened toward its start, with a soft glow of the accent; in dark mode a flat
+  accent fill. Disabled is flat. 48 px for the one action a screen exists for, the middle size in a review's decision;
   labels wrap instead of truncating. A dialog has one too: what else stays in reach in it (a recording's Pausa and
   Stoppa while the login is renewed) is secondary.
-- **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
-- **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning).
+- **Secondary:** outlined, never a grey slab: the card's colour inside a control's edge, for side actions (Testa
+  mikrofonen, Öppna, Spara ljudfil, Dela). Disabled keeps a hairline and the disabled text.
+- **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning). A
+  ghost button that starts or ends a row keeps its padding outside the column: its icon or its words stand on the
+  content's edge, where the heading or the field above starts or ends.
 - **Decisions** (a review's Avvisa and its approval, a ready recording's Fortsätt spela in and Skapa dokument, a
   dialog's Avbryt and Spara): one row at the end of their space, the main action last; up to 640 px wide a stack across
   the whole width, the main action on top and first for the keyboard (`components/ActionRow.tsx`, as Astryx's alert
@@ -155,13 +183,16 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Navigation
 - The header has one persistent “Alla flöden” link in the navigation group. It names its destination; leaving unsent work uses the existing leave question.
-- The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow in its own first line (the review's "Väntar på din granskning", the result's date line).
+- The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow right under its heading, in the secondary colour (the result's meta line with its date, the review's own line). A review says by when right under the flow's name, in view before anything is scrolled; what to do follows, set apart.
+- An organisation's logo always stands in the bar. Its name without a logo stands on one line below 640 px, and only where the bar has room for it beside the product's name (measured, `components/Brand.tsx`): otherwise it is left out with its divider and the bar reads “Tal till text” alone. From 640 px the name takes two lines at most. The brand link names the organisation whole either way, and so does the sign-in's line under its card.
+- On a flow's page the brand stands in the bar from 768 px; on a phone the bar keeps its room for the way back and the account. While an upload is under way the page offers no way off it, and the brand alone fills the bar at every width, so the bar keeps its height and the organisation its place.
+- A pill that only says something ("Att göra", "Väntar på din granskning", "Senast använd", "Osäkert förslag") is as tall as its words at every pointer, so it never reads as a button beside one; only a removable chip is a control's height.
 
 ### Version
 - Folded under “Version” at the end of the flow list: the release (no row without one), the commit and the build time as a key-value list, then Kopiera supportinformation and the commit on GitHub. Not in the account menu, whose rows fill Astryx's 300 px menu on a touch screen.
 
 ### Steps
-- A run's steps say their state in words; the step under way has the accent bar and the spinner, a finished one its check and the plain track.
+- A run's steps say their state in words and an icon, without a bar: the step under way has the spinner, a finished one its check, a failed one its cross.
 - A failed run's note is red only when nothing the person can do mends it: a failure Försök igen may mend, and a
   recording or file the flow cannot take, are a warning; a stopped run is information.
 
@@ -172,12 +203,23 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   that the test sound is neither recorded nor sent; while the browser asks for the microphone the test can already be
   stopped, and after a moment it says where the question is. A microphone that goes quiet (muted) or away during the test
   no longer counts as heard.
-- What appears when a control is pressed has its place from the first draw: the microphone test's level line rests until the test starts, and its button keeps one width for both of its words, so nothing under them moves.
-- The classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}", above the
-  setup's primary action, and docked with it on a phone. The card with the organisation's description stays with the flow.
-  A flow whose result goes on to a receiver says so there too, and above the recording's Skapa dokument.
-- In one column the flow's details follow the choice of way in; a field being typed in when the layout changes (a tablet
-  turned) keeps the focus, and a name typed in the participants' field is kept.
+- What appears when a control is pressed has its place from the first draw: the microphone's picker spans the well, its
+  description the same words whatever the browser knows of its microphones; under it the test beside its level, which
+  rests unlit until the test starts; under them, on a line of its own, what the test says ("Testet visar här om
+  mikrofonen hör dig."). Nothing moves when a test starts or the browser names its microphones. The button keeps one
+  width for both of its words, and its icon says which it is (the microphone, a stop); on a phone it takes the row, as
+  the phone's other actions do.
+- On a phone the classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}",
+  docked with the primary action. From 768 px its own note is in view beside the action instead: the flow's column from a
+  laptop's width, the working card's end before it. A flow whose result goes on to a receiver says so above the setup's
+  action, and above the recording's Skapa dokument.
+- The recordings to go on with or send stand above the working card, a card of their own, never in it, with the working
+  card's padding, so the two share their content's edge. On a phone their card has no tile: its heading, its words and
+  its actions share one edge.
+- The flow's details follow the choice of way in, in the working card at every width: a field being typed in when the
+  layout changes (a tablet turned) does not move. A name typed in the participants' field is kept when the field goes
+  (a recording started). Its Lägg till is one piece with the field and off until a name is typed; off, it keeps the
+  field's edge, so the two still read as one control.
 
 ### How it works
 - "Så fungerar det" under the flow's description: the steps a run takes the person through, said only as the run contract
@@ -185,7 +227,10 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
   under its own heading; below, one folded row like the details' fold, so the ways in stay on the first screen.
 
 ### Recording notices
-- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
+- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma.
+- Pinned on a short screen, the controls' card stands a gutter above the window's edge. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
+- From 768 px Pausa and Stoppa are the stage card's footer, at the middle of it (25 rem), with one hairline between the
+  stage and them.
 
 ### Strömma for a room
 - "Visa i helskärm" at the live sheet's head puts the recording's section (the sheet and the bar with Pausa and Stoppa)
@@ -202,11 +247,13 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 - Esc or "Lämna helskärm" brings the page back, and the room view ends with the recording.
 
 ### Files
-- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first. A row too short for the name and its actions puts the actions under the name, never a name of three lines between them.
+- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, after opening the file (an outlined icon) and Dela, all as tall as each other, and above the document's text when the text comes first. A row too short for the name and its actions puts the actions under the name, at the row's end as beside it, never a name of three lines between them.
 
 ### Transcript
-- The transcript's Kopiera and Ladda ner som text stand beside its heading where the row has room and fold into one
-  "Fler alternativ" menu where it has not, as the document's own actions do. Passages stand 32 px apart.
+- The transcript's Kopiera and Ladda ner som text stand at the end of its heading's row where they fit on one line and
+  fold into one "Fler alternativ" menu where they do not, as the document's own actions do. Below 1024 px the tab names
+  the transcript, and its heading is there only for a screen reader: the two then join the first row of the transcript's
+  tools, after "Namnge talare" where the speakers can be named, so no row holds them alone. Passages stand 32 px apart.
 - Where the speakers can be named (a finished run whose transcript can be corrected) they have a row of their own above
   the filter, at every width: "Talare" at its start, which is also the filter's name (the chips' group, or below 1024 px
   the list that stands in for more than five chips), and "Namnge talare" at its end, a ghost button with its icon as the
@@ -220,9 +267,11 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
   column.
 - The player docks to the text. On a phone it is under the text and stays at the window's bottom, where a thumb reaches
-  it. From 640 to 1023 px, where the page scrolls and a bottom player would cover the passages the window starts on, it
-  stands above the text under the tools and stays at the window's top. From 1024 px it sits at the bottom of the
-  transcript's card, and on a screen under 600 px high at the text's end.
+  it, one row high where it can be: its speed stands in the row, and under 400 px, where the position slider would keep
+  less than 120 px beside it, on a row above it. From 640 to 1023 px, where the
+  page scrolls and a bottom player would cover the passages the window starts on, it stands above the text under the
+  tools and stays at the window's top. From 1024 px it sits at the bottom of the transcript's card, and on a screen under
+  600 px high at the text's end.
 - With a mouse, one quiet line above the player's row says its keys: "Tangenter: K spelar och pausar, J och L hoppar 10
   sekunder." Where the line is, K, J and L work from anywhere on the page. A touch screen has no line, so there they act
   only with the focus in the player (a keyboard of the tablet's own). The line ends with "Stäng av", set in the line's

@@ -16,3 +16,8 @@
 .finishing {
   padding-block-start: var(--spacing-2);
 }
+
+/* The quiet ways start with a ghost button: its own padding would set its icon in from the edge the card's words share. */
+.quiet {
+  margin-inline-start: calc(-1 * var(--spacing-3));
+}

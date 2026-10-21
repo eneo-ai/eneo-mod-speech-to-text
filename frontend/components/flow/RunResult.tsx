@@ -1,5 +1,5 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Mic, Pause, Play, Plus } from "lucide-react";
+import { CheckCircle2, Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -23,6 +23,7 @@ import { fileText, runFileName, transcriptFileName, type ResultFileView } from "
 import { ofContractVersion, type StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
+import { IconTile } from "@/components/IconTile";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { hasNamesDraft } from "@/components/SpeakerNamingDialog";
 import { correctionsNewerThanDocument, namesOnly, regenerationOffer, savedTranscriptCorrections } from "@/lib/regenerate";
@@ -133,6 +134,7 @@ export function RunResult({
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaQuery(LAPTOP, true);
+  const metaStacked = useMediaQuery("(max-width: 639.98px)");
   // One playback for the page: the transcript's player, and the pause beside the document on a phone.
   const sources = useMemo(
     () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
@@ -164,6 +166,78 @@ export function RunResult({
     focusTab.current = false;
   }, [view, tabs]);
 
+  // Starting over is the head's quiet way: a ghost button, under the meta line below a laptop's width, its icon on the
+  // edge the tile and the heading share.
+  const newRun = (
+    <Button
+      variant="ghost"
+      icon={<Icon icon={audio ? Mic : Plus} />}
+      label={audio ? "Ny inspelning" : "Ny körning"}
+      className={wide ? styles.quietEnd : styles.quietStart}
+      onClick={() => leaveFirst(onNewRecording)}
+    />
+  );
+
+  // Only what the run has: the flow's name at every width (the top bar holds none) and when it was made, beside each other
+  // where the line has room (a line each on a phone), then the details it was started with on a line of their own, so
+  // their length never breaks the first line. Each a paragraph, so they are read apart.
+  const flow = (
+    <Text as="p" color="secondary">
+      {flowName}
+    </Text>
+  );
+  const made = finished && (
+    <Text as="p" color="secondary" hasTabularNumbers>
+      Skapad {formatRelativeDate(finished)}
+      {fromReviewed && " från den rättade transkriberingen"}
+    </Text>
+  );
+  const title = (
+    <HStack gap={3} vAlign={metaStacked ? "start" : "center"}>
+      {!empty && <IconTile icon={CheckCircle2} hue="green" />}
+      <Heading level={1} ref={heading} tabIndex={-1}>
+        {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
+      </Heading>
+    </HStack>
+  );
+  const head = (
+    <VStack gap={2}>
+      {/* From a laptop's width "Ny inspelning" shares the title's row alone, centred on it, so the lines under it have the
+          column's width. A wrapped title on a phone keeps its tile at its first line. */}
+      {wide ? (
+        <HStack hAlign="between" vAlign="center" gap={3}>
+          {title}
+          {newRun}
+        </HStack>
+      ) : (
+        title
+      )}
+      {metaStacked ? (
+        <VStack gap={0.5}>
+          {flow}
+          {made}
+        </VStack>
+      ) : (
+        <HStack gap={1} vAlign="start" wrap="wrap">
+          {flow}
+          {made && (
+            <HStack gap={1} vAlign="start">
+              <Text color="secondary" aria-hidden>
+                ・
+              </Text>
+              {made}
+            </HStack>
+          )}
+        </HStack>
+      )}
+      {detailsLine && (
+        // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
+        <Text as="p" color="secondary" maxLines={2}>
+          {detailsLine}
+        </Text>
+      )}
+    </VStack>
+  );
   const documentColumn = (
     <>
       {note && <Text as="p">{note}</Text>}
@@ -207,6 +281,7 @@ export function RunResult({
       playback={playback}
       naming={naming}
       ownerId={user.id}
+      headingHidden={tabs}
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side
@@ -236,30 +311,14 @@ export function RunResult({
       <Grid columns={sideBySide ? 13 : 1} columnGap={8} className={styles.columns}>
         <GridSpan columns={sideBySide ? 7 : "full"}>
           <VStack gap={6}>
-            <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
-              <VStack gap={1}>
-                <Heading level={1} ref={heading} tabIndex={-1}>
-                  {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
-                </Heading>
-                {finished && (
-                  <Text as="p" type="supporting">
-                    {/* The flow's name at every width: the top bar holds no name. */}
-                    {flowName} ·{" "}
-                    Skapad {formatRelativeDate(finished)}
-                    {fromReviewed && " från den rättade transkriberingen"}
-                  </Text>
-                )}
-                {detailsLine && (
-                  // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
-                  <Text as="p" type="supporting" maxLines={2}>
-                    {detailsLine}
-                  </Text>
-                )}
+            {wide ? (
+              head
+            ) : (
+              <VStack gap={2}>
+                {head}
+                <HStack>{newRun}</HStack>
               </VStack>
-              <HStack vAlign="center" gap={2}>
-                <Button variant="ghost" icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
-              </HStack>
-            </HStack>
+            )}
             <VStack gap={4}>
               {tabs && (
                 <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>

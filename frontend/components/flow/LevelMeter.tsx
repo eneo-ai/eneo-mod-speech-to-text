@@ -100,11 +100,14 @@ export function LevelMeter({
   stream,
   bars,
   variant,
+  even = false,
   className,
 }: {
   stream: MediaStream | null;
   bars: number;
   variant: "steps" | "wave";
+  /** Steps of one height (the container's), lit from the start: a level across a row, rather than a rising staircase. */
+  even?: boolean;
   className?: string;
 }) {
   const elements = useRef<Array<HTMLSpanElement | null>>([]);
@@ -138,7 +141,7 @@ export function LevelMeter({
           }}
           data-lit="false"
           className={styles.bar}
-          style={variant === "steps" ? { height: `${40 + (60 * (index + 1)) / bars}%` } : undefined}
+          style={variant === "steps" ? { height: even ? "100%" : `${40 + (60 * (index + 1)) / bars}%` } : undefined}
         />
       ))}
     </div>

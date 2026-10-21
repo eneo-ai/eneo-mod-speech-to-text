@@ -1,7 +1,7 @@
 /**
- * The participants' field as it is laid out: "Lägg till" stands beside the input from the start and is off until a name
- * is typed, so the input keeps its width as a name comes and goes; the two are one height, and their words stand on one
- * baseline. A long name wraps inside its chip, and every chip's remove button takes a press across its whole target.
+ * The participants' field as it is laid out: "Lägg till" stands beside the input from the start, one piece with it and off
+ * until a name is typed, so the input keeps its width as a name comes and goes; the two are one height, and their words
+ * stand on one baseline. A long name wraps inside its chip, and every chip's remove button takes a press across its whole target.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "./gate";
@@ -51,6 +51,9 @@ test("Lägg till stands beside the field, level with it and off until a name is 
   const input = page.getByRole("textbox", { name: /^Deltagare/ });
   const add = page.getByRole("button", { name: "Lägg till", exact: true });
   await expect(add, "there before a name is typed, and off").toBeDisabled();
+  // The microphones are known a moment after the page shows (Chromium names its test ones), and the microphone's
+  // description above the field says what they allow: measured once they are, so only the typing could move the field.
+  await expect(page.getByRole("combobox", { name: "Mikrofon" })).toContainText("Fake Default Audio Input");
   // On a phone the field stands after the ways in, below the first screen: measured where typing in it leaves the page.
   await input.focus();
   const empty = await row(page);
@@ -105,18 +108,18 @@ test("a long name wraps inside its chip, in the field's column, and every remove
   expect(small, `remove buttons that take a press over less than ${target} px`).toEqual([]);
 });
 
-test("a name being typed when a tablet is turned (the window crosses a laptop's width) is kept, and the field keeps the focus", async ({ page }) => {
+test("a name being typed when a tablet is turned (the window crosses a laptop's width) stays in the field, which keeps the focus", async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
   await setup(page);
   const field = page.getByRole("textbox", { name: /^Deltagare/ });
   await field.fill("Anna Berg");
-  // Upright: one column, where the details follow the choice of way in.
+  // Upright: one column. The details stand in the working card at every width, so nothing moves under the typing.
   await page.setViewportSize({ width: 820, height: 1180 });
-  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(field).toHaveValue("Anna Berg");
   await expect(field).toBeFocused();
-  await field.fill("Erik Lund");
   await page.setViewportSize({ width: 1180, height: 820 });
-  await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
+  await expect(field).toHaveValue("Anna Berg");
   await expect(field).toBeFocused();
 });
 

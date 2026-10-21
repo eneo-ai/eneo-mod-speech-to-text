@@ -1,7 +1,7 @@
 - region "Ljudet":
   - status
-  - region "Preliminär text, den slutliga skapas när du är klar":
-    - heading "Preliminär text, den slutliga skapas när du är klar" [level=2]
+  - region "Preliminär text. Den slutliga texten skapas när du är klar.":
+    - heading "Preliminär text. Den slutliga texten skapas när du är klar." [level=2]
     - button "Visa i helskärm"
     - log "Preliminär text":
       - paragraph: /Välkomna till/

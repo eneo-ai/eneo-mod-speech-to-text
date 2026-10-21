@@ -50,10 +50,10 @@
 }
 
 
-/* The setup stands further from the details above it than its own parts stand apart (a section's heading starts it).
-   It is as wide as its column, as every view of the flow is: in one column the mode cards, the microphone row and the
-   action end where the participants field ends, and beside the details, from a laptop's width, where the recording's
-   stage and a run's card end. */
+/* The setup stands further from the flow above it than its own parts stand apart (a section's heading starts it). It is
+   as wide as its column, as every view of the flow is: in one column the mode cards, the microphone row and the action
+   end where the flow's own rows end, and beside the flow, from a laptop's width, where the recording's stage and a run's
+   card end. */
 .setup {
   margin-block-start: var(--spacing-4);
 }
@@ -64,21 +64,69 @@
   }
 }
 
-/* The microphone picker and its test button: beside each other where the row has room for a field's width (24 rem)
-   and the button, the picker filling the row where it has not, so that on a phone, upright or on its side, it ends
-   where the fields above it end and the button stands under it. The row measures itself; MicrophoneCheck reads the
-   variable into the Selector's width. */
-.microphoneRow {
+/* A small phone (320 × 568): the working card stands closer under the flow, so the chosen way's whole description is
+   above the dock on the first screen. */
+@media (max-width: 767.98px) and (max-height: 640px) {
+  .setup {
+    margin-block-start: var(--spacing-2);
+  }
+}
+
+/* On the narrowest phones the card's headings are a step smaller, so "Hur vill du lägga till ljudet?" keeps one line and
+   the first way in is above the dock. */
+@media (max-width: 359.98px) {
+  .setup h2 {
+    font-size: var(--text-heading-3-size);
+    line-height: var(--text-heading-3-leading);
+  }
+}
+
+/* The microphone's well, set into the card under the way that records: a sunken panel with an edge of its own, so it
+   stays apart from the card in dark mode too. It measures itself (30 rem) for the rows inside it. */
+.well {
   container-type: inline-size;
+  padding: var(--spacing-4);
+  background: var(--module-color-background-sunken);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: calc(var(--radius-container) - var(--spacing-1));
 }
 
-.microphoneRow > * {
-  --microphone-picker-width: 100%;
+@media (min-width: 768px) {
+  .well {
+    padding: var(--spacing-5);
+  }
 }
 
-@container (min-width: 36rem) {
-  .microphoneRow > * {
-    --microphone-picker-width: min(100%, 24rem);
+/* The test and its level: beside each other from 30 rem (a laptop's working card has that), the level filling what the
+   button leaves; narrower, each takes the row, the button as the phone's other actions do. */
+.test,
+.meter {
+  flex: 1 1 100%;
+}
+
+.meter {
+  justify-content: space-between;
+  block-size: var(--spacing-6);
+}
+
+.meter > * {
+  inline-size: var(--spacing-1);
+}
+
+@container (min-width: 30rem) {
+  .test {
+    flex: none;
+  }
+
+  .meter {
+    flex: 1 1 0;
+  }
+}
+
+/* Too narrow for forty bars with room between them: every other one gives way, the rest keep the level. */
+@container (max-width: 24rem) {
+  .meter > :nth-child(even) {
+    display: none;
   }
 }
 
@@ -121,14 +169,26 @@
   }
 }
 
-/* The primary action docked at the page's bottom on a phone: a bar over the region's side padding, above the safe area. */
+/* The primary action docked at the page's bottom on a phone: a white bar over the region's side padding, above the safe
+   area, lifted off the page by a soft shadow. */
 .docked {
   padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));
   border-top: var(--border-width) solid var(--color-border);
   background: var(--color-background-surface);
+  box-shadow: var(--module-shadow-dock);
 }
 
-/* Earlier runs start a section: a little further from the actions above them than the setup's parts stand apart. */
+/* Earlier runs start a section: a little further from the actions above them than the setup's parts stand apart. Their
+   rows are read, not pressed: their icons and buttons stand on the card's content edges, and the card's edge closes the
+   last one, with no rule under it. */
 .earlier {
   padding-block-start: var(--spacing-2);
+}
+
+.earlier :global(.astryx-list-item) {
+  padding-inline: 0;
+}
+
+.earlier :global(.astryx-list-item):last-child {
+  border-block-end-width: 0;
 }

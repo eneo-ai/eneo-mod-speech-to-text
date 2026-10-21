@@ -42,7 +42,7 @@ for (const [stored, system] of [["dark", "light"], ["light", "dark"], ["system",
 
 // What reads the design system's JavaScript theme (`useTheme()`: chart colours, canvas) must agree with what is
 // painted. The foundation page publishes that view in `[data-astryx-mode]` and `[data-astryx-accent]`.
-const ACCENT = { light: "#004595", dark: "#52b1ff" } as const;
+const ACCENT = { light: "#1563bc", dark: "#52b1ff" } as const;
 
 for (const [stored, system, expected] of [
   ["dark", "light", "dark"],

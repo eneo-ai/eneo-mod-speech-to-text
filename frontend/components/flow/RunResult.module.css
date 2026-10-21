@@ -62,3 +62,14 @@
   padding-block-start: var(--spacing-4);
   border-block-start: var(--border-width) solid var(--color-border);
 }
+
+/* "Ny inspelning" under the meta line below a laptop's width: a ghost button's own padding would set its icon in from the
+   edge the tile and the heading share. */
+.quietStart {
+  margin-inline-start: calc(-1 * var(--spacing-3));
+}
+
+/* From a laptop's width it stands at the head's end beside the heading, its words on one line: the heading wraps first. */
+.quietEnd {
+  flex-shrink: 0;
+}

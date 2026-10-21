@@ -46,7 +46,7 @@ export function EarlierRuns({
       <Heading level={2} id="earlier-runs">
         Tidigare körningar
       </Heading>
-      <List>
+      <List hasDividers>
         {shown.map((run) => {
           const outcome = runOutcome(run.status);
           const [glyph, color, action] = outcome
@@ -61,7 +61,7 @@ export function EarlierRuns({
               startContent={<Icon icon={glyph} color={color} />}
               endContent={
                 // The name says which run, for a screen reader that lists the buttons; the words say what it does.
-                <Button label={`${action}, körningen ${when}`} variant="secondary" data-open-run onClick={() => onOpen(run.id)}>
+                <Button label={`${action}, körningen ${when}`} variant="secondary" size="sm" data-open-run onClick={() => onOpen(run.id)}>
                   {action}
                 </Button>
               }

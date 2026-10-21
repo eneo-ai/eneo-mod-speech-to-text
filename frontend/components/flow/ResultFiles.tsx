@@ -27,6 +27,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
 import { ProblemAlert } from "./ProblemAlert";
+import { IconTile } from "@/components/IconTile";
 import styles from "./ResultFiles.module.css";
 import { pressing, savingWay, useFileAccess, waiting, type FileAccess } from "./useFileAccess";
 
@@ -91,15 +92,16 @@ export function ResultFiles({
             const download = runArtifactUrl(flowId, runId, file.fileId);
             return (
               <HStack key={file.fileId} as="li" wrap="wrap" vAlign="center" gap={2}>
-                <Item className={styles.file} startContent={<Icon icon={FILE_ICONS[file.kind]} />} label={<Text><FileName name={file.name} /></Text>} description={file.meta} />
+                <Item className={styles.file} startContent={<IconTile icon={FILE_ICONS[file.kind]} size="sm" />} label={<Text><FileName name={file.name} /></Text>} description={file.meta} />
                 {file.available && (
-                  <HStack wrap="wrap" gap={2} paddingInline={2} paddingBlockEnd={2}>
+                  <HStack wrap="wrap" gap={2}>
                     {file.previewable && (
                       <OpenFile file={file} url={runArtifactUrl(flowId, runId, file.fileId, true)} download={download} access={access} />
                     )}
                     <Button
                       as={DownloadLink}
                       href={download}
+                      size="sm"
                       icon={<Icon icon={Download} />}
                       label={`Ladda ner ${file.name}`}
                       onClick={pressing(access, file.fileId, savingWay(file))}
@@ -138,12 +140,16 @@ export function OpenFile({
   url,
   download,
   name = false,
+  iconOnly = false,
   access,
 }: {
   file: ResultFileView;
   url: string;
   download: string;
   name?: boolean;
+  /** An outlined icon in a row of actions (the document's file from a laptop's width), named by the file. No tooltip: one
+   *  shown on keyboard focus would lie over the button it names. */
+  iconOnly?: boolean;
   /** How the file is reached: asked for before the dialog opens or the tab is sent to it. */
   access: FileAccess;
 }) {
@@ -168,7 +174,21 @@ export function OpenFile({
 
   const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file.fileId, "tab"), ...waiting(access, file.fileId, "tab") } as const;
   const openDialog = () => access.start(file.fileId, { open: () => setOpen(true) });
-  const opener = !roomy ? (
+  const opener = iconOnly ? (
+    roomy ? (
+      <Button
+        ref={trigger}
+        isIconOnly
+        aria-haspopup="dialog"
+        icon={<Icon icon={Eye} />}
+        label={`Öppna ${file.name}`}
+        onClick={openDialog}
+        {...waiting(access, file.fileId, "open")}
+      />
+    ) : (
+      <Button ref={trigger} {...newTab} isIconOnly icon={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`} />
+    )
+  ) : !roomy ? (
     name ? (
       <Button ref={trigger} {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
         <FileName name={file.name} />

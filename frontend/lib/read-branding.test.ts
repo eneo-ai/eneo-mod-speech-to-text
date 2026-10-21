@@ -8,7 +8,7 @@ installDom();
 
 const SIZE = { width: 160, height: 40 };
 const ORGANIZATIONS = {
-  default: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null },
+  default: { name: "Eneo", logo: "default", dark_logo: false, logo_sizes: null },
   named: { name: "Region Västernorrland", logo: null, dark_logo: false, logo_sizes: null },
   custom: { name: "Umeå kommun", logo: "custom", dark_logo: false, logo_sizes: { light: SIZE, dark: null } },
   both: { name: "Umeå kommun", logo: "custom", dark_logo: true, logo_sizes: { light: SIZE, dark: { width: 1, height: 1 } } },

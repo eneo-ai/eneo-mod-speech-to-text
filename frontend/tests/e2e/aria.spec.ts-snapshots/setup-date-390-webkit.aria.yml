@@ -12,12 +12,12 @@
       - text: Spela in Spela in nu och transkribera efteråt. Ljudet stannar på enheten tills du skickar det.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Mikrofon Testa innan mötet börjar. Det du säger under testet spelas inte in och skickas inte vidare.
+    - text: Mikrofon Testa mikrofonen före mötet. Testet spelas inte in och skickas inte.
     - combobox "Mikrofon"
     - button "Testa mikrofonen":
       - text: ""
       - status
-    - status
+    - status: Testet visar här om mikrofonen hör dig.
     - text: Mötesdatum Valfritt
     - button "Öppna kalender"
     - textbox "Mötesdatum Valfritt"

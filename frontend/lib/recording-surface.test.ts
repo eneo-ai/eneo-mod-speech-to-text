@@ -184,7 +184,7 @@ test("the live sheet says the speakers come when you are done, only when the flo
   const heading = async (speakers: boolean) =>
     (await mount(createElement(LiveSheet, { live, recorder: "recording", speakers }))).container.querySelector("h2")?.textContent;
   assert.equal(await heading(true), "Preliminär text. Talare och den slutliga texten kommer när du är klar.");
-  assert.equal(await heading(false), "Preliminär text, den slutliga skapas när du är klar");
+  assert.equal(await heading(false), "Preliminär text. Den slutliga texten skapas när du är klar.");
 });
 
 

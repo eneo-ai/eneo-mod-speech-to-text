@@ -27,18 +27,27 @@ test("the frame is the shell's one main region, with the page's skip link and a 
   assert.ok(view.container.querySelector('[data-testid="skip-to-content"]'), "the skip link comes with the shell");
 });
 
-test("the way back is one link named Alla flöden in the bar at every width, the brand a second one, with the account; locked, the page offers none", async () => {
+test("the way back is one link named Alla flöden in the bar at every width, the brand a second one from a tablet's width, with the account; locked, the page offers none and the brand stands alone", async (t) => {
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const exits = (container: HTMLElement) => ({
     back: [...container.querySelectorAll('[role="banner"] a[href="/flows"]')].filter((a) => a.textContent?.trim() === "Alla flöden").length,
     links: container.querySelectorAll('a[href="/flows"]').length,
     account: [...container.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto")).length,
+    brand: (container.querySelector('[role="banner"]')?.textContent ?? "").includes("Tal till text"),
   });
+  const phone = await mount(await signedIn(createElement(FlowFrame, { children: null })));
+  assert.deepEqual(exits(phone.container), { back: 1, links: 1, account: 1, brand: false }, "on a phone the bar keeps its room for the way back");
+  await phone.unmount();
+  const lockedPhone = await mount(await signedIn(createElement(FlowFrame, { locked: true, children: null })));
+  assert.deepEqual(exits(lockedPhone.container), { back: 0, links: 0, account: 0, brand: true }, "while the page waits the brand fills the bar");
+  await lockedPhone.unmount();
+  const fake = window.matchMedia;
+  t.mock.method(window, "matchMedia", (query: string) => ({ ...fake(query), matches: query === "(min-width: 768px)" }));
   const open = await mount(await signedIn(createElement(FlowFrame, { children: null })));
-  assert.deepEqual(exits(open.container), { back: 1, links: 2, account: 1 }, "the brand beside it leads to the flows too");
+  assert.deepEqual(exits(open.container), { back: 1, links: 2, account: 1, brand: true }, "the brand beside it leads to the flows too");
   await open.unmount();
   const locked = await mount(await signedIn(createElement(FlowFrame, { locked: true, children: null })));
-  assert.deepEqual(exits(locked.container), { back: 0, links: 0, account: 0 });
+  assert.deepEqual(exits(locked.container), { back: 0, links: 0, account: 0, brand: true });
 });
 
 test("the bar holds no flow name, so it stays one line: a view with no aside names the flow in its own first lines", async () => {
@@ -88,7 +97,10 @@ test("the folded details are one named button; closed they stay in the page, so 
   }
   const view = await mount(await signedIn(createElement(Folded)));
   const fold = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-expanded") !== null)!;
-  assert.equal(fold.textContent, "Uppgifter, Deltagare: Anna", "the words the eye reads, with what the line is for");
+  const heard = fold.cloneNode(true) as Element;
+  heard.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
+  assert.equal(heard.textContent?.trim(), "Uppgifter, Deltagare: Anna", "its name: what the line is for, the word heard once");
+  assert.equal(fold.querySelector("[aria-hidden]")?.textContent, "Uppgifter", "the eye reads what the line is for too");
   assert.equal(fold.getAttribute("aria-expanded"), "false");
   const field = view.container.querySelector<HTMLInputElement>('input[aria-label="Deltagare"]');
   assert.ok(field?.isConnected && field.value === "Anna", "mounted while folded");

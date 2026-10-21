@@ -17,32 +17,32 @@ export const eneoTheme = {
   name: 'eneo',
   __built: true,
   tokens: {
-    "--color-accent": "light-dark(#004595, #52B1FF)",
-    "--color-accent-muted": "light-dark(color-mix(in srgb, var(--color-accent) 20%, transparent), color-mix(in srgb, var(--color-accent) 25%, transparent))",
-    "--color-on-accent": "light-dark(#FFFFFF, #0B1118)",
-    "--color-neutral": "light-dark(#1B1B1F1A, #DFE3E833)",
-    "--color-background-surface": "light-dark(#FBFCFF, #191C1F)",
-    "--color-background-body": "light-dark(#F0F0F6, #0E1115)",
-    "--color-overlay": "light-dark(#1B1B1F66, #191C1F99)",
-    "--color-overlay-hover": "light-dark(#1B1B1F0D, #FFFFFF0D)",
-    "--color-overlay-pressed": "light-dark(#1B1B1F1A, #FFFFFF1A)",
-    "--color-background-muted": "light-dark(#1B1B1F0D, #191C1F80)",
-    "--color-text-primary": "light-dark(#1B1B1F, #DFE3E8)",
-    "--color-text-secondary": "light-dark(#454650, #A5ACB6)",
-    "--color-text-disabled": "light-dark(#8F909B, #585F68)",
+    "--color-accent": "light-dark(#1563BC, #52B1FF)",
+    "--color-accent-muted": "light-dark(color-mix(in srgb, var(--color-accent) 10%, transparent), color-mix(in srgb, var(--color-accent) 16%, transparent))",
+    "--color-on-accent": "light-dark(#FFFFFF, #06101C)",
+    "--color-neutral": "light-dark(rgba(20, 40, 80, 0.07), rgba(255, 255, 255, 0.08))",
+    "--color-background-surface": "light-dark(#FFFFFF, #0B1322)",
+    "--color-background-body": "light-dark(#F4F7FB, #070C16)",
+    "--color-overlay": "light-dark(rgba(15, 18, 23, 0.4), rgba(0, 0, 0, 0.6))",
+    "--color-overlay-hover": "light-dark(rgba(20, 40, 80, 0.045), rgba(255, 255, 255, 0.05))",
+    "--color-overlay-pressed": "light-dark(rgba(20, 40, 80, 0.09), rgba(255, 255, 255, 0.1))",
+    "--color-background-muted": "light-dark(#EEF2F8, #16213A)",
+    "--color-text-primary": "light-dark(#141A26, #E4E9F0)",
+    "--color-text-secondary": "light-dark(#4F5A6B, #9AA8BC)",
+    "--color-text-disabled": "light-dark(#98A1AF, #56637A)",
     "--color-text-accent": "var(--color-accent)",
     "--color-icon-accent": "var(--color-accent)",
-    "--color-icon-primary": "light-dark(#1B1B1F, #DFE3E8)",
-    "--color-icon-secondary": "light-dark(#454650, #A5ACB6)",
-    "--color-icon-disabled": "light-dark(#8F909B, #585F68)",
-    "--color-background-card": "light-dark(#FBFCFF, #191C1F)",
-    "--color-background-popover": "light-dark(#FBFCFF, #2E3135)",
-    "--color-background-inverted": "light-dark(#1B1B1F, #F9FCFF)",
-    "--color-border": "light-dark(#1B1B1F1A, #EDF1F61A)",
-    "--color-border-emphasized": "light-dark(#85868F, #626972)",
-    "--color-skeleton": "light-dark(#A9AAB5, #414750)",
-    "--color-track": "light-dark(#A9AAB5, #414750)",
-    "--color-shadow": "light-dark(#0000001A, #0000004D)",
+    "--color-icon-primary": "light-dark(#141A26, #E4E9F0)",
+    "--color-icon-secondary": "light-dark(#4F5A6B, #9AA8BC)",
+    "--color-icon-disabled": "light-dark(#98A1AF, #56637A)",
+    "--color-background-card": "light-dark(#FFFFFF, #0F1828)",
+    "--color-background-popover": "light-dark(#FFFFFF, #16213A)",
+    "--color-background-inverted": "light-dark(#141A26, #E4E9F0)",
+    "--color-border": "light-dark(rgba(20, 40, 80, 0.08), rgba(255, 255, 255, 0.07))",
+    "--color-border-emphasized": "light-dark(#758093, #6E7E96)",
+    "--color-skeleton": "light-dark(#E6E9EE, #242A32)",
+    "--color-track": "light-dark(#DDE1E7, #2C323B)",
+    "--color-shadow": "light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.4))",
     "--color-tint-hover": "light-dark(black, white)",
     "--font-size-4xs": "0.375rem",
     "--font-size-3xs": "0.5rem",
@@ -57,10 +57,10 @@ export const eneoTheme = {
     "--font-size-4xl": "2.5rem",
     "--font-size-5xl": "3rem",
     "--text-heading-1-size": "var(--font-size-2xl)",
-    "--text-heading-1-weight": "var(--font-weight-semibold)",
+    "--text-heading-1-weight": "var(--font-weight-bold)",
     "--text-heading-1-leading": "1.4286",
     "--text-heading-2-size": "var(--font-size-xl)",
-    "--text-heading-2-weight": "var(--font-weight-semibold)",
+    "--text-heading-2-weight": "var(--font-weight-bold)",
     "--text-heading-2-leading": "1.3913",
     "--text-heading-3-size": "var(--font-size-lg)",
     "--text-heading-3-weight": "var(--font-weight-semibold)",
@@ -81,7 +81,7 @@ export const eneoTheme = {
     "--text-large-weight": "var(--font-weight-semibold)",
     "--text-large-leading": "1.4737",
     "--text-label-size": "var(--font-size-base)",
-    "--text-label-weight": "var(--font-weight-medium)",
+    "--text-label-weight": "var(--font-weight-semibold)",
     "--text-label-leading": "1.5",
     "--text-code-size": "var(--font-size-base)",
     "--text-code-weight": "var(--font-weight-normal)",
@@ -95,12 +95,33 @@ export const eneoTheme = {
     "--text-display-2-size": "var(--font-size-4xl)",
     "--text-display-2-weight": "var(--font-weight-normal)",
     "--text-display-2-leading": "1.3",
-    "--text-display-3-size": "var(--font-size-3xl)",
-    "--text-display-3-weight": "var(--font-weight-normal)",
-    "--text-display-3-leading": "1.2121",
-    "--font-family-body": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
-    "--font-family-heading": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+    "--text-display-3-size": "clamp(1.75rem, 1.35rem + 1.6vw, 2.5rem)",
+    "--text-display-3-weight": "var(--font-weight-bold)",
+    "--text-display-3-leading": "1.15",
+    "--font-family-body": "\"Figtree Variable\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+    "--font-family-heading": "\"Figtree Variable\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
     "--font-family-code": "ui-monospace, \"SFMono-Regular\", Consolas, monospace",
+    "--color-success": "light-dark(#1E7A32, #6CC382)",
+    "--color-success-muted": "light-dark(#E2F2E5, #16291C)",
+    "--color-warning": "light-dark(#8A5A00, #E9B949)",
+    "--color-warning-muted": "light-dark(#FCF0D4, #2E2614)",
+    "--color-error-muted": "light-dark(#FBE5E6, #341A1E)",
+    "--color-icon-purple": "light-dark(#6D46B8, #B99AF5)",
+    "--color-background-purple": "light-dark(#EEE7FA, rgba(185, 154, 245, 0.16))",
+    "--color-icon-teal": "light-dark(#0B6E69, #52D1C6)",
+    "--color-background-teal": "light-dark(#DCF2EF, rgba(82, 209, 198, 0.14))",
+    "--color-icon-green": "light-dark(#1E7A32, #6CC382)",
+    "--color-background-green": "light-dark(#E2F2E5, rgba(108, 195, 130, 0.15))",
+    "--color-text-yellow": "light-dark(#8A5A00, #E9B949)",
+    "--color-icon-yellow": "light-dark(#8A5A00, #E9B949)",
+    "--color-background-yellow": "light-dark(#FCF0D4, rgba(233, 185, 73, 0.15))",
+    "--radius-inner": "0.375rem",
+    "--radius-element": "0.625rem",
+    "--radius-container": "1rem",
+    "--radius-page": "1.25rem",
+    "--shadow-low": "0 1px 2px light-dark(rgba(16, 40, 80, 0.04), rgba(0, 0, 0, 0.3)), 0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), rgba(0, 0, 0, 0.45)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.05))",
+    "--shadow-med": "0 2px 4px light-dark(rgba(16, 40, 80, 0.05), rgba(0, 0, 0, 0.35)), 0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), rgba(0, 0, 0, 0.55)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07))",
+    "--shadow-high": "0 4px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.45)), 0 24px 56px light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.6)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.09))",
     "--color-on-error": "light-dark(#FFFFFF, #1A0A0C)",
     "--size-element-lg": "48px",
     "--color-error": "light-dark(#AA181D, #F47B7F)"
@@ -111,7 +132,8 @@ export const eneoTheme = {
         "fontFamily": "var(--font-family-heading)",
         "fontSize": "var(--text-heading-1-size)",
         "fontWeight": "var(--text-heading-1-weight)",
-        "lineHeight": "var(--text-heading-1-leading)"
+        "lineHeight": "var(--text-heading-1-leading)",
+        "letterSpacing": "-0.01em"
       },
       "level:2": {
         "fontFamily": "var(--font-family-heading)",
@@ -156,7 +178,8 @@ export const eneoTheme = {
       "type:display-3": {
         "fontFamily": "var(--font-family-heading)",
         "fontSize": "var(--text-display-3-size)",
-        "lineHeight": "var(--text-display-3-leading)"
+        "lineHeight": "var(--text-display-3-leading)",
+        "letterSpacing": "-0.02em"
       },
       "base": {
         "overflowWrap": "anywhere",
@@ -210,6 +233,35 @@ export const eneoTheme = {
       },
       "base": {
         "overflowWrap": "anywhere"
+      }
+    },
+    "app-shell-header": {
+      "base": {
+        "backgroundColor": "var(--color-background-surface)"
+      }
+    },
+    "card": {
+      "base": {
+        "boxShadow": "var(--shadow-low)"
+      },
+      "variant:muted": {
+        "boxShadow": "none"
+      }
+    },
+    "banner": {
+      "base": {
+        "borderRadius": "calc(var(--radius-container) - var(--spacing-1))"
+      }
+    },
+    "field": {
+      "base": {
+        "textWrap": "pretty"
+      }
+    },
+    "field-label": {
+      "base": {
+        "fontWeight": "var(--font-weight-semibold)",
+        "color": "var(--color-text-primary)"
       }
     },
     "text-input": {
@@ -317,20 +369,21 @@ export const eneoTheme = {
     },
     "step-bar": {
       "base": {
-        ":is([data-progress=\"completed\"] > *)::before": {
-          "backgroundColor": "transparent"
-        }
+        "display": "none"
       }
     },
     "token": {
       "base": {
         "overflow": "visible",
         "height": "auto",
-        "minHeight": "calc(var(--size-element-md) - var(--spacing-2))"
+        ":has(button)": {
+          "minHeight": "calc(var(--size-element-md) - var(--spacing-2))"
+        }
       },
       "color:blue": {
         "backgroundColor": "var(--color-accent-muted)",
-        "color": "var(--color-text-primary)"
+        "color": "var(--color-text-primary)",
+        "borderRadius": "var(--radius-full)"
       }
     },
     "slider-control": {
@@ -352,13 +405,19 @@ export const eneoTheme = {
         }
       }
     },
+    "radio-list": {
+      "orientation:vertical": {
+        "gap": "var(--spacing-3)"
+      }
+    },
     "radio-list-item": {
       "base": {
         "boxSizing": "border-box",
-        "paddingBlock": "var(--spacing-2)",
-        "paddingInline": "var(--spacing-3)",
+        "paddingBlock": "var(--spacing-4)",
+        "paddingInline": "var(--spacing-4)",
         "border": "var(--border-width) solid var(--color-border-emphasized)",
-        "borderRadius": "var(--radius-container)",
+        "borderRadius": "calc(var(--radius-container) - var(--spacing-1))",
+        "alignItems": "flex-start",
         ":has(:focus-visible)": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "var(--focus-outline-offset)"
@@ -386,6 +445,33 @@ export const eneoTheme = {
       },
       "size:lg": {
         "minHeight": "var(--size-element-lg)"
+      },
+      "variant:primary": {
+        "backgroundImage": "linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent))",
+        "boxShadow": "0 8px 20px -8px light-dark(color-mix(in oklab, var(--color-accent) 45%, transparent), transparent)",
+        ":hover": {
+          "backgroundImage": "linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)), linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent))"
+        },
+        ":active": {
+          "backgroundImage": "linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed)), linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent))"
+        },
+        ":is(:disabled, [aria-disabled=\"true\"])": {
+          "backgroundImage": "none",
+          "boxShadow": "none"
+        }
+      },
+      "variant:secondary": {
+        "backgroundColor": "var(--color-background-card)",
+        "boxShadow": "inset 0 0 0 var(--border-width) var(--color-border-emphasized)",
+        "color": "var(--color-text-primary)",
+        ":is(:disabled, [aria-disabled=\"true\"])": {
+          "opacity": "1",
+          "color": "var(--color-text-disabled)",
+          "boxShadow": "inset 0 0 0 var(--border-width) var(--color-border)"
+        },
+        ":is(.astryx-input-group > *):is(:disabled, [aria-disabled=\"true\"])": {
+          "boxShadow": "inset 0 0 0 var(--border-width) var(--color-border-emphasized)"
+        }
       }
     },
     "avatar-fallback": {
@@ -499,7 +585,11 @@ export const eneoTheme = {
         "ratio": 1.2
       },
       "body": {
-        "family": "system-ui",
+        "family": "Figtree Variable",
+        "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
+      },
+      "heading": {
+        "family": "Figtree Variable",
         "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
       },
       "code": {
@@ -509,7 +599,7 @@ export const eneoTheme = {
     },
     "color": {
       "accent": [
-        "#004595",
+        "#1563BC",
         "#52B1FF"
       ],
       "neutralStyle": "neutral",

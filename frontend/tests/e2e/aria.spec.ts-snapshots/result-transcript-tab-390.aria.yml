@@ -1,6 +1,7 @@
 - main:
   - heading "Dokumentet är klart" [level=1]
-  - paragraph: /Nämndmöte till rapport · Skapad i dag \d+:\d+/
+  - paragraph: Nämndmöte till rapport
+  - paragraph: /Skapad i dag \d+:\d+/
   - paragraph: "Deltagare: Anna Berg, Erik Lund"
   - button "Ny inspelning":
     - text: ""
@@ -11,12 +12,12 @@
   - tabpanel "Transkribering":
     - region "Transkribering":
       - heading "Transkribering" [level=2]
-      - button "Fler alternativ för transkriberingen":
-        - status
       - region "Inspelning och transkribering":
         - text: Talare
         - button "Namnge talare":
           - text: ""
+          - status
+        - button "Fler alternativ för transkriberingen":
           - status
         - group "Talare":
           - button "Alla" [pressed]:

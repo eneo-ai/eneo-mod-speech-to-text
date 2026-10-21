@@ -1,0 +1,10 @@
+/* The sign-in's column: 32 px under the bar on a phone, about a third of the way down from a tablet's width. */
+.column {
+  padding-block-start: var(--spacing-4);
+}
+
+@media (min-width: 768px) {
+  .column {
+    padding-block-start: 12vh;
+  }
+}

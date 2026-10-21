@@ -103,27 +103,33 @@ test("names given to a finished run's speakers show in its transcript, its copy 
   await expect(page.getByRole("button", { name: "Anna Berg, ändra talare" })).toHaveCount(3);
 });
 
-test("Namnge talare ends the speakers' own row above their chips, and the word at the row's start names the chips", async ({ page }, info) => {
+test("Namnge talare ends the speakers' own row above their chips, before the transcript's actions under the tabs, and the word at the row's start names the chips", async ({ page }, info) => {
   await run(page, ids.runs.done);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
   const player = page.getByRole("region", { name: "Inspelning och transkribering" });
   const label = player.getByText("Talare", { exact: true });
   const naming = player.getByRole("button", { name: "Namnge talare" });
+  // A ghost button's padding stands outside the column: its words end on the edge. Under the result's tabs the
+  // transcript's copy and download follow it and end the row (on a phone, folded into their menu).
+  const rowEnd = isLaptop(info)
+    ? naming.getByText("Namnge talare", { exact: true })
+    : player.getByRole("button", { name: "Fler alternativ för transkriberingen" });
   const chips = player.getByRole("group", { name: "Talare", exact: true });
   await expect(label).toBeVisible();
   await expect(chips).toBeVisible();
   // A phone at its narrowest too, where the row has the least room.
   for (const width of isLaptop(info) ? [1440] : [390, 320]) {
     await page.setViewportSize({ width, height: info.project.use.viewport!.height });
-    const [region, word, action, group] = await Promise.all([player, label, naming, chips].map(async (part) => (await part.boundingBox())!));
+    const [region, word, action, words, group] = await Promise.all([player, label, naming, rowEnd, chips].map(async (part) => (await part.boundingBox())!));
     const middle = (box: typeof region) => box.y + box.height / 2;
     expect(
       {
         oneRow: Math.abs(middle(word) - middle(action)) <= 1,
         atStart: Math.round(word.x) === Math.round(group.x),
-        // The row's end mirrors its start: the naming is as far from the transcript's edge as the word is from the other.
-        atEnd: Math.round(region.x + region.width - (action.x + action.width)) === Math.round(word.x - region.x),
+        // The row's end mirrors its start: the naming's words end as far from the transcript's edge as the word starts
+        // from the other.
+        atEnd: Math.round(region.x + region.width - (words.x + words.width)) === Math.round(word.x - region.x),
         aboveChips: action.y + action.height <= group.y && word.y + word.height <= group.y,
       },
       `${width} px`,

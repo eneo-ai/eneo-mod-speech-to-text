@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
-import { Code } from "@astryxdesign/core/Code";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Icon } from "@astryxdesign/core/Icon";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
@@ -32,8 +31,18 @@ export function VersionInfo() {
     if (next && !build) read();
   }
 
+  // Last and quiet: the chevron beside its word, which is the supporting size in the secondary colour (5.6:1 on the page).
   return (
-    <Collapsible trigger="Version" isOpen={open} onOpenChange={toggle}>
+    <Collapsible
+      chevronPosition="start"
+      trigger={
+        <Text type="supporting" color="secondary">
+          Version
+        </Text>
+      }
+      isOpen={open}
+      onOpenChange={toggle}
+    >
       {build ? (
         <BuildDetails build={build} />
       ) : failed ? (
@@ -59,7 +68,9 @@ function BuildDetails({ build }: { build: BuildIdentity }) {
     <VStack gap={4}>
       <MetadataList>
         {view.release && <MetadataListItem label="Utgåva">{view.release}</MetadataListItem>}
-        <MetadataListItem label="Commit">{view.commit ? <Code>{view.commit}</Code> : "Okänd"}</MetadataListItem>
+        {/* The code's own face, as Eneo's error code has it (RunFailure): the design system's Code chip would be one more
+            file for the flow list to fetch, for a fold nearly no one opens. */}
+        <MetadataListItem label="Commit">{view.commit ? <Text type="code">{view.commit}</Text> : "Okänd"}</MetadataListItem>
         <MetadataListItem label="Byggd">{view.built ?? "Okänd"}</MetadataListItem>
       </MetadataList>
       <HStack gap={3} wrap="wrap">

@@ -1,6 +1,6 @@
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
-import { CheckCircle2, Pencil, UsersRound } from "lucide-react";
+import { CheckCircle2, Pencil, UserPen } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
   useEffect,
@@ -15,16 +15,19 @@ import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
+import { Center } from "@astryxdesign/core/Center";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
-import { useAnnounce } from "@astryxdesign/core/hooks";
+import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
-import { ActionRow } from "@/components/ActionRow";
+import { ActionRow, STACKED } from "@/components/ActionRow";
 import { useAuthenticatedUser, useSignedOut } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
@@ -132,13 +135,19 @@ export function ReviewView({
     : (checkpoint.step_label ?? "Granska resultatet");
   const heading = usePhaseHeading(title);
   const announce = useAnnounce();
+  const narrow = useMediaQuery(STACKED);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
-  // A consequence, at the body's size: not a footnote.
+  // A consequence, at the body's size: not a footnote. Its clock stands beside the first line when the words wrap.
   const deadline = checkpoint.expires_at ? (
-    <Text as="p" color="secondary">
-      Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
-    </Text>
+    <HStack gap={2} vAlign="start">
+      <Center axis="vertical" height="1.5em">
+        <Icon icon="clock" size="sm" color="secondary" />
+      </Center>
+      <Text as="p" color="secondary">
+        Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
+      </Text>
+    </HStack>
   ) : null;
   const participants = getSpeakerMappingParticipants(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
@@ -531,20 +540,27 @@ export function ReviewView({
     </VStack>
   );
 
-  // The flow's name stands here at every width, as on the result's line: the top bar holds no name.
+  // The run's state is a pill over the heading.
   const paused = (
-    <Text as="p" type="supporting">
-      {flowName} · Väntar på din granskning
-    </Text>
+    <HStack>
+      <Token color="blue" label="Väntar på din granskning" icon={<StatusDot variant="accent" label="Väntar" aria-hidden />} />
+    </HStack>
   );
-  // The flow and the heading read as one, what to do and by when as the lines under them, all at the body's size.
+  // The state over the heading; under it, as the result's meta line has it, the flow's name (the top bar holds none) and
+  // by when, both in view before anything is scrolled; then, set apart, what to do.
   const intro = (
-    <VStack gap={2}>
-      <VStack gap={1}>
+    <VStack gap={3}>
+      <VStack gap={2}>
         {paused}
-        <Heading level={1} ref={heading} tabIndex={-1}>
-          {title}
-        </Heading>
+        <VStack gap={1}>
+          <Heading level={1} ref={heading} tabIndex={-1}>
+            {title}
+          </Heading>
+          <Text as="p" color="secondary">
+            {flowName}
+          </Text>
+          {deadline}
+        </VStack>
       </VStack>
       <Text as="p" color="secondary" className={styles.description}>
         {isSpeakerMapping
@@ -555,7 +571,6 @@ export function ReviewView({
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
       </Text>
-      {deadline}
     </VStack>
   );
 
@@ -568,19 +583,33 @@ export function ReviewView({
           Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
-        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it. A
-        // name the flow was not sure of is a status at the row's end. The rows are read, not pressed: no Tab stop of
-        // their own. They set themselves apart, and the card's edge closes the list: no rule under the last one.
-        <List aria-label="Talare" density="compact">
-          {namingRows.map((row) => (
-            <ListItem
-              key={row.label}
-              label={row.name ?? speakerDisplayLabel(row.label)}
-              startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
-              description={row.name ? speakerDisplayLabel(row.label) : "Inget namn"}
-              endContent={isUnsureProposal(row, modelProposals) ? <Token size="sm" color="yellow" label="Osäkert förslag" /> : undefined}
-            />
-          ))}
+        // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it, with a
+        // name the flow was not sure of said beside it, under the name it qualifies. The rows are read, not pressed: no
+        // Tab stop of their own. They set themselves apart, and the card's edge closes the list: no rule under the last one.
+        <List aria-label="Talare" hasDividers density="spacious" className={styles.speakers}>
+          {namingRows.map((row) => {
+            const unsure = isUnsureProposal(row, modelProposals) && (
+              <Token size="sm" color="yellow" label="Osäkert förslag" icon={<Icon icon="warning" size="sm" />} />
+            );
+            const label = row.name ? speakerDisplayLabel(row.label) : "Inget namn";
+            return (
+              <ListItem
+                key={row.label}
+                label={<Text weight="semibold">{row.name ?? speakerDisplayLabel(row.label)}</Text>}
+                startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} size="lg" />}
+                description={
+                  unsure ? (
+                    <HStack as="span" gap={2} vAlign="center" wrap="wrap">
+                      {label}
+                      {unsure}
+                    </HStack>
+                  ) : (
+                    label
+                  )
+                }
+              />
+            );
+          })}
         </List>
       );
     const namingAction =
@@ -607,7 +636,8 @@ export function ReviewView({
           >
             <Button
               variant="secondary"
-              icon={<UsersRound aria-hidden />}
+              size="sm"
+              icon={<UserPen aria-hidden />}
               label="Namnge talarna"
               isDisabled={busy || transcript.pending}
             />
@@ -658,9 +688,9 @@ export function ReviewView({
               {/* The card is the speakers, its heading and its action in one row as the transcript's card has them; the
                   decision is the page's, under the card. Not docked on a phone: the transcript's player docks there,
                   and two bars would cover a fifth of the screen. */}
-              <Card padding={4} role="group" aria-labelledby="review-speakers">
+              <Card padding={narrow ? 4 : 6} role="group" aria-labelledby="review-speakers">
                 <VStack gap={3}>
-                  <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+                  <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
                     <Heading level={2} id="review-speakers">
                       Talare
                     </Heading>

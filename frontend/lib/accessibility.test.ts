@@ -94,7 +94,9 @@ for (const [index, mode] of (["light", "dark"] as const).entries()) {
     for (const alpha of [.1, .2, .25, .3]) {
       const tint = over([...token("--color-accent").slice(0, 3), alpha] as RGBA, surface);
       atLeast(4.5, token("--color-text-primary"), tint, `selected text on accent/${alpha}`);
-      if (alpha <= .2) atLeast(4.5, token("--color-text-accent"), tint, `confirm button on accent/${alpha}`);
+      // The accent's own words and marks sit on its tint only at the 10 % of --color-accent-muted (a tile's icon); the
+      // stronger tints carry the primary text.
+      if (alpha <= .1) atLeast(4.5, token("--color-text-accent"), tint, `accent on accent/${alpha}`);
     }
   });
 
@@ -111,6 +113,18 @@ for (const [index, mode] of (["light", "dark"] as const).entries()) {
     const { token, module } = await palette();
     const apart = Math.abs(hue(module("module-speaker-0")) - hue(token("--color-accent")));
     assert.ok(Math.min(apart, 360 - apart) >= 40, `${mode} module-speaker-0 and accent hues: ${apart.toFixed(0)}`);
+  });
+
+  test(`${mode}: a notice's fill keeps its status's hue, and its words and icon stay readable on it`, async () => {
+    const { token, atLeast } = await palette();
+    for (const status of ["success", "warning", "error"]) {
+      const fill = token(`--color-${status}-muted`);
+      const apart = Math.abs(hue(fill) - hue(token(`--color-${status}`)));
+      assert.ok(Math.min(apart, 360 - apart) <= 30, `${mode} ${status} notice: its fill is ${apart.toFixed(0)}° from its status's hue`);
+      atLeast(4.5, token("--color-text-primary"), fill, `text on the ${status} notice`);
+      atLeast(4.5, token("--color-text-secondary"), fill, `secondary text on the ${status} notice`);
+      atLeast(3, token(`--color-${status}`), fill, `${status} icon on its notice`);
+    }
   });
 
   test(`${mode}: status colours: the recording dot, errors and the selected tint`, async () => {

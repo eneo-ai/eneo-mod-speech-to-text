@@ -4,6 +4,7 @@ import {
   type ComponentType,
   Fragment,
   memo,
+  type ReactNode,
   type Ref,
   useCallback,
   useDeferredValue,
@@ -38,6 +39,7 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { SpeakerMark } from "@/components/SpeakerMark";
 import { SpeakerNamingDialog, type SpeakerNamingHandle } from "@/components/SpeakerNamingDialog";
 import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { useRoomInRow } from "@/components/flow/useRoomInRow";
 import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
@@ -62,6 +64,7 @@ import {
   firstSegmentForSpeaker,
   paragraphTurns,
   pendingSpeakerReview,
+  speakerColorIndex,
   speakerName,
   speakerSummaries,
   type SearchHit,
@@ -240,7 +243,7 @@ function PlayerControls({
   return (
     <>
       {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
-          row from 640 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
+          row from 400 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
           where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
           which turns the letters off, and on again: the focus stays on it, and the line's new words are said. */}
       <div className={styles.dockTools}>
@@ -436,6 +439,7 @@ export function TranscriptPlayer(
     naming,
     onRenameSpeaker,
     ownerId,
+    actions,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
@@ -485,6 +489,12 @@ export function TranscriptPlayer(
     onRenameSpeaker?: (label: string, returnTo: HTMLElement | null) => void;
     /** The signed-in person, whose choice of the letter keys this browser keeps; without one it lasts while shown. */
     ownerId?: string;
+    /**
+     * The page's own actions for the transcript (its copy and download, where the page has no heading row for them): at
+     * the end of the speakers' row where they can be named, else on a row of their own. Labelled where the row has room
+     * for them (`fits`), folded into one menu where it has not.
+     */
+    actions?: (fits: boolean) => ReactNode;
   },
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -550,6 +560,7 @@ export function TranscriptPlayer(
   // Naming after the run, where the passages can be corrected and have speakers to name.
   const canName = naming !== undefined && canEdit && corrections !== undefined && labelled && speakers.length > 0;
   const namingDialog = useRef<SpeakerNamingHandle>(null);
+  const actionsRow = useRoomInRow();
 
   // A filter whose speaker is gone (all their passages moved) shows everyone again.
   const toCheck = turns.filter(pendingSpeakerReview).length;
@@ -809,6 +820,8 @@ export function TranscriptPlayer(
   }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
+  // The page's actions join the speakers' row, which then needs no row of its own above it: one row less over the text.
+  const actionsBySpeakers = actions !== undefined && tools && canName;
   // Naming the speakers after the run: at the end of the speakers' own row above their filter, or on a row of its own
   // above the review's view, which has no filter for the speakers' word to name.
   const namingControl = canName && (
@@ -856,19 +869,24 @@ export function TranscriptPlayer(
       ref={playerRef}
     >
       {title && (
-        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2}>
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2} className={styles.inset}>
           <Heading level={2}>{title}</Heading>
           {canDownload && (
             // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
             // speakers under it.
-            <Button variant="ghost" size="sm" icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed}>
+            <Button variant="ghost" size="sm" icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
               Ladda ner
             </Button>
           )}
         </HStack>
       )}
+      {actions && !actionsBySpeakers && (
+        <HStack ref={actionsRow.ref} hAlign="end" vAlign="center" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3} className={styles.inset}>
+          {actions(actionsRow.fits)}
+        </HStack>
+      )}
       {reviewEnabled && namingControl && (
-        <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2}>
+        <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2} className={join(styles.inset, styles.trailingButton)}>
           {namingControl}
         </HStack>
       )}
@@ -876,11 +894,17 @@ export function TranscriptPlayer(
         <VStack gap={3} className={styles.tools}>
           {labelled && (
           <VStack gap={2}>
-          {/* Where the speakers can be named, a row of their own above the filter: their word, and the naming at its end. */}
+          {/* Where the speakers can be named, a row of their own above the filter: their word, and the naming at its end,
+              with the page's own actions after it where the page gives them. The naming keeps its place in the tree
+              whether they are there or not: a tablet turned leaves its dialog, and a correction being written, as they are.
+              The last ghost button ends its words on the content's edge. */}
           {canName && (
-            <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap="wrap" gap={2}>
               <Text type="label">Talare</Text>
-              {namingControl}
+              <HStack gap={2} vAlign="center" className={actionsBySpeakers ? undefined : styles.trailing}>
+                {namingControl}
+                {actionsBySpeakers && actions?.(actionsRow.fits)}
+              </HStack>
             </HStack>
           )}
           {/* The speaker filter: chips that wrap, so none is cut off on a phone. Under the speakers' word the group is
@@ -1219,6 +1243,8 @@ const TurnBlock = memo(function TurnBlock({
       data-turn-index={turn.index}
       aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
       className={styles.turn}
+      // The speaker's colour carries over to the passage's name and the rule beside its text (styles/globals.css --tint).
+      data-speaker-color={labelled && markLabel ? speakerColorIndex(markLabel) : undefined}
     >
       {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} />}
       <div className={styles.turnBody}>

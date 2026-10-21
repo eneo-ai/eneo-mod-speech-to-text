@@ -156,7 +156,8 @@ test("the first frame the app draws has the organisation's mark, and nothing ask
 
   const drawn = frames.filter((frame) => frame.app);
   expect(drawn.length).toBeGreaterThan(0);
-  for (const frame of drawn) expect(frame.marks, "the bundled mark of the default organisation").toEqual(["default"]);
+  // Eneo's bundled wordmark is a pair, one for each mode (components/Brand.tsx): the light one in a light first frame.
+  for (const frame of drawn) expect(frame.marks, "the bundled mark of the default organisation").toEqual(["light"]);
   expect(requests.filter((path) => /^\/api\/branding\/?$/.test(path)), "it was in the page").toEqual([]);
 });
 

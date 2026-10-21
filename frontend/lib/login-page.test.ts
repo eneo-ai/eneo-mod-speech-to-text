@@ -52,7 +52,7 @@ test("while the session is asked for, the page is the shell's one main region, h
 test("the Eneo sign-in page asks for one thing, and pressing it says that Eneo opens and cannot be pressed twice", async (t) => {
   const { container, act } = await openLoginPage(t, signedOut);
   assert.deepEqual([...container.querySelectorAll("h1")].map((heading) => heading.textContent), ["Gör samtal och filer till text och dokument."]);
-  assert.match(container.textContent ?? "", /Logga in via Eneo för att fortsätta\./);
+  assert.doesNotMatch(container.textContent ?? "", /Logga in via Eneo/, "the button names Eneo: no line under the heading repeats it");
   assert.equal(container.querySelectorAll("input").length, 0, "no field");
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
   // jsdom cannot navigate; the page leaving for Eneo is what it logs.

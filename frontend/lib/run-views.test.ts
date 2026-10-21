@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Text } from "@astryxdesign/core/Text";
@@ -14,7 +14,7 @@ const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" }
 const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
-import { RunOpening, RunProgress, RunUnread } from "../components/flow/RunProgress";
+import { preloadStepList, RunOpening, RunProgress, RunUnread } from "../components/flow/RunProgress";
 import { SubmittingView, type SubmissionState } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
@@ -25,6 +25,9 @@ import { listOwnRuns } from "./api";
 import { inStaticRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
+
+// The run's step list is fetched when its view first draws (RunProgress): here it is there before, as on a page that sent.
+before(preloadStepList);
 
 /** Markup as the page renders it once, inside the router that its way-back link needs. */
 const markup = (element: import("react").ReactElement) => renderToStaticMarkup(inStaticRouter(element));
@@ -135,12 +138,13 @@ const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }
     }),
   );
 
-test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt beside the file name", () => {
+test("an upload names its bar, shows the bytes and the percent, and ends with Avbryt uppladdningen, as the run ends with its own", () => {
   const html = uploading({ percent: 33 });
   assert.match(html, /role="progressbar"[^>]*aria-valuenow="33"|aria-valuenow="33"[^>]*role="progressbar"/);
   const words = text(html);
-  assert.match(words, /möte\.wav Avbryt/);
+  assert.match(words, /Stäng inte sidan och lås inte skärmen förrän flödet har startat\. möte\.wav Uppladdning/, "what a closed page does, read before the bar");
   assert.match(words, /512 B av 2 kB 33 %/);
+  assert.match(words, /Avbryt uppladdningen$/, "the card's last row");
   assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen…"], "the stage once, first");
 });
 
@@ -148,6 +152,14 @@ test("an upload, and the run's start after it, say to keep the page open until t
   for (const html of [uploading({ percent: 33 }), uploading({ loaded: 2048, total: 2048, percent: 100 })]) {
     assert.match(text(html), /Stäng inte sidan och lås inte skärmen förrän flödet har startat\./);
   }
+});
+
+test("once every byte has left, the bar moves again without a value while Eneo takes the file, and its words stay", () => {
+  const value = (html: string) => /aria-valuenow="(\d+)"/.exec(html)?.[1] ?? null;
+  assert.equal(value(uploading({ loaded: 2047, total: 2048, percent: 100 })), "100", "a rounded 100 % is not the end");
+  const sent = uploading({ loaded: 2048, total: 2048, percent: 100 });
+  assert.equal(value(sent), null, "no value: the wait is not a share of anything");
+  assert.match(text(sent), /2 kB av 2 kB 100 %/);
 });
 
 test("once every byte has left, the stage says Eneo is taking the file, and a recording is called a recording", () => {
@@ -707,6 +719,57 @@ test("the transcript is not copied or downloaded while its saved corrections cou
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.ok(names(unread).includes("Läs in igen"));
+});
+
+test("under the result's tabs the transcript's copy and download end the speakers' row, after Namnge talare: no row holds them alone", () => {
+  const html = markup(
+    createElement(RunTranscriptView, {
+      flowId: "flow-1",
+      runId: "run-1",
+      fileName: "transkribering.txt",
+      transcript: {
+        pending: false,
+        speakerReviews: [],
+        correctionProblem: null,
+        segments: [
+          { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten." },
+        ],
+        fromMetadata: true,
+        fileIds: [],
+        stepId: "step-1",
+        corrections: EMPTY_CORRECTIONS,
+        speakerNames: {},
+        textPreview: false,
+        wordTimingFailed: false,
+      },
+      confirmedWords: new Set<string>(),
+      editing: {
+        corrections: EMPTY_CORRECTIONS,
+        saveState: "idle" as const,
+        localError: null,
+        saveQueue: { current: Promise.resolve(true) },
+        onCorrectionsChange: async () => null,
+        saveNow: async () => null,
+        retryCorrections: async () => undefined,
+        downloadUnsavedCorrections: () => undefined,
+        hasDropped: false,
+        downloadDropped: () => undefined,
+        readAgain: () => undefined,
+      },
+      onReload: () => undefined,
+      headingHidden: true,
+      naming: { draftKey: { ownerId: "user-1", name: "names:run-1" }, thing: "dokumentet", delivered: false, hasDocument: true, participants: [] },
+    }),
+  );
+  assert.deepEqual(
+    names(html).filter((name) => /^(Namnge talare|Kopiera transkriberingen|Ladda ner som text, transkriberingen)$/.test(name)),
+    ["Namnge talare", "Kopiera transkriberingen", "Ladda ner som text, transkriberingen"],
+  );
+  // From the speakers' word to the download, one row: the filter (a group) only after it.
+  const row = html.slice(html.indexOf(">Talare<"), html.indexOf("Ladda ner som text</"));
+  assert.ok(row.length > 0 && !/role="group"/.test(row), "the speakers' word, Namnge talare and the two in one row");
+  assert.match(html, /<h2[^>]*id="run-transcript"[^>]*>Transkribering<\/h2>/, "the card's heading, heard");
 });
 
 test("a finished run whose result could not be read says so and offers to read it again, never 'klart'", () => {

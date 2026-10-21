@@ -1,17 +1,21 @@
-import { Trash2 } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Download, Mic, Trash2 } from "lucide-react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
 import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
-import { Stack } from "@astryxdesign/core/Stack";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow, STACKED } from "@/components/ActionRow";
+import { IconTile } from "@/components/IconTile";
+import styles from "./UnsentRecordings.module.css";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { useSaveRecording } from "@/components/save-recording";
 import { moveFocusToHeading } from "@/routes/RouteEffects";
@@ -98,12 +102,17 @@ export function useEvictable(): boolean {
   return evictable;
 }
 
+/** The parts of a recording's details: its flow (where asked for) and its length. */
+function detailParts(recording: StoredRecording, withFlowName: boolean): string[] {
+  return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)];
+}
+
 /** "Nämndmöte till rapport · 42 min": under the name the recording had when it was made. */
 export function recordingDetails(
   recording: StoredRecording,
   { withFlowName = false }: { withFlowName?: boolean } = {},
 ): string {
-  return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)].join(" · ");
+  return detailParts(recording, withFlowName).join(" · ");
 }
 
 /** The recording a reload cut off that this tab can record on in, the first when there are more. */
@@ -113,9 +122,11 @@ export function resumableRecording(recordings: UnsentRecording[]): UnsentRecordi
 
 /**
  * Recordings kept on this device that Eneo has not received yet; when the device cannot be read, a notice in
- * their place, so that the person is not left thinking there are none. "Fortsätt spela in" on a recording a reload cut
+ * their place, so that the person is not left thinking there are none. They stand under an "Att göra" pill in a card
+ * that leads with one recording: its tile, what it is and its actions. "Fortsätt spela in" on a recording a reload cut
  * off is the page's one filled action, unless the person has chosen another way (`filled` false). `folded` (the flow
- * list) shows one, the latest a reload cut off before the newest, and folds the rest away, so what follows stays in view.
+ * list) leads with the latest a reload cut off before the newest, whose main action (going on with it, else sending it)
+ * is then the page's filled one, and folds the rest away, so what follows stays in view.
  */
 export function UnsentRecordings({
   list: { recordings, unreadable, retry },
@@ -143,6 +154,9 @@ export function UnsentRecordings({
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const announce = useAnnounce();
+  const narrow = useMediaQuery(STACKED);
+  const tablet = useMediaQuery("(min-width: 768px)", true);
+  const laptop = useMediaQuery("(min-width: 1024px)", true);
   // A removal takes the focus with its row. Once the list no longer has the recording, its heading takes the focus, saying
   // what is left, or with none left the page's; focus the person has put elsewhere since stays there.
   const listed = useRef(recordings);
@@ -173,12 +187,13 @@ export function UnsentRecordings({
   if (recordings.length === 0) return null;
   const resumable = onContinue ? resumableRecording(recordings) : undefined;
   const cutOff = recordings.length === 1 && resumable !== undefined;
-  const shown = folded ? (resumable ?? recordings[0]) : null;
-  const rest = recordings.filter((recording) => shown !== null && recording !== shown);
+  // The card leads with one recording; the rest follow it, folded away on the flow list.
+  const lead = folded ? (resumable ?? recordings[0]) : recordings[0];
+  const rest = recordings.filter((recording) => recording !== lead);
   // Where a send goes, said only where a row has one (UnsentRecordingRow): not for a recording another tab holds, one this
   // browser may only save as a file, or one without audio.
   const sendable = onSend !== undefined && recordings.some((recording) => hasAudio(recording) && !recording.exportOnly && !recording.elsewhere);
-  const row = (recording: UnsentRecording) => (
+  const row = (recording: UnsentRecording, head?: ReactNode, note?: ReactNode) => (
     <UnsentRecordingRow
       key={recording.id}
       recording={recording}
@@ -187,24 +202,52 @@ export function UnsentRecordings({
       onSend={onSend}
       onContinue={continuable(recording) ? onContinue : undefined}
       onRemoved={onRemoved}
-      primary={filled && recording === resumable}
+      primary={filled && (folded ? recording === lead : recording === resumable)}
+      head={head}
+      note={note}
     />
   );
-  // A named region (Section is no landmark), as the screen reader's list of landmarks has it.
+  const head = (
+    <Heading level={2} id={headingId} ref={heading} tabIndex={-1}>
+      {cutOff
+        ? "Inspelningen avbröts"
+        : recordings.length === 1
+          ? "En inspelning har inte skickats"
+          : `${recordings.length} inspelningar har inte skickats`}
+    </Heading>
+  );
+  // A named region (Section is no landmark), as the screen reader's list of landmarks has it: the pill names the kind
+  // of thing, the card holds the recordings. On the flow list (folded) the card's content starts where the flow rows'
+  // does; above the setup's working card, where that card's does (StateCard: 16, 24 and 32 px).
   return (
-    <VStack role="region" aria-labelledby={headingId} gap={3}>
-      <VStack gap={1}>
-        <Heading level={2} id={headingId} ref={heading} tabIndex={-1}>
-          {cutOff
-            ? "Inspelningen avbröts"
-            : recordings.length === 1
-              ? "En inspelning har inte skickats"
-              : `${recordings.length} inspelningar har inte skickats`}
-        </Heading>
-        <Text as="p" color="secondary">
+    <VStack role="region" aria-labelledby={headingId} gap={4}>
+      <HStack>
+        <Token color="blue" label="Att göra" icon={<StatusDot variant="accent" label="Att göra" aria-hidden />} />
+      </HStack>
+      <Card padding={folded ? (narrow ? 4 : 6) : laptop ? 8 : tablet ? 6 : 4}>
+        <VStack gap={4}>
+          {row(lead, head, <DeviceSentence cutOff={cutOff} count={recordings.length} evictable={evictable} sendable={sendable} />)}
+          {rest.length > 0 &&
+            (folded ? (
+              <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
+                <List hasDividers>{rest.map((recording) => row(recording))}</List>
+              </Collapsible>
+            ) : (
+              <List hasDividers>{rest.map((recording) => row(recording))}</List>
+            ))}
+        </VStack>
+      </Card>
+    </VStack>
+  );
+}
+
+/** The device sentence under the heading: where the recordings are kept, and for how long. */
+function DeviceSentence({ cutOff, count, evictable, sendable }: { cutOff: boolean; count: number; evictable: boolean; sendable: boolean }) {
+  return (
+        <Text as="p" type="supporting" color="secondary" textWrap="pretty">
           {cutOff
             ? `Den fortsätter i samma inspelning när du väljer Fortsätt spela in.${sendable ? " När den har skickats till Eneo går det inte att fortsätta." : ""}`
-            : recordings.length === 1
+            : count === 1
               ? evictable
                 ? `Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den${sendable ? " till Eneo" : ""}.`
                 : `Den finns kvar på den här enheten tills den har skickats${sendable ? " till Eneo" : ""}.`
@@ -212,14 +255,6 @@ export function UnsentRecordings({
                 ? `De finns på den här enheten. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem${sendable ? " till Eneo" : ""}.`
                 : `De finns kvar på den här enheten tills de har skickats${sendable ? " till Eneo" : ""}.`}
         </Text>
-      </VStack>
-      <List hasDividers>{shown ? row(shown) : recordings.map(row)}</List>
-      {rest.length > 0 && (
-        <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
-          <List hasDividers>{rest.map(row)}</List>
-        </Collapsible>
-      )}
-    </VStack>
   );
 }
 
@@ -231,6 +266,8 @@ function UnsentRecordingRow({
   onContinue,
   onRemoved,
   primary,
+  head,
+  note,
 }: {
   recording: UnsentRecording;
   withFlowName: boolean;
@@ -240,8 +277,12 @@ function UnsentRecordingRow({
   onContinue?: (recording: StoredRecording) => void;
   /** The device no longer has it. */
   onRemoved: (id: string) => void;
-  /** Its "Fortsätt spela in" is the page's filled action. */
+  /** Its main action (Fortsätt spela in, else the send) is the page's filled action. */
   primary: boolean;
+  /** The card's heading, when this recording leads the card: the row is then the card's head, with its tile. */
+  head?: ReactNode;
+  /** The device sentence, under the leading recording's line. */
+  note?: ReactNode;
 }) {
   const summaryId = useId();
   const questionId = useId();
@@ -254,6 +295,9 @@ function UnsentRecordingRow({
   const audio = hasAudio(recording);
   const saving = useSaveRecording(recording.id, filesIn(recording));
   const stacked = useMediaQuery(STACKED);
+  const lead = head !== undefined;
+  // The leading recording's actions are the page's own size when one of them is its filled action.
+  const size = lead && primary ? "lg" : "md";
 
   // Focus follows the question: to "Avbryt" when it opens, back to "Ta bort" when it closes.
   useEffect(() => {
@@ -281,9 +325,167 @@ function UnsentRecordingRow({
     }
   }
 
+  const quietSave = audio && (
+    <Button
+      key="save"
+      label={saving.label}
+      variant="secondary"
+      size={size}
+      icon={<Icon icon={Download} size="sm" />}
+      aria-describedby={summaryId}
+      isLoading={saving.busy}
+      isInterruptible
+      onClick={() => void save()}
+    />
+  );
+  // As tall as the actions beside it, so its hover and focus box is theirs; under them on a phone, the middle size, its
+  // icon on their edge.
+  const removeButton = (
+    <Button
+      ref={deleteRef}
+      label="Ta bort"
+      variant="ghost"
+      size={stacked ? "md" : size}
+      icon={<Icon icon={Trash2} size="sm" />}
+      aria-describedby={summaryId}
+      onClick={() => setConfirming(true)}
+    />
+  );
+  // The ways on (going on with it, sending it), then saving it as a file (outlined), as the ready recording has them.
+  const [first, ...outlined] = [
+    onContinue && (
+      <Button
+        key="continue"
+        label="Fortsätt spela in"
+        variant={primary ? "primary" : "secondary"}
+        size={size}
+        aria-describedby={summaryId}
+        onClick={() => onContinue(recording)}
+      />
+    ),
+    onSend && audio && (
+      <Button
+        key="send"
+        label={sendLabel}
+        variant={primary && !onContinue ? "primary" : "secondary"}
+        size={size}
+        aria-describedby={summaryId}
+        onClick={() => onSend(recording)}
+      />
+    ),
+    quietSave,
+  ].filter(Boolean);
+  const actions = recording.elsewhere ? (
+    <Text as="p" color="secondary">
+      {IN_USE_ELSEWHERE}
+    </Text>
+  ) : recording.exportOnly ? (
+    // Without Web Locks another tab may still hold it: here it is only read, as a file when it has audio.
+    audio && (
+      <VStack gap={2} hAlign={stacked ? "stretch" : "start"}>
+        <Text as="p" color="secondary">
+          I den här webbläsaren kan den bara sparas som fil.
+        </Text>
+        <Button label={saving.label} aria-describedby={summaryId} isLoading={saving.busy} isInterruptible onClick={() => void save()} />
+      </VStack>
+    )
+  ) : confirming ? null : stacked ? (
+    // Up to 640 px (as ActionRow) the first across the card; the outlined ones after it share a row where they fit and
+    // stand one under the other where they do not, so the flows stay in view under a card of a cut-off recording; Ta bort
+    // under them at its own width, its icon on their edge.
+    <VStack gap={2} hAlign="stretch">
+      {first}
+      {outlined.length > 0 && (
+        <HStack gap={2} wrap="wrap" className={styles.outlined}>
+          {outlined}
+        </HStack>
+      )}
+      <HStack className={styles.quietStart}>{removeButton}</HStack>
+    </VStack>
+  ) : (
+    // Wider all stand in one row, wrapping when they must, deleting last.
+    <HStack gap={2} vAlign="center" wrap="wrap">
+      {first}
+      {outlined}
+      {removeButton}
+    </HStack>
+  );
+  const question = confirming && (
+    <VStack role="group" aria-labelledby={questionId} gap={2}>
+      <Text as="p" id={questionId}>
+        Ta bort inspelningen från enheten? Det går inte att ångra.
+      </Text>
+      <ActionRow>
+        <Button ref={cancelRef} label="Avbryt" onClick={() => setConfirming(false)} />
+        <Button label="Ta bort" variant="destructive" onClick={() => void remove()} />
+      </ActionRow>
+    </VStack>
+  );
+  // Its name, flow and length, each kept on one line: where the line breaks it breaks at a dot, never inside "2 s".
+  const what = (
+    <>
+      <Text as="p" color="secondary" hasTabularNumbers>
+        {[recordingName(recording.startedAt), ...detailParts(recording, withFlowName)].map((part, index, parts) => (
+          <Fragment key={index}>
+            {index > 0 && " "}
+            <span className={styles.part}>{index < parts.length - 1 ? `${part} ·` : part}</span>
+          </Fragment>
+        ))}
+      </Text>
+      {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
+    </>
+  );
+
+  if (lead) {
+    const words = (
+      <VStack id={summaryId} gap={0.5}>
+        {what}
+      </VStack>
+    );
+    // The buttons stand beside the words; a sentence in their place (another tab has it, it can only be saved) under them.
+    const buttons = recording.elsewhere || recording.exportOnly ? null : actions;
+    // The card's head: the tile at the heading's line, the heading with what the recording is and where it is kept, and
+    // the actions at the card's end where the line has room for both, under the words from their edge where it has not.
+    // On a phone there is no tile: the heading, the words and the actions under it share the card's one edge.
+    return (
+      <VStack gap={4} data-recording="">
+        {stacked ? (
+          <>
+            <VStack gap={1}>
+              {head}
+              {words}
+              {note}
+            </VStack>
+            {actions}
+            {question}
+            {problem && <Banner status="error" title={problem} collapsible={false} />}
+          </>
+        ) : (
+          <HStack gap={4} vAlign="start">
+            <IconTile icon={Mic} size="lg" />
+            <VStack gap={4} className={styles.lead}>
+              <HStack gap={4} vAlign="center" hAlign="between" wrap="wrap">
+                <VStack gap={1} className={styles.text}>
+                  {head}
+                  {words}
+                  {note}
+                </VStack>
+                {buttons}
+              </HStack>
+              {!buttons && actions}
+              {question}
+              {problem && <Banner status="error" title={problem} collapsible={false} />}
+            </VStack>
+          </HStack>
+        )}
+      </VStack>
+    );
+  }
+
   // The recording, then what can be done with it, from the row's edge.
   return (
     <ListItem
+      data-recording=""
       label={
         <VStack gap={3}>
           <HStack gap={3} align="start">
@@ -298,61 +500,8 @@ function UnsentRecordingRow({
               {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
             </VStack>
           </HStack>
-          {recording.elsewhere ? (
-            <Text as="p" color="secondary">
-              {IN_USE_ELSEWHERE}
-            </Text>
-          ) : recording.exportOnly ? (
-            // Without Web Locks another tab may still hold it: here it is only read, as a file when it has audio.
-            audio && (
-              <VStack gap={2} hAlign={stacked ? "stretch" : "start"}>
-                <Text as="p" color="secondary">
-                  I den här webbläsaren kan den bara sparas som fil.
-                </Text>
-                <Button label={saving.label} aria-describedby={summaryId} isLoading={saving.busy} isInterruptible onClick={() => void save()} />
-              </VStack>
-            )
-          ) : confirming ? (
-            <VStack role="group" aria-labelledby={questionId} gap={2}>
-              <Text as="p" id={questionId}>
-                Ta bort inspelningen från enheten? Det går inte att ångra.
-              </Text>
-              <ActionRow>
-                <Button ref={cancelRef} label="Avbryt" onClick={() => setConfirming(false)} />
-                <Button label="Ta bort" variant="destructive" onClick={() => void remove()} />
-              </ActionRow>
-            </VStack>
-          ) : (
-            // Up to 640 px (as ActionRow) the actions stack across the card, one edge for all; wider they stand in one row at
-            // their own widths, wrapping when they must. Deleting comes last, in its quieter style.
-            <Stack
-              direction={stacked ? "vertical" : "horizontal"}
-              gap={2}
-              hAlign={stacked ? "stretch" : "start"}
-              wrap={stacked ? "nowrap" : "wrap"}
-            >
-              {onContinue && (
-                <Button
-                  label="Fortsätt spela in"
-                  variant={primary ? "primary" : "secondary"}
-                  aria-describedby={summaryId}
-                  onClick={() => onContinue(recording)}
-                />
-              )}
-              {onSend && audio && <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />}
-              {audio && (
-                <Button label={saving.label} aria-describedby={summaryId} isLoading={saving.busy} isInterruptible onClick={() => void save()} />
-              )}
-              <Button
-                ref={deleteRef}
-                label="Ta bort"
-                variant="ghost"
-                icon={<Icon icon={Trash2} size="sm" />}
-                aria-describedby={summaryId}
-                onClick={() => setConfirming(true)}
-              />
-            </Stack>
-          )}
+          {actions}
+          {question}
           {problem && <Banner status="error" title={problem} collapsible={false} />}
         </VStack>
       }

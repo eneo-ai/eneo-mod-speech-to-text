@@ -289,9 +289,9 @@ class OrganizationTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             return load_settings()
 
-    def test_the_default_is_sundsvall_with_its_bundled_logo(self) -> None:
+    def test_the_default_is_eneo_with_its_bundled_logo(self) -> None:
         settings = self.load()
-        self.assertEqual(settings.organization, Organization(name="Sundsvalls kommun", logo="default"))
+        self.assertEqual(settings.organization, Organization(name="Eneo", logo="default"))
         self.assertIsNone(settings.organization_logo)
 
     def test_another_organisation_mounts_its_own_logo_and_names_itself(self) -> None:
@@ -314,7 +314,7 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual(settings.organization_logo.content, SVG)
         self.assertEqual(settings.organization_logo_dark.media_type, "image/png")
 
-    def test_a_name_without_a_logo_shows_the_name_never_sundsvalls_logo(self) -> None:
+    def test_a_name_without_a_logo_shows_the_name_never_eneos_logo(self) -> None:
         settings = self.load(ORGANIZATION_NAME="Region Västernorrland")
         self.assertEqual(settings.organization, Organization(name="Region Västernorrland", logo=None))
 
@@ -327,8 +327,7 @@ class OrganizationTests(unittest.TestCase):
         with self.assertLogs("eneo_config", level="ERROR") as logs:
             settings = self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=str(self.folder / "saknas.svg"))
         self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo=None))
-        self.assertEqual(len(logs.output), 1)
-        self.assertIn("ORGANIZATION_LOGO", logs.output[0])
+        self.assertEqual(logs.output, ["ERROR:eneo_config:ORGANIZATION_LOGO=" + str(self.folder / "saknas.svg") + " kan inte läsas (filen saknas). Namnet visas i stället. Kontrollera sökvägen och volymen."])
 
     def test_only_svg_and_png_are_logos(self) -> None:
         for name, content in (
@@ -361,7 +360,7 @@ class OrganizationTests(unittest.TestCase):
         with patch.object(Path, "open", spying_open), self.assertLogs("eneo_config", level="ERROR") as logs:
             settings = self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=big)
         self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo=None))
-        self.assertIn("larger than 1 MiB", logs.output[0])
+        self.assertIn("är större än 1 MiB", logs.output[0])
         self.assertEqual(reads, [2**20 + 1], "the read stops one byte past the limit")
 
     def test_a_missing_dark_logo_keeps_the_light_one(self) -> None:
@@ -432,7 +431,7 @@ class OrganizationTests(unittest.TestCase):
             self.assertEqual(organization, Organization(name="Umeå kommun", logo=None))
             self.assertEqual(len(logs.output), 1)
             self.assertIn("ORGANIZATION_LOGO", logs.output[0])
-            self.assertIn("size", logs.output[0])
+            self.assertIn("har ingen storlek", logs.output[0])
 
     def test_an_organisation_names_its_logos_sizes_exactly_when_it_has_logos(self) -> None:
         size = LogoSize(width=2, height=1)
@@ -446,8 +445,17 @@ class OrganizationTests(unittest.TestCase):
             with self.subTest(attributes), self.assertRaises(ValueError):
                 Organization(name="Umeå kommun", **attributes)
 
+    def test_a_very_wide_logo_starts_with_a_warning_of_how_small_it_is_on_a_phone(self) -> None:
+        wide = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 40"></svg>'
+        with self.assertLogs("eneo_config", level="WARNING") as logs:
+            organization = self.sizes_of("logo.svg", wide)
+        self.assertEqual(organization.logo, "custom")
+        self.assertEqual(logs.output, ["WARNING:eneo_config:ORGANIZATION_LOGO är 10:1; på en telefon blir den 10 px hög. Använd ett märke på högst 4:1."])
+        with self.assertNoLogs("eneo_config", level="WARNING"):
+            self.sizes_of("logo.svg", b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40"></svg>')
+
     def test_a_logo_needs_the_name_it_stands_for(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "ORGANIZATION_NAME"):
+        with self.assertRaisesRegex(RuntimeError, "^ORGANIZATION_LOGO kräver ORGANIZATION_NAME: namnet är loggans alternativtext.$"):
             self.load(ORGANIZATION_LOGO=self.file("logo.svg", SVG))
 
     def test_rejects_an_ambiguous_show_organization(self) -> None:
@@ -455,20 +463,20 @@ class OrganizationTests(unittest.TestCase):
             self.load(SHOW_ORGANIZATION="kanske")
 
     def test_the_accent_is_set_apart_from_the_organisation_and_applies_hidden_or_shown(self) -> None:
-        green = Accent(light="#1E7B34", dark="#2AAE4A", on_light="#FFFFFF", on_dark="#0B1118")
+        green = Accent(light="#1C7531", dark="#269E42", on_light="#FFFFFF", on_dark="#0B1118")
         self.assertIsNone(self.load().accent)
         # Whitespace around an environment value (a compose file's, a pasted line) is not part of the colour.
-        self.assertEqual(self.load(ORGANIZATION_ACCENT=" #1e7b34\n").accent, green)
-        self.assertEqual(self.load(SHOW_ORGANIZATION="false", ORGANIZATION_ACCENT="#1E7B34").accent, green)
-        self.assertEqual(self.load(ORGANIZATION_ACCENT="#1E7B34", ORGANIZATION_ACCENT_DARK="#52B1FF").accent, replace(green, dark="#52B1FF"))
+        self.assertEqual(self.load(ORGANIZATION_ACCENT=" #1c7531\n").accent, green)
+        self.assertEqual(self.load(SHOW_ORGANIZATION="false", ORGANIZATION_ACCENT="#1C7531").accent, green)
+        self.assertEqual(self.load(ORGANIZATION_ACCENT="#1C7531", ORGANIZATION_ACCENT_DARK="#52B1FF").accent, replace(green, dark="#52B1FF"))
 
     def test_an_accent_that_cannot_be_used_refuses_to_start_with_one_swedish_error(self) -> None:
         for overrides, message in (
-            ({"ORGANIZATION_ACCENT": "#FFD700"}, "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,23:1 i ljust läge"),
+            ({"ORGANIZATION_ACCENT": "#FFD700"}, "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,26:1 i ljust läge"),
             ({"ORGANIZATION_ACCENT": "grön"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
-            ({"ORGANIZATION_ACCENT": "#1E7B34;}body{display:none"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
+            ({"ORGANIZATION_ACCENT": "#1C7531;}body{display:none"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
             ({"ORGANIZATION_ACCENT_DARK": "#52B1FF"}, "ORGANIZATION_ACCENT_DARK kräver ORGANIZATION_ACCENT"),
-            ({"ORGANIZATION_ACCENT": "#1E7B34", "ORGANIZATION_ACCENT_DARK": "#1E7B34"}, "ORGANIZATION_ACCENT_DARK=#1E7B34: accentfärgen mot sidans ytor når"),
+            ({"ORGANIZATION_ACCENT": "#1C7531", "ORGANIZATION_ACCENT_DARK": "#1C7531"}, "ORGANIZATION_ACCENT_DARK=#1C7531: accentfärgen mot sidans ytor når"),
         ):
             with self.subTest(overrides=overrides), self.assertRaises(RuntimeError) as raised:
                 self.load(**overrides)

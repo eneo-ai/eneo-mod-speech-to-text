@@ -1,8 +1,9 @@
 - main:
-  - paragraph: Nämndmöte till rapport · Väntar på din granskning
+  - text: Väntar på din granskning
   - heading "Sammanfattning" [level=1]
-  - paragraph: Du kan ändra texten innan du godkänner och fortsätter.
+  - paragraph: Nämndmöte till rapport
   - paragraph: /Granska senast 3 jan \d+ \d+:\d+\. Därefter avbryts körningen\./
+  - paragraph: Du kan ändra texten innan du godkänner och fortsätter.
   - alert:
     - text: Någon har ändrat texten medan du redigerade Här visas den senaste versionen. Din ändring är inte sparad i Eneo, men finns kvar i den här fliken.
     - paragraph: Kommunstyrelsen beslutade att höja budgetramen med tre procent.

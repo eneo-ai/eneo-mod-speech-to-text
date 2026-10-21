@@ -49,9 +49,10 @@ test("each flow is one link named by the flow and then its description; the last
   assert.deepEqual(links.map((own) => own.length), [1, 1], "one link in each row");
   const [rapport, struktur] = links.map(([link]) => link);
   assert.deepEqual([rapport.getAttribute("href"), struktur.getAttribute("href")], ["/flows/rapport", "/flows/struktur"]);
-  assert.equal(rapport.firstElementChild?.textContent, "Nämndmöte till rapport", "the name is the link's first words");
-  assert.equal(struktur.firstElementChild?.textContent, "Nämndmöte till strukturerat protokoll med beslut");
-  assert.equal(rapport.textContent, "Nämndmöte till rapport", "no description, no empty line");
+  assert.equal(struktur.firstElementChild?.textContent, "Nämndmöte till strukturerat protokoll med beslut", "the name is the link's first words");
+  // The last-used pill stands on the name's line at every width (under it where the line has no room), set apart from
+  // the name by a comma that is read, not shown; the description keeps its own lines.
+  assert.equal(rapport.textContent, "Nämndmöte till rapport, Senast använd", "the name first, then the pill, never run into it");
   assert.equal(struktur.textContent, "Nämndmöte till strukturerat protokoll med beslutTranskriberar ljud från ett nämndmöte.", "the description is inside the link");
   assert.equal(container.querySelectorAll("h2").length, 0, "one space needs no heading");
 });

@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AudioLines } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
@@ -11,6 +12,8 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { HeaderBrand } from "@/components/HeaderBrand";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
+import listStyles from "@/components/FlowList.module.css";
+import { IconTile } from "@/components/IconTile";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { SlowWait } from "@/components/SlowWait";
 import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
@@ -101,16 +104,18 @@ function FlowsListPage() {
           at a reading width in it. */}
       <Layout height="auto" contentWidth="calc(var(--module-page-width) + var(--spacing-8))" padding={4}>
         <LayoutContent isScrollable={false}>
-          <VStack gap={8} paddingBlockStart={4} maxWidth={960}>
-            <Heading level={1}>Välj ett flöde</Heading>
+          <VStack gap={8} className={listStyles.page}>
+            <Heading level={1} type="display-3">
+              Välj ett flöde
+            </Heading>
 
-            {/* Each action goes on in the recording's flow; beside the flows, none is the page's filled action, and one
-                recording stands in view with the rest folded, so the flows are in view too. */}
+            <VStack gap={10} className={listStyles.sections}>
+            {/* Each action goes on in the recording's flow. The newest recording's main action is the page's one filled
+                action: nothing else here is; one recording stands in view with the rest folded, so the flows are in view too. */}
             <UnsentRecordings
               list={unsent}
               withFlowName
               evictable={evictable}
-              filled={false}
               folded
               sendLabel={(recording) => createLabel(recording.flowId)}
               onSend={(recording) => void navigate(sendRecordingAddress(recording.flowId, recording.id))}
@@ -132,12 +137,22 @@ function FlowsListPage() {
                 <FlowListSkeleton />
               </>
             ) : empty ? (
-              <EmptyState
-                headingLevel={2}
-                title="Det finns inga publicerade flöden som du kan använda än."
-                description={`När ett flöde publiceras i Eneo visas det här. ${ASK_ENEO_OWNER} om du saknar ett flöde.`}
-                actions={<Button ref={refresh} label="Uppdatera" onClick={retry} />}
-              />
+              // An empty list says so in its place, centred and as a status, as the design system's empty state does: of
+              // its parts, so the flow list does not fetch that component's own file for a list that is rarely empty.
+              <Card padding={8}>
+                <VStack role="status" hAlign="center" gap={4}>
+                  <IconTile icon={AudioLines} size="lg" hue="neutral" />
+                  <VStack hAlign="center" gap={2}>
+                    <Heading level={2} justify="center">
+                      Det finns inga publicerade flöden som du kan använda än.
+                    </Heading>
+                    <Text as="p" color="secondary" justify="center">
+                      När ett flöde publiceras i Eneo visas det här. {ASK_ENEO_OWNER} om du saknar ett flöde.
+                    </Text>
+                  </VStack>
+                  <Button ref={refresh} label="Uppdatera" onClick={retry} />
+                </VStack>
+              </Card>
             ) : (
               <FlowList groups={groups} lastFlowId={lastFlowId} />
             )}
@@ -150,6 +165,7 @@ function FlowsListPage() {
 
             {/* Last, and drawn with the list's answer: drawn before it, the list would push it down when it arrives. */}
             {(groups !== null || problem !== null) && <VersionInfo />}
+            </VStack>
           </VStack>
         </LayoutContent>
       </Layout>

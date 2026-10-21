@@ -23,7 +23,7 @@ test("the accent applies in the built app, under the backend's own strict style 
     probe.remove();
     return colour;
   });
-  expect(accent).toBe("rgb(30, 123, 52)");
+  expect(accent).toBe("rgb(28, 117, 49)"); // #1C7531
   expect(problems.filter((text) => /theme\.css|branding/.test(text))).toEqual([]);
 });
 
@@ -32,7 +32,7 @@ test("the backend serves the deployment's stylesheet @branded", async ({ request
   const response = await request.get("/api/branding/theme.css");
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toContain("text/css");
-  expect(await response.text()).toContain("--color-accent: light-dark(#1E7B34");
+  expect(await response.text()).toContain("--color-accent: light-dark(#1C7531");
 });
 
 test("the organisation is already in the page when the first frame is drawn, and the page asks for no branding @branded", async ({ page, request }) => {

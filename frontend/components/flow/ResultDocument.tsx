@@ -16,9 +16,10 @@ import type { ResultFileView } from "@/lib/run-files";
 import { copyableHtml, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
+import { IconTile } from "@/components/IconTile";
 import { DownloadLink, FILE_ICONS, FileName, LAPTOP, OpenFile } from "./ResultFiles";
 import { pressing, savingWay, useFileAccess, waiting } from "./useFileAccess";
-import { useRoomInRow } from "./useRoomInRow";
+import { useRoomBeside, useRoomInRow } from "./useRoomInRow";
 import fileStyles from "./ResultFiles.module.css";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
@@ -207,7 +208,12 @@ export function ResultDocument({
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
   const wide = useMediaQuery(LAPTOP, true);
+  // A small phone gives the file's name the card's width: its tile is the small one.
+  const small = useMediaQuery("(max-width: 479.98px)");
   const room = useRoomInRow();
+  // A document that is only its file, from a laptop's width: its actions at the file's row end where its name keeps
+  // 18 rem beside them (FileName lets it wrap before its date: a 1440 px window has that), else under it.
+  const fileRow = useRoomBeside(18);
 
   // A PDF on an iPhone or an iPad opens in a tab of its own (savingWay): the button says so, and the line under it how to keep it.
   const opensInTab = !!file && savingWay(file) === "tab";
@@ -255,12 +261,11 @@ export function ResultDocument({
       <Button variant={variant} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
     );
 
-  return (
-    <>
-      {/* Narrower: above the document, the download first, then the more actions. The file opens from its name, on its
-          row in the document. */}
-      {!wide && (
-        <HStack ref={room.ref} wrap="wrap" vAlign="center" gap={2}>
+  // Narrower: the download first, then the more actions. A document that is its file has them in its card, under the
+  // file's row, the download across a phone's card; a text has them above it. The file opens from its name.
+  const inCard = !wide && Boolean(file) && !text;
+  const narrowActions = !wide && (
+        <HStack ref={room.ref} wrap="wrap" vAlign="center" gap={2} className={inCard ? fileStyles.cardActions : undefined}>
           {primaryDownload}
           {text && !file && (
             <Button variant="primary" icon={copyIcon} label={copyLabel ?? copyName} onClick={copy} />
@@ -283,7 +288,11 @@ export function ResultDocument({
             </>
           )}
         </HStack>
-      )}
+  );
+
+  return (
+    <>
+      {!inCard && narrowActions}
 
       {opensInTab && (
         <Text as="p" type="supporting">
@@ -330,20 +339,34 @@ export function ResultDocument({
             {/* The name has the row; its actions stand beside it where the line has room for both, and drop under it
                 where it has not (a laptop's narrower column), as Fler filer's rows do: never a name of three lines
                 squeezed between them. */}
-            <HStack data-file-row wrap="wrap" vAlign="center" gap={2}>
+            <HStack ref={fileRow.ref} data-file-row wrap={fileRow.beside ? "nowrap" : "wrap"} vAlign="center" gap={2}>
               <Item
                 className={fileStyles.documentFile}
-                startContent={<Icon icon={Kind} />}
-                label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text><FileName name={file.name} /></Text>}
+                startContent={<IconTile icon={Kind} size={wide ? "lg" : small ? "sm" : "md"} />}
+                label={
+                  file.previewable && download && inline && !(wide && !text) ? (
+                    <OpenFile file={file} url={inline} download={download} name access={access} />
+                  ) : (
+                    <Text>
+                      <FileName name={file.name} />
+                    </Text>
+                  )
+                }
                 description={file.meta}
               />
+              {/* From a laptop's width a document that is only its file has its actions at the end of the file's row, as
+                  tall as each other: opening it (an outlined icon), Dela, then the one download. Where the row is too short
+                  they stand under the name, at its end all the same. One order: the file's dialog is mounted with its
+                  opener, and stays open when the window crosses the line (opening it can, taking the page's scrollbar). */}
               {wide && !text && (
-                <HStack vAlign="center" gap={2} paddingInline={2} paddingBlockEnd={2}>
-                  {shareButton("ghost")}
+                <HStack vAlign="center" gap={2} paddingInline={4} className={fileStyles.documentActions} data-under={!fileRow.beside || undefined}>
+                  {file.previewable && download && inline && <OpenFile file={file} url={inline} download={download} iconOnly access={access} />}
+                  {shareButton("secondary")}
                   {primaryDownload}
                 </HStack>
               )}
             </HStack>
+            {inCard && narrowActions}
           </>
         )}
         {preview && (

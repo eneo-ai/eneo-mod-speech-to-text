@@ -13,6 +13,7 @@ import styles from "./FlowFrame.module.css";
 
 /** A small phone's window (320 × 568): the first screen has the ways in and what the chosen one does above the dock. */
 const SHORT_PHONE = "(max-width: 767.98px) and (max-height: 640px)";
+const COLUMNS = "(min-width: 1024px)";
 
 /**
  * A flow's page, its first column: the flow's name and description, and its details. The same in every state, so
@@ -49,22 +50,37 @@ export function FlowAside({
   onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
-  // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view.
-  const gap = useMediaQuery(SHORT_PHONE, true) ? 4 : 6;
+  // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view; the
+  // column's parts stand 32 px apart beside the work.
+  const short = useMediaQuery(SHORT_PHONE, true);
+  const columns = useMediaQuery(COLUMNS, true);
+  const gap = short ? 3 : columns ? 8 : 6;
+  // The flow's name is the page's arrival title, and its description the lead under it: for laptops only while the page
+  // holds audio or a run.
+  const description = published.description && (
+    // At the body's size on a small phone, so the ways in reach the first screen above the dock.
+    <Text as="p" type={short ? "body" : "large"} weight="normal" color="secondary" textWrap="pretty" className={compact ? styles.fromLaptop : undefined}>
+      {published.description}
+    </Text>
+  );
   return (
     <VStack gap={gap} className={className}>
-      {titleIsHeading ? (
-        <Heading level={1} className={compact ? styles.compactName : undefined}>
-          {published.name}
-        </Heading>
-      ) : (
-        <Text as="p" weight="semibold" type="large" className={styles.columnName}>
-          {published.name}
-        </Text>
-      )}
+      <VStack gap={3}>
+        {titleIsHeading ? (
+          <Heading level={1} type="display-3" className={compact ? styles.compactName : undefined}>
+            {published.name}
+          </Heading>
+        ) : (
+          // Where a run's card has the page's heading the name is no heading, but it looks as it does in the setup, so the
+          // column does not change when a run starts.
+          <Text as="p" type="display-3" textWrap="balance" className={[styles.columnName, compact && styles.compactName].filter(Boolean).join(" ")}>
+            {published.name}
+          </Text>
+        )}
+        {description}
+      </VStack>
       {lead}
       <VStack gap={gap} className={compact ? styles.fromLaptop : undefined}>
-        {published.description && <Text as="p" color="secondary">{published.description}</Text>}
         {guide && <HowItWorks guide={guide} />}
         <ClassificationNote classification={classification} />
       </VStack>
@@ -73,8 +89,13 @@ export function FlowAside({
           className={styles.fold}
           isOpen={open}
           onOpenChange={onOpenChange}
+          // The row says what it is ("Uppgifter"), then what is filled in: bordered as a field is, it is no picker. Its
+          // name is "Uppgifter, Deltagare: …", the word heard once.
           trigger={
             <>
+              <Text type="supporting" color="secondary" aria-hidden>
+                Uppgifter
+              </Text>{" "}
               <VisuallyHidden>Uppgifter, </VisuallyHidden>
               {summary}
             </>

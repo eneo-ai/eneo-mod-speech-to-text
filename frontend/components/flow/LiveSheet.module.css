@@ -24,6 +24,12 @@
   font-size: var(--font-size-sm);
 }
 
+/* The "Preliminär" pill stands in the heading's line at every width, its words running on beside it and under it. */
+.pill {
+  vertical-align: middle;
+  margin-inline-end: var(--spacing-1);
+}
+
 /* The log is the scroll area: its ring is drawn inside it, the sheet clips an outside one. */
 .log {
   padding: var(--room-before) var(--spacing-5) var(--room-after);

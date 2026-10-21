@@ -17,7 +17,8 @@ test("the document is the wider column, the transcript sits beside it and the he
       const rect = section.getBoundingClientRect();
       return { left: rect.left, width: rect.width, top: rect.top, position: getComputedStyle(section).position };
     };
-    const heading = document.querySelector("h1")!.getBoundingClientRect();
+    // The heading's row: the result's tile, then the heading.
+    const heading = document.querySelector("h1")!.parentElement!.getBoundingClientRect();
     return { document: box("result-panel-document"), transcript: box("result-panel-transcript"), heading: { left: heading.left, top: heading.top } };
   });
   const { document: doc, transcript, heading } = columns;
@@ -49,7 +50,8 @@ test("on a wide screen the result's workspace grows with the window, the bar wit
   await page.setViewportSize({ width: 2560, height: 1440 });
   await result(page);
   const brand = (await page.getByRole("banner").getByRole("img").first().boundingBox())!;
-  const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+  // The heading's row (the result's tile, then the heading) starts under the brand.
+  const title = (await page.getByRole("heading", { level: 1 }).locator("..").boundingBox())!;
   expect(Math.round(title.x), "the page's heading under the brand").toBe(Math.round(brand.x));
   const transcript = (await page.locator("#result-panel-transcript").boundingBox())!;
   expect(transcript.width, "the transcript beside the document has room").toBeGreaterThanOrEqual(700);

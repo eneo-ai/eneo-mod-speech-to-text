@@ -1,12 +1,20 @@
 /*
  * A flow's row is one link. ListItem's anchor is only the text column; this stretches it over the whole row, so
- * the icon, the chevron and the padding open the flow too. The focus ring stays the row's own.
+ * the tile, the chevron and the padding open the flow too. The focus ring stays the row's own.
  *
- * A row without a description is as tall as the theme's control (44 px under a coarse pointer), and its words sit in
- * the middle of it, so a finger has a target of that height on the anchor itself.
+ * A row is at least 72 px high, and its words sit in the middle of it, so a finger has a target of that height on the
+ * anchor itself.
  */
 .row {
   position: relative;
+  min-block-size: calc(var(--spacing-12) + var(--spacing-6));
+  padding-inline: var(--spacing-4);
+}
+
+@media (min-width: 768px) {
+  .row {
+    padding-inline: var(--spacing-6);
+  }
 }
 
 .row a {
@@ -18,4 +26,77 @@
   content: "";
   position: absolute;
   inset: 0;
+}
+
+/* The row's ring is drawn inside it: the card clips what stands outside its edge, and a tall row on a phone kept only the
+   ring's top and bottom. */
+.row:focus-within {
+  outline-offset: calc(var(--focus-outline-width) * -1);
+}
+
+/* Where a pointer hovers, the row tints and its chevron takes the accent; nothing moves. */
+@media (hover: hover) {
+  .row:hover .chevron {
+    color: var(--color-accent);
+  }
+}
+
+/* The card's edge closes the last row: no divider under it. */
+.rows > :last-child {
+  border-block-end-width: 0;
+}
+
+/* A space card's head: the space's name, filling the line, and its count at the end on the name's baseline, as far in as
+   the rows. A name and its count too long for one line go as a unit: the count drops under the name, which stays whole. */
+.cardHead {
+  align-items: baseline;
+  padding: var(--spacing-5) var(--spacing-4);
+}
+
+.cardHead > :first-child {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 768px) {
+  .cardHead {
+    padding: var(--spacing-5) var(--spacing-6);
+  }
+}
+
+/* On a phone: a row of three or four lines keeps its tile at the name's line; a space's name is set a step smaller, so a
+   long one ("Kommunledningskontoret") keeps its line whole, the count under it, instead of being hyphenated; and the
+   list's parts (the recordings to deal with, the spaces, the version) stand 24 px apart, not 40, so a flow is in view
+   under a recording to deal with. */
+@media (max-width: 639.98px) {
+  .row {
+    align-items: flex-start;
+  }
+
+  .cardHead h2 {
+    font-size: var(--font-size-lg);
+  }
+
+  .sections {
+    row-gap: var(--spacing-6);
+  }
+}
+
+/* The page's head stands 24 px under the bar on a phone and 48 px from a laptop's width. */
+.page {
+  padding-block-start: var(--spacing-6);
+}
+
+@media (min-width: 1024px) {
+  .page {
+    padding-block-start: var(--spacing-12);
+  }
+}
+
+/* Two space cards abreast where the column has room for two of 440 px, one across it where it has not, never wider than
+   the column. Each card is as tall as its rows: beside a space of five flows, a space of one is no empty panel. */
+.spaces {
+  display: grid;
+  gap: var(--spacing-6);
+  grid-template-columns: repeat(auto-fill, minmax(min(27.5rem, 100%), 1fr));
+  align-items: start;
 }

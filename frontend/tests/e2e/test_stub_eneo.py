@@ -478,7 +478,7 @@ class DevProfileTests(Stack):
     def test_the_bff_role_answers_without_a_session_or_a_key(self) -> None:
         for path, check in (
             ("/api/auth/status", lambda body: body["authenticated"] is True and body["user"]["id"] == USER),
-            ("/api/branding", lambda body: body["organization"]["name"] == "Sundsvalls kommun"),
+            ("/api/branding", lambda body: body["organization"]["name"] == "Eneo"),
             ("/api/eneo/flows/", lambda body: FLOW in {item["id"] for item in body["items"]}),
             (f"/api/eneo/flows/{FLOW}/published/", lambda body: body["id"] == FLOW),
             (f"/api/eneo/flows/{FLOW}/runs/{DONE}/status/", lambda body: body["status"] == "completed"),

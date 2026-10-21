@@ -21,3 +21,17 @@
     overflow: hidden;
   }
 }
+
+/* From a laptop's width the card's heading and its notes stand 24 px in, as the player's parts under them do. */
+@media (min-width: 1024px) {
+  .inset {
+    padding-inline: var(--spacing-6);
+  }
+}
+
+/* Ghost buttons at a row's end: their own padding would end their words short of the edge the search field ends on. They
+   keep their words on one line: a row too short for them folds them into the menu (useRoomInRow), never squeezes them. */
+.trailing {
+  flex-shrink: 0;
+  margin-inline-end: calc(-1 * var(--spacing-3));
+}

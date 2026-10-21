@@ -6,6 +6,7 @@ import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { Token } from "@astryxdesign/core/Token";
@@ -279,7 +280,8 @@ export function SpeakerNamingDialog({
                     return (
                       <li key={row.label} className={styles.row} data-speaker={row.label}>
                         <div className={styles.who}>
-                          <SpeakerMark label={row.label} name={speakerDisplayLabel(row.label)} size="lg" />
+                          {/* The mark the page has for this person: their initial once a name is chosen, as it is chosen. */}
+                          <SpeakerMark label={row.label} name={row.name || speakerDisplayLabel(row.label)} size="lg" />
                           <VStack gap={1} hAlign="start" className={styles.said}>
                             <Text as="p">
                               <Text weight="medium">{speakerDisplayLabel(row.label)}</Text>
@@ -324,11 +326,16 @@ export function SpeakerNamingDialog({
                           {/* A status, as on the page's list; the field says it to a screen reader. */}
                           {unsure && (
                             <HStack aria-hidden>
-                              <Token size="sm" color="yellow" label="Osäkert förslag" />
+                              <Token size="sm" color="yellow" label="Osäkert förslag" icon={<Icon icon="warning" size="sm" />} />
                             </HStack>
                           )}
                           {proposal?.evidence && (
-                            <Collapsible defaultIsOpen={false} chevronPosition="start" trigger={<Text type="supporting" weight="medium">Varför?</Text>}>
+                            <Collapsible
+                              className={styles.why}
+                              defaultIsOpen={false}
+                              chevronPosition="start"
+                              trigger={<Text type="supporting" weight="medium">Varför?</Text>}
+                            >
                               <Text as="p" type="supporting">{proposal.evidence}</Text>
                             </Collapsible>
                           )}

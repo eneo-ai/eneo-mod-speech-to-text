@@ -53,7 +53,7 @@ export default defineConfig({
       ORGANIZATION_NAME: "Förvaltningen för kultur, fritid och samhällsbyggnad i Västernorrlands län",
       ORGANIZATION_LOGO: logo("brand-wide-light.svg"),
       ORGANIZATION_LOGO_DARK: logo("brand-wide-dark.svg"),
-      ORGANIZATION_ACCENT: "#1E7B34",
+      ORGANIZATION_ACCENT: "#1C7531",
     }),
   ],
 });

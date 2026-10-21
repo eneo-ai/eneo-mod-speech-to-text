@@ -64,3 +64,9 @@
 .sample {
   margin-inline-start: calc(-1 * var(--spacing-3));
 }
+
+/* Varför? opens with its chevron, whose glyph stands in from its box: pulled out by that, it starts on the edge the name's
+   field and its "Osäkert förslag" share. */
+.why {
+  margin-inline-start: calc(-1 * var(--spacing-1-5));
+}

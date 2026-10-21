@@ -35,13 +35,14 @@ function useSettled() {
   };
 }
 
-/** "Spelar in" with the red dot while the recorder records; "Pausad" otherwise. Never colour alone. */
+/** "Spelar in" with the red dot while the recorder records, "Pausad" with the dot hollow otherwise: shape and word, never
+ *  colour alone. */
 function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
   const recording = phase === "recording";
   return (
     <HStack as="span" gap={2} align="center">
-      {recording ? <span aria-hidden className={styles.dot} /> : <Icon icon={Pause} size="sm" color="secondary" />}
-      <Text weight="medium" size={size}>
+      <span aria-hidden className={styles.dot} data-paused={recording ? undefined : ""} />
+      <Text type="label" size={size}>
         {recording ? "Spelar in" : "Pausad"}
       </Text>
     </HStack>
@@ -57,13 +58,13 @@ function Timer({
 }: {
   capture: RecordingCapture;
   phase: SessionPhase;
-  weight?: "medium";
+  weight?: "semibold";
   className?: string;
 }) {
   const elapsed = useElapsed(capture, phase === "recording");
   // Stopped (paused, interrupted), the time stands still and is in the secondary colour, so it does not read as running.
   return (
-    <Text hasTabularNumbers weight={weight} color={phase === "recording" ? undefined : "secondary"} className={[styles.clock, className].filter(Boolean).join(" ")}>
+    <Text hasTabularNumbers weight={weight} size={weight ? "lg" : undefined} color={phase === "recording" ? undefined : "secondary"} className={[styles.clock, className].filter(Boolean).join(" ")}>
       {formatClock(elapsed)}
     </Text>
   );
@@ -89,7 +90,7 @@ export function FocusedRecorder({
         <Timer capture={capture} phase={phase} className={styles.timer} />
         <LevelMeter
           stream={phase === "recording" ? stream : null}
-          bars={25}
+          bars={40}
           variant="wave"
           className={styles.stageMeter}
         />
@@ -100,8 +101,8 @@ export function FocusedRecorder({
 
 /**
  * The recording's controls in fixed places: Pausa (Fortsätt while paused or
- * interrupted) and Stoppa, with warnings above them and the line saying what
- * else matters now under them. With
+ * interrupted) and Stoppa, with warnings and cautions above them and the line
+ * saying what else matters now under them. With
  * `showStatus`, the status, timer and level ride along (Strömma, where the
  * document sheet has the workspace).
  */
@@ -111,6 +112,7 @@ export function RecordingBar({
   stream,
   showStatus,
   warnings,
+  cautions = [],
   notes,
   makesText = false,
   stopping = false,
@@ -123,6 +125,8 @@ export function RecordingBar({
   showStatus: boolean;
   /** What can lose the meeting: said as alerts, above the controls. */
   warnings: Problem[];
+  /** What the person can do that would lose sound ("Lås inte skärmen…"): said calmly, above the controls too. */
+  cautions?: string[];
   notes: string[];
   /** The flow ends in text, not a file. */
   makesText?: boolean;
@@ -138,13 +142,13 @@ export function RecordingBar({
     <div className={styles.readout}>
       <RecordingStatus phase={phase} />
       <div className={styles.readoutLine}>
-        <Timer capture={capture} phase={phase} weight="medium" />
+        <Timer capture={capture} phase={phase} weight="semibold" />
         <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
       </div>
     </div>
   );
   const actions = (
-    <Grid columns={2} gap={showStatus ? 2 : 3} className={showStatus ? styles.statusActions : styles.actions}>
+    <Grid columns={2} gap={3} className={showStatus ? styles.statusActions : styles.actions}>
       <Button
         label={running ? "Pausa" : "Fortsätt"}
         variant="secondary"
@@ -175,7 +179,22 @@ export function RecordingBar({
             ))}
           </VStack>
         )}
+        {/* Said once when it comes, from a region that is always there; shown above the controls at the body's size, as
+            the warnings are, not as a line under them, and with them: a short screen pins the controls, and the line
+            that keeps the sound from being lost is pinned with them. */}
+        <VisuallyHidden as="p" role="status">
+          {cautions.join(" ")}
+        </VisuallyHidden>
         <VStack gap={3} className={styles.controls}>
+          {cautions.length > 0 && (
+            <VStack gap={1} aria-hidden className={styles.cautions} data-status={marker}>
+              {cautions.map((caution) => (
+                <Text as="p" color="secondary" key={caution}>
+                  {caution}
+                </Text>
+              ))}
+            </VStack>
+          )}
           {/* One toolbar for the controls: a single Tab stop, the arrow keys between Pausa and Stoppa. */}
           <Toolbar
             label="Inspelningen"
@@ -186,8 +205,8 @@ export function RecordingBar({
             startContent={showStatus ? readout : actions}
             endContent={showStatus ? actions : undefined}
           />
-          {/* The notes, then Stoppa's line a step apart, so two short lines do not read as one paragraph. */}
-          <VStack gap={2} className={styles.notes} data-status={marker}>
+          {/* The notes, then Stoppa's line, each a line of its own under the controls. */}
+          <VStack gap={1} className={styles.notes} data-status={marker}>
             {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
             <VStack role="status" gap={0.5}>
               {notes.map((note) => (

@@ -123,15 +123,23 @@
   background: var(--color-background-card);
 }
 
-/* Its top border meets the capital of the flow's line beside it (its line's leading is 6 px), and it is that much
-   shorter, so it still ends one gutter above the window's bottom. */
+/* Its top edge is the top of the state's pill beside it, so the two columns start on one line. */
 @media (min-width: 1024px) {
   .transcriptCard {
     position: sticky;
     inset-block-start: var(--spacing-6);
-    margin-block-start: var(--spacing-1-5);
     min-block-size: var(--module-transcript-min-height);
-    max-block-size: calc(var(--view-fit-height, 100dvh) - var(--spacing-6) - var(--spacing-1-5));
+    max-block-size: calc(var(--view-fit-height, 100dvh) - var(--spacing-6));
     overflow: hidden;
   }
+}
+
+/* The speakers' rows read edge to edge in their card, from the edge "Talare" and the note under them stand on; the
+   card's edge closes the list, so no rule under the last one. */
+.speakers > * {
+  padding-inline: 0;
+}
+
+.speakers > :last-child {
+  border-block-end-width: 0;
 }

@@ -58,8 +58,9 @@ test("Visa i transkriberingen on the docked player takes the person to the trans
 });
 
 test("a copy from the transcript's menu that the clipboard refuses says so beside the menu, and the next one is copied", async ({ page }) => {
-  // A phone's column: the transcript's copy and download fold into its menu there.
-  await page.setViewportSize({ width: 390, height: 844 });
+  // The narrowest phone: the transcript's copy and download fold into its menu there. On a wider phone they stand in the
+  // row, which under the tabs holds no heading of its own.
+  await page.setViewportSize({ width: 320, height: 568 });
   // A clipboard that refuses until it is let through, as a page without the permission and then with it.
   await page.addInitScript(() => {
     const state = window as unknown as { clipboardRefuses: boolean };

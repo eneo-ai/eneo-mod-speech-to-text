@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { AlignLeft, FileText, RotateCcw } from "lucide-react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -12,14 +12,31 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
+import { LoadFailure } from "@/components/LoadFailure";
 import { SlowWait } from "@/components/SlowWait";
 import { BackToFlows } from "@/components/flow/BackToFlows";
+import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { runWait, type StepView } from "@/lib/run-progress";
 import { creatingHeading } from "@/lib/flow-output";
 import { PRODUCT_NAME } from "@/lib/product";
-import { StepList } from "./StepList";
-import { StateCard } from "./StateCard";
+import { StateCard, StateHead } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
+
+// A run's steps (the design system's stepper, the most of this view's code) show only once a run is under way, which a
+// page that records or uploads never shows: fetched when the sending or the run's view first draws, while the run is
+// started and its steps are read.
+const stepList = lazyLoader(() => import("./StepList").then((module) => module.StepList));
+
+/** Fetches the step list ahead of the run's steps (the sending view, the run's own); a test awaits it. */
+export const preloadStepList = () => stepList.load().then(() => undefined, () => undefined);
+
+/** The run's steps once their code is there: until then nothing, as before the steps are read; the person's reload if it
+ *  cannot come. */
+function Steps({ steps }: { steps: readonly StepView[] }) {
+  const { value: List, failed } = useLoaded(stepList);
+  if (List) return <List steps={steps} />;
+  return failed ? <LoadFailure keeps="Körningen fortsätter i Eneo.">Stegen kunde inte visas.</LoadFailure> : null;
+}
 
 /** The run goes on in Eneo: what happens now, for how long, every step, and a way to stop it. */
 export function RunProgress({
@@ -61,6 +78,7 @@ export function RunProgress({
     if (!asking && wasAsking.current) trigger.current?.focus();
     wasAsking.current = asking;
   }, [asking]);
+  useEffect(() => void preloadStepList(), []);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 15_000);
@@ -81,9 +99,11 @@ export function RunProgress({
     <StateCard>
       <VStack gap={6}>
         <VStack gap={2}>
-          <Heading level={1} ref={heading} tabIndex={-1}>
-            {creatingHeading(makesText)}
-          </Heading>
+          <StateHead icon={makesText ? AlignLeft : FileText}>
+            <Heading level={1} ref={heading} tabIndex={-1}>
+              {creatingHeading(makesText)}
+            </Heading>
+          </StateHead>
           <VStack gap={1}>
             {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way. */}
             <VisuallyHidden as="p" role="status">
@@ -115,7 +135,7 @@ export function RunProgress({
         </VStack>
         {steps.length > 0 && (
           <VStack as="section" aria-label="Flödets steg">
-            <StepList steps={steps} />
+            <Steps steps={steps} />
           </VStack>
         )}
         {/* Reassurance for a page closed by mistake, not a request to close it, and where to find the run then: the

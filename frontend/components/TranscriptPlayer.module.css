@@ -280,6 +280,26 @@
   }
 }
 
+/* From a laptop's width the card's parts (its heading, tools, text and player) stand 24 px in, as every other card's
+   content does; the passages' own 8 px and the scroll box's ring make up the rest of it. */
+@media (min-width: 1024px) {
+  .inset,
+  .tools,
+  .status,
+  .notice,
+  .dock {
+    padding-inline: var(--spacing-6);
+  }
+
+  .padded {
+    padding-inline: calc(var(--spacing-6) - var(--spacing-2) - var(--focus-outline-width));
+  }
+
+  .empty {
+    padding-inline: var(--spacing-6);
+  }
+}
+
 /* The soft keyboard opens over the lower half of a touch screen: with a text field of the player focused (the search,
    a passage's editor) the dock stays where it is in the text, not above the keyboard where it would cover the text. */
 @media (pointer: coarse) {
@@ -314,7 +334,8 @@
   margin-block: calc((1lh - var(--size-element-sm)) / 2);
 }
 
-/* Speed: in the player's row from 640 px, above it below. */
+/* Speed: in the player's row, and above it under 400 px, where it would leave the position slider under 120 px. The skips
+   leave the row below 640 px. */
 .rateBelow {
   display: none;
   flex-shrink: 0;
@@ -322,7 +343,12 @@
 }
 
 @media (max-width: 639.98px) {
-  .skip,
+  .skip {
+    display: none;
+  }
+}
+
+@media (max-width: 399.98px) {
   .rate {
     display: none;
   }
@@ -353,7 +379,7 @@
   border-radius: var(--radius-container);
   transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
   content-visibility: auto;
-  contain-intrinsic-size: auto 7rem;
+  contain-intrinsic-size: auto 5.25rem;
 }
 
 .turn[data-active="true"] {
@@ -425,6 +451,20 @@
 
 .quiet {
   color: var(--color-text-secondary);
+}
+
+/* A passage of a known speaker: the name in the speaker's colour (4.5:1 or more on the card in both modes,
+   lib/accessibility.test.ts), beside its mark, and a rule of it, rounded at its ends, down the passage's name and words:
+   the name says who; the rule leads the eye down a long passage. */
+.turn[data-speaker-color] .name:not(.quiet) {
+  color: var(--tint);
+}
+
+.turn[data-speaker-color] .turnBody {
+  padding-inline-start: var(--spacing-3);
+  border-inline-start: calc(3 * var(--border-width)) solid var(--tint);
+  border-start-start-radius: var(--radius-inner);
+  border-end-start-radius: var(--radius-inner);
 }
 
 .speakerName {
@@ -684,10 +724,12 @@
   }
 }
 
-/* "Rätta": at the end of the passage's head row, the same place on every passage; never mid-sentence, always there. */
+/* "Rätta": at the end of the passage's head row, the same place on every passage; never mid-sentence, always there. Its
+   word ends on the passage's edge, its own padding outside it. */
 .correct {
   gap: var(--spacing-1);
   margin-inline-start: auto;
+  margin-inline-end: calc(-1 * var(--spacing-1-5));
   padding-inline: var(--spacing-1-5);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
@@ -698,6 +740,13 @@
     background: var(--color-overlay-hover);
     color: var(--color-text-primary);
   }
+}
+
+/* A trailing ghost button (Ladda ner, a row's Namnge talare) ends its words on the content's edge, where the search field
+   ends: its own padding would set them in from it. */
+.trailing,
+.trailingButton > :global(.astryx-button) {
+  margin-inline-end: calc(-1 * var(--spacing-3));
 }
 
 .correct svg {

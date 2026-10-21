@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -27,6 +27,7 @@ import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { ReadyPanel } from "@/components/flow/ReadyPanel";
+import { StateCard } from "@/components/flow/StateCard";
 import { LiveSheet } from "@/components/flow/LiveSheet";
 import { FocusedRecorder, RecordingBar, SignedOutControls } from "@/components/flow/Recorder";
 import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/recording-hooks";
@@ -171,36 +172,9 @@ export function FlowInput({
   // In one column the flow's details stand above the work: the recording to go on with comes first, under its name.
   const recoveryFirst = group === "setup" && !blocked && resuming && !columns;
   // In one column the choice of way in comes first, so the chosen way is on the first screen with the docked action that
-  // starts it; the flow's details and its classification follow it, the details by the speaker controls they fill in.
+  // starts it; the flow's classification follows the choice there. The details stand in the working card at every width,
+  // by the speaker controls they fill in, so a field being typed in never moves when the layout changes (a tablet turned).
   const choiceFirst = group === "setup" && !blocked && !columns;
-  // The detail field that last had the focus. Moving the details (a tablet turned, a window crossing a laptop's width)
-  // mounts them anew and the focus falls to the page: it goes back to the same field, and a name being typed in it is kept
-  // as a chip (ParticipantsInput).
-  const detailFocus = useRef<string | null>(null);
-  useEffect(() => {
-    const remember = (event: FocusEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
-      detailFocus.current = target?.closest("[data-detail-field]")?.getAttribute("data-detail-field") ?? null;
-    };
-    // A field the person leaves while it stays on the page is left; one the layout took away keeps its claim to the focus.
-    const left = (event: FocusEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
-      queueMicrotask(() => {
-        if (target?.isConnected) detailFocus.current = null;
-      });
-    };
-    document.addEventListener("focusin", remember);
-    document.addEventListener("focusout", left);
-    return () => {
-      document.removeEventListener("focusin", remember);
-      document.removeEventListener("focusout", left);
-    };
-  }, []);
-  useLayoutEffect(() => {
-    const field = detailFocus.current;
-    if (!field || (document.activeElement && document.activeElement !== document.body)) return;
-    document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(field)}"]`)?.focus();
-  }, [choiceFirst]);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -241,9 +215,10 @@ export function FlowInput({
             compact={holdsAudio}
             guide={group === "setup" ? howItWorks(contract, snapshot.modes) : null}
             lead={recoveryFirst ? unsentRecordings : undefined}
-            // The blocked setup asks for nothing: its details would be filled in for no run, and on a phone they stand
-            // above the reason. What was typed before stays with the session.
-            details={(blocked && group === "setup") || choiceFirst ? null : details}
+            // In the setup the details are the working card's; while the page holds audio they are the flow's, folded on
+            // a phone or tablet. The blocked setup asks for nothing: its details would be filled in for no run. What was
+            // typed before stays with the session.
+            details={group === "setup" ? null : details}
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
             open={openDetails}
             onOpenChange={setDetailsOpen}
@@ -267,6 +242,8 @@ export function FlowInput({
           </VisuallyHidden>
           <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true && input.capture.refused === null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
+          {/* The recordings to go on with or send stand above the working card, a card of their own beside it, never in it. */}
+          {group === "setup" && !blocked && !recoveryFirst && unsentRecordings}
           {group === "setup" ? (
             <SetupWorkspace
               contract={contract}
@@ -276,9 +253,9 @@ export function FlowInput({
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
               unsent={unsent}
-              unsentRecordings={recoveryFirst ? null : unsentRecordings}
               resuming={resuming}
-              details={choiceFirst ? details : null}
+              details={details}
+              oneColumn={!columns}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -337,7 +314,7 @@ function CaptureWorkspace({
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
   const coarsePointer = useMediaQuery(TOUCH);
-  const { warnings, notes } = recordingNotices({
+  const { warnings, cautions, notes } = recordingNotices({
     phase,
     silent,
     lowSpace: capture.lowSpace,
@@ -393,6 +370,7 @@ function CaptureWorkspace({
         stream={capture.stream}
         showStatus={streaming}
         warnings={warnings}
+        cautions={cautions}
         notes={notes}
         makesText={makesText}
         stopping={capture.stopping}
@@ -430,9 +408,9 @@ function SetupWorkspace({
   onOpenRun,
   onMoreRuns,
   unsent,
-  unsentRecordings,
   resuming,
   details,
+  oneColumn,
 }: {
   contract: RunContract;
   input: Session;
@@ -441,13 +419,14 @@ function SetupWorkspace({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
+  /** The unsent recordings, listed under the reason when the flow cannot run (only to save as files or delete). */
   unsent: UnsentList;
-  /** The unsent recordings to send or go on with, where the setup lists them; null where they stand first on the page. */
-  unsentRecordings: ReactNode;
   /** A recording a reload cut off is the page's one filled action, "Fortsätt spela in". */
   resuming: boolean;
-  /** The flow's details and its classification, where they follow the choice of way in (one column); null beside it. */
+  /** The flow's details, after the choice of way in at every width. */
   details: ReactNode;
+  /** One column (below a laptop's width): the flow's classification card follows the details here, not in the flow's column. */
+  oneColumn: boolean;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -497,21 +476,23 @@ function SetupWorkspace({
 
   // The flow cannot run now: its reason and the way to another flow stand where the ways in would, so nothing is
   // recorded, chosen or sent. The page's own content from its first paint, so a heading and a paragraph, not an alert.
-  // A recording made earlier stays listed under the reason it cannot be sent, to save as a file.
+  // A recording made earlier stays listed under the reason it cannot be sent, in its own card, to save as a file.
   if (speakerGap === "blocked") {
     return (
       <VStack gap={6}>
-        <VStack gap={4}>
-          <Heading level={2} data-phase-heading tabIndex={-1}>
-            {SPEAKERS_UNAVAILABLE.title}
-          </Heading>
-          <Text as="p">{SPEAKERS_UNAVAILABLE.detail}</Text>
-          <HStack>
-            <BackToFlows variant="primary" size="md" />
-          </HStack>
-        </VStack>
+        <StateCard>
+          <VStack gap={4}>
+            <Heading level={2} data-phase-heading tabIndex={-1}>
+              {SPEAKERS_UNAVAILABLE.title}
+            </Heading>
+            <Text as="p">{SPEAKERS_UNAVAILABLE.detail}</Text>
+            <HStack>
+              <BackToFlows variant="primary" size="md" />
+            </HStack>
+          </VStack>
+          <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
+        </StateCard>
         <UnsentRecordings list={unsent} sendLabel={sendLabel} evictable={input.evictable} />
-        <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
       </VStack>
     );
   }
@@ -523,8 +504,8 @@ function SetupWorkspace({
         Talare kan inte märkas upp just nu. Transkriberingen fungerar som vanligt.
       </Text>
     ) : speakerOption?.selectable && snapshot.speakerLabels !== null ? (
-      // What it gives, then what it costs. As wide as the microphone row (24 rem picker and its button): across a
-      // laptop's column the label and the switch would stand 800 px apart.
+      // What it gives, then what it costs. As wide as the working card's content, so the switch ends where the ways in
+      // and the microphone's well end: the card bounds it.
       <Switch
         label="Märk upp talare"
         description={`Texten visar vem som sa vad. Det tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
@@ -532,7 +513,7 @@ function SetupWorkspace({
         onChange={(on) => session.setSpeakerLabels(on)}
         labelPosition="start"
         labelSpacing="spread"
-        width="min(100%, 36rem)"
+        width="100%"
       />
     ) : speakerOption?.required || reviewsSpeakers ? (
       <Text as="p" color="secondary">
@@ -541,10 +522,10 @@ function SetupWorkspace({
       </Text>
     ) : null;
 
+  // The working card: white on the page's tinted ground, beside the flow's column from a laptop's width, its parts 24 px
+  // apart (StateCard), so the setup's action is in view on a laptop's first screen.
   return (
-    <VStack gap={6}>
-      {unsentRecordings}
-
+    <StateCard>
       {modes.length > 1 ? (
         <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} note={snapshot.modesNote} />
       ) : (
@@ -587,7 +568,7 @@ function SetupWorkspace({
         </VStack>
       )}
 
-      {details && <ClassificationNote classification={contract.security_classification} />}
+      {oneColumn && <ClassificationNote classification={contract.security_classification} bare />}
 
       {/* On a phone the dock keeps to the classification and the action, so the ways in stay in view above it: where the
           recording is kept is said at the form's end. */}
@@ -604,9 +585,9 @@ function SetupWorkspace({
           dock,
           // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
-            {/* Where the person commits: what the flow may take, once more beside the action. Not on a tablet's one
-                column, where the classification's card stands just above it. */}
-            {(dock || !details) && <ClassificationLine classification={contract.security_classification} />}
+            {/* Where the person commits on a phone: what the flow may take, once more in the dock. Elsewhere the
+                classification stands in view beside the action (the flow's column) or just above it (one column). */}
+            {dock && <ClassificationLine classification={contract.security_classification} />}
             {forwardedLine(contract) && (
               <Text as="p" type="supporting" justify="center">
                 {forwardedLine(contract)}
@@ -650,6 +631,6 @@ function SetupWorkspace({
         )}
 
       <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
-    </VStack>
+    </StateCard>
   );
 }

@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { CloudUpload } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { Spinner } from "@astryxdesign/core/Spinner";
-import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { formatBytes, formatPercent } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
 import { creatingHeading } from "@/lib/flow-output";
-import { StateCard } from "@/components/flow/StateCard";
+import { preloadStepList } from "@/components/flow/RunProgress";
+import { StateCard, StateHead } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
 import { useSaveRecording } from "@/components/save-recording";
@@ -53,13 +55,17 @@ export function SubmittingView({
   const title = creatingHeading(makesText);
   const heading = usePhaseHeading(title);
   const isUploading = submission.kind === "uploading";
+  // The run's view follows this one: its steps' code is fetched while the file goes up.
+  useEffect(() => void preloadStepList(), []);
   return (
     <StateCard>
       <VStack gap={6}>
         <VStack gap={2}>
-          <Heading level={1} ref={heading} tabIndex={-1}>
-            {title}
-          </Heading>
+          <StateHead icon={CloudUpload}>
+            <Heading level={1} ref={heading} tabIndex={-1}>
+              {title}
+            </Heading>
+          </StateHead>
           {/* The spinner sits outside the status region: only the words are spoken. */}
           <HStack gap={2} align="center">
             <Spinner size="sm" aria-hidden />
@@ -67,6 +73,13 @@ export function SubmittingView({
               {stage(submission)}
             </Text>
           </HStack>
+          {/* What a closed page does now, read before the bar: until the run has started, a closed page stops it. The run's
+              own view says what a closed page means for it. */}
+          {(isUploading || submission.kind === "starting") && (
+            <Text as="p" color="secondary">
+              {isUploading ? "Stäng inte sidan och lås inte skärmen förrän flödet har startat." : "Stäng inte sidan förrän flödet har startat."}
+            </Text>
+          )}
         </VStack>
         {isUploading ? (
           <UploadProgress submission={submission} onCancel={onCancelSubmission} />
@@ -86,9 +99,11 @@ function stage(submission: SubmissionState): string {
   if (submission.kind === "starting") return "Startar flödet…";
   if (submission.kind !== "uploading") return "Skickar…";
   const what = submission.recording ? "inspelningen" : "filen";
-  const sent = submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
-  return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
+  return allSent(submission) ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
+
+/** Every byte of the upload has left: what is under way now is Eneo receiving it. */
+const allSent = ({ loaded, total }: Extract<SubmissionState, { kind: "uploading" }>) => total != null && total > 0 && loaded >= total;
 
 /**
  * Eneo has the file and is asked to start the run. It may not answer for a while, so there is a way out at once: Avbryt
@@ -117,10 +132,6 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
           <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
         )}
       </HStack>
-      {/* The start is asked for from this page, tried again for minutes: a page closed now may start nothing. */}
-      <Text as="p" type="supporting">
-        Stäng inte sidan förrän flödet har startat.
-      </Text>
       {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>
   );
@@ -140,19 +151,13 @@ function UploadProgress({
   const percent = Math.max(0, Math.min(100, submission.percent ?? 0));
   return (
     <VStack gap={2}>
-      <HStack justify="between" align="start" gap={4}>
-        <StackItem size="fill">
-          <Text maxLines={1} weight="medium">
-            {submission.filename}
-          </Text>
-        </StackItem>
-        {/* Its name says what it stops; the word beside the file name stays short, so the name keeps its line. */}
-        <Button label="Avbryt uppladdningen" variant="secondary" size="sm" onClick={onCancel}>
-          Avbryt
-        </Button>
-      </HStack>
-      {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. */}
-      <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null} />
+      {/* The file's whole name, its own line: a long one wraps rather than being cut. */}
+      <Text as="p" weight="medium">
+        {submission.filename}
+      </Text>
+      {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. Once every byte has left it
+          moves again while Eneo receives the file: a full bar that stands still reads as done, or as stuck. */}
+      <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null || allSent(submission)} />
       {/* Tabular figures: the counting digits keep their width, so the words do not shift as they count. */}
       <HStack justify="between" gap={2}>
         <Text type="supporting" hasTabularNumbers>
@@ -163,14 +168,14 @@ function UploadProgress({
           {submission.percent != null ? formatPercent(percent) : "Pågår"}
         </Text>
       </HStack>
-      {/* The run's own view says what a closed page means for it; until the run has started, a closed page stops it. */}
-      <Text as="p" type="supporting">
-        Stäng inte sidan och lås inte skärmen förrän flödet har startat.
-      </Text>
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}
       </VisuallyHidden>
       <RetryNotice wait={submission.wait} />
+      {/* The card's last row, as the run's Avbryt körningen is: what it stops, said whole. */}
+      <HStack paddingBlockStart={2}>
+        <Button label="Avbryt uppladdningen" variant="secondary" onClick={onCancel} />
+      </HStack>
     </VStack>
   );
 }

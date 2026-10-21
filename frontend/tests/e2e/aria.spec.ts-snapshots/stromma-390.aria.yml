@@ -1,14 +1,14 @@
 - region "Ljudet":
   - status
-  - region "Preliminär text, den slutliga skapas när du är klar":
-    - heading "Preliminär text, den slutliga skapas när du är klar" [level=2]
+  - region "Preliminär text. Den slutliga texten skapas när du är klar.":
+    - heading "Preliminär text. Den slutliga texten skapas när du är klar." [level=2]
     - log "Preliminär text":
       - paragraph: /Välkomna till/
     - status
+  - status: "Lås inte skärmen och byt inte app: ljud kan saknas."
   - toolbar "Inspelningen":
     - text: /Spelar in 0:\d+/
     - button "Pausa"
     - button "Stoppa"
-  - status:
-    - paragraph: "Lås inte skärmen och byt inte app: ljud kan saknas."
+  - status
   - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.

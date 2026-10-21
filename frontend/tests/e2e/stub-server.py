@@ -114,9 +114,9 @@ ORGANIZATION = (
         "logo_sizes": {"light": logo_size(LOGOS["light"]), "dark": logo_size(LOGOS["dark"])} if CUSTOM_LOGO else None,
     }
     if BRANDING
-    else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False, "logo_sizes": None}
+    else {"name": "Eneo", "logo": "default", "dark_logo": False, "logo_sizes": None}
 )
-ACCENT = resolve_accent("#1E7B34", None) if BRANDING else None
+ACCENT = resolve_accent("#1C7531", None) if BRANDING else None
 # Which build runs, as the backend's GET /api/healthz answers it: release v0.1.0 and its commit, so the page's link to
 # the commit opens a real one. A gate state that needs another build answers it in the browser (tests/e2e/screens.ts):
 # on the gate's real target the backend answers, not this stub.
