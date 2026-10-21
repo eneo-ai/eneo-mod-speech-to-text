@@ -203,6 +203,22 @@ class ResolveTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "ORGANIZATION_ACCENT_DARK kräver ORGANIZATION_ACCENT"):
             resolve_accent(None, "#52B1FF")
 
+    def test_every_example_an_operator_can_copy_starts(self) -> None:
+        # Each ORGANIZATION_ACCENT line, commented or not, with the _DARK line that follows it.
+        root = Path(__file__).resolve().parents[2]
+        setting = re.compile(r"^(?:#\s*)?ORGANIZATION_ACCENT(_DARK)?=(\S+)", re.MULTILINE)
+        for path in (root / ".env.example", root / "docs" / "branding.md"):
+            pairs: list[list[str | None]] = []
+            for dark, value in setting.findall(path.read_text(encoding="utf-8")):
+                if dark:
+                    pairs[-1][1] = value
+                else:
+                    pairs.append([value, None])
+            self.assertTrue(pairs, path.name)
+            for light, dark_value in pairs:
+                with self.subTest(path.name, light=light, dark=dark_value):
+                    resolve_accent(light, dark_value)
+
     def test_hostile_values_are_refused_before_anything_is_formatted(self) -> None:
         for value in HOSTILE[:-1]:
             self.assertIsNone(parse_hex(value), repr(value))

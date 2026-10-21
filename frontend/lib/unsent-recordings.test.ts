@@ -50,11 +50,12 @@ test("an unsent recording keeps the name it was made with, then its flow and len
   assert.equal(recordingDetails(recording("b", 65 * 60_000, at(22, 16, 40))), "1\u00a0h\u00a05\u00a0min");
   const { container } = await render({ recordings: [recording("c", 30_000, at(20, 9, 5)), recording("d", 60_000, at(19, 8, 0))], withFlowName: true });
   const [lead, next] = rowsOf(container);
-  // The name the ready panel shows (lib/format recordingName), then its flow and length: on one line under the card's
-  // heading, each part whole, and in the list under it the name over the rest.
+  // The name the ready panel shows (lib/format recordingName), then its flow and length under the card's heading: the
+  // name's date and time whole, the flow's name free to wrap with its dot after it, the length one word; and in the list
+  // under it the name over the rest.
   const line = summaryOf(lead).firstElementChild!;
-  assert.equal(line.textContent, "Inspelning 20 sep 09:05 · Nämndmöte till rapport · 30\u00a0s");
-  assert.deepEqual([...line.children].map((part) => part.textContent), ["Inspelning 20 sep 09:05 ·", "Nämndmöte till rapport ·", "30\u00a0s"]);
+  assert.equal(line.textContent, "Inspelning 20 sep 09:05 · Nämndmöte till rapport\u00a0· 30\u00a0s");
+  assert.deepEqual([...line.children].map((part) => part.textContent), ["Inspelning 20 sep 09:05 ·"], "only the name is kept whole");
   assert.deepEqual([...summaryOf(next).children].map((line) => line.textContent), ["Inspelning 19 sep 08:00", "Nämndmöte till rapport · 1\u00a0min"]);
 });
 

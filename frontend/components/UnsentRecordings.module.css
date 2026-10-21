@@ -11,7 +11,7 @@
   min-inline-size: 0;
 }
 
-/* A part of a recording's line (its name, its flow, its length) keeps its words together: the line breaks after a dot. */
+/* A recording's name (its date and time) keeps its words together: its line breaks after the dot. */
 .part {
   white-space: nowrap;
 }

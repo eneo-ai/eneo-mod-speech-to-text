@@ -462,6 +462,79 @@ test("the PDF preview stays open, with its viewer, when the window crosses the b
   assert.equal(document.activeElement, view.container.querySelector('a[target="_blank"]'), "the link that opens it in a tab has focus");
 });
 
+test("a document that is only its file keeps its PDF preview open, with its viewer, across a laptop's width, and focus in it", async (t) => {
+  // Its opener is an icon at the file row's end from a laptop's width and the file's name narrower: one preview for both.
+  const resize = widthOf(t, 1280);
+  filesAnswer(t, present);
+  const view = await document_({ text: null, file: pdf });
+  const open = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-haspopup") === "dialog")!;
+  await view.act(async () => open.click());
+  const dialog = document.querySelector<HTMLElement>("dialog[open]")!;
+  const viewer = dialog.querySelector("iframe")!;
+  assert.ok(dialog.contains(document.activeElement), "focus starts in the dialog");
+
+  for (const width of [390, 1280, 390]) {
+    await view.act(async () => resize(width));
+    assert.equal(document.querySelector("dialog[open]"), dialog, `${width} px: still open, the same element`);
+    assert.equal(dialog.querySelector("iframe"), viewer, `${width} px: the viewer is not fetched again`);
+    assert.ok(dialog.contains(document.activeElement), `${width} px: focus has not dropped to the page`);
+  }
+
+  // Closed on the narrow page, focus is given to what opens the file there: its name.
+  await view.act(async () => button(dialog, "Stäng")!.click());
+  assert.equal(document.querySelector("dialog[open]"), null);
+  assert.equal(document.activeElement, view.container.querySelector('[data-file-row] a[target="_blank"]'), "the file's name has focus");
+});
+
+/** The browser's ResizeObserver as far as a test needs it: `resized()` calls every observer still observing, as a resize does. */
+function resizeObservers(t: TestContext) {
+  const real = globalThis.ResizeObserver;
+  const live = new Set<() => void>();
+  class Observer {
+    callback: () => void;
+    constructor(callback: () => void) {
+      this.callback = callback;
+    }
+    observe() {
+      live.add(this.callback);
+    }
+    unobserve() {}
+    disconnect() {
+      live.delete(this.callback);
+    }
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", { value: Observer, configurable: true, writable: true });
+  t.after(() => void Object.defineProperty(globalThis, "ResizeObserver", { value: real, configurable: true, writable: true }));
+  return () => live.forEach((callback) => callback());
+}
+
+test("a document's file has its actions beside its name or under it by the row's room alone, whatever widths the window had before", async (t) => {
+  const resize = widthOf(t, 1280);
+  // As a browser lays it out: the file's row 500 px, each action 150 px, anything else as wide as what it holds; an
+  // element taken off the page has no box.
+  t.mock.method(window.HTMLElement.prototype, "getBoundingClientRect", function width(this: HTMLElement): DOMRect {
+    const px = !this.isConnected
+      ? 0
+      : this.matches("[data-file-row]")
+        ? 500
+        : this.matches("button, a")
+          ? 150
+          : [...this.children].reduce((sum, child) => sum + width.call(child as HTMLElement).width, 0);
+    return { x: 0, y: 0, top: 0, left: 0, right: px, bottom: 0, width: px, height: 0, toJSON: () => ({}) } as DOMRect;
+  });
+  const resized = resizeObservers(t);
+  const view = await document_({ text: null, file: pdf });
+  const under = () => view.container.querySelector("[data-file-row] [data-under]") !== null;
+  // Opening it and the download (300 px) and the name's 18 rem (288 px) do not fit in 500 px.
+  assert.equal(under(), true, "under the name");
+
+  for (const width of [390, 1280]) {
+    await view.act(async () => resize(width));
+    await view.act(async () => resized());
+  }
+  assert.equal(under(), true, "the same row after a phone's width: the same answer");
+});
+
 test("narrower than a laptop a PDF opens in a tab of its own, and says so", async (t) => {
   widthOf(t, 390);
   const { createElement } = await import("react");

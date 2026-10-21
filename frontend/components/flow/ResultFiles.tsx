@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps, type FocusEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   Download,
   Eye,
@@ -141,6 +142,7 @@ export function OpenFile({
   download,
   name = false,
   iconOnly = false,
+  openerIn,
   access,
 }: {
   file: ResultFileView;
@@ -150,6 +152,9 @@ export function OpenFile({
   /** An outlined icon in a row of actions (the document's file from a laptop's width), named by the file. No tooltip: one
    *  shown on keyboard focus would lie over the button it names. */
   iconOnly?: boolean;
+  /** Where the opener stands when not here (null: not drawn yet). The document's file moves it to its row's end from a
+   *  laptop's width, and its dialog, which stays here, stays open. */
+  openerIn?: HTMLElement | null;
   /** How the file is reached: asked for before the dialog opens or the tab is sent to it. */
   access: FileAccess;
 }) {
@@ -219,7 +224,7 @@ export function OpenFile({
 
   return (
     <>
-      {opener}
+      {openerIn === undefined ? opener : openerIn && createPortal(opener, openerIn)}
       {/* One dialog at every width, mounted while it is closed (for the focus it gives back): a window resized while it is
           open keeps it, and its viewer, as it is. The file is fetched only once it is open. */}
       {/* Safari's Tab leaves the dialog past its last control and comes back to the dialog itself, which shows no ring:

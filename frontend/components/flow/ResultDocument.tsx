@@ -214,6 +214,14 @@ export function ResultDocument({
   // A document that is only its file, from a laptop's width: its actions at the file's row end where its name keeps
   // 18 rem beside them (FileName lets it wrap before its date: a 1440 px window has that), else under it.
   const fileRow = useRoomBeside(18);
+  // The file's one preview, on its name; from a laptop's width a document that is only its file opens it from an outlined
+  // icon at the row's end (rowEnd) instead. One instance, so its dialog stays open when the window crosses the line
+  // (opening it can, taking the page's scrollbar).
+  const [rowEnd, setRowEnd] = useState<HTMLElement | null>(null);
+  const atRowEnd = wide && !text;
+  const openFile = file?.previewable && download && inline && (
+    <OpenFile file={file} url={inline} download={download} name={!atRowEnd} iconOnly={atRowEnd} openerIn={atRowEnd ? rowEnd : undefined} access={access} />
+  );
 
   // A PDF on an iPhone or an iPad opens in a tab of its own (savingWay): the button says so, and the line under it how to keep it.
   const opensInTab = !!file && savingWay(file) === "tab";
@@ -344,23 +352,23 @@ export function ResultDocument({
                 className={fileStyles.documentFile}
                 startContent={<IconTile icon={Kind} size={wide ? "lg" : small ? "sm" : "md"} />}
                 label={
-                  file.previewable && download && inline && !(wide && !text) ? (
-                    <OpenFile file={file} url={inline} download={download} name access={access} />
-                  ) : (
-                    <Text>
-                      <FileName name={file.name} />
-                    </Text>
-                  )
+                  <>
+                    {(!openFile || atRowEnd) && (
+                      <Text>
+                        <FileName name={file.name} />
+                      </Text>
+                    )}
+                    {openFile}
+                  </>
                 }
                 description={file.meta}
               />
               {/* From a laptop's width a document that is only its file has its actions at the end of the file's row, as
                   tall as each other: opening it (an outlined icon), Dela, then the one download. Where the row is too short
-                  they stand under the name, at its end all the same. One order: the file's dialog is mounted with its
-                  opener, and stays open when the window crosses the line (opening it can, taking the page's scrollbar). */}
-              {wide && !text && (
-                <HStack vAlign="center" gap={2} paddingInline={4} className={fileStyles.documentActions} data-under={!fileRow.beside || undefined}>
-                  {file.previewable && download && inline && <OpenFile file={file} url={inline} download={download} iconOnly access={access} />}
+                  they stand under the name, at its end all the same. */}
+              {atRowEnd && (
+                <HStack ref={fileRow.actionsRef} vAlign="center" gap={2} paddingInline={4} className={fileStyles.documentActions} data-under={!fileRow.beside || undefined}>
+                  {openFile && <HStack ref={setRowEnd} />}
                   {shareButton("secondary")}
                   {primaryDownload}
                 </HStack>

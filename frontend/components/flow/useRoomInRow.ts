@@ -45,15 +45,15 @@ export function useRoomInRow() {
 }
 
 /**
- * Whether a row's actions (its last child) stand beside the rest of it, which keeps `reserveRem` of the row: the actions'
- * own widths and gaps against what the row leaves. Measured again whenever the row or an action changes size. `ref` goes
- * on the row.
+ * Whether a row's actions stand beside the rest of it, which keeps `reserveRem` of the row: the actions' own widths and
+ * gaps against what the row leaves. Measured again whenever the row or an action changes size, and when the actions are
+ * drawn anew (a window that crosses a breakpoint). `ref` goes on the row, `actionsRef` on the actions.
  */
 export function useRoomBeside(reserveRem: number) {
   const [row, ref] = useState<HTMLElement | null>(null);
+  const [actions, actionsRef] = useState<HTMLElement | null>(null);
   const [beside, setBeside] = useState(true);
   useLayoutEffect(() => {
-    const actions = row?.lastElementChild;
     if (!row || !actions) return;
     const measure = () => {
       const style = getComputedStyle(actions);
@@ -68,6 +68,6 @@ export function useRoomBeside(reserveRem: number) {
     const observer = new ResizeObserver(measure);
     for (const element of [row, ...actions.children]) observer.observe(element);
     return () => observer.disconnect();
-  }, [row, reserveRem]);
-  return { ref, beside };
+  }, [row, actions, reserveRem]);
+  return { ref, actionsRef, beside };
 }

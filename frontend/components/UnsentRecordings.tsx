@@ -1,5 +1,5 @@
 import { Download, Mic, Trash2 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -102,17 +102,12 @@ export function useEvictable(): boolean {
   return evictable;
 }
 
-/** The parts of a recording's details: its flow (where asked for) and its length. */
-function detailParts(recording: StoredRecording, withFlowName: boolean): string[] {
-  return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)];
-}
-
 /** "Nämndmöte till rapport · 42 min": under the name the recording had when it was made. */
 export function recordingDetails(
   recording: StoredRecording,
   { withFlowName = false }: { withFlowName?: boolean } = {},
 ): string {
-  return detailParts(recording, withFlowName).join(" · ");
+  return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)].join(" · ");
 }
 
 /** The recording a reload cut off that this tab can record on in, the first when there are more. */
@@ -421,16 +416,13 @@ function UnsentRecordingRow({
       </ActionRow>
     </VStack>
   );
-  // Its name, flow and length, each kept on one line: where the line breaks it breaks at a dot, never inside "2 s".
+  // Its name, flow and length. The name's date and time stay on one line and the length is one word (formatDuration); the
+  // flow's name, which can be longer than a phone's line, wraps, and keeps the dot after it.
   const what = (
     <>
       <Text as="p" color="secondary" hasTabularNumbers>
-        {[recordingName(recording.startedAt), ...detailParts(recording, withFlowName)].map((part, index, parts) => (
-          <Fragment key={index}>
-            {index > 0 && " "}
-            <span className={styles.part}>{index < parts.length - 1 ? `${part} ·` : part}</span>
-          </Fragment>
-        ))}
+        <span className={styles.part}>{recordingName(recording.startedAt)} ·</span> {withFlowName && `${recording.flowName}\u00a0· `}
+        {formatDuration(recording.durationMs)}
       </Text>
       {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
     </>

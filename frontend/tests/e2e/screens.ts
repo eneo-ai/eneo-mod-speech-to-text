@@ -228,11 +228,17 @@ export async function leaveRecording(page: Page) {
 
 /**
  * A recording of `bytes` bytes for flow 1, kept on this device as the recorder keeps one (lib/recording-store.ts): stopped,
- * or cut off by a reload ("recording"). The page must be on the app's origin, whose database it is.
+ * or cut off by a reload ("recording"), under the name the flow had then. The page must be on the app's origin, whose
+ * database it is.
  */
-export async function keptRecording(page: Page, bytes: number, state: "stopped" | "recording" = "stopped"): Promise<string> {
+export async function keptRecording(
+  page: Page,
+  bytes: number,
+  state: "stopped" | "recording" = "stopped",
+  flowName = "Nämndmöte till rapport",
+): Promise<string> {
   return page.evaluate(
-    async ({ bytes, flowId, stepId, state }) => {
+    async ({ bytes, flowId, flowName, stepId, state }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const opening = indexedDB.open("tal-till-text", 1);
         opening.onupgradeneeded = () => {
@@ -246,7 +252,7 @@ export async function keptRecording(page: Page, bytes: number, state: "stopped" 
       const startedAt = Date.now();
       const writing = db.transaction(["recordings", "chunks"], "readwrite");
       writing.objectStore("recordings").put({
-        id, ownerId: "user-1", flowId, flowName: "Nämndmöte till rapport", stepId, inputMode: "record", mimeType: "audio/wav",
+        id, ownerId: "user-1", flowId, flowName, stepId, inputMode: "record", mimeType: "audio/wav",
         startedAt, durationMs: 280_000, state, runId: null,
         parts: [{ index: 0, startedAt, durationMs: 280_000, bytes, chunks: 1, fileId: null }],
       });
@@ -258,7 +264,7 @@ export async function keptRecording(page: Page, bytes: number, state: "stopped" 
       db.close();
       return id;
     },
-    { bytes, flowId: ids.flows.flow1, stepId: ids.steps.audio, state },
+    { bytes, flowId: ids.flows.flow1, flowName, stepId: ids.steps.audio, state },
   );
 }
 
@@ -639,6 +645,16 @@ export const STATES: State[] = [
   { name: "version-commit-only", go: (page) => version(page, { release: null, revision: REVISION, build_date: "2026-10-08T08:04:12Z" }) },
   { name: "version-nothing-known", go: (page) => version(page, { release: null, revision: null, build_date: null }) },
   { name: "unsent-recordings", go: leaveRecording },
+  {
+    // A flow's name longer than a phone's line wraps in the card; the recording's date and time and its length stay whole.
+    name: "unsent-recordings-long-flow-name",
+    go: async (page) => {
+      await page.goto("/flows");
+      await keptRecording(page, 1_000, "stopped", "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor");
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+    },
+  },
   {
     name: "unsent-recording-delete-question",
     go: async (page) => {
