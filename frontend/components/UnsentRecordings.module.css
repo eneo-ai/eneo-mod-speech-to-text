@@ -4,8 +4,8 @@
   min-inline-size: 0;
 }
 
-/* The leading recording's words in the "Att göra" card from 640 px: 24 rem of their own beside the actions before the
-   actions go under them, so a heading of a few words is never squeezed into two lines beside them. */
+/* The leading recording's words in the card of unsent recordings from 640 px: 24 rem of their own beside the actions
+   before the actions go under them, so a heading of a few words is never squeezed into two lines beside them. */
 .text {
   flex: 1 1 24rem;
   min-inline-size: 0;

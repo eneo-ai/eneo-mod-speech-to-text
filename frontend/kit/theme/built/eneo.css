@@ -247,9 +247,9 @@
     --radius-element: 0.625rem;
     --radius-container: 1rem;
     --radius-page: 1.25rem;
-    --shadow-low: 0 1px 2px light-dark(rgba(16, 40, 80, 0.04), rgba(0, 0, 0, 0.3)), 0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), rgba(0, 0, 0, 0.45)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.05));
-    --shadow-med: 0 2px 4px light-dark(rgba(16, 40, 80, 0.05), rgba(0, 0, 0, 0.35)), 0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), rgba(0, 0, 0, 0.55)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07));
-    --shadow-high: 0 4px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.45)), 0 24px 56px light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.6)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.09));
+    --shadow-low: 0 1px 2px light-dark(rgba(16, 40, 80, 0.04), transparent), 0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), transparent);
+    --shadow-med: 0 2px 4px light-dark(rgba(16, 40, 80, 0.05), transparent), 0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), transparent), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07));
+    --shadow-high: 0 4px 8px light-dark(rgba(0, 0, 0, 0.08), transparent), 0 24px 56px light-dark(rgba(0, 0, 0, 0.2), transparent), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.09));
     --color-on-error: light-dark(#FFFFFF, #1A0A0C);
     --size-element-lg: 48px;
     --color-error: light-dark(#AA181D, #F47B7F);
@@ -389,10 +389,16 @@
 
   .astryx-card {
     box-shadow: var(--shadow-low);
+    border-color: light-dark(transparent, var(--color-border));
   }
 
   .astryx-card[data-variant="muted"] {
     box-shadow: none;
+    border-color: var(--color-border);
+  }
+
+  .astryx-popover {
+    border: var(--border-width) solid light-dark(transparent, var(--color-border));
   }
 
   .astryx-banner {
@@ -490,9 +496,15 @@
     display: none;
   }
 
+  .astryx-stepper[data-orientation="vertical"] {
+    margin-inline: calc(-1 * var(--spacing-2));
+    width: calc(100% + 2 * var(--spacing-2));
+  }
+
   .astryx-token {
     overflow: visible;
     height: auto;
+    padding-block: var(--spacing-0-5);
   }
 
   .astryx-token:has(button) {
@@ -523,14 +535,14 @@
   }
 
   .astryx-radio-list[data-orientation="vertical"] {
-    gap: var(--spacing-3);
+    gap: var(--spacing-1);
   }
 
   .astryx-radio-list-item {
     box-sizing: border-box;
-    padding-block: var(--spacing-4);
-    padding-inline: var(--spacing-4);
-    border: var(--border-width) solid var(--color-border-emphasized);
+    padding-block: var(--spacing-3);
+    padding-inline: var(--spacing-3);
+    margin-inline: calc(-1 * var(--spacing-3));
     border-radius: calc(var(--radius-container) - var(--spacing-1));
     align-items: flex-start;
   }
@@ -541,9 +553,7 @@
   }
 
   .astryx-radio-list-item[data-selected="selected"] {
-    border-color: var(--color-accent);
-    background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
-    box-shadow: inset 0 0 0 var(--border-width) var(--color-accent);
+    background-color: light-dark(color-mix(in srgb, var(--color-accent) 8%, transparent), color-mix(in srgb, var(--color-accent) 14%, transparent));
   }
 
   .astryx-button {
@@ -564,24 +574,6 @@
 
   .astryx-button[data-size="lg"] {
     min-height: var(--size-element-lg);
-  }
-
-  .astryx-button[data-variant="primary"] {
-    background-image: linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent));
-    box-shadow: 0 8px 20px -8px light-dark(color-mix(in oklab, var(--color-accent) 45%, transparent), transparent);
-  }
-
-  .astryx-button[data-variant="primary"]:hover:where(:not(:disabled,[aria-disabled="true"])) {
-    background-image: linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)), linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent));
-  }
-
-  .astryx-button[data-variant="primary"]:active {
-    background-image: linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed)), linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent));
-  }
-
-  .astryx-button[data-variant="primary"]:is(:disabled, [aria-disabled="true"]) {
-    background-image: none;
-    box-shadow: none;
   }
 
   .astryx-button[data-variant="secondary"] {

@@ -4,7 +4,6 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { Step, Stepper } from "@astryxdesign/core/Stepper";
 import { Text } from "@astryxdesign/core/Text";
 import { stepStateLabel, type StepState, type StepView } from "@/lib/run-progress";
-import styles from "./StepList.module.css";
 
 // The step under way has the design system's spinner instead: what shows that Eneo is working, and it stands still with
 // reduced motion (styles/globals.css).
@@ -24,9 +23,9 @@ const ICONS: Record<Exclude<StepState, "running">, [LucideIcon, "success" | "sec
 export function StepList({ steps }: { steps: readonly StepView[] }) {
   const current = steps.findIndex((step) => step.state !== "done");
   return (
-    // role="list": a list the reset has stripped of its bullets keeps its list semantics in Safari. In a sunken well, so
-    // the run's progress reads as one object.
-    <Stepper orientation="vertical" activeStep={current === -1 ? steps.length : current} label="Flödets steg" role="list" className={styles.well}>
+    // role="list": a list the reset has stripped of its bullets keeps its list semantics in Safari. On the card itself,
+    // not in a panel of its own: the icons and the state words carry the steps.
+    <Stepper orientation="vertical" activeStep={current === -1 ? steps.length : current} label="Flödets steg" role="list">
       {steps.map((step, index) => {
         const indicator =
           step.state === "running" ? <Spinner size="sm" /> : <Icon icon={ICONS[step.state][0]} size="sm" color={ICONS[step.state][1]} />;

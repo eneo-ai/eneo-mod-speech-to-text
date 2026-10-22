@@ -59,7 +59,7 @@ export function FlowAside({
   // holds audio or a run.
   const description = published.description && (
     // At the body's size on a small phone, so the ways in reach the first screen above the dock.
-    <Text as="p" type={short ? "body" : "large"} weight="normal" color="secondary" textWrap="pretty" className={compact ? styles.fromLaptop : undefined}>
+    <Text as="p" type={short ? "body" : "large"} weight="normal" color="secondary" className={compact ? styles.fromLaptop : undefined}>
       {published.description}
     </Text>
   );

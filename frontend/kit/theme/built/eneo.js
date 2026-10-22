@@ -119,9 +119,9 @@ export const eneoTheme = {
     "--radius-element": "0.625rem",
     "--radius-container": "1rem",
     "--radius-page": "1.25rem",
-    "--shadow-low": "0 1px 2px light-dark(rgba(16, 40, 80, 0.04), rgba(0, 0, 0, 0.3)), 0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), rgba(0, 0, 0, 0.45)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.05))",
-    "--shadow-med": "0 2px 4px light-dark(rgba(16, 40, 80, 0.05), rgba(0, 0, 0, 0.35)), 0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), rgba(0, 0, 0, 0.55)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07))",
-    "--shadow-high": "0 4px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.45)), 0 24px 56px light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.6)), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.09))",
+    "--shadow-low": "0 1px 2px light-dark(rgba(16, 40, 80, 0.04), transparent), 0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), transparent)",
+    "--shadow-med": "0 2px 4px light-dark(rgba(16, 40, 80, 0.05), transparent), 0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), transparent), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07))",
+    "--shadow-high": "0 4px 8px light-dark(rgba(0, 0, 0, 0.08), transparent), 0 24px 56px light-dark(rgba(0, 0, 0, 0.2), transparent), inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.09))",
     "--color-on-error": "light-dark(#FFFFFF, #1A0A0C)",
     "--size-element-lg": "48px",
     "--color-error": "light-dark(#AA181D, #F47B7F)"
@@ -242,10 +242,17 @@ export const eneoTheme = {
     },
     "card": {
       "base": {
-        "boxShadow": "var(--shadow-low)"
+        "boxShadow": "var(--shadow-low)",
+        "borderColor": "light-dark(transparent, var(--color-border))"
       },
       "variant:muted": {
-        "boxShadow": "none"
+        "boxShadow": "none",
+        "borderColor": "var(--color-border)"
+      }
+    },
+    "popover": {
+      "base": {
+        "border": "var(--border-width) solid light-dark(transparent, var(--color-border))"
       }
     },
     "banner": {
@@ -372,10 +379,17 @@ export const eneoTheme = {
         "display": "none"
       }
     },
+    "stepper": {
+      "orientation:vertical": {
+        "marginInline": "calc(-1 * var(--spacing-2))",
+        "width": "calc(100% + 2 * var(--spacing-2))"
+      }
+    },
     "token": {
       "base": {
         "overflow": "visible",
         "height": "auto",
+        "paddingBlock": "var(--spacing-0-5)",
         ":has(button)": {
           "minHeight": "calc(var(--size-element-md) - var(--spacing-2))"
         }
@@ -407,15 +421,15 @@ export const eneoTheme = {
     },
     "radio-list": {
       "orientation:vertical": {
-        "gap": "var(--spacing-3)"
+        "gap": "var(--spacing-1)"
       }
     },
     "radio-list-item": {
       "base": {
         "boxSizing": "border-box",
-        "paddingBlock": "var(--spacing-4)",
-        "paddingInline": "var(--spacing-4)",
-        "border": "var(--border-width) solid var(--color-border-emphasized)",
+        "paddingBlock": "var(--spacing-3)",
+        "paddingInline": "var(--spacing-3)",
+        "marginInline": "calc(-1 * var(--spacing-3))",
         "borderRadius": "calc(var(--radius-container) - var(--spacing-1))",
         "alignItems": "flex-start",
         ":has(:focus-visible)": {
@@ -424,9 +438,7 @@ export const eneoTheme = {
         }
       },
       "selected": {
-        "borderColor": "var(--color-accent)",
-        "backgroundColor": "color-mix(in srgb, var(--color-accent) 8%, transparent)",
-        "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)"
+        "backgroundColor": "light-dark(color-mix(in srgb, var(--color-accent) 8%, transparent), color-mix(in srgb, var(--color-accent) 14%, transparent))"
       }
     },
     "button": {
@@ -445,20 +457,6 @@ export const eneoTheme = {
       },
       "size:lg": {
         "minHeight": "var(--size-element-lg)"
-      },
-      "variant:primary": {
-        "backgroundImage": "linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent))",
-        "boxShadow": "0 8px 20px -8px light-dark(color-mix(in oklab, var(--color-accent) 45%, transparent), transparent)",
-        ":hover": {
-          "backgroundImage": "linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)), linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent))"
-        },
-        ":active": {
-          "backgroundImage": "linear-gradient(var(--color-overlay-pressed), var(--color-overlay-pressed)), linear-gradient(135deg, light-dark(color-mix(in oklab, var(--color-accent), black 22%), var(--color-accent)), var(--color-accent))"
-        },
-        ":is(:disabled, [aria-disabled=\"true\"])": {
-          "backgroundImage": "none",
-          "boxShadow": "none"
-        }
       },
       "variant:secondary": {
         "backgroundColor": "var(--color-background-card)",

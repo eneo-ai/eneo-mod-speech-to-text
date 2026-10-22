@@ -504,8 +504,7 @@ function SetupWorkspace({
         Talare kan inte märkas upp just nu. Transkriberingen fungerar som vanligt.
       </Text>
     ) : speakerOption?.selectable && snapshot.speakerLabels !== null ? (
-      // What it gives, then what it costs. As wide as the working card's content, so the switch ends where the ways in
-      // and the microphone's well end: the card bounds it.
+      // What it gives, then what it costs. As wide as the working card's content: the card bounds it.
       <Switch
         label="Märk upp talare"
         description={`Texten visar vem som sa vad. Det tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}

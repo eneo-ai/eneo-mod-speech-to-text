@@ -4,6 +4,7 @@ import { AudioLines } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
+import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -13,7 +14,6 @@ import { HeaderBrand } from "@/components/HeaderBrand";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import listStyles from "@/components/FlowList.module.css";
-import { IconTile } from "@/components/IconTile";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { SlowWait } from "@/components/SlowWait";
 import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
@@ -138,10 +138,11 @@ function FlowsListPage() {
               </>
             ) : empty ? (
               // An empty list says so in its place, centred and as a status, as the design system's empty state does: of
-              // its parts, so the flow list does not fetch that component's own file for a list that is rarely empty.
+              // its parts, so the flow list does not fetch that component's own file for a list that is rarely empty. Its
+              // icon stands bare above the heading, as the design system's does: in a tile it read as a feature card.
               <Card padding={8}>
                 <VStack role="status" hAlign="center" gap={4}>
-                  <IconTile icon={AudioLines} size="lg" hue="neutral" />
+                  <Icon icon={AudioLines} size="lg" color="secondary" />
                   <VStack hAlign="center" gap={2}>
                     <Heading level={2} justify="center">
                       Det finns inga publicerade flöden som du kan använda än.

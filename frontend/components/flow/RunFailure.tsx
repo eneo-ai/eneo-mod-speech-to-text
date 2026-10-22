@@ -126,12 +126,12 @@ export function RunFailure({
             ))}
             {/* What the way on does, then the way on itself. */}
             {offerRetry && (
-              <Text as="p" type="supporting">
+              <Text as="p" type="supporting" data-measure>
                 Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
               </Text>
             )}
             {offerStartAgain && (
-              <Text as="p" type="supporting">
+              <Text as="p" type="supporting" data-measure>
                 En ny körning använder samma ljud och uppgifter och gör om alla steg.
               </Text>
             )}

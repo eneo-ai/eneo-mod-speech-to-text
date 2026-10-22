@@ -31,14 +31,12 @@ class _Mode(NamedTuple):
     name: str
     # Which colour of the theme's light-dark() pairs is this mode's: 0 the light one, 1 the dark one.
     side: int
-    # How much of the accent its muted tint (--color-accent-muted) mixes in, and how much the wash at the page's head
-    # (styles/globals.css) mixes into the body at its peak.
+    # How much of the accent its muted tint (--color-accent-muted) mixes in.
     tint: float
-    wash: float
 
 
-LIGHT = _Mode("ljust", 0, 0.10, 0.10)
-DARK = _Mode("mörkt", 1, 0.16, 0.14)
+LIGHT = _Mode("ljust", 0, 0.10)
+DARK = _Mode("mörkt", 1, 0.16)
 
 # Eneo's own accent, light then dark (kit/theme/eneo.theme.ts ACCENT): the hue the theme's greys are tinted with.
 ENEO_ACCENT = ("#1563BC", "#52B1FF")
@@ -72,18 +70,16 @@ NEUTRALS: tuple[tuple[str, str], ...] = (
     ("--color-track", "light-dark(#DDE1E7, #2C323B)"),
     (
         "--shadow-low",
-        "0 1px 2px light-dark(rgba(16, 40, 80, 0.04), rgba(0, 0, 0, 0.3)), "
-        "0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), rgba(0, 0, 0, 0.45)), "
-        "inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.05))",
+        "0 1px 2px light-dark(rgba(16, 40, 80, 0.04), transparent), "
+        "0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), transparent)",
     ),
     (
         "--shadow-med",
-        "0 2px 4px light-dark(rgba(16, 40, 80, 0.05), rgba(0, 0, 0, 0.35)), "
-        "0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), rgba(0, 0, 0, 0.55)), "
+        "0 2px 4px light-dark(rgba(16, 40, 80, 0.05), transparent), "
+        "0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), transparent), "
         "inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07))",
     ),
-    ("--module-color-background-sunken", "light-dark(#F7F9FC, #0A111E)"),
-    ("--module-shadow-dock", "0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), rgba(0, 0, 0, 0.6))"),
+    ("--module-shadow-dock", "0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), transparent)"),
 )
 # What the page is read on: each surface, the body last.
 _GROUNDS = (
@@ -91,11 +87,10 @@ _GROUNDS = (
     "--color-background-card",
     "--color-background-popover",
     "--color-background-muted",
-    "--module-color-background-sunken",
     "--color-background-body",
 )
-# The greys that are read or seen, and the contrast each keeps on every ground, the wash's peak included: secondary text
-# and its icons 4.5:1, a control's edge 3:1 (WCAG 1.4.11).
+# The greys that are read or seen, and the contrast each keeps on every ground: secondary text and its icons 4.5:1, a
+# control's edge 3:1 (WCAG 1.4.11).
 _DUTIES = {"--color-text-secondary": MIN_CONTRAST, "--color-icon-secondary": MIN_CONTRAST, "--color-border-emphasized": 3.0}
 _COLOUR = r"#[0-9A-F]{6}|rgba\(\d+, \d+, \d+, [\d.]+\)|transparent"
 _PAIR = re.compile(rf"light-dark\(({_COLOUR}), ({_COLOUR})\)")
@@ -217,14 +212,13 @@ def _reaching(rgb: RGB, grounds: list[RGB], ratio: float, mode: _Mode) -> RGB:
 
 def _neutrals(accent: RGB, mode: _Mode) -> dict[str, RGB]:
     """The theme's solid greys in ``mode`` for ``accent``: in its hue, and those with a duty reaching their contrast on
-    every ground, the accent's own wash at its peak included."""
+    every ground."""
     neutrals = {
         token: _retint(_hex(pair[1 + mode.side]), accent, mode)
         for token, value in NEUTRALS
         if (pair := _PAIR.fullmatch(value)) and pair[1].startswith("#")
     }
     grounds = [neutrals[token] for token in _GROUNDS]
-    grounds.append(_blend(accent, neutrals["--color-background-body"], mode.wash))
     for token, ratio in _DUTIES.items():
         neutrals[token] = _reaching(neutrals[token], grounds, ratio, mode)
     return neutrals
@@ -244,8 +238,7 @@ def _problem(accent: RGB, mode: _Mode) -> tuple[str, float, str] | None:
     """
     neutrals = _neutrals(accent, mode)
     surfaces = [neutrals[token] for token in ("--color-background-surface", "--color-background-card", "--color-background-body")]
-    # The accent's own wash: a deployment's accent is read on the ground its own colour tints.
-    text_on = surfaces + [neutrals["--color-background-popover"], _blend(accent, surfaces[-1], mode.wash)]
+    text_on = surfaces + [neutrals["--color-background-popover"]]
     lighter = "Välj en ljusare färg." if mode.side else "Välj en mörkare färg."
     checks = (
         ("texten på accentfärgen", contrast(_on_accent(accent), accent), lighter),

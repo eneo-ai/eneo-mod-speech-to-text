@@ -81,20 +81,10 @@
   }
 }
 
-/* The microphone's well, set into the card under the way that records: a sunken panel with an edge of its own, so it
-   stays apart from the card in dark mode too. It measures itself (30 rem) for the rows inside it. */
-.well {
+/* The microphone's section, under the way that records: it stands by its spacing and its label, as the card's other
+   sections do, never as a panel in the card. It measures itself (30 rem) for the rows inside it. */
+.microphone {
   container-type: inline-size;
-  padding: var(--spacing-4);
-  background: var(--module-color-background-sunken);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: calc(var(--radius-container) - var(--spacing-1));
-}
-
-@media (min-width: 768px) {
-  .well {
-    padding: var(--spacing-5);
-  }
 }
 
 /* The test and its level: beside each other from 30 rem (a laptop's working card has that), the level filling what the
@@ -170,10 +160,10 @@
 }
 
 /* The primary action docked at the page's bottom on a phone: a white bar over the region's side padding, above the safe
-   area, lifted off the page by a soft shadow. */
+   area, lifted off the page by a soft shadow in light mode and set off by its top edge in dark mode (edge or shadow). */
 .docked {
   padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--border-width) solid light-dark(transparent, var(--color-border));
   background: var(--color-background-surface);
   box-shadow: var(--module-shadow-dock);
 }

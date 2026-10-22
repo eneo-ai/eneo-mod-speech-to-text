@@ -53,10 +53,11 @@
   cursor: pointer;
 }
 
-/* The row Enter would take. */
+/* The row Enter would take: tinted and ringed inside its edge, as a menu's focused row is (the field keeps the focus). */
 .option[aria-selected="true"] {
   background: var(--color-overlay-hover);
-  box-shadow: inset 3px 0 0 var(--color-accent);
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
 /* "Ingen" is a different kind of row: set apart, and quieter. */

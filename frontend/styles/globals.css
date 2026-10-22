@@ -16,13 +16,14 @@
   --module-color-record: light-dark(#dc2828, #dd2c2c);
 
   /* The transcript's speakers and the review marks: web-next's categorical purple, teal, amber, rose and green, then
-     olive. None is the brand's blue, so a name is not read as a link. */
-  --module-speaker-0: light-dark(#6D46B8, #B99AF5);
-  --module-speaker-1: light-dark(#0B6E69, #52D1C6);
-  --module-speaker-2: light-dark(#94590A, #F1B45C);
-  --module-speaker-3: light-dark(#B03A5B, #F495B6);
-  --module-speaker-4: light-dark(#1E7A32, #6CC382);
-  --module-speaker-5: light-dark(hsl(70 45% 28%), hsl(70 45% 60%));
+     olive. None is the brand's blue, so a name is not read as a link. In dark mode each keeps its lightness with a fifth
+     less chroma, so a name in it reads as a calm tint on the near-black card, not as a glow. */
+  --module-speaker-0: light-dark(#6D46B8, #B69FE7);
+  --module-speaker-1: light-dark(#0B6E69, #70CDC4);
+  --module-speaker-2: light-dark(#94590A, #E8B775);
+  --module-speaker-3: light-dark(#B03A5B, #E99DB6);
+  --module-speaker-4: light-dark(#1E7A32, #7CBF8B);
+  --module-speaker-5: light-dark(hsl(70 45% 28%), #B9C57E);
   --module-color-review: light-dark(hsl(42 95% 28%), hsl(47 92% 58%));
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
@@ -30,23 +31,9 @@
 /* Greys with Eneo's blue in them, as the theme's are: a deployment's accent gives them its own hue
    (backend/app/accent.py NEUTRALS) in a stylesheet that must win over these, so they carry no weight of their own. */
 :where(:root) {
-  /* A well set into a card (web-next's sunken): the microphone's, a run's steps. */
-  --module-color-background-sunken: light-dark(#F7F9FC, #0A111E);
-  /* A phone's dock (the setup's action, the recording's controls) lifts off the page it stands over. */
-  --module-shadow-dock: 0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), rgba(0, 0, 0, 0.6));
-}
-
-/* The page's ground carries a wash of the accent at its head: the accent drives it, so a deployment's own colour carries
-   it too (backend/app/accent.py checks the accent against the wash's peak). Cards cover it where text is read; in forced
-   colours it is dropped with every background image. */
-#astryx-app-shell-main {
-  background-image: radial-gradient(
-    ellipse 80% 60% at 75% 0%,
-    light-dark(color-mix(in oklab, var(--color-accent) 10%, transparent), color-mix(in oklab, var(--color-accent) 14%, transparent)),
-    transparent 72%
-  );
-  background-size: 100% 48rem;
-  background-repeat: no-repeat;
+  /* A phone's dock (the setup's action, the recording's controls) lifts off the page it stands over: a soft shadow in
+     light mode, and in dark mode, where a shadow does not show, the dock's own top edge instead (edge or shadow). */
+  --module-shadow-dock: 0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), transparent);
 }
 
 /* A workspace (`data-workspace`: a result with its transcript beside it, the speakers' review): the page's column grows
@@ -54,6 +41,15 @@
    reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
 :root:has([data-workspace]) {
   --module-page-width: clamp(1180px, 70vw, 1600px);
+}
+
+/* A note read across a wide card (a run's, the unsent recordings') keeps a reading measure where the card is wider:
+   about 75 characters a line, which is 55ch in Figtree, whose figures are wider than its average letter. A document's
+   prose has its own (Markdown.module.css). Its lines are balanced: at the full measure a note's last line can hold two
+   words alone ("inte om."). */
+[data-measure] {
+  max-inline-size: 55ch;
+  text-wrap: balance;
 }
 
 /* A speaker's colour as the stylesheets read it: data-speaker-color is the speaker's index, from lib/transcript. */
@@ -104,6 +100,12 @@
     position: relative;
     display: flex;
     flex-direction: column;
+  }
+
+  /* A paragraph's last line keeps more than one word. Below the design system's layers, so a text that sets its own
+     wrapping (nowrap, balance) keeps it. */
+  p {
+    text-wrap: pretty;
   }
 }
 

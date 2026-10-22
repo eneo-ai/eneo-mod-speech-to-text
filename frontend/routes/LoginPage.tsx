@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Banner } from "@astryxdesign/core/Banner";
-import { AudioLines } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
@@ -15,7 +13,6 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
 import { useOwnOrganization } from "@/components/Brand";
 import { HeaderBrand } from "@/components/HeaderBrand";
-import { IconTile } from "@/components/IconTile";
 import styles from "./LoginPage.module.css";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { connectionLost } from "@/lib/online-status";
@@ -95,15 +92,12 @@ export default function LoginPage() {
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
       {/* One thing on the page: a card in a narrow centred column, a third of the way down from a tablet's width, on the
-          page's wash. */}
+          page's ground. The brand stands in the bar, so the card leads with its heading. */}
       <Layout height="auto" contentWidth={480} padding={4}>
         <LayoutContent isScrollable={false}>
           <VStack gap={4} className={styles.column}>
             <Card padding={narrow ? 6 : 8}>
               <VStack gap={6} hAlign="stretch">
-                <HStack>
-                  <IconTile icon={AudioLines} size="lg" />
-                </HStack>
                 {/* The heading at the card's own size, two balanced lines in its 480 px; the button says whom one signs in
                     with, so nothing under the heading repeats it. */}
                 <VStack gap={2}>

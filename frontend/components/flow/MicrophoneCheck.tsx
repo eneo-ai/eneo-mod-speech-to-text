@@ -23,7 +23,7 @@ const STANDARD = "standard";
 const TEST = "Testa mikrofonen";
 const STOP = "Sluta testa";
 /** What to do before the meeting, and what the test does with the sound (it only measures the level; nothing is kept or
- *  sent), in one line across the well on a laptop. Under the picker's label, and the same words whatever the browser
+ *  sent), in one line across the section on a laptop. Under the picker's label, and the same words whatever the browser
  *  knows of its microphones, so nothing under it moves when it names them: choosing is the picker's own label. */
 const BEFORE = "Testa mikrofonen före mötet. Testet spelas inte in och skickas inte.";
 /** The status line's words before a test, and between tests with nothing to say: what the line is for. */
@@ -200,10 +200,10 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
             }
         : { words: RESTING };
 
-  // One well under the way that records: the picker across it, then the test beside the level it drives, then what the
+  // One section under the way that records: the picker across it, then the test beside the level it drives, then what the
   // test says, on a line of its own, so words of another length never move the level or the button.
   return (
-    <VStack gap={3} className={styles.well}>
+    <VStack gap={3} className={styles.microphone}>
       {/* Its list is a popover, as the page's other overlays are covered with it when the login ends: the touch screen's
           bottom sheet is a modal dialog of its own, which would stay above the covered page. */}
       <Selector

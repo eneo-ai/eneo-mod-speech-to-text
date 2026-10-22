@@ -14,7 +14,6 @@ from app.accent import (
     NEUTRALS,
     NO_ACCENT_CSS,
     Accent,
-    _blend,
     _hex,
     _hued,
     _neutrals,
@@ -85,8 +84,6 @@ class ContrastMathTests(unittest.TestCase):
             f"color-mix(in {space}, var(--color-accent) {dark:.0%}, transparent))"
         )
         self.assertIn(f"--color-accent-muted: {mix('srgb', LIGHT.tint, DARK.tint)}", css)
-        # The wash at the page's head (styles/globals.css) is the one the accent is read on.
-        self.assertIn(mix("oklab", LIGHT.wash, DARK.wash), globals_css)
 
 
 class NeutralsTests(unittest.TestCase):
@@ -135,13 +132,13 @@ class NeutralsTests(unittest.TestCase):
 
     def test_what_is_read_or_seen_keeps_its_contrast_on_every_ground_in_any_hue(self) -> None:
         grounds = ("--color-background-surface", "--color-background-card", "--color-background-popover",
-                   "--color-background-muted", "--module-color-background-sunken", "--color-background-body")
+                   "--color-background-muted", "--color-background-body")
         for light in self.ACCENTS:
             accent = resolve_accent(light, None)
             assert accent is not None, light
             for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
                 neutrals = _neutrals(_hex(colour), mode)
-                on = [neutrals[token] for token in grounds] + [_blend(_hex(colour), neutrals["--color-background-body"], mode.wash)]
+                on = [neutrals[token] for token in grounds]
                 for token, ratio in (("--color-text-secondary", 4.5), ("--color-text-primary", 4.5), ("--color-border-emphasized", 3.0)):
                     self.assertGreaterEqual(min(contrast(neutrals[token], ground) for ground in on), ratio, (light, mode.name, token))
 
@@ -182,8 +179,8 @@ class ResolveTests(unittest.TestCase):
 
     def test_each_refusal_names_the_measured_ratio_and_the_minimum(self) -> None:
         cases = [
-            (("#FFD700", None), "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,26:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg."),
-            (("#767676", None), "ORGANIZATION_ACCENT=#767676: accentfärgen mot sidans ytor når 3,77:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg."),
+            (("#FFD700", None), "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,30:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg."),
+            (("#767676", None), "ORGANIZATION_ACCENT=#767676: accentfärgen mot sidans ytor når 4,23:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg."),
             (("#004595", "#004595"), "ORGANIZATION_ACCENT_DARK=#004595: accentfärgen mot sidans ytor når 1,74:1 i mörkt läge men måste nå minst 4,50:1. Välj en ljusare färg."),
         ]
         for arguments, message in cases:

@@ -1,7 +1,0 @@
-/* A run's steps in a sunken well inside its card (web-next's sunken), on the card's inner radius: its colour alone sets it
-   in, with no edge of its own, so it does not read as a card in the card. */
-.well {
-  padding: var(--spacing-4);
-  background: var(--module-color-background-sunken);
-  border-radius: calc(var(--radius-container) - var(--spacing-1));
-}

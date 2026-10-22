@@ -58,9 +58,9 @@ components:
 
 A calm public-sector tool in Eneo's look: Astryx components on the module's theme (`kit/theme/eneo.theme.ts`), one
 accent (the deployment's, Eneo blue by default), Figtree, and the tokens of the design system for every value. White
-cards with a soft drop rest on a blue-white ground, with a wash of the accent at the page's head under a white bar. One
-bold move per kind of moment: arriving has the display title, the wash and the icon tiles; recording has the stage and
-its clock; reading has the speakers' colours and the file as the hero. Everything else stays quiet.
+cards rest on a blue-white ground under a white bar. One bold move per kind of moment: arriving has the display title
+and the icon tiles; recording has the stage and its clock; reading has the speakers' colours and the file as the hero.
+Everything else stays quiet: no gradient, glow or wash, and nothing that moves to look alive.
 
 **Key Characteristics:**
 - One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone. A
@@ -79,9 +79,8 @@ its clock; reading has the speakers' colours and the file as the hero. Everythin
 One accent and neutral surfaces, declared once for both colour modes with `light-dark()`.
 
 ### Primary
-- **Eneo blue** (`#1563BC` / `#52B1FF`): the primary action, the selection, links, the focus ring, the `accent` icon
-  tiles and the wash at the page's head. A deployment replaces it (`ORGANIZATION_ACCENT`), at 4.5:1 or more on every
-  ground, its own wash included.
+- **Eneo blue** (`#1563BC` / `#52B1FF`): the primary action, the selection, links, the focus ring and the `accent`
+  icon tiles. A deployment replaces it (`ORGANIZATION_ACCENT`), at 4.5:1 or more on every ground.
 
 ### Neutral
 - **Body, surface and card** (`#F4F7FB`/`#070C16`, `#FFFFFF`/`#0B1322`, `#FFFFFF`/`#0F1828`): the page rests on the
@@ -95,7 +94,8 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 
 ### Domain colours (`styles/globals.css`)
 - The recording dot, never the error red; six speaker colours (web-next's purple, teal, amber, rose and green, then
-  olive), none the brand's blue; the review mark and the done green; the sunken well.
+  olive, with a fifth less chroma in dark mode, so a name reads as a tint and not a glow), none the brand's blue; the
+  review mark and the done green.
 
 ## Typography
 
@@ -110,7 +110,8 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions. What has a consequence
   (the review's deadline and what to do, what Skapa dokument does to a recording, that a page closed during an upload
   stops it) is body text in the secondary colour, never a footnote. Nothing read is set below 14 px; 11 px is the
-  speaker marks' numerals only. A field's words wrap with no word alone on their last line (`text-wrap: pretty`).
+  speaker marks' numerals only. A field's words and every paragraph wrap with no word alone on their last line
+  (`text-wrap: pretty`, `styles/globals.css`).
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
 A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone, and a long
@@ -121,7 +122,7 @@ Every size is in rem, so the text follows the reader's own size: the browser's s
 ## Layout
 
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
-The result with its transcript and the speaker review widen with a large window, up to 1600 px; document prose keeps a 75ch reading measure.
+The result with its transcript and the speaker review widen with a large window, up to 1600 px; document prose keeps a 75ch reading measure, and a note across a wide card (a run's, the unsent recordings') about 75 characters, its lines balanced (`[data-measure]`, `styles/globals.css`).
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
 (480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. Every view of the flow,
 the setup's form included, is as wide as its column, so each ends at the same edge; a document alone fills the page's
@@ -129,35 +130,39 @@ column with its prose capped at the reading measure, and the text review keeps a
 beside the heading from the page's top, keeps to the window as the page scrolls and is as tall as the window below the
 bar (`--view-fit-height`, FlowFrame) less a gutter, so its player is in view before anything is scrolled. The flow's
 column is the same in every state: its name is the display title, also where a run's card holds the page's heading
-(sending, progress, failure), where it is words at that size rather than a heading. A recording's page starts as far
+(sending, progress, failure), where it is words at that size rather than a heading. Below 1024 px, while the page
+holds audio or a run, the name labels the card at the body's size, a clear step under the card's own heading. A
+recording's page starts as far
 under the bar as every other view, so the flow's name stays where it is when a recording starts and stops. A row that
 holds a control and what it drives measures itself (a container query at 30 rem): the microphone's test and its level
 stand beside each other from it, each takes the row below it. Section rhythm uses the spacing tokens: 24 px between a
 card's sections (the working card's too, so the setup's action is on a laptop's first screen), 16 px
 inside a group, 8 px between a label and its control. A control that pairs a label with a switch is as wide as the working
-card's content, so it ends where the ways in and the microphone's well end. The recording's stage fills the
+card's content. The recording's stage fills the
 window's height up to 44 rem, and its bar follows it: a window-high card around one clock is empty on a 4K display.
 Controls a finger presses stand at least 8 px apart (WCAG 2.5.8 asks 24 px targets; the house asks 44 px and room
 between them): chips, a passage's name and time, a file's actions, the player's tools.
 
 ## Elevation & Depth
 
-White cards on the tinted ground carry the low shadow (`--shadow-low`); a muted card inside one is not lifted again.
-Rows inside a card never lift; they tint on hover. Menus, popovers and dialogs keep the medium and high shadows. In dark
-mode a card has a one-pixel rim of light instead of a heavier shadow. Wells are sunken: the microphone's a lower colour
-and a hairline, as its controls want an edge; a run's steps the lower colour alone, so they do not read as a card in the
-card. A card is never drawn inside another: in the working card the classification is its tile and words alone.
+Edge or shadow, never both. In light mode a white card on the tinted ground carries the low shadow (`--shadow-low`) and
+no edge; in dark mode, where a drop does not show on the near-black page, it has its hairline (`--color-border`) and no
+drop. A muted card is not lifted: it keeps its edge. A phone's dock lifts off the page the same way: a soft upward shadow
+in light mode, its top edge in dark mode. Rows inside a card never lift; they tint on hover. Menus, popovers and dialogs
+keep the medium and high shadows. A card is never drawn inside another: in the working card the classification is its
+tile and words alone, the microphone and a run's steps stand by their spacing and their labels, and the ways in are rows
+without a box. What must stand apart in it (the drop zone, the chosen file) has its edge and no drop.
 
 ## Shapes
 
-Concentric: cards 16 px, a row or well inside a card 12 px, controls 10 px, tiles 6 or 10 px; pills, avatars and
+Concentric: cards 16 px, a row inside a card 12 px, controls 10 px, tiles 6 or 10 px; pills, avatars and
 switches round. One-pixel borders are `var(--border-width)`.
 
 ## Components
 
 ### Buttons
-- **Primary:** in light mode the accent deepened toward its start, with a soft glow of the accent; in dark mode a flat
-  accent fill. Disabled is flat. 48 px for the one action a screen exists for, the middle size in a review's decision;
+- **Primary:** a flat accent fill in both colour modes, with the design system's own hover and press overlays: no
+  gradient and no glow. 48 px for the one action a screen exists for, the middle size in a review's decision;
   labels wrap instead of truncating. A dialog has one too: what else stays in reach in it (a recording's Pausa and
   Stoppa while the login is renewed) is secondary.
 - **Secondary:** outlined, never a grey slab: the card's colour inside a control's edge, for side actions (Testa
@@ -186,13 +191,13 @@ switches round. One-pixel borders are `var(--border-width)`.
 - The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow right under its heading, in the secondary colour (the result's meta line with its date, the review's own line). A review says by when right under the flow's name, in view before anything is scrolled; what to do follows, set apart.
 - An organisation's logo always stands in the bar. Its name without a logo stands on one line below 640 px, and only where the bar has room for it beside the product's name (measured, `components/Brand.tsx`): otherwise it is left out with its divider and the bar reads “Tal till text” alone. From 640 px the name takes two lines at most. The brand link names the organisation whole either way, and so does the sign-in's line under its card.
 - On a flow's page the brand stands in the bar from 768 px; on a phone the bar keeps its room for the way back and the account. While an upload is under way the page offers no way off it, and the brand alone fills the bar at every width, so the bar keeps its height and the organisation its place.
-- A pill that only says something ("Att göra", "Väntar på din granskning", "Senast använd", "Osäkert förslag") is as tall as its words at every pointer, so it never reads as a button beside one; only a removable chip is a control's height.
+- A pill that only says something ("Väntar på din granskning", "Senast använd", "Osäkert förslag") is as tall as its words, with a little room above and below them in its fill, at every pointer, so it never reads as a button beside one; only a removable chip is a control's height. A pill stands beside what it qualifies, never above a heading as a label: the review's state follows its heading on the same row, under it where the row has no room. A card's heading says what is left to do on its own (the unsent recordings).
 
 ### Version
 - Folded under “Version” at the end of the flow list: the release (no row without one), the commit and the build time as a key-value list, then Kopiera supportinformation and the commit on GitHub. Not in the account menu, whose rows fill Astryx's 300 px menu on a touch screen.
 
 ### Steps
-- A run's steps say their state in words and an icon, without a bar: the step under way has the spinner, a finished one its check, a failed one its cross.
+- A run's steps say their state in words and an icon, without a bar: the step under way has the spinner, a finished one its check, a failed one its cross. The icons stand on the content's edge, under the heading's first letter.
 - A failed run's note is red only when nothing the person can do mends it: a failure Försök igen may mend, and a
   recording or file the flow cannot take, are a warning; a stopped run is information.
 
@@ -203,7 +208,7 @@ switches round. One-pixel borders are `var(--border-width)`.
   that the test sound is neither recorded nor sent; while the browser asks for the microphone the test can already be
   stopped, and after a moment it says where the question is. A microphone that goes quiet (muted) or away during the test
   no longer counts as heard.
-- What appears when a control is pressed has its place from the first draw: the microphone's picker spans the well, its
+- What appears when a control is pressed has its place from the first draw: the microphone's picker spans the section, its
   description the same words whatever the browser knows of its microphones; under it the test beside its level, which
   rests unlit until the test starts; under them, on a line of its own, what the test says ("Testet visar här om
   mikrofonen hör dig."). Nothing moves when a test starts or the browser names its microphones. The button keeps one
@@ -282,12 +287,14 @@ switches round. One-pixel borders are `var(--border-width)`.
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
 
 ### Choice
-- Radio lists for one choice of a few; a switch with its label for an option that is on or off. A line that says a
+- Radio lists for one choice of a few, each a row without a box of its own, its radio on the content's edge and its
+  padding outside the column; the chosen row is tinted and its radio filled. A switch with its label for an option that
+  is on or off. A line that says a
   state in its words offers the one action that changes it instead, as the player's line of keys does (Stäng av, Slå
   på) beside its Följ.
 - Filter chips (toggle buttons, the transcript's speakers) are the middle size, as tall as the search field under them,
-  and stand 8 px apart with any pointer. They have a control's edge at rest and the accent's edge and tint when pressed,
-  as a chosen radio row has.
+  and stand 8 px apart with any pointer. They have a control's edge at rest and the accent's edge and tint when
+  pressed.
 
 ### Bespoke surfaces
 - Transcript text with per-word spans, the level meter, the docked player, the live text sheet: CSS Modules with
@@ -298,7 +305,8 @@ switches round. One-pixel borders are `var(--border-width)`.
 Calm and quick, on the design system's tokens: `--duration-fast` (175 ms) with `--ease-standard`. A view of the flow
 that takes another's place fades in (opacity only: the recording's bar is sticky), and so does what a disclosure
 opens; a dialog opens over `--duration-fast-max`. The step under way shows the spinner, and a paused timer turns to
-the secondary colour. A page's loading spinner shows only after `--module-wait-delay` (300 ms), so an answer within it
+the secondary colour. A status stands still: the recording's red dot does not pulse, its clock and level show that it
+records. A page's loading spinner shows only after `--module-wait-delay` (300 ms), so an answer within it
 leaves no blink. A search hit is brought into view at once, as a browser's own find does. Hover styles apply only where
 a pointer hovers (`@media (hover: hover)`): on a touch screen a tapped control would keep them. With reduced motion
 nothing fades and spinners stand still.

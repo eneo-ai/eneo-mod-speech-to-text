@@ -174,10 +174,11 @@
 }
 
 /* While the page holds audio or a run, the flow's name labels the card beside it rather than heads the page: on a phone
-   or tablet, where the card needs the room, it is the size of a state's own line. */
+   or tablet, where the card needs the room, it is at the body's size, a clear step under the card's own heading so the
+   card's heading leads. */
 @media (max-width: 1023.98px) {
   .compactName {
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
     line-height: 1.3;
   }
 }

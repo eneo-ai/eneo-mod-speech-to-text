@@ -454,17 +454,15 @@
 }
 
 /* A passage of a known speaker: the name in the speaker's colour (4.5:1 or more on the card in both modes,
-   lib/accessibility.test.ts), beside its mark, and a rule of it, rounded at its ends, down the passage's name and words:
-   the name says who; the rule leads the eye down a long passage. */
+   lib/accessibility.test.ts), beside its mark, and a straight rule of it down the passage's name and words: the name
+   says who; the rule leads the eye down a long passage. Square at its ends: a rounded one reads as a bracket. */
 .turn[data-speaker-color] .name:not(.quiet) {
   color: var(--tint);
 }
 
 .turn[data-speaker-color] .turnBody {
   padding-inline-start: var(--spacing-3);
-  border-inline-start: calc(3 * var(--border-width)) solid var(--tint);
-  border-start-start-radius: var(--radius-inner);
-  border-end-start-radius: var(--radius-inner);
+  border-inline-start: calc(2 * var(--border-width)) solid var(--tint);
 }
 
 .speakerName {

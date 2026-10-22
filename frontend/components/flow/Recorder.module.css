@@ -14,19 +14,7 @@
   background: var(--module-color-record);
 }
 
-/* While it records the dot breathes, slowly; it stands still with reduced motion. Paused it is a hollow ring. */
-@media (prefers-reduced-motion: no-preference) {
-  .dot:not([data-paused]) {
-    animation: record-pulse 2s var(--ease-standard) infinite;
-  }
-}
-
-@keyframes record-pulse {
-  50% {
-    opacity: 0.45;
-  }
-}
-
+/* The dot stands still: the clock and the level beside it show that the recording goes on. Paused it is a hollow ring. */
 .dot[data-paused] {
   background: transparent;
   border: calc(2 * var(--border-width)) solid var(--color-text-secondary);
@@ -63,24 +51,26 @@
 }
 
 /* From a tablet's width the controls are the stage card's footer: the card's lower corners are the bar's, and the stage's
-   own lower edge is the one hairline between them; the card's one drop is the stage's, so no second edge or shadow
-   thickens the seam. The page keeps its bottom gutter under the card. */
+   own lower edge is the one hairline between them. The two are one card, so the footer carries the card's edge or its
+   drop as the stage does (the card's theme rule): a drop under the whole card in light mode, the edge around it in dark
+   mode. The page keeps its bottom gutter under the card. */
 @media (min-width: 768px) {
   .stage:has(+ .bar) {
     border-end-start-radius: 0;
     border-end-end-radius: 0;
+    border-block-end-color: var(--color-border);
   }
 
   .stage + .bar {
     margin-block: calc(-1 * var(--spacing-4)) var(--spacing-8);
     margin-inline: 0;
-    border: var(--border-width) solid var(--color-border);
+    border: var(--border-width) solid light-dark(transparent, var(--color-border));
     border-block-start: 0;
     border-start-start-radius: 0;
     border-start-end-radius: 0;
     border-end-start-radius: var(--radius-container);
     border-end-end-radius: var(--radius-container);
-    box-shadow: none;
+    box-shadow: var(--shadow-low);
   }
 }
 
@@ -183,7 +173,8 @@
   margin-block-start: auto;
   flex-shrink: 0;
   padding: var(--spacing-3) var(--bar-gutter) max(var(--spacing-3), env(safe-area-inset-bottom));
-  border-block-start: var(--border-width) solid var(--color-border);
+  /* Edge or shadow: the dock's shadow in light mode, its top edge in dark mode (--module-shadow-dock). */
+  border-block-start: var(--border-width) solid light-dark(transparent, var(--color-border));
   background: var(--color-background-card);
   box-shadow: var(--module-shadow-dock);
 }
@@ -198,7 +189,7 @@
   .bar {
     margin-inline: 0;
     padding: var(--spacing-3) var(--spacing-5);
-    border: var(--border-width) solid var(--color-border);
+    border: var(--border-width) solid light-dark(transparent, var(--color-border));
     border-radius: var(--radius-container);
     box-shadow: var(--shadow-low);
   }

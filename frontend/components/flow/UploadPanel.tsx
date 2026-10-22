@@ -91,7 +91,7 @@ export function UploadPanel({
       <>
         {chooser}
         {chosenStatus}
-        <Card {...dropTarget} padding={4} variant={dragging ? "blue" : "default"}>
+        <Card {...dropTarget} padding={4} variant={dragging ? "blue" : "default"} className={styles.file}>
           <HStack gap={3} align="center">
             <Icon icon={FileGlyph} size="lg" color="accent" />
             <StackItem size="fill">

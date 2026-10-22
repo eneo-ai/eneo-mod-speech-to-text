@@ -17,7 +17,7 @@ Alla sätts som miljövariabler på tjänsten `speech-to-text` (`docker-compose.
 | `ORGANIZATION_LOGO` | Eneos logga | Sökväg i modulens container till en SVG- eller PNG-fil, till exempel `/branding/logo.svg`. Kräver `ORGANIZATION_NAME`. |
 | `ORGANIZATION_LOGO_DARK` | (ingen) | Valfri logga för mörkt läge. Utan den visas `ORGANIZATION_LOGO` i båda lägena. |
 | `SHOW_ORGANIZATION` | `true` | `false` visar bara "Tal till text", ingen organisation. Accentfärgen gäller ändå. |
-| `ORGANIZATION_ACCENT` | `#1563BC` | Accentfärgen som `#RRGGBB`: knappar, länkar, fokusramar, valda val, ikoner, nivåmätaren och sidans tonade bakgrund överst. |
+| `ORGANIZATION_ACCENT` | `#1563BC` | Accentfärgen som `#RRGGBB`: knappar, länkar, fokusramar, valda val, ikoner och nivåmätaren. |
 | `ORGANIZATION_ACCENT_DARK` | härleds | Accentfärgen i mörkt läge, som `#RRGGBB`. Utelämnad härleds den ur den ljusa. |
 
 Ett namn utan logga visas som text. Från 640 px bredd står det på högst två rader: ett namn på upp till ungefär 80
@@ -73,8 +73,8 @@ speech-to-text`. Det är alltid ett enda meddelande som anger vad som mättes oc
 
 | Meddelande | Orsak och åtgärd |
 | --- | --- |
-| `ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,26:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg.` | Färgen är för ljus för att läsas mot sidan. Välj en mörkare. |
-| `ORGANIZATION_ACCENT_DARK=#1C7531: accentfärgen mot sidans ytor når 2,70:1 i mörkt läge men måste nå minst 4,50:1. Välj en ljusare färg.` | Den mörka färgen är för mörk mot mörk bakgrund. Välj en ljusare eller utelämna variabeln. |
+| `ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,30:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg.` | Färgen är för ljus för att läsas mot sidan. Välj en mörkare. |
+| `ORGANIZATION_ACCENT_DARK=#1C7531: accentfärgen mot sidans ytor når 2,74:1 i mörkt läge men måste nå minst 4,50:1. Välj en ljusare färg.` | Den mörka färgen är för mörk mot mörk bakgrund. Välj en ljusare eller utelämna variabeln. |
 | `ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB, till exempel #1C7531 (fick 'grön')` | Färgen ska vara `#` följt av sex hexadecimala siffror. Namn som `green` och korta former som `#1b3` godtas inte. |
 | `ORGANIZATION_LOGO kräver ORGANIZATION_NAME: namnet är loggans alternativtext.` | En logga utan namn. Sätt `ORGANIZATION_NAME`. |
 

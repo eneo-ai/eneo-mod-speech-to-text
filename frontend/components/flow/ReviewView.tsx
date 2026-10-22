@@ -540,27 +540,22 @@ export function ReviewView({
     </VStack>
   );
 
-  // The run's state is a pill over the heading.
-  const paused = (
-    <HStack>
-      <Token color="blue" label="Väntar på din granskning" icon={<StatusDot variant="accent" label="Väntar" aria-hidden />} />
-    </HStack>
-  );
-  // The state over the heading; under it, as the result's meta line has it, the flow's name (the top bar holds none) and
-  // by when, both in view before anything is scrolled; then, set apart, what to do.
+  // The run's state, a still pill beside the heading, under it where the row has no room; under them, as the result's
+  // meta line has it, the flow's name (the top bar holds none) and by when, both in view before anything is scrolled;
+  // then, set apart, what to do.
   const intro = (
     <VStack gap={3}>
-      <VStack gap={2}>
-        {paused}
-        <VStack gap={1}>
+      <VStack gap={1}>
+        <HStack gap={3} vAlign="center" wrap="wrap">
           <Heading level={1} ref={heading} tabIndex={-1}>
             {title}
           </Heading>
-          <Text as="p" color="secondary">
-            {flowName}
-          </Text>
-          {deadline}
-        </VStack>
+          <Token color="blue" label="Väntar på din granskning" icon={<StatusDot variant="accent" label="Väntar" aria-hidden />} />
+        </HStack>
+        <Text as="p" color="secondary">
+          {flowName}
+        </Text>
+        {deadline}
       </VStack>
       <Text as="p" color="secondary" className={styles.description}>
         {isSpeakerMapping

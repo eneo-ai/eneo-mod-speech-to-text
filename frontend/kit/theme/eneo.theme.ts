@@ -22,19 +22,14 @@ const LARGE = '48px';
 // The gate's minimum target for a mouse (WCAG 2.5.8).
 const MOUSE_TARGET = '24px';
 // Eneo's blue, light then dark: the default a deployment's own accent replaces (ORGANIZATION_ACCENT). The theme derives
-// its accent scale from it, and the token below pins the colour itself. web-next's #1A6FD2 is 4.2:1 on this page's ground:
-// this is the nearest blue that reaches 4.5:1 on every ground, the wash's peak included (backend/app/accent.py).
+// its accent scale from it, and the token below pins the colour itself. web-next's #1A6FD2 is 4.4:1 on the muted fill
+// and 4.3:1 on its own tint (a tile's icon): this darker blue reaches 4.5:1 on every ground and on its tint
+// (backend/app/accent.py, lib/accessibility.test.ts).
 const ACCENT: [string, string] = ['#1563BC', '#52B1FF'];
 // Figtree, Eneo's face (web-next): bundled from @fontsource-variable/figtree (main.tsx), a same-origin file.
 const FONT = 'Figtree Variable';
 const FALLBACKS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
 
-// The one primary action of a view: in light mode the accent deepened toward its start, with a soft glow of the accent;
-// in dark mode a flat fill without a glow (both stops are the accent). The deep stop is darker than the accent, so its
-// label keeps at least the contrast the backend holds a deployment's accent to.
-const DEEP = 'color-mix(in oklab, var(--color-accent), black 22%)';
-const PRIMARY_GRADIENT = `linear-gradient(135deg, light-dark(${DEEP}, var(--color-accent)), var(--color-accent))`;
-const OVERLAY = (token: string) => `linear-gradient(var(${token}), var(${token}))`;
 const DISABLED = ':is(:disabled, [aria-disabled="true"])';
 
 export const eneoTheme = defineTheme({
@@ -102,18 +97,19 @@ export const eneoTheme = defineTheme({
     '--radius-element': '0.625rem',
     '--radius-container': '1rem',
     '--radius-page': '1.25rem',
-    // A soft drop for a white card on the tinted ground; in dark mode a 1 px rim of light instead of a heavier shadow.
+    // Edge or shadow, never both: a soft drop in light mode; in dark mode, where a drop does not show on the near-black
+    // page, an edge instead. A card and a popover draw that edge as their border (`card` and `popover` below); what floats
+    // without one (a dialog) has it from its shadow, a one-pixel rim of light.
     '--shadow-low':
-      '0 1px 2px light-dark(rgba(16, 40, 80, 0.04), rgba(0, 0, 0, 0.3)), ' +
-      '0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), rgba(0, 0, 0, 0.45)), ' +
-      'inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.05))',
+      '0 1px 2px light-dark(rgba(16, 40, 80, 0.04), transparent), ' +
+      '0 6px 20px -6px light-dark(rgba(16, 40, 80, 0.08), transparent)',
     '--shadow-med':
-      '0 2px 4px light-dark(rgba(16, 40, 80, 0.05), rgba(0, 0, 0, 0.35)), ' +
-      '0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), rgba(0, 0, 0, 0.55)), ' +
+      '0 2px 4px light-dark(rgba(16, 40, 80, 0.05), transparent), ' +
+      '0 16px 40px -12px light-dark(rgba(16, 40, 80, 0.12), transparent), ' +
       'inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.07))',
     '--shadow-high':
-      '0 4px 8px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.45)), ' +
-      '0 24px 56px light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.6)), ' +
+      '0 4px 8px light-dark(rgba(0, 0, 0, 0.08), transparent), ' +
+      '0 24px 56px light-dark(rgba(0, 0, 0, 0.2), transparent), ' +
       'inset 0 0 0 1px light-dark(transparent, rgba(255, 255, 255, 0.09))',
     // Astryx's default white label on the dark-mode error fill is 3.76:1; a dark label is 5.4:1.
     '--color-on-error': ['#FFFFFF', '#1A0A0C'],
@@ -134,14 +130,21 @@ export const eneoTheme = defineTheme({
     // Error text is 4.1:1 on the page's grey in Astryx's red, and that red is the recording dot's (1.0:1 and 1.25:1
     // apart): an error never looks like "recording".
     '--color-error': ['#AA181D', '#F47B7F'],
-    // A control's edge: 3:1 on every ground, the wash's peak included (WCAG 1.4.11).
+    // A control's edge: 3:1 on every ground (WCAG 1.4.11).
     '--color-border-emphasized': ['#758093', '#6E7E96'],
   },
   components: {
-    // The page rests on the body colour (ModuleShell's wash); the bar above it is the surface, as web-next's.
+    // The page rests on the body colour (ModuleShell's "wash" variant); the bar above it is the surface, as web-next's.
     'app-shell-header': {base: {backgroundColor: 'var(--color-background-surface)'}},
-    // White cards on the tinted ground, with a soft drop; a muted card inside one is not lifted twice.
-    card: {base: {boxShadow: 'var(--shadow-low)'}, 'variant:muted': {boxShadow: 'none'}},
+    // Edge or shadow, never both: a white card on the tinted ground has the soft drop in light mode and its hairline in
+    // dark mode, where --shadow-low has no drop. A muted card is not lifted: it keeps its edge in both.
+    card: {
+      base: {boxShadow: 'var(--shadow-low)', borderColor: 'light-dark(transparent, var(--color-border))'},
+      'variant:muted': {boxShadow: 'none', borderColor: 'var(--color-border)'},
+    },
+    // A popover (a menu, a picker's list) floats on --shadow-low as a card does, and has its edge in dark mode as a card
+    // does.
+    popover: {base: {border: 'var(--border-width) solid light-dark(transparent, var(--color-border))'}},
     // A notice sits in a card as a row does: the card's radius less its inset; its colours stay the status tokens.
     banner: {base: {borderRadius: 'calc(var(--radius-container) - var(--spacing-1))'}},
     // A field's label leads: semibold in the primary colour. Its description stays 14 px and secondary, and its last line
@@ -191,14 +194,23 @@ export const eneoTheme = defineTheme({
     // A step's state is its icon (the spinner, a check, a cross) and its word, not a bar: the design system's accent bar
     // also marked the step that stopped a run, in the colour of what is under way.
     'step-bar': {base: {display: 'none'}},
+    // A step's icon stands on the content's edge, under the heading's first letter: the design system pads each step's
+    // row 8 px in at both sides (a clickable step's hover target, at the default density), and that padding is laid
+    // outside the column, as a radio row's is.
+    stepper: {'orientation:vertical': {marginInline: 'calc(-1 * var(--spacing-2))', width: 'calc(100% + 2 * var(--spacing-2))'}},
     // A token's height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting its words. Only a
     // removable chip is a control's height: its remove button reaches a 44 px target through a pseudo-element, which the
-    // chip must not clip. A pill that only says something (Att göra, Senast använd) keeps its words' height at every
-    // pointer, so it never looks like a button beside one.
+    // chip must not clip. A pill that only says something (Senast använd, Osäkert förslag) keeps its words' height at every
+    // pointer, so it never looks like a button beside one, with a little room above and below its words inside its fill.
     // The blue token is the brand's tint, not the data palette's blue, and a pill: it follows the deployment's accent
     // colour (ORGANIZATION_ACCENT), with the primary text colour on it, which keeps its contrast whatever the accent is.
     token: {
-      base: {overflow: 'visible', height: 'auto', ':has(button)': {minHeight: 'calc(var(--size-element-md) - var(--spacing-2))'}},
+      base: {
+        overflow: 'visible',
+        height: 'auto',
+        paddingBlock: 'var(--spacing-0-5)',
+        ':has(button)': {minHeight: 'calc(var(--size-element-md) - var(--spacing-2))'},
+      },
       'color:blue': {backgroundColor: 'var(--color-accent-muted)', color: 'var(--color-text-primary)', borderRadius: 'var(--radius-full)'},
     },
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
@@ -219,16 +231,18 @@ export const eneoTheme = defineTheme({
         },
       },
     },
-    // The rows of a choice stand 12 px apart: each is a bordered row of its own, not a line in a list.
-    'radio-list': {'orientation:vertical': {gap: 'var(--spacing-3)'}},
-    // One choice of a few (the setup's modes, a passage's speaker) is a row the whole of which is the target: bordered,
-    // and the chosen one tinted and ringed in the accent, so the choice reads at a glance, not only from the radio's dot.
+    // One choice of a few (the setup's modes, a passage's speaker) is a row the whole of which is the target, with no box
+    // of its own: a bordered row in a card read as a card in the card. Its radio stands on the content's edge, under the
+    // heading's first letter, and its padding outside the column, so the chosen row's tint reaches past its words. The
+    // chosen row is tinted and its radio filled; in dark mode the tint is stronger, as 8 % of the accent is 1.14:1 on
+    // the card there and barely reads.
+    'radio-list': {'orientation:vertical': {gap: 'var(--spacing-1)'}},
     'radio-list-item': {
       base: {
         boxSizing: 'border-box',
-        paddingBlock: 'var(--spacing-4)',
-        paddingInline: 'var(--spacing-4)',
-        border: 'var(--border-width) solid var(--color-border-emphasized)',
+        paddingBlock: 'var(--spacing-3)',
+        paddingInline: 'var(--spacing-3)',
+        marginInline: 'calc(-1 * var(--spacing-3))',
         // A row inside a card: the card's radius less its inset.
         borderRadius: 'calc(var(--radius-container) - var(--spacing-1))',
         // The radio stands at the name's line, not halfway down a description of three or four lines on a phone.
@@ -236,9 +250,8 @@ export const eneoTheme = defineTheme({
         ':has(:focus-visible)': focusRing,
       },
       selected: {
-        borderColor: 'var(--color-accent)',
-        backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
-        boxShadow: 'inset 0 0 0 var(--border-width) var(--color-accent)',
+        backgroundColor:
+          'light-dark(color-mix(in srgb, var(--color-accent) 8%, transparent), color-mix(in srgb, var(--color-accent) 14%, transparent))',
       },
     },
     // A label longer than its line wraps and the button grows with it: the design system keeps one line, cuts the rest
@@ -256,14 +269,7 @@ export const eneoTheme = defineTheme({
       },
       'size:sm': {minHeight: 'var(--size-element-sm)'},
       'size:lg': {minHeight: 'var(--size-element-lg)'},
-      // The hover and press overlays are laid over the gradient, as Astryx lays them over a fill. Disabled is flat and quiet.
-      'variant:primary': {
-        backgroundImage: PRIMARY_GRADIENT,
-        boxShadow: '0 8px 20px -8px light-dark(color-mix(in oklab, var(--color-accent) 45%, transparent), transparent)',
-        ':hover': {backgroundImage: `${OVERLAY('--color-overlay-hover')}, ${PRIMARY_GRADIENT}`},
-        ':active': {backgroundImage: `${OVERLAY('--color-overlay-pressed')}, ${PRIMARY_GRADIENT}`},
-        [DISABLED]: {backgroundImage: 'none', boxShadow: 'none'},
-      },
+      // The primary is the design system's own: a flat fill of the accent, with its own hover and press overlays.
       // Outlined, never a grey slab: the card's colour inside a control's edge. Disabled keeps a hairline and the disabled
       // text colour, at full opacity, so it is not read as a grey block either.
       'variant:secondary': {

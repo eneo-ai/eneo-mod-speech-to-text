@@ -9,9 +9,7 @@ import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
-import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
-import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow, STACKED } from "@/components/ActionRow";
 import { IconTile } from "@/components/IconTile";
@@ -117,7 +115,7 @@ export function resumableRecording(recordings: UnsentRecording[]): UnsentRecordi
 
 /**
  * Recordings kept on this device that Eneo has not received yet; when the device cannot be read, a notice in
- * their place, so that the person is not left thinking there are none. They stand under an "Att göra" pill in a card
+ * their place, so that the person is not left thinking there are none. They stand in a card
  * that leads with one recording: its tile, what it is and its actions. "Fortsätt spela in" on a recording a reload cut
  * off is the page's one filled action, unless the person has chosen another way (`filled` false). `folded` (the flow
  * list) leads with the latest a reload cut off before the newest, whose main action (going on with it, else sending it)
@@ -211,35 +209,30 @@ export function UnsentRecordings({
           : `${recordings.length} inspelningar har inte skickats`}
     </Heading>
   );
-  // A named region (Section is no landmark), as the screen reader's list of landmarks has it: the pill names the kind
-  // of thing, the card holds the recordings. On the flow list (folded) the card's content starts where the flow rows'
-  // does; above the setup's working card, where that card's does (StateCard: 16, 24 and 32 px).
+  // A named region (Section is no landmark), as the screen reader's list of landmarks has it, named by its heading, which
+  // says what is left to do. On the flow list (folded) the card's content starts where the flow rows' does; above the
+  // setup's working card, where that card's does (StateCard: 16, 24 and 32 px).
   return (
-    <VStack role="region" aria-labelledby={headingId} gap={4}>
-      <HStack>
-        <Token color="blue" label="Att göra" icon={<StatusDot variant="accent" label="Att göra" aria-hidden />} />
-      </HStack>
-      <Card padding={folded ? (narrow ? 4 : 6) : laptop ? 8 : tablet ? 6 : 4}>
-        <VStack gap={4}>
-          {row(lead, head, <DeviceSentence cutOff={cutOff} count={recordings.length} evictable={evictable} sendable={sendable} />)}
-          {rest.length > 0 &&
-            (folded ? (
-              <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
-                <List hasDividers>{rest.map((recording) => row(recording))}</List>
-              </Collapsible>
-            ) : (
+    <Card role="region" aria-labelledby={headingId} padding={folded ? (narrow ? 4 : 6) : laptop ? 8 : tablet ? 6 : 4}>
+      <VStack gap={4}>
+        {row(lead, head, <DeviceSentence cutOff={cutOff} count={recordings.length} evictable={evictable} sendable={sendable} />)}
+        {rest.length > 0 &&
+          (folded ? (
+            <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
               <List hasDividers>{rest.map((recording) => row(recording))}</List>
-            ))}
-        </VStack>
-      </Card>
-    </VStack>
+            </Collapsible>
+          ) : (
+            <List hasDividers>{rest.map((recording) => row(recording))}</List>
+          ))}
+      </VStack>
+    </Card>
   );
 }
 
 /** The device sentence under the heading: where the recordings are kept, and for how long. */
 function DeviceSentence({ cutOff, count, evictable, sendable }: { cutOff: boolean; count: number; evictable: boolean; sendable: boolean }) {
   return (
-        <Text as="p" type="supporting" color="secondary" textWrap="pretty">
+        <Text as="p" type="supporting" color="secondary" data-measure>
           {cutOff
             ? `Den fortsätter i samma inspelning när du väljer Fortsätt spela in.${sendable ? " När den har skickats till Eneo går det inte att fortsätta." : ""}`
             : count === 1

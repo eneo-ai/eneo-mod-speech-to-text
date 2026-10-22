@@ -472,7 +472,7 @@ class OrganizationTests(unittest.TestCase):
 
     def test_an_accent_that_cannot_be_used_refuses_to_start_with_one_swedish_error(self) -> None:
         for overrides, message in (
-            ({"ORGANIZATION_ACCENT": "#FFD700"}, "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,26:1 i ljust läge"),
+            ({"ORGANIZATION_ACCENT": "#FFD700"}, "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,30:1 i ljust läge"),
             ({"ORGANIZATION_ACCENT": "grön"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
             ({"ORGANIZATION_ACCENT": "#1C7531;}body{display:none"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
             ({"ORGANIZATION_ACCENT_DARK": "#52B1FF"}, "ORGANIZATION_ACCENT_DARK kräver ORGANIZATION_ACCENT"),

@@ -1,5 +1,4 @@
 - region "En inspelning har inte skickats":
-  - text: Att göra
   - heading "En inspelning har inte skickats" [level=2]
   - paragraph: /Inspelning \d+ [a-zåäö]+ \d+:\d+ · Nämndmöte till rapport · \d+ s/
   - paragraph: Den finns på den här enheten. Webbläsaren kan ta bort den om du väntar länge med att skicka den till Eneo.
