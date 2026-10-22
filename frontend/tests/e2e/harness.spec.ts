@@ -85,7 +85,8 @@ test("targets are measured once a smooth scroll has ended, not on their way past
   await page.setContent(`<main><h1>Prov</h1><div style="block-size: 6000px"></div><button>Mål</button><div style="block-size: 6000px"></div></main>`);
   await page.evaluate(() => document.querySelector("button")!.scrollIntoView({ block: "start", behavior: "smooth" }));
   await settle(page);
-  expect(await page.evaluate(() => Math.round(document.querySelector("button")!.getBoundingClientRect().top)), "the scroll has come to rest").toBe(0);
+  // Within half a pixel of the top: Firefox can rest a fraction above it (Math.round gives -0, which toBe(0) refuses).
+  expect(await page.evaluate(() => document.querySelector("button")!.getBoundingClientRect().top), "the scroll has come to rest").toBeCloseTo(0, 0);
 });
 
 test("a control Tab focuses is measured where the engine's own scroll brings it, not on that scroll's way", async ({ page }) => {
