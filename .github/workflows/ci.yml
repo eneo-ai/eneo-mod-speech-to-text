@@ -132,10 +132,11 @@ jobs:
         run: npx playwright test --grep-invert='controls\.spec\.ts' --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
       # The projects are named here, so what a pull request runs is what this file says. Playwright matches --grep against
       # "project file title", which lets one command give each project its own specs.
-      # A phone on its side is scanned in every state; a finger's tablet, upright and on its side, is walked with the keyboard.
-      - name: A phone on its side, and the keyboard on both tablets
+      # A phone on its side and the smallest phone are scanned in every state (320 px is where a layout breaks first: reflow,
+      # wrapping, targets); a finger's tablet, upright and on its side, is walked with the keyboard.
+      - name: A phone on its side, the smallest phone, and the keyboard on both tablets
         if: matrix.suite == 'devices'
-        run: npx playwright test --project=landscape-844 --project=tablet-portrait --project=tablet-landscape --grep='landscape-844 .*a11y\.spec\.ts|keyboard\.spec\.ts' --workers=2 --add-reporter=json
+        run: npx playwright test --project=landscape-844 --project=phone-320-light --project=tablet-portrait --project=tablet-landscape --grep='(landscape-844|phone-320-light) .*a11y\.spec\.ts|(landscape-844|tablet-portrait|tablet-landscape) .*keyboard\.spec\.ts' --workers=2 --add-reporter=json
       # The other engines run what an engine can change: the scan, the keyboard walks and the screen-reader snapshots, and the
       # checks' own tests, which are each engine's laptop project's. Their press on every control is not a pull request's: it
       # is the gate's longest part, and Chromium's runs above. Playwright's WebKit for Linux cannot record, so the states
