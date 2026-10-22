@@ -87,3 +87,20 @@ test("a copy from the transcript's menu that the clipboard refuses says so besid
   await page.getByRole("menuitem", { name: "Kopiera transkriberingen" }).click();
   await expect(failed).toBeHidden();
 });
+
+test("the head's lines: the flow's name and when it was made on one line from 360 px, each on its own under it, and the details in two lines at most", async ({ page }, info) => {
+  test.skip(!info.project.name.startsWith("phone"), "a phone's widths, the narrowest and the common one");
+  await result(page);
+  const flow = page.getByRole("main").locator("p", { hasText: /^Nämndmöte till rapport$/ }).first();
+  const made = page.getByRole("main").locator("p", { hasText: /^Skapad / }).first();
+  const [a, b] = [await flow.boundingBox(), await made.boundingBox()];
+  const narrowest = info.project.use.viewport!.width < 360;
+  if (narrowest) {
+    expect(b!.y, "when it was made, under the flow's name").toBeGreaterThanOrEqual(a!.y + a!.height - 1);
+    await expect(page.getByRole("main").getByText("・", { exact: true }), "no dot left at the end of a line").toHaveCount(0);
+  } else {
+    expect(Math.abs(b!.y - a!.y), "beside each other").toBeLessThan(4);
+  }
+  const details = page.getByRole("main").locator("p", { hasText: /^Deltagare: / }).first();
+  expect(await details.evaluate((line) => getComputedStyle(line).webkitLineClamp), "two lines at most").toBe("2");
+});

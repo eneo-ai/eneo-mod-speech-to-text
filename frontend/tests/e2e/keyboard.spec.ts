@@ -33,6 +33,7 @@ const WALKS = [
   "setup-participants",
   "setup-microphone-check",
   "setup-required-detail",
+  "setup-review-waiting",
   "upload-chosen-file",
   "recording",
   "recording-details-open",
@@ -84,6 +85,19 @@ test("K plays and pauses from anywhere on the page, before the player is clicked
   await search.press("k");
   await expect(search).toHaveValue("k");
   await expect(play, "typed, not played").toBeVisible();
+});
+
+test("Escape empties the transcript's search and leaves the focus in it", async ({ page }, info) => {
+  test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "a laptop's keyboard, and a phone's own");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const search = page.getByRole("searchbox", { name: "Sök i transkriberingen" }).or(page.getByRole("textbox", { name: "Sök i transkriberingen" }));
+  await search.fill("budget");
+  await expect(page.getByRole("button", { name: "Nästa träff" })).toBeVisible();
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(search, "the focus stays to type another").toBeFocused();
+  await expect(page.getByRole("button", { name: "Nästa träff" }), "the count and the arrows go with the query").toHaveCount(0);
 });
 
 test("K, J and L are turned off from the line that says them, stay off after a reload, and come back with Slå på", async ({ page }, info) => {

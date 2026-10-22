@@ -135,6 +135,8 @@ export function RunResult({
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaQuery(LAPTOP, true);
   const metaStacked = useMediaQuery("(max-width: 639.98px)");
+  // The narrowest phones: the flow's name and when it was made each take a line, where the two would break after the dot.
+  const tiny = useMediaQuery("(max-width: 359.98px)");
   // One playback for the page: the transcript's player, and the pause beside the document on a phone.
   const sources = useMemo(
     () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
@@ -217,22 +219,29 @@ export function RunResult({
           {newRun}
         </HStack>
       )}
-      {/* The dot stays with the flow's name, so a line too short for both breaks after it, as a recording's name does. */}
-      <HStack gap={1} vAlign="start" wrap="wrap">
-        <HStack gap={1} vAlign="end">
+      {/* The dot stays with the flow's name, so a line too short for both breaks after it, as a recording's name does. Under
+          360 px, where it would end the first line alone, each has a line of its own and there is no dot. */}
+      {tiny ? (
+        <VStack gap={0.5}>
           {flow}
-          {made && (
-            <Text color="secondary" aria-hidden>
-              ・
-            </Text>
-          )}
+          {made}
+        </VStack>
+      ) : (
+        <HStack gap={1} vAlign="start" wrap="wrap">
+          <HStack gap={1} vAlign="end">
+            {flow}
+            {made && (
+              <Text color="secondary" aria-hidden>
+                ・
+              </Text>
+            )}
+          </HStack>
+          {made}
         </HStack>
-        {made}
-      </HStack>
+      )}
       {detailsLine && (
-        // Two lines at most from 640 px, one on a phone (a council has many participants): the rest on hover, all of it to
-        // a screen reader.
-        <Text as="p" color="secondary" maxLines={metaStacked ? 1 : 2}>
+        // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
+        <Text as="p" color="secondary" maxLines={2}>
           {detailsLine}
         </Text>
       )}

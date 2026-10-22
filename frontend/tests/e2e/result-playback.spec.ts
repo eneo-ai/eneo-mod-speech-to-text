@@ -216,6 +216,27 @@ test("a speed is chosen in one step from the player's menu, and the audio plays 
   expect(await page.locator("audio").first().evaluate((audio: HTMLAudioElement) => audio.playbackRate)).toBe(0.75);
 });
 
+test("the speed chosen is kept for the person: the result after a reload and the speaker review start at it", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "the speed's place on a phone and on a laptop");
+  const speedOnTab = async () => {
+    if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  };
+  await result(page);
+  await speedOnTab();
+  await page.getByRole("button", { name: "Hastighet 1×" }).click();
+  await page.getByRole("menuitemradio", { name: "1,5×" }).click();
+  await expect(page.getByRole("button", { name: "Hastighet 1,5×" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  await speedOnTab();
+  await expect(page.getByRole("button", { name: "Hastighet 1,5×" })).toBeVisible();
+  expect(await page.locator("audio").first().evaluate((audio: HTMLAudioElement) => audio.playbackRate)).toBe(1.5);
+
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  await expect(page.getByRole("button", { name: "Hastighet 1,5×" })).toBeVisible();
+});
+
 test("the player's keys are said once where there is a keyboard to press them, in the line's own type, and not on a touch screen", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a touch screen and a mouse");
   await result(page);

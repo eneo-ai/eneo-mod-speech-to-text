@@ -695,10 +695,19 @@ export function ReviewView({
                     {namingAction}
                   </HStack>
                   {speakerList}
-                  {unmappedNote}
+                  {!narrow && unmappedNote}
                 </VStack>
               </Card>
-              {decision}
+              {/* On a phone the note on speakers without a name stands under Godkänn, whose consequence it says: at the
+                  card's foot it pushed the decision off the first screen. */}
+              {narrow && unmappedNote ? (
+                <VStack gap={3}>
+                  {decision}
+                  {unmappedNote}
+                </VStack>
+              ) : (
+                decision
+              )}
             </VStack>
           )}
           {/* There the card folds away, so the decision follows it instead. */}

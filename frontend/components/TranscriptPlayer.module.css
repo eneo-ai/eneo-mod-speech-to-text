@@ -121,6 +121,12 @@
   min-inline-size: 0;
 }
 
+/* While a search shows its count and arrows, it takes the row under the chips: beside them the field would keep only its
+   placeholder's width. Empty, it shares their row. */
+.find:has(> :nth-child(2)) {
+  flex-basis: 100%;
+}
+
 .reviewIcon {
   inline-size: var(--spacing-4);
   block-size: var(--spacing-4);
@@ -360,6 +366,11 @@
 /* The player's keys: one quiet line, only where there is a keyboard to press them (KEYS_SAID in TranscriptPlayer.tsx). */
 .keys {
   margin-inline-end: auto;
+}
+
+/* "Följ uppspelningen" keeps its words on one line: where the row is short the line of keys wraps beside it instead. */
+.follow {
+  flex-shrink: 0;
 }
 
 /* The button that turns the letters off, and on again, ends the line as a link ends a sentence: in the line's type, on

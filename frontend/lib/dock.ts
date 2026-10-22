@@ -34,10 +34,18 @@ export function observeDock(dock: HTMLElement): () => void {
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
   // in a dialog or a popover (a sheet over the dock) does not move with the page. One taller than the room the padding
   // leaves (a long text being edited) cannot be shown whole: it stays where it is read, as its own focus handling keeps it.
-  // What holds the dock (a player's region, focused by a press on its text) moves with it: no scroll uncovers it, and one
-  // between a press's down and up would land the press beside what was pressed.
+  // What holds the dock (a player's region) moves with it: no scroll uncovers it. A focus a press gives is where the
+  // finger or the pointer is: a scroll between the press's down and up would land the press beside what was pressed (a
+  // word of the review's text, whose passage takes the focus), so only the keyboard's focus is uncovered.
+  let pressed = false;
+  const press = () => {
+    pressed = true;
+  };
+  const key = () => {
+    pressed = false;
+  };
   const uncover = ({ target }: FocusEvent) => {
-    if (!docks.get(dock) || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
+    if (pressed || !docks.get(dock) || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
     if (target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
     const edge = dock.getBoundingClientRect();
@@ -54,11 +62,15 @@ export function observeDock(dock: HTMLElement): () => void {
   observer.observe(dock);
   // A dock that is no longer stuck (a window made wider or lower) can keep its size: the window says so.
   window.addEventListener("resize", measure);
+  document.addEventListener("pointerdown", press, true);
+  document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", uncover);
   measure();
   return () => {
     observer.disconnect();
     window.removeEventListener("resize", measure);
+    document.removeEventListener("pointerdown", press, true);
+    document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
     docks.delete(dock);
     publish();

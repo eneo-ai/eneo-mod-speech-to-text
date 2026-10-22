@@ -645,6 +645,61 @@ test("a count the person edited comes back as typed after a reload, with their l
   assert.deepEqual([sent[0].speakerLabels, sent[0].maxSpeakers], [true, 4], "the bound the person saw");
 });
 
+test("a send that goes through keeps the names of each list field for the flow's next setup; one that is refused keeps none", async () => {
+  const { lastNames } = await import("./participants");
+  const storage = memoryStorage();
+  const refused = await setup({ storage });
+  refused.session.setHandlers({ submit: async () => Promise.reject(new Error("Nätverket svarade inte.")) });
+  refused.session.setContract(audioContract());
+  refused.session.setDetail("deltagare", ["Gunnar", "Maria"]);
+  refused.session.selectMode("ladda-upp");
+  refused.session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await refused.session.createDocument(), false);
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "deltagare"), [], "nothing was sent");
+
+  refused.session.setHandlers({ submit: async () => undefined });
+  assert.equal(await refused.session.createDocument(), true);
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "deltagare"), ["Gunnar", "Maria"]);
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "motesnamn"), [], "a field of text keeps no names");
+});
+
+test("Märk upp talare switched on is the flow's next setup's too, after the send has cleared the draft", async () => {
+  const storage = memoryStorage();
+  const drafts = memoryDrafts();
+  // The flow's own default is off.
+  const contract = audioContract({ transcription: { live: { available: true, reason: null }, speaker_labels: { selectable: true, required: false, default: false } } });
+  const first = await setup({ storage, drafts });
+  first.session.setHandlers({ submit: async () => undefined });
+  first.session.setContract(contract);
+  first.session.setSpeakerLabels(true);
+  first.session.selectMode("ladda-upp");
+  first.session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  first.session.setDetail("motesnamn", "Kommunstyrelsen");
+  assert.equal(await first.session.createDocument(), true);
+  first.session.dispose();
+
+  const next = await setup({ storage, drafts });
+  next.session.setContract(contract);
+  assert.equal(next.session.getSnapshot().speakerLabels, true, "on, as the person left it");
+});
+
+test("Märk upp talare switched off stays off against a flow whose default is on, and is ignored where the flow stops offering it", async () => {
+  const storage = memoryStorage();
+  const first = await setup({ storage });
+  first.session.setContract(audioContract());
+  assert.equal(first.session.getSnapshot().speakerLabels, true, "the flow's default");
+  first.session.setSpeakerLabels(false);
+  first.session.dispose();
+
+  const next = await setup({ storage });
+  next.session.setContract(audioContract());
+  assert.equal(next.session.getSnapshot().speakerLabels, false, "off, as the person left it");
+
+  const other = await setup({ storage });
+  other.session.setContract(audioContract({ transcription: { live: { available: true, reason: null }, speaker_labels: { selectable: false, required: false, default: false } } }));
+  assert.equal(other.session.getSnapshot().speakerLabels, null, "a flow that offers no switch sends no choice");
+});
+
 test("a count that followed the names is worked out again from the restored names after a reload", async () => {
   const drafts = memoryDrafts();
   const contract = { ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] };

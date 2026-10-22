@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { type AddressInfo } from "node:net";
 import { type Page, type TestInfo } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axe, blocking, focusStop, stopProblems, tabKey, tabWalk, targetSizes } from "./checks";
+import { axe, blocking, focusStop, settle, stopProblems, tabKey, tabWalk, targetSizes } from "./checks";
 import { sweep } from "./controls";
 import { STATES, type State } from "./screens";
 
@@ -78,6 +78,35 @@ test("colours are measured once a colour change has ended, not halfway through i
   await page.waitForFunction(() => document.getAnimations().length > 0);
   const scan = await axe(page);
   expect(scan.violations.map((v) => v.id)).not.toContain("color-contrast");
+});
+
+test("targets are measured once a smooth scroll has ended, not on their way past a pinned bar", async ({ page }) => {
+  // A step to the next passage scrolls it to the window's middle, smoothly: what it scrolls by passes under the dock.
+  await page.setContent(`<main><h1>Prov</h1><div style="block-size: 6000px"></div><button>Mål</button><div style="block-size: 6000px"></div></main>`);
+  await page.evaluate(() => document.querySelector("button")!.scrollIntoView({ block: "start", behavior: "smooth" }));
+  await settle(page);
+  expect(await page.evaluate(() => Math.round(document.querySelector("button")!.getBoundingClientRect().top)), "the scroll has come to rest").toBe(0);
+});
+
+test("a control Tab focuses is measured where the engine's own scroll brings it, not on that scroll's way", async ({ page }) => {
+  // As WebKit on a loaded Linux runner reveals a focused control far down the page: with a scroll still on its way when
+  // focus has moved. Here the page takes the focus without a scroll and then scrolls smoothly itself.
+  await page.setContent(`
+    <main><h1>Prov</h1><button id="a">Först</button><div style="block-size: 4000px"></div><button id="b">Längre ner</button></main>
+    <script>
+      document.getElementById("a").addEventListener("keydown", (e) => {
+        if (e.key !== "Tab" || e.shiftKey) return;
+        e.preventDefault();
+        const far = document.getElementById("b");
+        far.focus({ preventScroll: true });
+        far.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    </script>`);
+  await page.locator("#a").focus();
+  await page.keyboard.press("Tab");
+  const stop = await focusStop(page);
+  expect(stop?.label).toContain("Längre ner");
+  expect(stop?.offscreen, "measured where it came to rest").toBe(false);
 });
 
 test("a focus outline that cannot be seen is not taken for a focus indicator", async ({ page }) => {

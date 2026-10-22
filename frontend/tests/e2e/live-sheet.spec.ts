@@ -209,3 +209,24 @@ test("on a phone the room view is not offered: its button would take a line of t
   await expect(page.getByRole("log", { name: "Preliminär text" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Visa i helskärm" })).toHaveCount(0);
 });
+
+test("on a phone the sheet's head says Preliminär on its first line and when the final text comes on a line of its own under it", async ({ page }, info) => {
+  await setup(page);
+  await record(page, "Strömma");
+  const heading = page.getByRole("heading", { name: /^Preliminär text\./ });
+  await expect(heading).toBeVisible();
+  const { pill, sentence } = await heading.evaluate((element) => {
+    const words = [...element.querySelectorAll("span")].find((span) => /^(Den slutliga|Talare och)/.test(span.textContent ?? ""))!;
+    const range = document.createRange();
+    range.selectNodeContents(words);
+    const first = range.getClientRects()[0];
+    const token = element.firstElementChild!.getBoundingClientRect();
+    return { pill: { left: token.left, bottom: token.bottom }, sentence: { left: first.left, top: first.top } };
+  });
+  if (info.project.use.viewport!.width < 768) {
+    expect(sentence.top, "the sentence starts under the pill").toBeGreaterThanOrEqual(pill.bottom - 1);
+    expect(Math.abs(sentence.left - pill.left), "from the same edge").toBeLessThan(2);
+  } else {
+    expect(sentence.left, "beside the pill").toBeGreaterThan(pill.left + 20);
+  }
+});

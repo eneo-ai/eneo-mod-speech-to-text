@@ -299,3 +299,15 @@ test("a run that no longer exists leaves the address and says so above a new sta
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   expect(new URL(page.url()).searchParams.has("run")).toBe(false);
 });
+
+test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await page.goto(`/flows/${ids.flows.flow2}`);
+  const banner = page.getByRole("status").filter({ hasText: "En körning väntar på din granskning" });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("Den avbryts om den inte granskas i tid.");
+  await banner.getByRole("button", { name: /^Granska, körningen / }).click();
+  const heading = page.getByRole("heading", { name: "Vem är vem?", level: 1 });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+});

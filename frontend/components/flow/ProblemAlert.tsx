@@ -11,6 +11,8 @@ import type { Problem } from "@/lib/flow-session";
  * to a button that may be far from it (the docked Skapa dokument on a phone, whose clearance globals.css owns). The scroll
  * is a jump: a smooth one runs to the offset it computed when it began, so a notice that appears above the alert while it
  * runs (the offline notice) leaves the alert under the dock, where the browser would have kept it in place by itself.
+ * It waits for the next frame: a view drawn with it (the setup, back after a failed send) focuses its heading in its own
+ * effect, which runs after this one, and the browser scrolls that heading into view, back up past the alert.
  */
 export function ProblemAlert({
   problem,
@@ -28,7 +30,8 @@ export function ProblemAlert({
   const retryButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!reveal) return;
-    ref.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    const frame = requestAnimationFrame(() => ref.current?.scrollIntoView({ block: "nearest", behavior: "instant" }));
+    return () => cancelAnimationFrame(frame);
   }, [reveal, problem]);
   useEffect(() => {
     if (focusRetry) retryButton.current?.focus();

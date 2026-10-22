@@ -102,9 +102,10 @@
     flex-direction: column;
   }
 
-  /* A paragraph's last line keeps more than one word. Below the design system's layers, so a text that sets its own
-     wrapping (nowrap, balance) keeps it. */
-  p {
+  /* A paragraph's last line keeps more than one word, and so does a banner's description, which is no paragraph. Below
+     the design system's layers, so a text that sets its own wrapping (nowrap, balance) keeps it. */
+  p,
+  .astryx-banner-description {
     text-wrap: pretty;
   }
 }

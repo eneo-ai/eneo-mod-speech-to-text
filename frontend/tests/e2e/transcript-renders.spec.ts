@@ -7,7 +7,7 @@ import type { Page, TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
 import { countRenders } from "./react-renders";
-import { isLaptop, pick, run } from "./screens";
+import { isLaptop, pick, result, run } from "./screens";
 import { REAL } from "./sentinel";
 
 // One laptop and one phone: the renders are the same on every project, and the long run is not worth 20 copies. The built
@@ -96,6 +96,15 @@ test("choosing a speaker and then everyone renders the passages that appear, not
   await choose("Alla");
   await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(total);
   expect(await turns.settled(), `passages rendered for the ${total - first} that appear (the ${first} that stayed are not among them)`).toBeLessThanOrEqual(total - first + SLACK);
+});
+
+test("a search with its count and arrows keeps a field to read what was typed in, under the chips it shared a row with", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "where the chips and the search share a row; a phone gives the search a row of its own");
+  await result(page);
+  const search = page.getByRole("textbox", { name: "Sök i transkriberingen" });
+  await search.fill("budget");
+  await expect(page.getByRole("button", { name: "Nästa träff" })).toBeVisible();
+  expect((await search.boundingBox())!.width, "the search field's width with a query typed").toBeGreaterThanOrEqual(160);
 });
 
 test("playing and pausing renders no passage", async ({ page }, info) => {

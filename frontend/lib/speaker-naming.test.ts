@@ -510,3 +510,35 @@ test("names kept through a reload come back only as a list of speakers with thei
   assert.equal(fieldNamed("Vem är Talare 1?")?.value, "Anna Berg", "a speaker the draft has no row for keeps the review's name");
   await view.unmount();
 });
+
+test("a run started without participants offers the names this person gave before, and a save remembers the names given", async (t) => {
+  const key = "tal-till-text:user-1:recent-names";
+  t.after(() => window.localStorage.removeItem(key));
+  window.localStorage.setItem(key, JSON.stringify(["Karin Ek", "Agne Lind"]));
+  const offered = (label: string) =>
+    [...document.querySelectorAll<HTMLElement>(`[aria-label="Förslag: Vem är ${label}?"] [role="option"]`)].map((o) => o.textContent);
+
+  const withParticipants = await dialog({ draftKey: { ownerId: "user-1", name: "names:run-2" } });
+  await withParticipants.view.act(async () => withParticipants.field("Talare 2").click());
+  assert.ok(!offered("Talare 2").includes("Karin Ek"), "the run's own participants, not the names of other meetings");
+  await withParticipants.view.unmount();
+
+  const without = await dialog({ participants: [], draftKey: { ownerId: "user-1", name: "names:run-3" } });
+  await without.view.act(async () => without.field("Talare 2").click());
+  assert.ok(offered("Talare 2").includes("Karin Ek") && offered("Talare 2").includes("Agne Lind"), "the names given before");
+  assert.ok(offered("Talare 2").some((name) => name?.startsWith("Anna Berg")), "and the names in the dialog");
+  await without.view.act(async () => type(without.field("Talare 2"), "Sara Holm"));
+  await without.view.act(async () => button(document.body, "Spara namnen")!.click());
+  const remembered = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+  assert.deepEqual(remembered.slice(0, 2).sort(), ["Anna Berg", "Sara Holm"], "the names given, first");
+  assert.ok(remembered.includes("Karin Ek"), "the earlier ones kept after them");
+});
+
+test("a refused save remembers no names", async (t) => {
+  const key = "tal-till-text:user-1:recent-names";
+  t.after(() => window.localStorage.removeItem(key));
+  const view = await dialog({ participants: [], draftKey: { ownerId: "user-1", name: "names:run-4" }, onSave: async () => "Namnen kunde inte sparas." });
+  await view.view.act(async () => type(view.field("Talare 2"), "Sara Holm"));
+  await view.view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.equal(window.localStorage.getItem(key), null);
+});

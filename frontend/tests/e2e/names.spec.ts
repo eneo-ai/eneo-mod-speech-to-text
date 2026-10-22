@@ -48,7 +48,8 @@ test("the sending view is a page with a heading that takes focus, a named progre
   const bar = page.getByRole("progressbar", { name: "Uppladdning" });
   await expect(bar).toHaveAttribute("aria-valuenow", /^\d+$/);
   await expect(page.getByRole("status").filter({ hasText: "Eneo tar emot filen…" })).toBeAttached();
-  await expect(page).toHaveTitle("Dokumentet skapas · Tal till text");
+  // The tab says how far the upload has come, before the state: every byte is up while Eneo takes the file.
+  await expect(page).toHaveTitle(/^100\s%\s·\sDokumentet skapas · Tal till text$/);
 });
 
 test("a run opened while it runs keeps the flow's page: the way back, and the details it was started with", async ({ page }, info) => {
@@ -161,12 +162,12 @@ test("in the review, Byt namn på in a passage's Ändra talare opens Namnge tala
   await expect(passage).toBeFocused();
 });
 
-test("the player's row keeps the position slider a usable width on a phone, with Följ shown", async ({ page }, info) => {
+test("the player's row keeps the position slider a usable width on a phone, with Följ uppspelningen shown", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);
-  // Looking for a word stops the transcript following the playback: Följ is offered.
+  // Looking for a word stops the transcript following the playback: Följ uppspelningen is offered.
   await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("punkten");
-  await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Följ uppspelningen" })).toBeVisible();
   const track = () =>
     page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
       const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
@@ -178,8 +179,8 @@ test("the player's row keeps the position slider a usable width on a phone, with
   await expect.poll(track, { message: "the track of the position slider at 320 px" }).toBeGreaterThanOrEqual(120);
   await page.setViewportSize(info.project.use.viewport!);
   const player = await page.getByRole("region", { name: "Inspelning och transkribering" }).boundingBox();
-  const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
-  expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
+  const follow = await page.getByRole("button", { name: "Följ uppspelningen" }).boundingBox();
+  expect(follow!.x + follow!.width, "Följ uppspelningen stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
 });
 
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {

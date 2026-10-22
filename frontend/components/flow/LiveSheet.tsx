@@ -118,12 +118,14 @@ export function LiveSheet({
           {forRoom ? (
             "Preliminär text, kan innehålla fel"
           ) : (
-            // What the text is, as a pill, and when the final one comes, as the line that runs on beside it and under
-            // it. Read as one sentence: "Preliminär text. …".
+            // What the text is, as a pill, and when the final one comes, as the line beside it, or under it on a phone
+            // (LiveSheet.module.css). Read as one sentence: "Preliminär text. …".
             <>
               <Token size="sm" label="Preliminär" className={styles.pill} />
               <VisuallyHidden> text.</VisuallyHidden>{" "}
-              {speakers ? "Talare och den slutliga texten kommer när du är klar." : "Den slutliga texten skapas när du är klar."}
+              <span className={styles.when}>
+                {speakers ? "Talare och den slutliga texten kommer när du är klar." : "Den slutliga texten skapas när du är klar."}
+              </span>
             </>
           )}
         </Heading>

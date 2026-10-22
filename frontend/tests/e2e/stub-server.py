@@ -984,9 +984,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, graph)
             return self.send(200, {**graph, "nodes": [dict(n, run_status=s) for n, s in zip(graph["nodes"], run["step_status"])]})
         if rest == ["runs"]:
-            earlier = [] if fid != F1 else [
-                {"id": RUN["done"], "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z"},
-                {"id": RUN["failed"], "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"}]
+            # Intervju till sammanfattning has a run waiting for its review: the setup says so above its work.
+            earlier = {
+                F1: [{"id": RUN["done"], "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z"},
+                     {"id": RUN["failed"], "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"}],
+                F2: [{"id": RUN["review"], "flow_id": fid, "status": "awaiting_review", "created_at": "2026-09-24T09:00:00Z"}],
+            }.get(fid, [])
             return self.send(200, {"items": earlier, "has_more": False, "count": len(earlier)})
         if len(rest) < 2 or rest[0] != "runs":
             return self.send(404, {"detail": "stub: " + path})

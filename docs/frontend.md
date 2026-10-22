@@ -76,6 +76,9 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
 | Mikrofonval | `lib/microphone.ts` |
 | Om spelarens bokstavstangenter (K, J och L) är på | `lib/letter-keys.ts` (`localStorage`, per person) |
+| Spelarens hastighet, som nästa transkribering börjar i | `lib/playback-rate.ts` (`localStorage`, per person) |
+| Märk upp talare som det lämnades på ett flöde | `lib/flow-session.ts` (`localStorage`, per flöde) |
+| Namnen ett listfält senast skickades med, som flödets nästa uppsättning erbjuder | `lib/participants.ts` (`lastNames`, `localStorage`, per person, flöde och fält) |
 
 Skärmarnas lägen finns i `frontend/tests/e2e/screens.ts`; flödessidans adressparametrar är `?run=<id>` (öppnar en körning), `?recording=<id>` (en osänd inspelning skickas) och `?continue=<id>` (en avbruten inspelning spelas in vidare).
 

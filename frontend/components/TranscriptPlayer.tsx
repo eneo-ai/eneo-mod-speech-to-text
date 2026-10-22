@@ -46,6 +46,7 @@ import { useDock } from "@/lib/dock";
 import { browserStorage } from "@/lib/browser-storage";
 import { downloadBlob } from "@/lib/download";
 import { letterKeysOn, setLetterKeysOn } from "@/lib/letter-keys";
+import { playbackRate, RATES, setPlaybackRate } from "@/lib/playback-rate";
 import { scrollBehavior } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { useSignedOut } from "@/components/AuthGate";
@@ -105,7 +106,6 @@ type Naming = {
   participants: readonly string[];
 };
 
-const RATES = [0.75, 1, 1.25, 1.5, 2];
 const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const NO_HITS: ReadonlyMap<number, Hit[]> = new Map();
@@ -190,8 +190,11 @@ function ReviewEditorAtPlayhead({
   );
 }
 
-/** The speed, chosen from a menu: any speed in one step, never a round through the others. Compact, its words alone. */
-function SpeedMenu({ playback, rate, className, compact = false }: { playback: Playback; rate: number; className: string; compact?: boolean }) {
+/**
+ * The speed, chosen from a menu: any speed in one step, never a round through the others. Compact, its words alone. The
+ * speed chosen is kept for the person, and the next transcript they play starts at it.
+ */
+function SpeedMenu({ playback, rate, className, compact = false, ownerId }: { playback: Playback; rate: number; className: string; compact?: boolean; ownerId?: string }) {
   return (
     <DropdownMenu
       button={{ label: `Hastighet ${rateLabel(rate)}`, children: rateLabel(rate), variant: "ghost", size: "sm", className }}
@@ -199,7 +202,14 @@ function SpeedMenu({ playback, rate, className, compact = false }: { playback: P
       placement="above"
       alignment="end"
     >
-      <DropdownMenuRadioGroup label="Hastighet" value={String(rate)} onChange={(value) => playback.setRate(Number(value))}>
+      <DropdownMenuRadioGroup
+        label="Hastighet"
+        value={String(rate)}
+        onChange={(value) => {
+          playback.setRate(Number(value));
+          if (ownerId) setPlaybackRate(browserStorage(), ownerId, Number(value));
+        }}
+      >
         {RATES.map((option) => (
           <DropdownMenuRadioItem key={option} value={String(option)} label={rateLabel(option)} />
         ))}
@@ -209,7 +219,7 @@ function SpeedMenu({ playback, rate, className, compact = false }: { playback: P
 }
 
 /**
- * The controls docked under the transcript: the keys, Följ, speed, the player and its skips, as playback stands. Each
+ * The controls docked under the transcript: the keys, Följ uppspelningen, speed, the player and its skips, as playback stands. Each
  * control names its key (`shortcut`) to a screen reader while the letter keys are on; the line above them names the
  * keys to the eye, and turns the letters off and on. No tooltip: shown on keyboard focus, one lies over its neighbours
  * in this row.
@@ -221,6 +231,7 @@ function PlayerControls({
   onFollow,
   letterKeys,
   onLetterKeys,
+  ownerId,
 }: {
   playback: Playback;
   dock: HTMLElement | null;
@@ -229,6 +240,8 @@ function PlayerControls({
   /** Whether K, J and L act (lib/letter-keys.ts); null where they are not said, and do nothing (KEYS_SAID). */
   letterKeys: boolean | null;
   onLetterKeys: (on: boolean) => void;
+  /** The person whose speed this browser keeps. */
+  ownerId?: string;
 }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
   const small = useMediaQuery(SMALL);
@@ -263,7 +276,7 @@ function PlayerControls({
             </Button>
           </Text>
         )}
-        {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
+        {!follow && <Button variant="ghost" size="sm" label="Följ uppspelningen" className={styles.follow} onClick={onFollow} />}
       </div>
       )}
       <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined} compact={small}>
@@ -285,7 +298,7 @@ function PlayerControls({
           icon={<RotateCw aria-hidden />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
-        <SpeedMenu playback={playback} rate={rate} className={styles.rate} compact={small} />
+        <SpeedMenu playback={playback} rate={rate} className={styles.rate} compact={small} ownerId={ownerId} />
       </AudioPlayer>
     </>
   );
@@ -527,6 +540,11 @@ export function TranscriptPlayer(
     hasAudio && !shared ? Array.from({ length: fileCount }, (_, i) => ({ url: audioSrcFor(i), durationMs: null })) : NO_SOURCES,
   );
   const playback = shared ?? own;
+  // The speed the person chose last, once for each player this transcript is given.
+  useEffect(() => {
+    if (ownerId) playback.setRate(playbackRate(browserStorage(), ownerId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playback]);
   // The list does not follow playback by rendering: useTranscriptPlayhead lights it, and the controls under it
   // (PlayerControls) render their own state. A list of an hour's meeting takes a fifth of a second to render.
 
@@ -792,6 +810,69 @@ export function TranscriptPlayer(
     return correctedSegmentText(segments[source].text, corrections?.occurrences.filter((o) => o.segment_index === source) ?? []);
   });
 
+  // The passages, as elements kept from render to render: a press that changes what the passages do not show (a chip, the
+  // list's choice, a letter of the search, the player) renders the page's tools without rebuilding two thousand
+  // passages' elements, and the garbage they leave, before its next paint. The passages follow in the deferred render.
+  const renamePassage = canName || onRenameSpeaker ? renameSpeaker : undefined;
+  const passages = useMemo(() => {
+    const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
+    for (const turn of visibleTurns) {
+      const last = parts[parts.length - 1];
+      if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
+      else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
+    }
+    return parts.map((part) => (
+      <div key={part.fileIndex} className={styles.part}>
+        {totalFiles > 1 && <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>}
+        <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
+          {part.turns.map((turn) => {
+            // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
+            const editableTurn =
+              canEdit &&
+              (pendingSpeakerReview(turn) ||
+              turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
+                ? canDecide
+                : true);
+            // A passage is given only what is its own: the line being edited and the hits when they are in it.
+            const editingHere = turn.parts.some((p) => p.segmentIndex === editingIndex);
+            const hitHere = turn.parts.some((p) => hitsBySegment.has(p.segmentIndex));
+            return (
+              <TurnBlock
+                key={turn.index}
+                turn={turn}
+                rawSegments={segments}
+                correctedIndices={correctedIndices}
+                correctedRanges={correctedRanges}
+                hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
+                partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
+                labelled={labelled}
+                displayName={displayName}
+                labelOptions={labelOptions}
+                samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
+                canEdit={canEdit}
+                canPickSpeaker={editableTurn && labelled}
+                textForEdit={textForEdit}
+                confirmedWords={confirmedWords}
+                onToggleConfirmed={onToggleConfirmed}
+                editingIndex={editingHere ? editingIndex : -1}
+                onStartEdit={startEdit}
+                onCancelEdit={cancelEdit}
+                onCommitLine={commitTurnLine}
+                onRevertLine={revertTurnLine}
+                onReassign={reassignTurn}
+                onRename={renamePassage}
+                onSeekTurn={seekTurn}
+                onPartClick={clickPart}
+              />
+            );
+          })}
+        </ol>
+      </div>
+    ));
+    // The callbacks are steady (useSteady): they call the latest code without being dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTurns, totalFiles, canEdit, canDecide, corrections, segments, editingIndex, hitsBySegment, correctedIndices, correctedRanges, labelled, displayName, labelOptions, settledPassages, confirmedWords, onToggleConfirmed, renamePassage]);
+
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
     if (audioPending) {
@@ -886,7 +967,7 @@ export function TranscriptPlayer(
       data-dock-edge={playerOnTop ? "top" : undefined}
       className={join(styles.dock, playerOnTop && styles.dockTop)}
     >
-      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={keysSaid ? letterKeys : null} onLetterKeys={turnLetterKeys} />
+      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={keysSaid ? letterKeys : null} onLetterKeys={turnLetterKeys} ownerId={ownerId} />
     </div>
   );
 
@@ -982,6 +1063,13 @@ export function TranscriptPlayer(
                     setHitIndex(0);
                   }}
                   onKeyDown={(e) => {
+                    // Esc empties the search, as a browser's own find does; the focus stays to type another.
+                    if (e.key === "Escape" && query) {
+                      e.preventDefault();
+                      setQuery("");
+                      setHitIndex(0);
+                      return;
+                    }
                     if (e.key !== "Enter") return;
                     e.preventDefault();
                     stepHit(e.shiftKey ? -1 : 1);
@@ -1093,56 +1181,7 @@ export function TranscriptPlayer(
             playback.playRange(fileIndex, time * 1_000, end * 1_000);
           }}
           confirmedWords={confirmedWords} onToggleConfirmed={onToggleConfirmed}
-          onInteract={() => setFollow(false)} /> : parts.map((part) => (
-          <div key={part.fileIndex} className={styles.part}>
-            {totalFiles > 1 && (
-              <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>
-            )}
-            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
-              {part.turns.map((turn) => {
-                // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
-                const editableTurn =
-                  canEdit &&
-                  (pendingSpeakerReview(turn) ||
-                  turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
-                    ? canDecide
-                    : true);
-                // A passage is given only what is its own: the line being edited and the hits when they are in it.
-                const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
-                const hitHere = turn.parts.some((part) => hitsBySegment.has(part.segmentIndex));
-                return (
-                  <TurnBlock
-                    key={turn.index}
-                    turn={turn}
-                    rawSegments={segments}
-                    correctedIndices={correctedIndices}
-                    correctedRanges={correctedRanges}
-                    hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
-                    partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                    labelled={labelled}
-                    displayName={displayName}
-                    labelOptions={labelOptions}
-                    samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
-                    canEdit={canEdit}
-                    canPickSpeaker={editableTurn && labelled}
-                    textForEdit={textForEdit}
-                    confirmedWords={confirmedWords}
-                    onToggleConfirmed={onToggleConfirmed}
-                    editingIndex={editingHere ? editingIndex : -1}
-                    onStartEdit={startEdit}
-                    onCancelEdit={cancelEdit}
-                    onCommitLine={commitTurnLine}
-                    onRevertLine={revertTurnLine}
-                    onReassign={reassignTurn}
-                    onRename={canName || onRenameSpeaker ? renameSpeaker : undefined}
-                    onSeekTurn={seekTurn}
-                    onPartClick={clickPart}
-                  />
-                );
-              })}
-            </ol>
-          </div>
-        ))}
+          onInteract={() => setFollow(false)} /> : passages}
         {!reviewEnabled && visibleTurns.length === 0 && (
           <Text as="p" className={styles.empty}>Inga repliker att visa.</Text>
         )}
@@ -1661,7 +1700,7 @@ function SpeakerNaming({
     <SpeakerNamingDialog
       ref={ref}
       rows={rows}
-      participants={[...new Set([...naming.participants, ...Object.values(names)])]}
+      participants={naming.participants}
       passages={(label) => speakers.find((speaker) => speaker.label === label)?.passages ?? 0}
       quote={(label) => shown.find((segment) => segment.speaker === label)?.text ?? null}
       onListen={hasAudio ? listenTo : undefined}

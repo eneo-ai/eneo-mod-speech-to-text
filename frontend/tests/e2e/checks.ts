@@ -42,21 +42,56 @@ export async function addStyles(page: Page, css: string) {
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
-/** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
+/**
+ * Waits for opening animations (a dialog fading in), colour transitions and smooth scrolls to end, so colours are
+ * measured at rest and targets where they stay.
+ */
 export async function settle(page: Page) {
   // Animations and transitions both: a colour fading to its end would be measured halfway. A live page keeps
   // starting new ones (a recording's level and timer), so only those running now are waited for, a few seconds
   // at most.
-  await page.evaluate(() =>
-    Promise.race([
-      Promise.all(
-        document
-          .getAnimations()
-          .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)
-          .map((a) => a.finished.catch(() => undefined)),
-      ),
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
-    ]),
+  await Promise.all([
+    page.evaluate(() =>
+      Promise.race([
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)
+            .map((a) => a.finished.catch(() => undefined)),
+        ),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ]),
+    ),
+    scrollsAtRest(page),
+  ]);
+}
+
+/**
+ * Waits until three frames in a row see the page's scrolling boxes where they were, a few seconds at most. A smooth
+ * scroll (a step to the next passage, an engine's own reveal of what Tab focused) carries what it scrolls past a pinned
+ * bar: measured on its way, a target is measured under the bar, and a focused control outside the window. A smooth
+ * scroll starts a frame after it is asked for, hence three.
+ */
+export function scrollsAtRest(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const boxes = [document.scrollingElement, ...document.querySelectorAll("*")].filter(
+          (el): el is Element => el !== null && (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth),
+        );
+        const at = () => boxes.map((el) => `${el.scrollLeft},${el.scrollTop}`).join(";");
+        const end = performance.now() + 5_000;
+        let last = at();
+        let still = 0;
+        const frame = () => {
+          const now = at();
+          still = now === last ? still + 1 : 0;
+          last = now;
+          if (still >= 3 || performance.now() > end) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
   );
 }
 
@@ -343,9 +378,18 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
   // A page that moves while its ring is photographed (a live status line, a level meter, a list arriving) puts part of
   // the ring outside the clip: a measurement counts only when the owner stood still through both screenshots, and is
   // taken again from a fresh probe when it did not.
+  let waited = false;
   for (let attempt = 1; ; attempt++) {
     const stop = await probeFocus(page);
     if (!stop) return null;
+    // An engine can bring what Tab focused into the window with a scroll of its own that is still on its way (WebKit on a
+    // loaded Linux runner): a control outside the window is probed again once the page stands still. One that the
+    // engine never brings in is still outside then.
+    if (stop.offscreen && !waited) {
+      waited = true;
+      await scrollsAtRest(page);
+      continue;
+    }
     const { owner, perimeter, ...rest } = stop;
     let area = owner === null ? 0 : await seenChange(page);
     // Firefox can take two identical screenshots of a ring its styles show, so a miss is measured once more: a ring

@@ -5,7 +5,7 @@
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { setup, STATES } from "./screens";
+import { addParticipants, chooseFile, setup, STATES } from "./screens";
 
 /** The input's box, Lägg till's box, and the baseline each one's words stand on, in whole CSS px. */
 function row(page: Page) {
@@ -132,4 +132,26 @@ test("a field left before the window crosses a laptop's width does not take the 
   await page.setViewportSize({ width: 820, height: 1180 });
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   await expect(field).not.toBeFocused();
+});
+
+test("the names last sent are offered in one press on the flow's next setup: two chips, said, and the focus in the field", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await setup(page);
+  const offer = page.getByRole("button", { name: /^Lägg till förra gångens namn/ });
+  await expect(offer, "nothing sent yet: nothing to offer").toHaveCount(0);
+  await chooseFile(page);
+  await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await page.waitForURL(/[?&]run=/);
+
+  await setup(page);
+  await expect(offer).toHaveText("Lägg till förra gångens namn (2)");
+  const box = (await offer.boundingBox())!;
+  if (info.project.use.hasTouch) expect(box.height, "a finger's target").toBeGreaterThanOrEqual(44);
+  await offer.click();
+  const chips = page.getByRole("list", { name: "Tillagda namn" }).getByRole("listitem");
+  await expect(chips).toHaveText(["Anna Berg", "Erik Lund"]);
+  await expect(page.getByRole("status").filter({ hasText: "Anna Berg och Erik Lund har lagts till." })).toBeAttached();
+  await expect(offer, "the field has names: nothing more to offer").toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: /^Deltagare|^Lägg till namn/ }).first()).toBeFocused();
 });

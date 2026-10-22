@@ -7,9 +7,12 @@
 import { type Locator } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
-import { keptRecording, run } from "./screens";
+import { keptRecording, run, STATES } from "./screens";
 
-test.beforeEach(({}, info) => test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop"));
+// A phone and a laptop; what is about the narrowest phone's first screen, there too.
+test.beforeEach(({}, info) =>
+  test.skip(![...(info.title.includes("narrowest phone") ? ["phone-320-light"] : []), "phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop"),
+);
 
 /** Where the main and the other button stand in the row that holds them, rounded to whole pixels. */
 async function layout(main: Locator, other: Locator) {
@@ -53,6 +56,21 @@ const REVIEWS = [
   { name: "the text review", id: ids.runs.reviewText, flow: ids.flows.flow1, heading: "Sammanfattning" },
 ];
 
+test("who is who: Godkänn och fortsätt is whole on the narrowest phone's first screen, and what it does to speakers without a name follows it on a phone", async ({ page }, info) => {
+  await run(page, ids.runs.review, ids.flows.flow2);
+  await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
+  const approve = (await page.getByRole("button", { name: "Godkänn och fortsätt" }).boundingBox())!;
+  const reject = (await page.getByRole("button", { name: "Avvisa körningen", exact: true }).boundingBox())!;
+  const note = (await page.getByText("Talare utan namn behåller sin etikett i transkriberingen.").boundingBox())!;
+  const { width, height } = info.project.use.viewport!;
+  if (width < 640) {
+    expect(note.y, "the note under the decision's buttons").toBeGreaterThan(Math.max(approve.y + approve.height, reject.y + reject.height));
+    if (width < 360) expect(approve.y + approve.height, "Godkänn och fortsätt whole on the first screen").toBeLessThanOrEqual(height);
+  } else {
+    expect(note.y + note.height, "the note in the speakers' card, above the decision").toBeLessThan(approve.y);
+  }
+});
+
 for (const review of REVIEWS) {
   test(`${review.name}: Avvisa and Godkänn och fortsätt follow the decision's rule`, async ({ page }, info) => {
     await run(page, review.id, review.flow);
@@ -61,6 +79,18 @@ for (const review of REVIEWS) {
     followsTheRule(found, info.project.use.viewport!.width <= 640);
   });
 }
+
+test("an unsent recording on the setup: its send keeps one line on the narrowest phone, the words shown starting its name", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "unsent-on-setup")!.go(page, info);
+  const send = page.getByRole("button", { name: "Skapa dokument av inspelningen" });
+  await expect(send).toHaveText(info.project.use.viewport!.width < 360 ? "Skapa dokument" : "Skapa dokument av inspelningen");
+  const lines = await send.evaluate((button) => {
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    return new Set([...range.getClientRects()].filter((rect) => rect.width > 1).map((rect) => Math.round(rect.top))).size;
+  });
+  expect(lines, "its words on one line").toBe(1);
+});
 
 test("an unsent recording's way on stands across its card on a phone, Spara ljudfil and Ta bort share the row under it with Ta bort at its own width at its end, and all in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
   await page.goto("/flows");

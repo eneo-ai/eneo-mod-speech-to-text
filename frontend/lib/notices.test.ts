@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
-import { createElement } from "react";
+import { createElement, useEffect, useRef } from "react";
 
 import { OfflineBanner, type OfflineWaiting } from "../components/OfflineBanner";
 import { RetryNotice } from "../components/RetryNotice";
@@ -90,16 +90,22 @@ async function host(t: TestContext) {
   return { container: element, render: (ui: ReturnType<typeof createElement>) => act(async () => root.render(ui)) };
 }
 
+/** The next frame, where a reveal asked for in a draw's effects runs. */
+const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
 test("an alert that is to be revealed scrolls into view once per problem, with a jump", async (t) => {
   const calls = scrolled(t);
   const { container, render } = await host(t);
   const first: Problem = { title: "Det gick inte att skapa dokumentet." };
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
+  await frame();
   assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
   assert.ok(calls[0].element.contains(alerts(container)[0]), "the alert itself");
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
+  await frame();
   assert.equal(calls.length, 1, "the same problem drawn again is not scrolled to again");
   await render(createElement(ProblemAlert, { problem: { title: "Det gick inte igen." }, reveal: true }));
+  await frame();
   assert.equal(calls.length, 2, "another problem is");
 });
 
@@ -107,10 +113,35 @@ test("an alert that need not be revealed stays where it is", async (t) => {
   const calls = scrolled(t);
   const quiet = await host(t);
   await quiet.render(createElement(ProblemAlert, { problem: { title: "Ingen scroll." } }));
+  await frame();
   assert.equal(calls.length, 0);
   const revealed = await host(t);
   await revealed.render(createElement(ProblemAlert, { problem: { title: "Scrolla." }, reveal: true }));
+  await frame();
   assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
+});
+
+test("an alert drawn with a view that focuses its heading is revealed after that focus, which would scroll the page back", async (t) => {
+  // A failed send draws the setup again with its answer: the setup's own effect, which runs after its children's,
+  // focuses its heading, and the browser scrolls that into view.
+  const order: string[] = [];
+  const original = window.Element.prototype.scrollIntoView;
+  window.Element.prototype.scrollIntoView = () => void order.push("reveal");
+  t.after(() => {
+    window.Element.prototype.scrollIntoView = original;
+  });
+  function Setup() {
+    const heading = useRef<HTMLHeadingElement>(null);
+    useEffect(() => {
+      heading.current?.focus();
+      order.push("heading");
+    }, []);
+    return createElement("section", null, createElement("h2", { ref: heading, tabIndex: -1 }, "Ladda upp"), createElement(ProblemAlert, { problem: { title: "Flödet har uppdaterats." }, reveal: true }));
+  }
+  const { render } = await host(t);
+  await render(createElement(Setup));
+  await frame();
+  assert.deepEqual(order, ["heading", "reveal"]);
 });
 
 const wait = (retryAt: number | null, retryNow = () => {}) => ({ retryAt, retryNow });

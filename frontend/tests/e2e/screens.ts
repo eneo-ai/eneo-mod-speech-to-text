@@ -804,6 +804,15 @@ export const STATES: State[] = [
     },
   },
   {
+    // A run of the flow waits for this person's review: said above the setup's work, with the way to it.
+    name: "setup-review-waiting",
+    go: async (page) => {
+      await page.goto(`/flows/${ids.flows.flow2}`);
+      await setupShown(page);
+      await expect(page.getByRole("button", { name: /^Granska, körningen / }).first()).toBeVisible();
+    },
+  },
+  {
     // A flow that only offers them: a line in the switch's place, and every way in as usual.
     name: "setup-speakers-unlabelled",
     go: async (page) => {

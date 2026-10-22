@@ -37,6 +37,7 @@ const BY_ADDRESS = [
   "setup",
   "setup-speakers-blocked",
   "setup-speakers-unlabelled",
+  "setup-review-waiting",
   "flow-gone",
   "flow-republish-required",
   "run-progress",

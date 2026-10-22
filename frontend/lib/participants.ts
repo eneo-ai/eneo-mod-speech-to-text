@@ -67,3 +67,29 @@ export function rememberNames(
     // Full or blocked storage: the suggestions are a convenience.
   }
 }
+
+const lastNamesKey = (ownerId: string, flowId: string, field: string) => `tal-till-text:${ownerId}:last-names:${flowId}:${field}`;
+
+/** The names this user last sent in a flow's list field, which its next setup offers to add in one press. */
+export function lastNames(storage: KeyValueStorage | null | undefined, ownerId: string, flowId: string, field: string): string[] {
+  try {
+    const saved: unknown = JSON.parse(storage?.getItem(lastNamesKey(ownerId, flowId, field)) ?? "[]");
+    return participantsOf(saved);
+  } catch {
+    return [];
+  }
+}
+
+export function keepLastNames(
+  storage: KeyValueStorage | null | undefined,
+  ownerId: string,
+  flowId: string,
+  field: string,
+  names: readonly string[],
+): void {
+  try {
+    storage?.setItem(lastNamesKey(ownerId, flowId, field), JSON.stringify(names));
+  } catch {
+    // Full or blocked storage: the offer is a convenience.
+  }
+}

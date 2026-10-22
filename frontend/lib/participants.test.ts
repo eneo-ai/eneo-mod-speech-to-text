@@ -64,3 +64,22 @@ test("a run's participants are read from a list or from text, and nothing else",
   assert.deepEqual(participantsOf(null), []);
   assert.deepEqual(participantsOf({ name: "Anna Berg" }), []);
 });
+
+test("the names a flow's list field was last sent with are kept per person, flow and field, and read back as names", async () => {
+  const { keepLastNames, lastNames } = await import("./participants");
+  const data: Record<string, string> = {};
+  const storage = { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => void (data[key] = value) };
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "deltagare"), [], "none before a send");
+  keepLastNames(storage, "user-1", "flow-1", "deltagare", ["Anna Berg", "Erik Lund"]);
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "deltagare"), ["Anna Berg", "Erik Lund"]);
+  assert.deepEqual(lastNames(storage, "user-2", "flow-1", "deltagare"), [], "another person's are theirs");
+  assert.deepEqual(lastNames(storage, "user-1", "flow-2", "deltagare"), [], "another flow's are its own");
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "ledamoter"), [], "and another field's");
+  data["tal-till-text:user-1:last-names:flow-1:deltagare"] = JSON.stringify(["Anna Berg", 4, ""]);
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "deltagare"), ["Anna Berg"], "only names are read back");
+  data["tal-till-text:user-1:last-names:flow-1:deltagare"] = "{";
+  assert.deepEqual(lastNames(storage, "user-1", "flow-1", "deltagare"), []);
+  const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.deepEqual(lastNames(blocked, "user-1", "flow-1", "deltagare"), []);
+  keepLastNames(blocked, "user-1", "flow-1", "deltagare", ["Anna Berg"]);
+});

@@ -117,6 +117,18 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   document.body.append(bar);
   region.remove();
 
+  // A control a press focuses is where the press was: a scroll between the press's down and up would land the press
+  // beside it (a word of the review's text, whose passage takes the focus). The keyboard's next focus is uncovered.
+  field.blur();
+  t.mock.method(field, "getBoundingClientRect", () => box(window.innerHeight - 30, 24));
+  document.dispatchEvent(new window.Event("pointerdown", { bubbles: true }));
+  field.focus();
+  assert.deepEqual(scrolled, [118], "a control a press focuses stays under the finger");
+  field.blur();
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  field.focus();
+  assert.deepEqual(scrolled, [118, 118], "the keyboard's focus is scrolled clear of the dock again");
+
   stop();
   field.remove();
   bar.remove();

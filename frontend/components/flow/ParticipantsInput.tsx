@@ -29,7 +29,8 @@ const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter", spellCheck:
  * Backspace in the empty input removes the last chip, and each chip has its
  * own remove button, which hands the focus back to the input, except after a
  * finger's press: there that would open the phone's keyboard for nothing.
- * Earlier names are offered as the browser's own suggestions. Text left in
+ * Earlier names are offered as the browser's own suggestions, and an empty
+ * field offers the names it was last sent with in one press. Text left in
  * the input becomes a chip when the field loses focus, so a typed name is
  * never lost.
  */
@@ -38,6 +39,7 @@ export function ParticipantsInput({
   names,
   onChange,
   suggestions,
+  previous = [],
   onAdded,
   description,
   error,
@@ -49,6 +51,8 @@ export function ParticipantsInput({
   names: string[];
   onChange: (names: string[]) => void;
   suggestions: string[];
+  /** The names the field was last sent with on this flow (lib/participants lastNames). */
+  previous?: readonly string[];
   /** Names the user just added, to offer them again next time. */
   onAdded?: (names: string[]) => void;
   /** Under the label, before the field. */
@@ -181,6 +185,22 @@ export function ParticipantsInput({
           />
         </InputGroup>
       </VStack>
+      {/* Where the chips will be: last time's names in one press, which says what it added and leaves the focus in the
+          field for the next name. */}
+      {names.length === 0 && previous.length > 0 && (
+        <HStack>
+          <Button
+            label={`Lägg till förra gångens namn (${previous.length})`}
+            variant="ghost"
+            size="sm"
+            className={styles.previous}
+            onClick={() => {
+              add([...previous]);
+              input.current?.focus();
+            }}
+          />
+        </HStack>
+      )}
       {names.length > 0 && (
         <HStack
           as="ul"

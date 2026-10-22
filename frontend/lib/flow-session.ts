@@ -17,7 +17,7 @@ import {
 import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { isRecord } from "./is-record";
 import { errorAdvice } from "./errors";
-import { splitNames } from "./participants";
+import { keepLastNames, participantsOf, splitNames } from "./participants";
 import { END_UNCONFIRMED, RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes, formatDuration } from "./format";
@@ -477,6 +477,8 @@ function detailsPayload(
 }
 
 const modeKey = (flowId: string) => `tal-till-text:mode:${flowId}`;
+/** Märk upp talare as the person last left it on this flow, which its next setup starts from. */
+const speakerLabelsKey = (flowId: string) => `tal-till-text:speaker-labels:${flowId}`;
 
 /** Strömma's live text for one recording, as the session drives it. */
 export interface LiveSession {
@@ -603,6 +605,12 @@ export class FlowSession {
     // And their speaker choices, so a recording sent after the reload gets the labels and the bound they saw.
     const choices = readDraft(options.drafts, options.ownerId, this.choicesDraftName(), isSpeakerChoices);
     if (typeof choices?.labels === "boolean") this.explicitSpeakerLabels = choices.labels;
+    else {
+      // No draft (none yet, or the last send cleared it): the switch as the person last left it on this flow. A flow that
+      // stops offering the switch sends no choice whatever is kept (speakerLabelsFor).
+      const kept = this.read(speakerLabelsKey(options.flowId));
+      if (kept === "on" || kept === "off") this.explicitSpeakerLabels = kept === "on";
+    }
     if (typeof choices?.count === "string") this.speakerCountText = choices.count;
     if (choices?.edited === true) this.countFollowsNames = false;
     this.capture = new RecordingCapture(options.openStore, {
@@ -692,6 +700,7 @@ export class FlowSession {
   setSpeakerLabels(on: boolean): void {
     this.explicitSpeakerLabels = on;
     this.keepChoices();
+    this.write(speakerLabelsKey(this.options.flowId), on ? "on" : "off");
     this.emit();
   }
 
@@ -914,6 +923,10 @@ export class FlowSession {
       this.closeLive();
     }
     if (input?.kind === "file") this.file = this.accepted = null;
+    // The names each list field was sent with: the flow's next setup offers them in one press (ParticipantsInput).
+    for (const field of fields.filter((f) => f.type === "list")) {
+      keepLastNames(this.options.storage, this.options.ownerId, this.options.flowId, field.name, participantsOf(this.details[field.name]));
+    }
     clearDraft(this.options.drafts, this.options.ownerId, this.draftName());
     clearDraft(this.options.drafts, this.options.ownerId, this.choicesDraftName());
     this.emit();

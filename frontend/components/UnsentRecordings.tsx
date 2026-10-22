@@ -283,6 +283,9 @@ function UnsentRecordingRow({
   const audio = hasAudio(recording);
   const saving = useSaveRecording(recording.id, filesIn(recording));
   const stacked = useMediaQuery(STACKED);
+  // The narrowest phones: the send's words without "av inspelningen", which would break inside the button. Its name keeps
+  // them, and starts with the words shown (WCAG 2.5.3).
+  const tiny = useMediaQuery("(max-width: 359.98px)");
   const lead = head !== undefined;
   // The leading recording's actions are the page's own size when one of them is its filled action.
   const size = lead && primary ? "lg" : "md";
@@ -360,7 +363,9 @@ function UnsentRecordingRow({
         size={size}
         aria-describedby={summaryId}
         onClick={() => onSend(recording)}
-      />
+      >
+        {tiny ? sendLabel.replace(/ av inspelningen$/, "") : undefined}
+      </Button>
     ),
     quietSave,
   ].filter(Boolean);

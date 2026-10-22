@@ -102,3 +102,28 @@ test("a recording's send cut off by a reload goes on where the module has it, wi
   expect(asked.filter((request) => !request.startsWith("GET "))).toEqual([`PUT ${id}`, `PATCH ${id} 0`, `PUT ${id}`, `PATCH ${id} ${PIECE}`, `POST ${id}`]);
   expect(runs).toBe(1);
 });
+
+test("while a file goes up the tab's title says how far it has come, and stops saying it once the upload is done", async ({ page }) => {
+  let pieceIn!: () => void;
+  const firstPieceIn = new Promise<void>((resolve) => (pieceIn = resolve));
+  let letGo!: () => void;
+  const secondPieceMayGo = new Promise<void>((resolve) => (letGo = resolve));
+  await page.route(/\/api\/uploads\//, async (route) => {
+    const request = route.request();
+    if (request.method() !== "PATCH") return route.fallback();
+    if (request.headers()["upload-offset"] !== "0") await secondPieceMayGo;
+    else pieceIn();
+    return route.fallback();
+  });
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "langt-mote.wav", mimeType: "audio/wav", buffer: wav(280) });
+  await expect(page.getByRole("button", { name: "Byt fil" })).toBeVisible();
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await firstPieceIn;
+  await expect.poll(() => page.title(), { message: "the percent first, then the state" }).toMatch(/^\d+\s%\s·\sDokumentet skapas · Tal till text$/);
+  await expect(page.getByRole("heading", { level: 1 }), "the heading keeps its words").toHaveText("Dokumentet skapas");
+  letGo();
+  await page.waitForURL(/[?&]run=/);
+  await expect.poll(() => page.title()).not.toMatch(/%/);
+});

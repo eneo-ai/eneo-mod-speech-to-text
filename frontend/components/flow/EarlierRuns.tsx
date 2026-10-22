@@ -1,12 +1,13 @@
 import { CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
+import { pendingReviews, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { formatRelativeDate } from "@/lib/format";
 import { runOutcome, runStatusLabel } from "@/lib/run-progress";
 
@@ -15,6 +16,32 @@ const OUTCOME: Record<string, [LucideIcon, "success" | "error" | "secondary"]> =
   failed: [XCircle, "error"],
   cancelled: [MinusCircle, "secondary"],
 };
+
+/**
+ * A run of this flow that waits for the person's review, said above the setup's work, where a person who came to start
+ * another run sees it: Eneo cancels a review that is not done in time. The newest one is opened from here; the list of
+ * earlier runs has them all.
+ */
+export function PendingReview({ list, onOpen }: { list: EarlierRunsSnapshot; onOpen: (runId: string) => void }) {
+  const waiting = pendingReviews(list.runs);
+  const [newest] = waiting;
+  if (!newest) return null;
+  const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
+  return (
+    <Banner
+      status="info"
+      collapsible={false}
+      title={waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`}
+      description={`${when ? `Startad ${when}. ` : ""}Den avbryts om den inte granskas i tid.`}
+      endContent={
+        // Named as the list's own Granska, so the two say which run.
+        <Button label={`Granska, körningen ${when}`} variant="secondary" onClick={() => onOpen(newest.id)}>
+          Granska
+        </Button>
+      }
+    />
+  );
+}
 
 /** This flow's latest runs, so yesterday's document is one tap away, and more a page at a time. */
 export function EarlierRuns({

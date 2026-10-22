@@ -66,7 +66,8 @@ Everything else stays quiet: no gradient, glow or wash, and nothing that moves t
 - One primary action per state: a 48 px accent button, full width in its column, docked at the bottom in one column (a
   phone, a tablet upright). A review's decision is the design system's middle size (32 px with a mouse, 44 px on touch).
   The speaker review keeps its decision in the page on a phone too, under the speakers: the transcript's player docks at
-  the bottom there, and two bars would cover a fifth of the screen.
+  the bottom there, and two bars would cover a fifth of the screen. On a phone what Godkänn does to speakers without a
+  name is said under the decision, not at the speakers' card's foot, so the decision starts on a 320 px first screen.
 - The flow page is a column of 20 to 24 rem for the flow (name, description, how it works, classification) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's name
   (on a tablet its description too), how it works follows the work, and the classification follows the choice. The
@@ -228,7 +229,11 @@ switches round. One-pixel borders are `var(--border-width)`.
 - The flow's details follow the choice of way in, in the working card at every width: a field being typed in when the
   layout changes (a tablet turned) does not move. A name typed in the participants' field is kept when the field goes
   (a recording started). Its Lägg till is one piece with the field and off until a name is typed; off, it keeps the
-  field's edge, so the two still read as one control.
+  field's edge, so the two still read as one control. Empty, the field offers the names it was last sent with on this
+  flow in one press ("Lägg till förra gångens namn (2)", a ghost button where the chips will be), and Märk upp talare
+  starts as the person last left it on the flow.
+- A run of the flow that waits for the person's review is said above the setup's work, an information banner with its
+  Granska, the newest one: Eneo cancels a review not done in time. The earlier runs list them all.
 
 ### How it works
 - "Så fungerar det": the steps a run takes the person through, said only as the run contract states them
@@ -238,7 +243,7 @@ switches round. One-pixel borders are `var(--border-width)`.
   person read it in the flow's row of the list.
 
 ### Recording notices
-- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it.
+- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it. There the live sheet's head is its log's first line: the Preliminär pill, and when the final text comes on a line of its own under it.
 - Pinned on a short screen, the controls' card stands a gutter above the window's edge. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
 - From 768 px Pausa and Stoppa are the stage card's footer, at the middle of it (25 rem), with one hairline between the
   stage and them.
@@ -289,7 +294,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   sekunder." Where the line is, K, J and L work from anywhere on the page. A touch screen has no line, so there they act
   only with the focus in the player (a keyboard of the tablet's own). The line ends with "Stäng av", set in the line's
   own size, and off it says "Tangenterna K, J och L är avstängda." and offers "Slå på". The choice is kept for the
-  person in the browser. Space and the arrows are the player's only with the focus on it, and are never turned off.
+  person in the browser. Space and the arrows are the player's only with the focus on it, and are never turned off. The
+  speed chosen is kept for the person too: the next transcript plays at it. Esc in the search empties it, as a browser's
+  own find does; while a query shows its count and arrows, the search takes the row under the chips.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
@@ -299,7 +306,7 @@ switches round. One-pixel borders are `var(--border-width)`.
   padding outside the column; the chosen row is tinted and its radio filled. A switch with its label for an option that
   is on or off. A line that says a
   state in its words offers the one action that changes it instead, as the player's line of keys does (Stäng av, Slå
-  på) beside its Följ.
+  på) beside its Följ uppspelningen.
 - Filter chips (toggle buttons, the transcript's speakers) are the middle size, as tall as the search field beside them
   (under them where the row has no room for both), and stand 8 px apart with any pointer. They have a control's edge at
   rest and the accent's edge and tint when pressed. Where they would take more than one row (more than five speakers

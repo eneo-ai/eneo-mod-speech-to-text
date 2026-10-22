@@ -16,7 +16,9 @@ import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
 import { SpeakerMark } from "@/components/SpeakerMark";
+import { browserStorage } from "@/lib/browser-storage";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { recentNames, rememberNames } from "@/lib/participants";
 import { isRecord } from "@/lib/is-record";
 import { isUnsureProposal, type SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { speakerDisplayLabel, speakerNameProblem } from "@/lib/transcript";
@@ -99,7 +101,10 @@ export function SpeakerNamingDialog({
   rows: readonly SpeakerMappingRow[];
   /** What the mapping step proposed for each speaker: its name, how sure it was and why. */
   proposals?: readonly SpeakerMappingRow[];
-  /** The names entered before the run: suggestions, never assumed. */
+  /**
+   * The names entered before the run: suggestions, never assumed. A run started without any offers the names this person
+   * gave before (lib/participants.ts recentNames), and a save adds the names given to them.
+   */
   participants: readonly string[];
   /** How many passages a speaker has in the transcript. */
   passages: (label: string) => number;
@@ -212,7 +217,9 @@ export function SpeakerNamingDialog({
     const other = draft.find((row) => row.label !== label && row.name?.trim() === name.trim());
     return other ? `Redan kopplad till ${speakerDisplayLabel(other.label)}` : null;
   };
-  const names = [...new Set([...participants, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
+  const ownerId = draftKey?.ownerId;
+  const offered = participants.length > 0 || !ownerId ? participants : recentNames(browserStorage(), ownerId);
+  const names = [...new Set([...offered, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
 
   /** Checks each name, then saves; a refusal keeps the dialog and the names as they are. */
   async function submit() {
@@ -228,8 +235,9 @@ export function SpeakerNamingDialog({
     const rows = draft.map((row) => ({ ...row, name: row.name?.trim() ? row.name.trim() : null }));
     const refused = await onSave(rows);
     setSaving(false);
-    if (refused) setRefusal(refused);
-    else end();
+    if (refused) return setRefusal(refused);
+    if (ownerId) rememberNames(browserStorage(), ownerId, rows.flatMap((row) => (row.name ? [row.name] : [])));
+    end();
   }
 
   return (

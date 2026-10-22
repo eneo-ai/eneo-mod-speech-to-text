@@ -21,7 +21,7 @@ import {
   focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
-import { EarlierRuns } from "@/components/flow/EarlierRuns";
+import { EarlierRuns, PendingReview } from "@/components/flow/EarlierRuns";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { HowItWorks } from "@/components/flow/HowItWorks";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
@@ -52,7 +52,7 @@ import {
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
 import { createActionLabel, forwardedLine, howItWorks, makesText } from "@/lib/flow-output";
-import { recentNames, rememberNames } from "@/lib/participants";
+import { lastNames, recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
   detailsSummary,
@@ -131,6 +131,8 @@ export function FlowInput({
   const workspace = useRef<HTMLElement>(null);
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  // The names each list field was last sent with on this flow, offered in one press where the field has none.
+  const [previous, setPrevious] = useState<Record<string, string[]>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   // "Ta bort" took the ready recording away: said in the page's status (nothing shown moves the setup), until a recording begins.
   const [removed, setRemoved] = useState(false);
@@ -186,6 +188,14 @@ export function FlowInput({
   const descriptionInGuide = guideAfter !== null && phone && Boolean(published.description);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
+  useEffect(
+    () =>
+      setPrevious(
+        Object.fromEntries(fields.filter((field) => field.type === "list").map((field) => [field.name, lastNames(browserStorage(), ownerId, contract.flow_id, field.name)])),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ownerId, contract],
+  );
 
   // Never on the page's first load, where the page starts from its top.
   useEffect(() => {
@@ -206,6 +216,7 @@ export function FlowInput({
       onChange={(name, value) => session.setDetail(name, value)}
       makesText={text}
       suggestions={suggestions}
+      previous={previous}
       onNamesAdded={(names) => rememberNames(browserStorage(), ownerId, names)}
       notes={ownCountField && snapshot.speakerCountFromNames ? { [ownCountField]: COUNT_FROM_NAMES } : undefined}
       countField={ownCountField}
@@ -252,6 +263,7 @@ export function FlowInput({
           </VisuallyHidden>
           <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true && input.capture.refused === null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
+          {group === "setup" && <PendingReview list={earlierRuns} onOpen={onOpenRun} />}
           {/* The recordings to go on with or send stand above the working card, a card of their own beside it, never in it. */}
           {group === "setup" && !blocked && !recoveryFirst && unsentRecordings}
           {group === "setup" ? (

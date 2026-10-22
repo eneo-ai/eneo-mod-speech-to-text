@@ -53,8 +53,11 @@ export function SubmittingView({
 }) {
   // The run's own view follows under the same heading, so nothing moves when it starts.
   const title = creatingHeading(makesText);
-  const heading = usePhaseHeading(title);
   const isUploading = submission.kind === "uploading";
+  // The tab says how far the upload has come, for a person who has gone to another tab while it runs; the heading does not
+  // change.
+  const percent = isUploading ? submission.percent : null;
+  const heading = usePhaseHeading(percent != null ? `${formatPercent(Math.floor(percent))} · ${title}` : title);
   // The run's view follows this one: its steps' code is fetched while the file goes up.
   useEffect(() => void preloadStepList(), []);
   return (

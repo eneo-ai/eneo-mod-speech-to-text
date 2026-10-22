@@ -210,15 +210,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getPublishedFlow(flowId), getRunContract(flowId)])
+    const urlRunId = readRunIdFromUrl();
+    // The setup's earlier runs are read beside the flow, and the setup is drawn once they are known (or could not be
+    // read): a run waiting for review is said above the setup's work, and an answer that came later would move it.
+    Promise.all([getPublishedFlow(flowId), getRunContract(flowId), urlRunId ? null : earlier.reload()])
       .then(([p, c]) => {
         if (cancelled) return;
         setPublished(p);
         setContract(c);
-
-        const urlRunId = readRunIdFromUrl();
         if (urlRunId) resumeRun(urlRunId);
-        else loadEarlierRuns();
       })
       .catch((err) => !cancelled && setLoadError(err));
     return () => {

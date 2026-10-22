@@ -84,6 +84,7 @@ export function DetailsForm({
   invalid,
   onChange,
   suggestions,
+  previous,
   onNamesAdded,
   notes,
   countField = null,
@@ -95,6 +96,8 @@ export function DetailsForm({
   invalid: readonly string[];
   onChange: (name: string, value: DetailValue) => void;
   suggestions: string[];
+  /** The names a list field was last sent with, by its name: offered in one press where it has none. */
+  previous?: Record<string, string[]>;
   onNamesAdded: (names: string[]) => void;
   /** A line under a field, by its name, until the person edits it: where its value came from. */
   notes?: Record<string, string>;
@@ -145,6 +148,7 @@ export function DetailsForm({
                 names={Array.isArray(value) ? value : []}
                 onChange={(names) => onChange(field.name, names)}
                 suggestions={suggestions}
+                previous={previous?.[field.name]}
                 onAdded={onNamesAdded}
                 description={help || undefined}
                 error={error}
