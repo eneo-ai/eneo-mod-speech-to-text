@@ -138,6 +138,28 @@ async function mountEditableTranscript(onChange: (next: unknown) => void) {
   return { view, editor };
 }
 
+test("transcript: while one of its text fields has the focus the player says so, so a touch screen's dock stays in the text", async () => {
+  const { view, editor } = await mountEditableTranscript(() => undefined);
+  const player = view.container.querySelector<HTMLElement>('section[aria-label="Inspelning och transkribering"]')!;
+  assert.ok(player.hasAttribute("data-typing"), "a line's editor");
+  await view.act(async () => button(view.container, "Avbryt")!.focus());
+  assert.ok(!player.hasAttribute("data-typing"), "the editor's own button types nothing");
+  await view.act(async () => editor.focus());
+  await view.act(async () => void editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  assert.equal(view.container.querySelector("textarea"), null, "closed from inside");
+  assert.ok(!player.hasAttribute("data-typing"), "the focus is back on the passage's Rätta");
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const search = [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
+  await view.act(async () => search.focus());
+  assert.ok(player.hasAttribute("data-typing"), "the search");
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  await view.act(async () => outside.focus());
+  assert.ok(!player.hasAttribute("data-typing"), "the focus left the player");
+  await view.unmount();
+  outside.remove();
+});
+
 test("transcript: Tab to Avbryt and activate it leaves the text as it was", async () => {
   const changes: unknown[] = [];
   const { view } = await mountEditableTranscript((next) => changes.push(next));

@@ -70,6 +70,7 @@ import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
 import { useDock } from "@/lib/dock";
+import { useWorkspace } from "@/lib/workspace";
 import styles from "./ReviewView.module.css";
 
 type ReviewEdit = { text?: string; speakerRows?: SpeakerMappingRow[] };
@@ -288,6 +289,8 @@ export function ReviewView({
   const { corrections, saveState, localError, hasDropped, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
   // The text review's decision, docked at the window's bottom: focus scrolls stop above it (lib/dock.ts).
   const [, decisionDock] = useDock();
+  // Who is who beside the transcript, split from a laptop's width: a workspace, whose column grows with a wide window.
+  useWorkspace(isSpeakerMapping && !SPEAKER_REVIEW_ENABLED);
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
@@ -660,7 +663,7 @@ export function ReviewView({
         {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. Split
             from a laptop's width, the heading stands over the speakers, so the transcript beside them starts at the
             page's top and ends in the window; a workspace, whose column grows with a wide window (styles/globals.css). */}
-        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit} data-workspace={SPEAKER_REVIEW_ENABLED ? undefined : true}>
+        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
               {/* Folded, unless names typed earlier bring the dialog back: it is in this card, and opens by itself. */}

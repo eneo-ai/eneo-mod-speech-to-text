@@ -524,8 +524,8 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const [dock, dockRef] = useDock();
   const playerOnTop = useMediaQuery(PLAYER_ON_TOP);
+  const [dock, dockRef] = useDock(playerOnTop ? "top" : "bottom");
   const phone = useMediaQuery(PHONE);
   const tiny = useMediaQuery(TINY);
   const [editingIndex, setEditingIndex] = useState(-1);
@@ -978,6 +978,11 @@ export function TranscriptPlayer(
       aria-label="Inspelning och transkribering"
       tabIndex={0}
       ref={playerRef}
+      // While a text field of the player has the focus (the search, a passage's editor) a touch screen's soft keyboard
+      // covers the window's lower half, and the dock stays in the text (TranscriptPlayer.module.css). Said on the
+      // section by hand, not by a render or a `:has()`: neither should touch two thousand passages for a focus.
+      onFocus={(e) => e.currentTarget.toggleAttribute("data-typing", e.target.matches("input, textarea"))}
+      onBlur={(e) => e.currentTarget.removeAttribute("data-typing")}
     >
       {title && (
         <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2} className={styles.inset}>

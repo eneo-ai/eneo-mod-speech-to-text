@@ -618,6 +618,10 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
   // Nothing has played: no pause beside the document yet.
   assert.ok(!view.container.querySelector("[data-docked-player] button[aria-label='Pausa uppspelningen']"));
+  // With its transcript the result is a workspace: the page's column grows with a wide window (styles/globals.css).
+  assert.ok(document.documentElement.hasAttribute("data-workspace"), "a workspace while it is shown");
+  await view.unmount();
+  assert.ok(!document.documentElement.hasAttribute("data-workspace"), "and the page's own column once it is gone");
 });
 
 test("a failed later save keeps the note that the document is older, and says why a new one waits", async (t) => {

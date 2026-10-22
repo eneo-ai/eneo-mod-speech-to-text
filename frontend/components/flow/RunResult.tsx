@@ -14,6 +14,7 @@ import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContra
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
+import { useWorkspace } from "@/lib/workspace";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import { participantsOf } from "@/lib/participants";
 import { detailRows, detailsSummary } from "@/lib/recording-view";
@@ -147,6 +148,8 @@ export function RunResult({
   useEffect(() => (sources.length ? rememberPosition(playback, run.id, browserStorage()) : undefined), [playback, run.id, sources]);
   const tabs = !wide && showTranscript;
   const sideBySide = wide && showTranscript;
+  // With the transcript beside the text it is a workspace, whose column grows with a wide window (lib/workspace.ts).
+  useWorkspace(showTranscript);
   // Names typed and not saved bring their dialog back, open: on a phone it is in the transcript's tab.
   const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : "document"));
   const tabList = useRef<HTMLElement | null>(null);
@@ -317,7 +320,7 @@ export function RunResult({
     // heading and the document 7 columns of 13 and the transcript 6 beside them, from the page's top, so that it ends in
     // the window before the page is scrolled. Below it a hidden panel is an empty span, which takes no room between
     // rows because the grid has no row gap.
-    <VStack paddingBlockStart={2} data-workspace={showTranscript || undefined}>
+    <VStack paddingBlockStart={2}>
       <Grid columns={sideBySide ? 13 : 1} columnGap={8} className={styles.columns}>
         <GridSpan columns={sideBySide ? 7 : "full"}>
           {/* Below a laptop's width the tabs stand 12 px under the head, whose views they are; beside the transcript the

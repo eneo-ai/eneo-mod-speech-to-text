@@ -1,9 +1,12 @@
 /* ---- The player (TranscriptPlayer): the text, its words, the tools above it and the player docked under it. ---- */
 
+/* The player is as wide as its column, not the window: a laptop's transcript beside the text is a phone's width. What
+   lays itself out by the room it has (the player's row, the review editor's passages) asks the player (@container). */
 .player {
   display: flex;
   flex-direction: column;
   min-block-size: 0;
+  container-type: inline-size;
 }
 
 /* Bespoke controls keep their own ring; Astryx text fields use the themed frame around the field. */
@@ -343,9 +346,10 @@
 }
 
 /* The soft keyboard opens over the lower half of a touch screen: with a text field of the player focused (the search,
-   a passage's editor) the dock stays where it is in the text, not above the keyboard where it would cover the text. */
+   a passage's editor; data-typing, TranscriptPlayer.tsx) the dock stays where it is in the text, not above the keyboard
+   where it would cover the text. */
 @media (pointer: coarse) {
-  .player:has(input:focus, textarea:focus) .dock {
+  .player[data-typing] .dock {
     position: static;
   }
 }
@@ -381,9 +385,10 @@
   margin-block: calc((1lh - var(--size-element-sm)) / 2);
 }
 
-/* Speed stands in the player's row at every width; the skips leave it below 640 px, and under 400 px the time says the
-   position alone (AudioPlayer's compact), so the slider keeps its room. */
-@media (max-width: 639.98px) {
+/* Speed stands in the player's row at every width; the skips leave it where the player is narrower than 31 rem (a phone,
+   a laptop's column beside the text from 1024 px), and under 400 px the time says the position alone (AudioPlayer's
+   compact), so the slider keeps its 120 px, also with a finger's 44 px controls. */
+@container (width < 31rem) {
   .skip {
     display: none;
   }

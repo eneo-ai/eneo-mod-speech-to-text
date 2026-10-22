@@ -55,6 +55,32 @@ test("a dock that stops being stuck when the window changes is measured again", 
   bar.remove();
 });
 
+test("the page says at which edge a dock is shown, so its scroll padding is kept on that edge alone", async () => {
+  const { observeDock } = await import("./dock");
+  const edges = () => document.documentElement.getAttribute("data-dock");
+  assert.equal(edges(), null);
+  const action = dock(141);
+  const stopAction = observeDock(action);
+  assert.equal(edges(), "bottom", "the setup's action, a phone's player");
+  const player = dock(96);
+  const stopPlayer = observeDock(player, "top");
+  assert.equal(edges(), "bottom top", "a tablet's player above the text, with an action at the bottom");
+  stopAction();
+  assert.equal(edges(), "top");
+  // A player at the end of a laptop's card is in the page's flow: it covers nothing, but focus still stops short of it.
+  const inFlow = dock(96, "static");
+  const stopInFlow = observeDock(inFlow);
+  assert.equal(edges(), "bottom top");
+  stopPlayer();
+  stopInFlow();
+  // An empty slot (a laptop's setup docks nothing into it) and a player in a hidden tab are no dock.
+  const empty = dock(0);
+  const stopEmpty = observeDock(empty);
+  assert.equal(edges(), null, "nothing shown, no edge");
+  stopEmpty();
+  [action, player, inFlow, empty].forEach((element) => element.remove());
+});
+
 test("a dock taller than a third of the window stands in the page instead of covering it", async () => {
   const { observeDock } = await import("./dock");
   const bar = dock(Math.ceil(window.innerHeight / 3) + 1);

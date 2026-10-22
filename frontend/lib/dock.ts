@@ -4,15 +4,23 @@ import { useEffect, useState } from "react";
  * What is docked at the bottom of a phone's window (the setup's primary action, a player) covers the page's last rows,
  * so a control that takes focus must scroll to above it (WCAG 2.4.11). Its height is not a number to write down: its
  * words, a longer note and the text spacing a reader may set all change it. Each dock reports its own, and the page
- * keeps the tallest in `--dock-block-size` on <html>, which styles/globals.css reads as the scroll padding.
+ * keeps the tallest in `--dock-block-size` on <html>, which styles/globals.css reads as the scroll padding, and the
+ * edges a dock is shown at in `data-dock` ("bottom", "top" or both), which says which edge that padding is for. An
+ * attribute, never a `:has()` over the page: one makes the browser check every element of a long transcript again
+ * whenever its passages change.
  */
-const docks = new Map<HTMLElement, number>();
+type DockEdge = "bottom" | "top";
+const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null }>();
 
 function publish() {
-  const tallest = Math.max(0, ...docks.values());
-  const root = document.documentElement.style;
-  if (tallest > 0) root.setProperty("--dock-block-size", `${tallest}px`);
-  else root.removeProperty("--dock-block-size");
+  const shown = [...docks.values()];
+  const tallest = Math.max(0, ...shown.map(({ size }) => size));
+  const root = document.documentElement;
+  if (tallest > 0) root.style.setProperty("--dock-block-size", `${tallest}px`);
+  else root.style.removeProperty("--dock-block-size");
+  const edges = (["bottom", "top"] as const).filter((edge) => shown.some((dock) => dock.edge === edge));
+  if (edges.length) root.setAttribute("data-dock", edges.join(" "));
+  else root.removeAttribute("data-dock");
 }
 
 /**
@@ -21,13 +29,16 @@ function publish() {
  */
 const MOST_OF_WINDOW = 1 / 3;
 
-/** Keeps a dock's height in `--dock-block-size` while it is on the page and covers it (stuck to the window's edge). */
-export function observeDock(dock: HTMLElement): () => void {
+/**
+ * Keeps a dock's height in `--dock-block-size` while it is on the page and covers it (stuck to the window's edge), and
+ * its edge in `data-dock` while it is shown at all: one in the page's flow (a laptop's card) still ends what is read.
+ */
+export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () => void {
   const measure = () => {
     const tooTall = dock.offsetHeight > window.innerHeight * MOST_OF_WINDOW;
     dock.toggleAttribute("data-dock-too-tall", tooTall);
     const covers = !tooTall && dock.offsetHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
-    docks.set(dock, covers ? dock.offsetHeight : 0);
+    docks.set(dock, { size: covers ? dock.offsetHeight : 0, edge: dock.offsetHeight > 0 ? edge : null });
     publish();
   };
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
@@ -45,16 +56,16 @@ export function observeDock(dock: HTMLElement): () => void {
     pressed = false;
   };
   const uncover = ({ target }: FocusEvent) => {
-    if (pressed || !docks.get(dock) || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
+    if (pressed || !docks.get(dock)?.size || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
     if (target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
-    const edge = dock.getBoundingClientRect();
-    if (box.bottom <= edge.top || box.top >= edge.bottom) return;
+    const area = dock.getBoundingClientRect();
+    if (box.bottom <= area.top || box.top >= area.bottom) return;
     const padding = getComputedStyle(document.documentElement);
     const above = Number.parseFloat(padding.scrollPaddingTop) || 0;
     const below = Number.parseFloat(padding.scrollPaddingBottom) || 0;
     if (box.height > window.innerHeight - above - below) return;
-    const atTop = edge.top + edge.bottom < window.innerHeight;
+    const atTop = area.top + area.bottom < window.innerHeight;
     const top = atTop ? box.top - above : box.bottom - window.innerHeight + below;
     window.scrollBy({ top, behavior: "instant" });
   };
@@ -77,9 +88,12 @@ export function observeDock(dock: HTMLElement): () => void {
   };
 }
 
-/** The dock's element, for the place that renders it to attach (as a ref) and to portal into, observed while it is there. */
-export function useDock(): [HTMLElement | null, (element: HTMLElement | null) => void] {
+/**
+ * The dock's element, for the place that renders it to attach (as a ref) and to portal into, observed while it is there
+ * at the window's `edge`.
+ */
+export function useDock(edge: DockEdge = "bottom"): [HTMLElement | null, (element: HTMLElement | null) => void] {
   const [dock, setDock] = useState<HTMLElement | null>(null);
-  useEffect(() => (dock ? observeDock(dock) : undefined), [dock]);
+  useEffect(() => (dock ? observeDock(dock, edge) : undefined), [dock, edge]);
   return [dock, setDock];
 }

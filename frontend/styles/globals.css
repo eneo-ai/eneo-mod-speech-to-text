@@ -36,10 +36,10 @@
   --module-shadow-dock: 0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), transparent);
 }
 
-/* A workspace (`data-workspace`: a result with its transcript beside it, the speakers' review): the page's column grows
-   with a wide window, from 1180 px at a 1686 px window to 1600 px, so the transcript beside the text has room. The bar
-   reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
-:root:has([data-workspace]) {
+/* A workspace (`data-workspace` on <html>, lib/workspace.ts: a result with its transcript beside it, the speakers'
+   review): the page's column grows with a wide window, from 1180 px at a 1686 px window to 1600 px, so the transcript
+   beside the text has room. The bar reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
+:root[data-workspace] {
   --module-page-width: clamp(1180px, 70vw, 1600px);
 }
 
@@ -113,19 +113,20 @@
 /* What is docked at the bottom of a phone's screen (the setup's primary action, a player) never hides what has the
    keyboard focus (WCAG 2.4.11): focus scrolls stop above it. The height is the dock's own, kept in --dock-block-size by
    lib/dock.ts, so a longer note or the text spacing a reader sets cannot outgrow it; with no dock stuck to the window's
-   edge (a laptop, a short screen) the variable is unset and only the margin is left. */
+   edge (a laptop, a short screen) the variable is unset and only the margin is left. lib/dock.ts says in `data-dock`
+   which edges a dock is shown at. */
 /* A dock that would cover more than a third of the window (large text) stands at the page's end instead (lib/dock.ts). */
 :root [data-dock-too-tall] {
   position: static;
 }
 
-html:has([data-docked-action], [data-docked-player]:not([data-dock-edge="top"])) {
+html[data-dock~="bottom"] {
   /* Focus can sit on a field's inner control while its ring surrounds the padded field. Keep that whole edge clear. */
   scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 
 /* A player docked above the text (components/TranscriptPlayer.tsx) covers the window's top edge instead. */
-html:has([data-docked-player][data-dock-edge="top"]) {
+html[data-dock~="top"] {
   scroll-padding-top: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 

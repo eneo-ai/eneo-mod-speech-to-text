@@ -67,10 +67,12 @@ export async function settle(page: Page) {
 }
 
 /**
- * Waits until three frames in a row see the page's scrolling boxes where they were, a few seconds at most. A smooth
- * scroll (a step to the next passage, an engine's own reveal of what Tab focused) carries what it scrolls past a pinned
- * bar: measured on its way, a target is measured under the bar, and a focused control outside the window. A smooth
- * scroll starts a frame after it is asked for, hence three.
+ * Waits until three frames in a row see the page's scrolling boxes where they were, and no scroll that has begun is
+ * still on its way, a few seconds at most. A smooth scroll (a step to the next passage, an engine's own reveal of what
+ * Tab focused) carries what it scrolls past a pinned bar: measured on its way, a target is measured under the bar, and a
+ * focused control outside the window. A smooth scroll starts a frame after it is asked for, hence three frames; and
+ * Firefox reports a scroll position in whole pixels while its scroll eases on by less than one a frame, so a scroll
+ * that has begun has ended only at its `scrollend`.
  */
 export function scrollsAtRest(page: Page) {
   return page.evaluate(
@@ -83,12 +85,21 @@ export function scrollsAtRest(page: Page) {
         const end = performance.now() + 5_000;
         let last = at();
         let still = 0;
+        // A box's scroll and scrollend do not bubble; listened for on the way down, they are heard from every box.
+        let moving = false;
+        const scrolled = () => void (moving = "onscrollend" in window);
+        const ended = () => void (moving = false);
+        addEventListener("scroll", scrolled, true);
+        addEventListener("scrollend", ended, true);
         const frame = () => {
           const now = at();
           still = now === last ? still + 1 : 0;
           last = now;
-          if (still >= 3 || performance.now() > end) resolve();
-          else requestAnimationFrame(frame);
+          if ((still >= 3 && !moving) || performance.now() > end) {
+            removeEventListener("scroll", scrolled, true);
+            removeEventListener("scrollend", ended, true);
+            resolve();
+          } else requestAnimationFrame(frame);
         };
         requestAnimationFrame(frame);
       }),

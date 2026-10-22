@@ -205,7 +205,9 @@
   outline: none;
 }
 
-@media (min-width: 640px) {
+/* From the player's 31 rem (TranscriptPlayer.module.css), not the window's: a laptop's column beside the text is a
+   phone's width, and there a passage keeps its time and name above it, so its text keeps the line. */
+@container (width >= 31rem) {
   .text {
     padding-inline: var(--spacing-7);
   }
@@ -236,7 +238,7 @@
   padding-inline-start: var(--spacing-2);
 }
 
-@media (min-width: 640px) {
+@container (width >= 31rem) {
   .turn {
     grid-template-columns: 6rem minmax(0, 1fr);
     gap: var(--spacing-4);
@@ -251,7 +253,7 @@
   font-size: var(--text-supporting-size);
 }
 
-@media (min-width: 640px) {
+@container (width >= 31rem) {
   .side {
     display: block;
     padding-block-start: var(--spacing-1);
@@ -297,7 +299,7 @@
   white-space: normal;
 }
 
-@media (min-width: 640px) {
+@container (width >= 31rem) {
   .speakerName {
     margin-block-start: var(--spacing-1);
   }
