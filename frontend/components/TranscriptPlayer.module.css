@@ -71,18 +71,54 @@
   border-block-end: var(--border-width) solid var(--color-border);
 }
 
-/* A large meeting on a narrow screen picks its speaker from a list, not from endless chips; from lg the chips are
-   shown (they wrap, so none is cut off). */
+/* The speaker filter is a list where its chips would take more than one row: a large meeting below a laptop's width,
+   more than two speakers on a phone, any two on the narrowest phones (data-fold). Elsewhere chips, which wrap, so none is
+   cut off. */
+.speakerList {
+  display: none;
+  flex: 1 1 100%;
+}
+
 @media (max-width: 1023.98px) {
-  .chips[data-many] {
+  .chips[data-fold="many"] {
     display: none;
+  }
+
+  .chips[data-fold="many"] + .speakerList {
+    display: block;
   }
 }
 
-@media (min-width: 1024px) {
-  .speakerList {
+@media (max-width: 639.98px) {
+  .chips[data-fold="several"] {
     display: none;
   }
+
+  .chips[data-fold="several"] + .speakerList {
+    display: block;
+  }
+}
+
+@media (max-width: 359.98px) {
+  .chips[data-fold] {
+    display: none;
+  }
+
+  .chips[data-fold] + .speakerList {
+    display: block;
+  }
+}
+
+/* On a phone the list stands in the speakers' row, before their naming and the transcript's menu. */
+.rowList {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+/* The search shares the filter's row where both fit, and takes the row under it where they do not. */
+.find {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
 }
 
 .reviewIcon {
@@ -273,7 +309,7 @@
   border-radius: 0;
 }
 
-@media (min-width: 1024px), (max-height: 600px) {
+@media (min-width: 1024px), (max-height: 480px) {
   .dock {
     position: static;
     padding-block-end: var(--spacing-2);
@@ -334,27 +370,11 @@
   margin-block: calc((1lh - var(--size-element-sm)) / 2);
 }
 
-/* Speed: in the player's row, and above it under 400 px, where it would leave the position slider under 120 px. The skips
-   leave the row below 640 px. */
-.rateBelow {
-  display: none;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
+/* Speed stands in the player's row at every width; the skips leave it below 640 px, and under 400 px the time says the
+   position alone (AudioPlayer's compact), so the slider keeps its room. */
 @media (max-width: 639.98px) {
   .skip {
     display: none;
-  }
-}
-
-@media (max-width: 399.98px) {
-  .rate {
-    display: none;
-  }
-
-  .rateBelow {
-    display: inline-flex;
   }
 }
 
@@ -364,8 +384,7 @@
 }
 
 @media (pointer: coarse) {
-  .rate,
-  .rateBelow {
+  .rate {
     min-inline-size: var(--size-element-md);
   }
 }
@@ -463,6 +482,13 @@
 .turn[data-speaker-color] .turnBody {
   padding-inline-start: var(--spacing-3);
   border-inline-start: calc(2 * var(--border-width)) solid var(--tint);
+}
+
+/* On a phone the passage's rule and its name say whose it is: the mark's column goes to the text. */
+@media (max-width: 639.98px) {
+  .turn > :not(.turnBody) {
+    display: none;
+  }
 }
 
 .speakerName {

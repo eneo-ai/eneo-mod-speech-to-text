@@ -395,15 +395,18 @@ const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
   fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
 }));
 
-test("more than five speakers: chips from a laptop's width, a list to pick one below it", async () => {
+test("more than five speakers: chips from a laptop's width, a list to pick one below it; two speakers a list only on the narrowest phones", async () => {
+  const listIn = (view: Awaited<ReturnType<typeof player>>) =>
+    [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
   const view = await player(six);
-  assert.ok(view.container.querySelector("[data-many]"), "the chips know there are many, so a narrow screen hides them");
-  const list = [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
-  assert.ok(list, "a list to pick a speaker from");
+  assert.equal(view.container.querySelector("[data-fold]")?.getAttribute("data-fold"), "many", "the chips know there are many, so a narrow screen hides them");
+  assert.ok(listIn(view), "a list to pick a speaker from");
   const few = await player(meeting);
-  assert.equal(few.container.querySelector("[data-many]"), null, "with few speakers the chips are always shown");
-  const none = [...few.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
-  assert.equal(none, undefined, "and there is no list");
+  assert.equal(few.container.querySelector("[data-fold]")?.getAttribute("data-fold"), "two", "two speakers: chips, but for the narrowest phones");
+  assert.ok(listIn(few), "with the list for those");
+  const one = await player(meeting.filter((segment) => segment.speaker === "SPEAKER_00"));
+  assert.equal(one.container.querySelector("[data-fold]"), null, "one speaker: the chips always fit");
+  assert.equal(listIn(one), undefined, "and there is no list");
 });
 
 test("a filter whose speaker has gone shows everyone again", async () => {

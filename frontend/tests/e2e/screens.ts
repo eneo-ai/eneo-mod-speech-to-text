@@ -215,6 +215,18 @@ export async function unsavedCorrections(page: Page, view: "review" | "result" =
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 }
 
+/** A tab of the result below a laptop's width, chosen where there are tabs; beside each other from it, there are none. */
+export async function resultTab(page: Page, name: "Dokument" | "Transkribering") {
+  const tab = page.getByRole("tab", { name, exact: true });
+  if ((await tab.isVisible()) && (await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+}
+
+/** The result's Ny inspelning: on a phone it ends the document's tab. */
+export async function startOver(page: Page) {
+  await resultTab(page, "Dokument");
+  await page.getByRole("button", { name: "Ny inspelning", exact: true }).click();
+}
+
 /** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
 export async function leaveRecording(page: Page) {
   await setup(page);
@@ -894,7 +906,7 @@ export const STATES: State[] = [
     expects: [{ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ }],
     go: async (page) => {
       await unsavedCorrections(page, "result");
-      await page.getByRole("button", { name: "Ny inspelning", exact: true }).click();
+      await startOver(page);
       await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
     },
   },
@@ -907,6 +919,18 @@ export const STATES: State[] = [
       await page.waitForTimeout(2_000);
       await stop(page);
       await expect(page.getByRole("slider", { name: "Position" })).toBeVisible();
+    },
+  },
+  {
+    // Strömma stopped: its live text kept to read and copy until the document brings the final text, under the decision
+    // on a phone.
+    name: "ready-stromma",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Strömma");
+      await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
+      await stop(page);
+      await expect(page.getByRole("region", { name: "Preliminär text" })).toContainText("Välkomna");
     },
   },
   {

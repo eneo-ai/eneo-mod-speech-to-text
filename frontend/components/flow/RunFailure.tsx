@@ -1,4 +1,4 @@
-import { useContext, useState, type MouseEvent } from "react";
+import { useContext, useId, useState, type MouseEvent } from "react";
 import { ArrowDown, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -68,6 +68,7 @@ export function RunFailure({
   contract?: RunContract | null;
 }) {
   const { leaveFirst } = useContext(LeaveContext);
+  const wayOnId = useId();
   const cancelled = runOutcome(run.status) === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
@@ -124,19 +125,10 @@ export function RunFailure({
             {[...new Set([refusal?.message, error].filter(Boolean))].map((message) => (
               <Banner key={message} status="error" title={message} collapsible={false} />
             ))}
-            {/* What the way on does, then the way on itself. */}
-            {offerRetry && (
-              <Text as="p" type="supporting" data-measure>
-                Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
-              </Text>
-            )}
-            {offerStartAgain && (
-              <Text as="p" type="supporting" data-measure>
-                En ny körning använder samma ljud och uppgifter och gör om alla steg.
-              </Text>
-            )}
             {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the
-                card. At its own width from the card's start, as the progress has Avbryt körningen; across a phone. */}
+                card. At its own width from the card's start, as the progress has Avbryt körningen; across a phone. The
+                line under it says what it does, as a line under an action does, and is its description: the action
+                comes right after what went wrong, on a small phone's first screen. */}
             {(offerChooseInput || offerRetry || offerStartAgain) && (
               <ActionRow align="start">
                 {offerChooseInput && (
@@ -148,15 +140,26 @@ export function RunFailure({
                     label="Försök igen"
                     variant={run.error?.retryable ? "primary" : "secondary"}
                     size="lg"
+                    aria-describedby={`${wayOnId}r`}
                     isLoading={retrying}
                     icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
                     onClick={() => leaveFirst(retry)}
                   />
                 )}
                 {offerStartAgain && (
-                  <Button label="Starta en ny körning" variant="primary" size="lg" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
+                  <Button label="Starta en ny körning" variant="primary" size="lg" aria-describedby={`${wayOnId}s`} icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
                 )}
               </ActionRow>
+            )}
+            {offerRetry && (
+              <Text as="p" type="supporting" id={`${wayOnId}r`} data-measure>
+                Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
+              </Text>
+            )}
+            {offerStartAgain && (
+              <Text as="p" type="supporting" id={`${wayOnId}s`} data-measure>
+                En ny körning använder samma ljud och uppgifter och gör om alla steg.
+              </Text>
             )}
             {/* What the run did finish stays last on the page (RunTranscript below): the way to it, which takes the focus
                 to its heading. A button's target, as the card's other ways on have, at its own width from the card's start. */}

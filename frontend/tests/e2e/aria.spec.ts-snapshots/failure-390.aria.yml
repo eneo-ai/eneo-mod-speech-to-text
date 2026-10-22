@@ -5,10 +5,10 @@
   - heading "Dokumentet kunde inte skapas" [level=1]
   - paragraph: /Startad i dag \d+:\d+/
   - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att försöka igen om en stund.
-  - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - button "Försök igen":
     - text: ""
     - status
+  - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - link "Gå till transkriberingen":
     - /url: "#run-transcript"
   - region "Stegen":
@@ -78,12 +78,12 @@
           - button /Spela från 0:\d+ i del 2/
           - button /Rätta repliken från 0:\d+ i del 2/
           - text: Nya turer börjar gälla efter höstlovet.
-      - button "Hastighet 1×":
-        - text: ""
-        - status
       - 'group "Uppspelning: Inspelningen"':
         - button "Spela upp":
           - status
         - text: Position i inspelningen
         - slider "Position i inspelningen"
-        - text: /0:\d+ \/ 0:\d+/
+        - text: /^0:\d+$/
+        - button "Hastighet 1×":
+          - text: 1×
+          - status

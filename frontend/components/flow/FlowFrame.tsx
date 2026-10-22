@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { HStack } from "@astryxdesign/core/HStack";
 import { AccountMenu } from "@/components/AccountMenu";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { HeaderBrand } from "@/components/HeaderBrand";
@@ -32,13 +33,14 @@ export function FlowFrame({
 }) {
   const tablet = useMediaQuery("(min-width: 768px)");
   const heading = (
-    <>
+    // 8 px apart, as the controls a finger presses are.
+    <HStack gap={2} vAlign="center">
       {/* A link to the flows as on every page, beside the way back: a lockup is where people look for home. Leaving
           asks first while it would lose something, as the way back does; locked, neither leads off the page. On a
           phone the bar keeps its room for the way back and the account. */}
       {(tablet || locked) && <HeaderBrand linked={!locked} />}
       {!locked && <BackToFlows variant="ghost" />}
-    </>
+    </HStack>
   );
   return (
     <ModuleShell

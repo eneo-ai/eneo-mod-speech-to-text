@@ -84,12 +84,15 @@ export function AudioPlayer({
   playback,
   label,
   playKey,
+  compact = false,
   children,
 }: {
   playback: Playback;
   label: string;
   /** The key that plays and pauses where the player sits (the transcript's K): named on the button. */
   playKey?: string;
+  /** A narrow row: closer controls and the position's time alone; the slider says the length to a screen reader. */
+  compact?: boolean;
   children?: ReactNode;
 }) {
   const state = usePlaybackState(playback);
@@ -111,7 +114,7 @@ export function AudioPlayer({
           <Button size="sm" label="Försök igen" onClick={() => playback.reload()} />
         </HStack>
       )}
-    <HStack role="group" aria-label={`Uppspelning: ${label}`} gap={3} align="center">
+    <HStack role="group" aria-label={`Uppspelning: ${label}`} gap={compact ? 2 : 3} align="center">
       <audio
         ref={attach}
         preload="metadata"
@@ -160,7 +163,7 @@ export function AudioPlayer({
         />
       </StackItem>
       <Text type="supporting" hasTabularNumbers textWrap="nowrap">
-        {formatClock(state.atMs)} / {formatClock(state.totalMs)}
+        {compact ? formatClock(state.atMs) : `${formatClock(state.atMs)} / ${formatClock(state.totalMs)}`}
       </Text>
       {children}
     </HStack>

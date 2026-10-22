@@ -26,6 +26,7 @@ export function FlowAside({
   classification,
   titleIsHeading = true,
   compact = false,
+  described = true,
   lead,
   guide = null,
   details,
@@ -39,6 +40,8 @@ export function FlowAside({
   /** False where the state's card has the page's heading. */
   titleIsHeading?: boolean;
   compact?: boolean;
+  /** False where the description is said elsewhere (a phone's setup, in "Så fungerar det" after the work). */
+  described?: boolean;
   /** What the page asks of the person first, under the flow's name (a recording to go on with, in one column). */
   lead?: ReactNode;
   /** "Så fungerar det", where the page asks for the audio (the setup); none while the page holds audio or a run. */
@@ -50,14 +53,15 @@ export function FlowAside({
   onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
-  // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view; the
+  // The name, its description and Så fungerar det stand closer on a small phone, so what streaming sends is in view, and
+  // so do the name and the details' folded row over a compact page's card in one column, a label and its summary; the
   // column's parts stand 32 px apart beside the work.
   const short = useMediaQuery(SHORT_PHONE, true);
   const columns = useMediaQuery(COLUMNS, true);
-  const gap = short ? 3 : columns ? 8 : 6;
+  const gap = short || (compact && !columns) ? 3 : columns ? 8 : 6;
   // The flow's name is the page's arrival title, and its description the lead under it: for laptops only while the page
   // holds audio or a run.
-  const description = published.description && (
+  const description = described && published.description && (
     // At the body's size on a small phone, so the ways in reach the first screen above the dock.
     <Text as="p" type={short ? "body" : "large"} weight="normal" color="secondary" className={compact ? styles.fromLaptop : undefined}>
       {published.description}
@@ -67,7 +71,7 @@ export function FlowAside({
     <VStack gap={gap} className={className}>
       <VStack gap={3}>
         {titleIsHeading ? (
-          <Heading level={1} type="display-3" className={compact ? styles.compactName : undefined}>
+          <Heading level={1} type="display-3" className={compact ? styles.compactName : styles.name}>
             {published.name}
           </Heading>
         ) : (
@@ -80,10 +84,12 @@ export function FlowAside({
         {description}
       </VStack>
       {lead}
-      <VStack gap={gap} className={compact ? styles.fromLaptop : undefined}>
-        {guide && <HowItWorks guide={guide} />}
-        <ClassificationNote classification={classification} />
-      </VStack>
+      {(guide || classification) && (
+        <VStack gap={gap} className={compact ? styles.fromLaptop : undefined}>
+          {guide && <HowItWorks guide={guide} />}
+          <ClassificationNote classification={classification} />
+        </VStack>
+      )}
       {compact && summary ? (
         <Collapsible
           className={styles.fold}

@@ -36,13 +36,15 @@ const Pieces = memo(
   (before, after) => before.pieces.length === after.pieces.length && before.pieces.every((piece, i) => piece === after.pieces[i]),
 );
 
+const TABLET = "(min-width: 768px)";
+
 /**
  * Where "Visa i helskärm" is offered: from a tablet's width (on a phone its button would take a line of the text's
  * little room), in a browser that shows an element on the whole screen (an iPhone does not). The setup's line for
  * Strömma says so where it is.
  */
 export function useRoomViewOffered(): boolean {
-  const wide = useMediaQuery("(min-width: 768px)", true);
+  const wide = useMediaQuery(TABLET, true);
   return wide && typeof document !== "undefined" && document.fullscreenEnabled === true;
 }
 
@@ -71,6 +73,9 @@ export function LiveSheet({
   room?: RefObject<HTMLElement | null>;
 }) {
   const offered = useRoomViewOffered();
+  // From a tablet's width the head stays over the text; on a phone it is the text's first line, and scrolls away with it
+  // once the text fills the sheet, which follows the newest line.
+  const pinned = useMediaQuery(TABLET, true);
   const snapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
   const scroller = useRef<HTMLElement>(null);
@@ -107,8 +112,7 @@ export function LiveSheet({
     element.focus();
   }
 
-  return (
-    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
+  const head = (
       <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} className={styles.head}>
         <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
           {forRoom ? (
@@ -134,6 +138,11 @@ export function LiveSheet({
           />
         )}
       </HStack>
+  );
+
+  return (
+    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
+      {pinned && head}
       <div className={styles.logArea}>
         {/* The log is the scroll area: named, focusable for keyboard scrolling, heard once per piece. */}
         <StackItem
@@ -146,6 +155,7 @@ export function LiveSheet({
           onScroll={(event) => setFollowing(atBottom(event.currentTarget))}
           className={styles.log}
         >
+          {!pinned && head}
           {empty && (
             <Text as="p" color="secondary" {...size} aria-hidden={status ? true : undefined}>
               {status ?? (forRoom ? "Texten visas här när någon börjar prata." : "Texten visas här när du börjar prata.")}

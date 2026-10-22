@@ -9,8 +9,6 @@
       - status
 - main:
   - heading "Nämndmöte till rapport" [level=1]
-  - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
-  - button "Så fungerar det 3 steg"
   - region "Ljudet":
     - status
     - status
@@ -55,6 +53,7 @@
           - button /Öppna, körningen \d+ sep \d+:\d+/:
             - text: ""
             - status
+    - button "Så fungerar det 3 steg"
   - text: "Flödet får ta emot: Öppen information"
   - button "Starta strömning":
     - text: ""

@@ -47,7 +47,9 @@
 }
 
 /* A space card's head: the space's name, filling the line, and its count at the end on the name's baseline, as far in as
-   the rows. A name and its count too long for one line go as a unit: the count drops under the name, which stays whole. */
+   the rows. A name and its count too long for one line go as a unit: the count drops under the name, which stays whole.
+   On a phone the head is the name alone, on one line: the rows under it show how many there are, and the list says its
+   count to a screen reader. */
 .cardHead {
   align-items: baseline;
   padding: var(--spacing-5) var(--spacing-4);
@@ -63,25 +65,7 @@
   }
 }
 
-/* On a phone: a row of three or four lines keeps its tile at the name's line; a space's name is set a step smaller, so a
-   long one ("Kommunledningskontoret") keeps its line whole, the count under it, instead of being hyphenated; and the
-   list's parts (the recordings to deal with, the spaces, the version) stand 24 px apart, not 40, so a flow is in view
-   under a recording to deal with. */
-@media (max-width: 639.98px) {
-  .row {
-    align-items: flex-start;
-  }
-
-  .cardHead h2 {
-    font-size: var(--font-size-lg);
-  }
-
-  .sections {
-    row-gap: var(--spacing-6);
-  }
-}
-
-/* The page's head stands 24 px under the bar on a phone and 48 px from a laptop's width. */
+/* The page's head stands 40 px under the bar from 640 px (the shell's 16 px and this) and 64 px from a laptop's width. */
 .page {
   padding-block-start: var(--spacing-6);
 }
@@ -89,6 +73,38 @@
 @media (min-width: 1024px) {
   .page {
     padding-block-start: var(--spacing-12);
+  }
+}
+
+/* On a phone: a space's name is set a step smaller, so a long one ("Kommunledningskontoret") keeps its line whole
+   instead of being hyphenated, and its head is no taller than the name needs; the page's title stands under the bar at
+   the shell's 16 px, and it and the list's parts (the recordings to deal with, the spaces, the version) stand 24 px
+   apart, not 32 and 40, so a flow is in view under a recording to deal with. The empty list's card is 24 px in, as the
+   sign-in's is. */
+@media (max-width: 639.98px) {
+  .cardHead {
+    padding-block: var(--spacing-4);
+  }
+
+  .cardHead > :last-child {
+    display: none;
+  }
+
+  .cardHead h2 {
+    font-size: var(--font-size-lg);
+  }
+
+  .page {
+    padding-block-start: 0;
+    row-gap: var(--spacing-6);
+  }
+
+  .sections {
+    row-gap: var(--spacing-6);
+  }
+
+  .empty {
+    padding: var(--spacing-6);
   }
 }
 

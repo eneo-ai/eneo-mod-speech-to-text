@@ -1405,8 +1405,12 @@ test("the result says what the run was started with, when the flow's version is 
         onRegenerated: () => undefined,
       })),
     );
-  // The title's row and the lines under it.
-  const header = (view: Awaited<ReturnType<typeof render>>) => view.container.querySelector("h1")?.parentElement?.parentElement?.textContent ?? "";
+  // The title's row and the lines under it: the first box around the heading that holds a line.
+  const header = (view: Awaited<ReturnType<typeof render>>) => {
+    let head = view.container.querySelector("h1")?.parentElement;
+    while (head && !head.querySelector("p")) head = head.parentElement;
+    return head?.textContent ?? "";
+  };
   assert.match(header(await render(3, { motesnamn: "Kommunstyrelsen", deltagare: ["Anna Berg", "Erik Lund"] })), /Mötets namn: Kommunstyrelsen · Deltagare: Anna Berg, Erik Lund/);
   await cleanup();
   assert.doesNotMatch(header(await render(2, { motesnamn: "Kommunstyrelsen" })), /Mötets namn/, "details of another version are not labelled by today's form");

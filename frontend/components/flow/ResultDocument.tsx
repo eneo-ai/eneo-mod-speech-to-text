@@ -210,6 +210,8 @@ export function ResultDocument({
   const wide = useMediaQuery(LAPTOP, true);
   // A small phone gives the file's name the card's width: its tile is the small one.
   const small = useMediaQuery("(max-width: 479.98px)");
+  // The narrowest phones keep the download and Dela on one row: Dela as its icon, named as it is.
+  const tiny = useMediaQuery("(max-width: 359.98px)");
   const room = useRoomInRow();
   // A document that is only its file, from a laptop's width: its actions at the file's row end where its name keeps
   // 18 rem beside them (FileName lets it wrap before its date: a 1440 px window has that), else under it.
@@ -264,9 +266,9 @@ export function ResultDocument({
   );
   const moreButton = copyMore ? <Button icon={copyIcon} label={copyLabel ?? copyName} onClick={copy} /> : saveButton("secondary");
   // Dela wherever the device has a share sheet, at every width.
-  const shareButton = (variant: "ghost" | "secondary") =>
+  const shareButton = (variant: "ghost" | "secondary", iconOnly = false) =>
     share && (
-      <Button variant={variant} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
+      <Button variant={variant} isIconOnly={iconOnly} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
     );
 
   // Narrower: the download first, then the more actions. A document that is its file has them in its card, under the
@@ -292,7 +294,7 @@ export function ResultDocument({
           ) : (
             <>
               {moreButton}
-              {shareButton("secondary")}
+              {shareButton("secondary", inCard && tiny)}
             </>
           )}
         </HStack>

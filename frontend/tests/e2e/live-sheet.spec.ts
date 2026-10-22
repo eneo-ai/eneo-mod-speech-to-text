@@ -147,7 +147,8 @@ test("live text that cannot start says why where the promise of text was, and th
   await setup(page);
   await record(page, "Strömma");
   const sentence = "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.";
-  await expect(page.getByRole("log", { name: "Preliminär text" })).toHaveText(sentence, { timeout: 30_000 });
+  // The log's own line (on a phone the sheet's head is the log's first line, and scrolls away with the text).
+  await expect(page.getByRole("log", { name: "Preliminär text" }).locator(":scope > p")).toHaveText(sentence, { timeout: 30_000 });
   await expect(page.getByText("Texten visas här när du börjar prata.")).toHaveCount(0);
   // One sentence in the page's reading order, and one in the status region that announces it.
   await expect(page.getByRole("status").filter({ hasText: sentence })).toHaveCount(1);

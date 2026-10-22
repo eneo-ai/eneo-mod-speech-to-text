@@ -326,17 +326,18 @@ function UnsentRecordingRow({
       onClick={() => void save()}
     />
   );
-  // As tall as the actions beside it, so its hover and focus box is theirs; under them on a phone, the middle size, its
-  // icon on their edge.
+  // As tall as the actions beside it, so its hover and focus box is theirs; on a phone at the end of Spara ljudfil's row,
+  // at its own width.
   const removeButton = (
     <Button
       ref={deleteRef}
       label="Ta bort"
       variant="ghost"
-      size={stacked ? "md" : size}
+      size={size}
       icon={<Icon icon={Trash2} size="sm" />}
       aria-describedby={summaryId}
       onClick={() => setConfirming(true)}
+      className={styles.quiet}
     />
   );
   // The ways on (going on with it, sending it), then saving it as a file (outlined), as the ready recording has them.
@@ -380,15 +381,13 @@ function UnsentRecordingRow({
   ) : confirming ? null : stacked ? (
     // Up to 640 px (as ActionRow) the first across the card; the outlined ones after it share a row where they fit and
     // stand one under the other where they do not, so the flows stay in view under a card of a cut-off recording; Ta bort
-    // under them at its own width, its icon on their edge.
+    // ends their row at its own width, and goes under them where the row has no room for it.
     <VStack gap={2} hAlign="stretch">
       {first}
-      {outlined.length > 0 && (
-        <HStack gap={2} wrap="wrap" className={styles.outlined}>
-          {outlined}
-        </HStack>
-      )}
-      <HStack className={styles.quietStart}>{removeButton}</HStack>
+      <HStack gap={2} wrap="wrap" className={styles.outlined}>
+        {outlined}
+        {removeButton}
+      </HStack>
     </VStack>
   ) : (
     // Wider all stand in one row, wrapping when they must, deleting last.

@@ -463,6 +463,8 @@ test("the microphone picker is operated with the keyboard and gives the focus ba
   });
   await setup(page);
   await chooseMode(page, "Spela in");
+  // The pointer off where the list opens: an option under it is the active one, which the keyboard would then start from.
+  await page.mouse.move(0, 0);
   const picker = page.getByRole("combobox", { name: "Mikrofon" });
   await picker.focus();
   await page.keyboard.press("Enter");

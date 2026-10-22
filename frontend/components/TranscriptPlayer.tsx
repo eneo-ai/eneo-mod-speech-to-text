@@ -190,11 +190,12 @@ function ReviewEditorAtPlayhead({
   );
 }
 
-/** The speed, chosen from a menu: any speed in one step, never a round through the others. */
-function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: number; className: string }) {
+/** The speed, chosen from a menu: any speed in one step, never a round through the others. Compact, its words alone. */
+function SpeedMenu({ playback, rate, className, compact = false }: { playback: Playback; rate: number; className: string; compact?: boolean }) {
   return (
     <DropdownMenu
       button={{ label: `Hastighet ${rateLabel(rate)}`, children: rateLabel(rate), variant: "ghost", size: "sm", className }}
+      hasChevron={!compact}
       placement="above"
       alignment="end"
     >
@@ -230,6 +231,7 @@ function PlayerControls({
   onLetterKeys: (on: boolean) => void;
 }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
+  const small = useMediaQuery(SMALL);
 
   function skipFromControl(milliseconds: number, trigger: HTMLElement) {
     playback.skip(milliseconds);
@@ -242,10 +244,10 @@ function PlayerControls({
 
   return (
     <>
-      {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
-          row from 400 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
-          where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
+      {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. The keys are said
+          once, where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
           which turns the letters off, and on again: the focus stays on it, and the line's new words are said. */}
+      {(letterKeys !== null || !follow) && (
       <div className={styles.dockTools}>
         {letterKeys !== null && (
           <Text type="supporting" className={styles.keys}>
@@ -262,9 +264,9 @@ function PlayerControls({
           </Text>
         )}
         {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
-        <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
       </div>
-      <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined}>
+      )}
+      <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined} compact={small}>
         <IconButton
           variant="ghost"
           className={styles.skip}
@@ -283,7 +285,7 @@ function PlayerControls({
           icon={<RotateCw aria-hidden />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
-        <SpeedMenu playback={playback} rate={rate} className={styles.rate} />
+        <SpeedMenu playback={playback} rate={rate} className={styles.rate} compact={small} />
       </AudioPlayer>
     </>
   );
@@ -328,6 +330,13 @@ const PLAYER_ON_TOP = "(min-width: 640px) and (max-width: 1023.98px) and (min-he
  * and the player's buttons play, as do Space and the arrows with the focus in it.
  */
 const KEYS_SAID = "(hover: hover) and (pointer: fine)";
+
+/** A phone: the speakers' filter is a list beside their naming, and a passage's colour and name say its speaker. */
+const PHONE = "(max-width: 639.98px)";
+/** Under 400 px the player's row keeps its speed and the position's time alone, so the slider keeps its room. */
+const SMALL = "(max-width: 399.98px)";
+/** The narrowest phones: the review's download beside the transcript's heading is its icon alone. */
+const TINY = "(max-width: 359.98px)";
 
 /**
  * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
@@ -504,6 +513,8 @@ export function TranscriptPlayer(
   const [follow, setFollow] = useState(true);
   const [dock, dockRef] = useDock();
   const playerOnTop = useMediaQuery(PLAYER_ON_TOP);
+  const phone = useMediaQuery(PHONE);
+  const tiny = useMediaQuery(TINY);
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -827,6 +838,7 @@ export function TranscriptPlayer(
   const namingControl = canName && (
     <SpeakerNaming
       ref={namingDialog}
+      iconOnly={phone && !reviewEnabled}
       naming={naming}
       speakers={speakers}
       shown={shown}
@@ -836,6 +848,24 @@ export function TranscriptPlayer(
       playback={playback}
       hasAudio={hasAudio}
     />
+  );
+  // When the filter is a list rather than chips (TranscriptPlayer.module.css, data-fold): a large meeting below a laptop's
+  // width, more than two speakers on a phone, and any two on the narrowest. Named, in the chips' place, as they are.
+  const fold = speakers.length > CHIP_LIMIT ? "many" : speakers.length > 2 ? "several" : speakers.length === 2 ? "two" : undefined;
+  const speakerList = (className: string) => (
+    <div className={className}>
+      <Selector
+        label={canName ? "Talare" : "Filtrera talare"}
+        isLabelHidden
+        value={shownFilter}
+        onChange={setFilter}
+        options={[
+          { value: "all", label: "Alla talare" },
+          ...speakers.map((speaker) => ({ value: speaker.label, label: displayName(speaker.label) })),
+          ...(toCheck > 0 ? [{ value: TO_CHECK, label: `Osäkra (${toCheck})` }] : []),
+        ]}
+      />
+    </div>
   );
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Ändringar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
@@ -873,9 +903,9 @@ export function TranscriptPlayer(
           <Heading level={2}>{title}</Heading>
           {canDownload && (
             // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
-            // speakers under it.
-            <Button variant="ghost" size="sm" icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
-              Ladda ner
+            // speakers under it. Under 360 px its icon alone, so it stays on the heading's row.
+            <Button variant="ghost" size="sm" isIconOnly={tiny} icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
+              {tiny ? undefined : "Ladda ner"}
             </Button>
           )}
         </HStack>
@@ -891,92 +921,81 @@ export function TranscriptPlayer(
         </HStack>
       )}
       {tools && (
-        <VStack gap={3} className={styles.tools}>
-          {labelled && (
-          <VStack gap={2}>
+        <VStack gap={2} className={styles.tools}>
           {/* Where the speakers can be named, a row of their own above the filter: their word, and the naming at its end,
-              with the page's own actions after it where the page gives them. The naming keeps its place in the tree
-              whether they are there or not: a tablet turned leaves its dialog, and a correction being written, as they are.
-              The last ghost button ends its words on the content's edge. */}
-          {canName && (
-            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap="wrap" gap={2}>
-              <Text type="label">Talare</Text>
+              with the page's own actions after it where the page gives them. On a phone the filter's list takes the
+              word's place, and the naming and the actions (folded into their menu) stand at its end as icons: one row
+              for what are three from 640 px. The naming keeps its place in the tree at every width: a tablet turned
+              leaves its dialog, and a correction being written, as they are. The last ghost button ends its words on
+              the content's edge. */}
+          {labelled && canName && (
+            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap={phone ? "nowrap" : "wrap"} gap={2}>
+              {phone ? speakerList(styles.rowList) : <Text type="label">Talare</Text>}
               <HStack gap={2} vAlign="center" className={actionsBySpeakers ? undefined : styles.trailing}>
                 {namingControl}
-                {actionsBySpeakers && actions?.(actionsRow.fits)}
+                {actionsBySpeakers && actions?.(phone ? false : actionsRow.fits)}
               </HStack>
             </HStack>
           )}
-          {/* The speaker filter: chips that wrap, so none is cut off on a phone. Under the speakers' word the group is
-              named by that word, one name to see and to hear (ToggleButtonGroup is named by its label, never by
-              aria-labelledby). */}
-          <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
-            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
-              <ToggleButton value="all" label="Alla" />
-              {speakers.map((speaker) => (
-                <ToggleButton
-                  key={speaker.label}
-                  value={speaker.label}
-                  label={displayName(speaker.label)}
-                  icon={<SpeakerMark label={speaker.label} name={displayName(speaker.label)} size="sm" />}
-                />
-              ))}
-              {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
-              {toCheck > 0 && (
-                <>
-                  <Divider orientation="vertical" />
-                  <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
-                </>
-              )}
-            </ToggleButtonGroup>
-          </div>
-          {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. In their place under
-              the speakers' word, the list is named by that word as they are. */}
-          {speakers.length > CHIP_LIMIT && (
-            <div className={styles.speakerList}>
-              <Selector
-                label={canName ? "Talare" : "Filtrera talare"}
-                isLabelHidden
-                value={shownFilter}
-                onChange={setFilter}
-                options={[
-                  { value: "all", label: "Alla talare" },
-                  ...speakers.map((speaker) => ({ value: speaker.label, label: displayName(speaker.label) })),
-                  ...(toCheck > 0 ? [{ value: TO_CHECK, label: `Osäkra (${toCheck})` }] : []),
-                ]}
-              />
-            </div>
-          )}
-          </VStack>
-          )}
-
-          <HStack gap={2} vAlign="center">
-            <div className={styles.search}>
-              <TextInput
-                label="Sök i transkriberingen"
-                isLabelHidden
-                startIcon="search"
-                hasClear
-                placeholder="Sök i transkriberingen"
-                value={query}
-                onChange={(next) => {
-                  setQuery(next);
-                  setHitIndex(0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  stepHit(e.shiftKey ? -1 : 1);
-                }}
-              />
-            </div>
-            {query.trim() && (
+          {/* The speaker filter and the search share a row where both fit (a tablet, a laptop's card), the search under the
+              filter where they do not. The filter is chips that wrap, so none is cut off; on a phone with more than two
+              speakers, and on the narrowest phones, a list (TranscriptPlayer.module.css), whose chips would take two rows.
+              Under the speakers' word the group is named by that word, one name to see and to hear (ToggleButtonGroup is
+              named by its label, never by aria-labelledby). */}
+          <HStack gap={2} vAlign="center" wrap="wrap">
+            {labelled && !(canName && phone) && (
               <>
-                <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
-                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
-                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
+                <div className={styles.chips} data-fold={fold}>
+                  <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
+                    <ToggleButton value="all" label="Alla" />
+                    {speakers.map((speaker) => (
+                      <ToggleButton
+                        key={speaker.label}
+                        value={speaker.label}
+                        label={displayName(speaker.label)}
+                        icon={<SpeakerMark label={speaker.label} name={displayName(speaker.label)} size="sm" />}
+                      />
+                    ))}
+                    {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
+                    {toCheck > 0 && (
+                      <>
+                        <Divider orientation="vertical" />
+                        <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
+                      </>
+                    )}
+                  </ToggleButtonGroup>
+                </div>
+                {fold && speakerList(styles.speakerList)}
               </>
             )}
+            <HStack gap={2} vAlign="center" className={styles.find}>
+              <div className={styles.search}>
+                <TextInput
+                  label="Sök i transkriberingen"
+                  isLabelHidden
+                  startIcon="search"
+                  hasClear
+                  placeholder="Sök i transkriberingen"
+                  value={query}
+                  onChange={(next) => {
+                    setQuery(next);
+                    setHitIndex(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    stepHit(e.shiftKey ? -1 : 1);
+                  }}
+                />
+              </div>
+              {query.trim() && (
+                <>
+                  <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
+                  <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
+                  <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
+                </>
+              )}
+            </HStack>
           </HStack>
           {/* The count is said once per change, not per keystroke's markup. */}
           <VisuallyHidden as="p" role="status">{hitStatus && hits.length > 0 ? `Träff ${hitStatus}` : hitStatus}</VisuallyHidden>
@@ -1585,6 +1604,7 @@ function SpeakerPicker({
  */
 function SpeakerNaming({
   ref,
+  iconOnly,
   naming,
   speakers,
   shown,
@@ -1595,6 +1615,8 @@ function SpeakerNaming({
   hasAudio,
 }: {
   ref: Ref<SpeakerNamingHandle>;
+  /** On a phone its icon alone, at the end of the speakers' row. */
+  iconOnly: boolean;
   naming: Naming;
   speakers: readonly { label: string; passages: number }[];
   /** The passages as shown, with the corrections. */
@@ -1650,7 +1672,7 @@ function SpeakerNaming({
       draftKey={naming.draftKey}
       description={naming.description}
     >
-      <Button variant="ghost" size="sm" icon={<UsersRound aria-hidden />} label="Namnge talare" />
+      <Button variant="ghost" size="sm" isIconOnly={iconOnly} icon={<UsersRound aria-hidden />} label="Namnge talare" />
     </SpeakerNamingDialog>
   );
 }

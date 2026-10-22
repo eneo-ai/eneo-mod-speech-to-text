@@ -140,7 +140,7 @@ function FlowsListPage() {
               // An empty list says so in its place, centred and as a status, as the design system's empty state does: of
               // its parts, so the flow list does not fetch that component's own file for a list that is rarely empty. Its
               // icon stands bare above the heading, as the design system's does: in a tile it read as a feature card.
-              <Card padding={8}>
+              <Card padding={8} className={listStyles.empty}>
                 <VStack role="status" hAlign="center" gap={4}>
                   <Icon icon={AudioLines} size="lg" color="secondary" />
                   <VStack hAlign="center" gap={2}>

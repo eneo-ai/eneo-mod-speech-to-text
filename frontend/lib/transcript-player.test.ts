@@ -58,7 +58,7 @@ test("the player's keys are named on its controls and said once in a line, which
   const turnOff = [...doc.querySelectorAll("button")].find((b) => computeAccessibleName(b) === "Stäng av tangenterna");
   assert.equal(turnOff?.textContent?.trim(), "Stäng av", "the line's own button, its words the start of its name");
   const speeds = [...doc.querySelectorAll('button[aria-label="Hastighet 1×"]')];
-  assert.equal(speeds.length, 2, "one in the row, one above it on a phone");
+  assert.equal(speeds.length, 1, "one, in the player's row at every width");
   assert.ok(speeds.every((speed) => speed.getAttribute("aria-haspopup") === "menu"), "any speed in one step, not a round through them");
 });
 

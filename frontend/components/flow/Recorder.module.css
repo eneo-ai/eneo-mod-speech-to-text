@@ -320,12 +320,15 @@
   text-wrap: balance;
 }
 
-/* In Strömma on a short screen, the room goes to the live text; the warnings above stay. */
-@media (max-height: 480px) {
+/* In Strömma on a short screen, a phone or a tablet upright, the room goes to the live text; the warnings above stay.
+   Stoppa says what it does, and after it the person can go on recording or is asked first where that cannot be. */
+@media (max-height: 480px), (max-width: 767.98px) {
   .notes[data-status] .stopLine {
     display: none;
   }
+}
 
+@media (max-height: 480px) {
   /* After the row's own rules above, which they would otherwise lose to. */
   .toolbar [role="toolbar"] {
     column-gap: var(--spacing-2);

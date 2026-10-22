@@ -153,6 +153,17 @@
   font-weight: var(--font-weight-normal);
 }
 
+/* The summary keeps the row one line high, however many are named: the rest of it shows where the fold is opened, and
+   the row's name holds all of it. The label is trimmed to its capitals (the design system's text-box-trim): its padding
+   keeps the descenders and the accents inside what it clips. */
+.fold > :global(.astryx-collapsible-trigger) > span {
+  min-inline-size: 0;
+  padding-block: var(--spacing-1-5);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .fold > :global(.astryx-collapsible-content) {
   padding-block-start: var(--spacing-4);
 }
@@ -180,6 +191,15 @@
   .compactName {
     font-size: var(--font-size-base);
     line-height: 1.3;
+  }
+}
+
+/* The setup's title on the narrowest phones: a step under the display size, as the card's headings are (FlowSetup), so a
+   name of a few words keeps one line. */
+@media (max-width: 359.98px) {
+  .name {
+    font-size: var(--text-heading-2-size);
+    line-height: var(--text-heading-2-leading);
   }
 }
 

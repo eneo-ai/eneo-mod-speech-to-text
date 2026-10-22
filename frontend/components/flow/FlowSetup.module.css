@@ -138,8 +138,8 @@
   visibility: hidden;
 }
 
-/* The page's bottom edge on a phone, where the primary action docks: full width, over the region's side padding
-   and the page's bottom padding, so it stays in reach however long the form is. */
+/* The page's bottom edge in one column (a phone, a tablet upright), where the primary action docks: full width, over the
+   region's side padding and the page's bottom padding, so it stays in reach however long the form is. */
 .dock {
   position: sticky;
   bottom: 0;
@@ -147,19 +147,19 @@
   margin-block: var(--spacing-12) calc(var(--spacing-8) * -1 - var(--spacing-4));
 }
 
-@media (min-width: 768px), (max-height: 480px) {
+@media (min-width: 1024px), (max-height: 480px) {
   .dock {
     position: static;
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .dock {
     display: none;
   }
 }
 
-/* The primary action docked at the page's bottom on a phone: a white bar over the region's side padding, above the safe
+/* The primary action docked at the page's bottom in one column: a white bar over the region's side padding, above the safe
    area, lifted off the page by a soft shadow in light mode and set off by its top edge in dark mode (edge or shadow). */
 .docked {
   padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));

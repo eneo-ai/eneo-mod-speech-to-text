@@ -148,12 +148,15 @@ export function RunResult({
   // Names typed and not saved bring their dialog back, open: on a phone it is in the transcript's tab.
   const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : "document"));
   const tabList = useRef<HTMLElement | null>(null);
-  // Each tab keeps its own reading position; the first visit starts at the top of the tab.
+  // Each tab keeps its own reading position; the first visit starts at the top of the tab, the tabs at the window's top,
+  // so a phone shows the passages and not the head again. The page's first view starts at its top, with its heading.
   const positions = useRef<Partial<Record<View, number>>>({});
+  const switched = useRef(false);
   // A button of the tab being left (the docked player's) changes the tab: the focus goes to the tab it chose.
   const focusTab = useRef(false);
   const switchView = (next: View, { focus = false } = {}) => {
     positions.current[view] = window.scrollY;
+    switched.current = true;
     focusTab.current = focus;
     setView(next);
   };
@@ -161,26 +164,27 @@ export function RunResult({
     if (!tabs) return;
     const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
     const saved = positions.current[view];
-    window.scrollTo({ top: saved ?? Math.min(window.scrollY, top) });
+    window.scrollTo({ top: saved ?? (switched.current ? top : Math.min(window.scrollY, top)) });
     if (focusTab.current) document.getElementById(PANELS[view].tab)?.focus({ preventScroll: true });
     focusTab.current = false;
   }, [view, tabs]);
 
-  // Starting over is the head's quiet way: a ghost button, under the meta line below a laptop's width, its icon on the
-  // edge the tile and the heading share.
+  // Starting over is the page's quiet way, the least likely next step: a ghost button at the end of the title's row from
+  // 640 px; on a phone at the end of the document, its icon on the edge the document's parts share, where it costs the
+  // first screen nothing.
   const newRun = (
     <Button
       variant="ghost"
       icon={<Icon icon={audio ? Mic : Plus} />}
       label={audio ? "Ny inspelning" : "Ny körning"}
-      className={wide ? styles.quietEnd : styles.quietStart}
+      className={metaStacked ? styles.quietStart : styles.quietEnd}
       onClick={() => leaveFirst(onNewRecording)}
     />
   );
 
   // Only what the run has: the flow's name at every width (the top bar holds none) and when it was made, beside each other
-  // where the line has room (a line each on a phone), then the details it was started with on a line of their own, so
-  // their length never breaks the first line. Each a paragraph, so they are read apart.
+  // where the line has room, then the details it was started with on a line of their own, so their length never breaks
+  // the first line. Each a paragraph, so they are read apart.
   const flow = (
     <Text as="p" color="secondary">
       {flowName}
@@ -192,9 +196,10 @@ export function RunResult({
       {fromReviewed && " från den rättade transkriberingen"}
     </Text>
   );
+  // The heading says the state in words; from 640 px its tile stands beside it, on a phone the heading has the line.
   const title = (
-    <HStack gap={3} vAlign={metaStacked ? "start" : "center"}>
-      {!empty && <IconTile icon={CheckCircle2} hue="green" />}
+    <HStack gap={3} vAlign="center">
+      {!empty && !metaStacked && <IconTile icon={CheckCircle2} hue="green" />}
       <Heading level={1} ref={heading} tabIndex={-1}>
         {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
       </Heading>
@@ -202,37 +207,32 @@ export function RunResult({
   );
   const head = (
     <VStack gap={2}>
-      {/* From a laptop's width "Ny inspelning" shares the title's row alone, centred on it, so the lines under it have the
-          column's width. A wrapped title on a phone keeps its tile at its first line. */}
-      {wide ? (
+      {/* From 640 px "Ny inspelning" shares the title's row alone, centred on it, so the lines under it have the column's
+          width. */}
+      {metaStacked ? (
+        title
+      ) : (
         <HStack hAlign="between" vAlign="center" gap={3}>
           {title}
           {newRun}
         </HStack>
-      ) : (
-        title
       )}
-      {metaStacked ? (
-        <VStack gap={0.5}>
-          {flow}
-          {made}
-        </VStack>
-      ) : (
-        <HStack gap={1} vAlign="start" wrap="wrap">
+      {/* The dot stays with the flow's name, so a line too short for both breaks after it, as a recording's name does. */}
+      <HStack gap={1} vAlign="start" wrap="wrap">
+        <HStack gap={1} vAlign="end">
           {flow}
           {made && (
-            <HStack gap={1} vAlign="start">
-              <Text color="secondary" aria-hidden>
-                ・
-              </Text>
-              {made}
-            </HStack>
+            <Text color="secondary" aria-hidden>
+              ・
+            </Text>
           )}
         </HStack>
-      )}
+        {made}
+      </HStack>
       {detailsLine && (
-        // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
-        <Text as="p" color="secondary" maxLines={2}>
+        // Two lines at most from 640 px, one on a phone (a council has many participants): the rest on hover, all of it to
+        // a screen reader.
+        <Text as="p" color="secondary" maxLines={metaStacked ? 1 : 2}>
           {detailsLine}
         </Text>
       )}
@@ -266,6 +266,7 @@ export function RunResult({
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
+      {metaStacked && <HStack>{newRun}</HStack>}
       <StepDetails steps={steps} version={run.flow_version} className={styles.steps} />
     </>
   );
@@ -310,18 +311,13 @@ export function RunResult({
     <VStack paddingBlockStart={2} data-workspace={showTranscript || undefined}>
       <Grid columns={sideBySide ? 13 : 1} columnGap={8} className={styles.columns}>
         <GridSpan columns={sideBySide ? 7 : "full"}>
-          <VStack gap={6}>
-            {wide ? (
-              head
-            ) : (
-              <VStack gap={2}>
-                {head}
-                <HStack>{newRun}</HStack>
-              </VStack>
-            )}
+          {/* Below a laptop's width the tabs stand 12 px under the head, whose views they are; beside the transcript the
+              document stands 24 px under it. */}
+          <VStack gap={tabs ? 3 : 6}>
+            {head}
             <VStack gap={4}>
               {tabs && (
-                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
+                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)} className={styles.tabs}>
                   {/* The notice that the document can be made again is in this panel: while the other tab is chosen it is
                       out of sight, and this tab carries a dot whose words go on from the tab's own ("Dokument kan
                       skapas igen med rättningarna", the notice's own verb), and say so on hover too. With this tab chosen

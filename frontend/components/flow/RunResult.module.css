@@ -26,6 +26,11 @@
   }
 }
 
+/* The tabs stand 8 px apart, as the controls a finger presses do. */
+.tabs {
+  column-gap: var(--spacing-2);
+}
+
 /* Below a laptop's width the transcript is the second tab's panel, in the span after the tabs' own: as far from them
    as the first. */
 .afterTabs {
@@ -63,13 +68,13 @@
   border-block-start: var(--border-width) solid var(--color-border);
 }
 
-/* "Ny inspelning" under the meta line below a laptop's width: a ghost button's own padding would set its icon in from the
-   edge the tile and the heading share. */
+/* "Ny inspelning" at the end of a phone's document: a ghost button's own padding would set its icon in from the edge the
+   document's parts share. */
 .quietStart {
   margin-inline-start: calc(-1 * var(--spacing-3));
 }
 
-/* From a laptop's width it stands at the head's end beside the heading, its words on one line: the heading wraps first. */
+/* From 640 px it stands at the head's end beside the heading, its words on one line: the heading wraps first. */
 .quietEnd {
   flex-shrink: 0;
 }

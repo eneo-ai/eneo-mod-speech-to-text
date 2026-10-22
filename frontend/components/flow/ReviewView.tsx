@@ -540,9 +540,10 @@ export function ReviewView({
     </VStack>
   );
 
-  // The run's state, a still pill beside the heading, under it where the row has no room; under them, as the result's
-  // meta line has it, the flow's name (the top bar holds none) and by when, both in view before anything is scrolled;
-  // then, set apart, what to do.
+  // The run's state, a still pill beside the heading from 640 px; under them, as the result's meta line has it, the
+  // flow's name (the top bar holds none) and by when, both in view before anything is scrolled; then, set apart, what to
+  // do. On a phone the deadline says that the review waits, and who is who needs no words over the speakers' card: its
+  // heading, its Namnge talarna and the dialog say what to do.
   const intro = (
     <VStack gap={3}>
       <VStack gap={1}>
@@ -550,22 +551,24 @@ export function ReviewView({
           <Heading level={1} ref={heading} tabIndex={-1}>
             {title}
           </Heading>
-          <Token color="blue" label="Väntar på din granskning" icon={<StatusDot variant="accent" label="Väntar" aria-hidden />} />
+          {!narrow && <Token color="blue" label="Väntar på din granskning" icon={<StatusDot variant="accent" label="Väntar" aria-hidden />} />}
         </HStack>
         <Text as="p" color="secondary">
           {flowName}
         </Text>
         {deadline}
       </VStack>
-      <Text as="p" color="secondary" className={styles.description}>
-        {isSpeakerMapping
-          ? SPEAKER_REVIEW_ENABLED
-            ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten."
-            : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."
-          : editable
-            ? "Du kan ändra texten innan du godkänner och fortsätter."
-            : "Granska innehållet och välj om flödet ska fortsätta."}
-      </Text>
+      {!(narrow && isSpeakerMapping && !SPEAKER_REVIEW_ENABLED) && (
+        <Text as="p" color="secondary" className={styles.description}>
+          {isSpeakerMapping
+            ? SPEAKER_REVIEW_ENABLED
+              ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten."
+              : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."
+            : editable
+              ? "Du kan ändra texten innan du godkänner och fortsätter."
+              : "Granska innehållet och välj om flödet ska fortsätta."}
+        </Text>
+      )}
     </VStack>
   );
 
@@ -581,7 +584,7 @@ export function ReviewView({
         // Who someone is leads; the label the transcription gave them, or that they have no name yet, supports it, with a
         // name the flow was not sure of said beside it, under the name it qualifies. The rows are read, not pressed: no
         // Tab stop of their own. They set themselves apart, and the card's edge closes the list: no rule under the last one.
-        <List aria-label="Talare" hasDividers density="spacious" className={styles.speakers}>
+        <List aria-label="Talare" hasDividers density={narrow ? "balanced" : "spacious"} className={styles.speakers}>
           {namingRows.map((row) => {
             const unsure = isUnsureProposal(row, modelProposals) && (
               <Token size="sm" color="yellow" label="Osäkert förslag" icon={<Icon icon="warning" size="sm" />} />

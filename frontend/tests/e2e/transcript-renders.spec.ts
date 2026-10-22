@@ -7,7 +7,7 @@ import type { Page, TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
 import { countRenders } from "./react-renders";
-import { isLaptop, run } from "./screens";
+import { isLaptop, pick, run } from "./screens";
 import { REAL } from "./sentinel";
 
 // One laptop and one phone: the renders are the same on every project, and the long run is not worth 20 copies. The built
@@ -83,13 +83,17 @@ test("choosing a speaker and then everyone renders the passages that appear, not
   expect(first, "the first speaker has some of the passages").toBeGreaterThan(0);
   expect(first).toBeLessThan(total);
 
-  await page.getByRole("button", { name: "Talare 1", exact: true }).click();
+  // Chips from 640 px; on a phone the list in the speakers' row.
+  const phone = info.project.use.viewport!.width < 640;
+  const choose = (speaker: string) =>
+    phone ? pick(page.getByRole("combobox", { name: "Talare" }), speaker === "Alla" ? "Alla talare" : speaker) : page.getByRole("button", { name: speaker, exact: true }).click();
+  await choose("Talare 1");
   await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(first);
   // Passages leave; none appears, and those that stay are not rendered again.
   expect(await turns.settled(), "passages rendered while the others left").toBeLessThanOrEqual(SLACK);
   await turns.reset();
 
-  await page.getByRole("button", { name: "Alla", exact: true }).click();
+  await choose("Alla");
   await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(total);
   expect(await turns.settled(), `passages rendered for the ${total - first} that appear (the ${first} that stayed are not among them)`).toBeLessThanOrEqual(total - first + SLACK);
 });

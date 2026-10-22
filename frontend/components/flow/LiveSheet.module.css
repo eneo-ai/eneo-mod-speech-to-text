@@ -16,6 +16,11 @@
   padding: var(--spacing-4) var(--spacing-5) 0;
 }
 
+/* Below 768 px the head is the log's first line, in the log's own padding. */
+.log > .head {
+  padding: 0 0 var(--room-before);
+}
+
 .roomButton {
   margin-inline-start: auto;
 }

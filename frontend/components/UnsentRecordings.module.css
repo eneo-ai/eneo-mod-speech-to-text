@@ -17,12 +17,19 @@
 }
 
 /* Up to 640 px the outlined actions after the first share a row where they fit, each taking its part of the row's room,
-   and take the row's width one under the other where they do not. */
+   and take the row's width one under the other where they do not. Ta bort ends their row at its own width, its words on
+   the edge the buttons above end on: a ghost button's padding stands outside the column. */
 .outlined > * {
   flex: 1 1 auto;
 }
 
-/* Ta bort under them: a ghost button's own padding would set its icon in from the edge the buttons above share. */
-.quietStart {
+.outlined > .quiet {
+  flex: none;
+  margin-inline-end: calc(-1 * var(--spacing-3));
+}
+
+/* Ta bort alone at a row's start (no audio to save): a ghost button's own padding would set its icon in from the edge the
+   buttons above share. */
+.outlined > .quiet:first-child {
   margin-inline-start: calc(-1 * var(--spacing-3));
 }

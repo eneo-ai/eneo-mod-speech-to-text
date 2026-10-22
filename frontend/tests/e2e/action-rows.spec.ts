@@ -62,7 +62,7 @@ for (const review of REVIEWS) {
   });
 }
 
-test("an unsent recording's way on and Spara ljudfil stand across its card on a phone with Ta bort under them at its own width, and all in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
+test("an unsent recording's way on stands across its card on a phone, Spara ljudfil and Ta bort share the row under it with Ta bort at its own width at its end, and all in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
   await page.goto("/flows");
   await keptRecording(page, 1_000);
   await page.reload();
@@ -72,20 +72,27 @@ test("an unsent recording's way on and Spara ljudfil stand across its card on a 
   const boxes = await actions.evaluateAll((buttons) =>
     buttons.map((button) => {
       const { left, right, top, bottom } = button.getBoundingClientRect();
-      // Where its icon starts, for one that has one.
-      const icon = button.querySelector("svg")?.getBoundingClientRect().left ?? left;
-      return { left: Math.round(left), right: Math.round(right), top: Math.round(top), middle: Math.round((top + bottom) / 2), icon: Math.round(icon) };
+      // Where its words end, for the ghost one: its padding stands outside the column.
+      const text = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+      let words = right;
+      for (let node = text.nextNode(); node; node = text.nextNode()) {
+        if (!node.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        words = range.getBoundingClientRect().right;
+      }
+      return { left: Math.round(left), right: Math.round(right), top: Math.round(top), middle: Math.round((top + bottom) / 2), words: Math.round(words) };
     }),
   );
   const stacked = info.project.use.viewport!.width <= 640;
   const [send, save, remove] = boxes;
   const seen = stacked
     ? {
-        // Skapa dokument and Spara ljudfil across the card, one edge for both; Ta bort under them at its own width, its
-        // icon on their edge (a ghost button's padding stands outside it).
-        quietUnder: save.top > send.top && remove.top > save.top,
-        fromTheStart: save.left === send.left && remove.icon === send.left,
-        ownWidths: save.right === send.right && remove.right < save.right,
+        // Skapa dokument across the card; Spara ljudfil under it from its edge, and Ta bort on the same row at its own
+        // width, its words on the card's content edge (a ghost button's padding stands outside it).
+        quietUnder: save.top > send.top && remove.middle === save.middle,
+        fromTheEdges: save.left === send.left && Math.abs(remove.words - send.right) <= 2,
+        ownWidths: remove.left > save.right && remove.right - remove.left < save.right - save.left,
       }
     : {
         // One line through their middles: the filled one is the page's own size, the quiet ones the middle size.
@@ -93,7 +100,7 @@ test("an unsent recording's way on and Spara ljudfil stand across its card on a 
         inOrder: boxes.every((box, i) => i === 0 || box.left > boxes[i - 1].right),
       };
   expect(seen, JSON.stringify(boxes)).toEqual(
-    stacked ? { quietUnder: true, fromTheStart: true, ownWidths: true } : { oneRow: true, inOrder: true },
+    stacked ? { quietUnder: true, fromTheEdges: true, ownWidths: true } : { oneRow: true, inOrder: true },
   );
 
   await card.getByRole("button", { name: "Ta bort" }).click();

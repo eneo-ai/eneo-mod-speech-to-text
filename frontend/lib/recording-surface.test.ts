@@ -280,7 +280,8 @@ test("with no text yet, the sheet says why in place of the promise of text, and 
   ] as const) {
     const view = await mount(createElement(LiveSheet, { live: liveOf({ status, started, pieces: [], pending: "" }), recorder: "recording" }));
     const log = view.container.querySelector('[role="log"]')!;
-    assert.equal(log.textContent, sentence, `${status}: the sentence is where the promise was`);
+    // On a phone the sheet's head is the log's first line, which scrolls away with the text; the sentence follows it.
+    assert.equal(log.querySelector(":scope > p")?.textContent, sentence, `${status}: the sentence is where the promise was`);
     assert.ok(!view.container.textContent?.includes("Texten visas här"), `${status}: no promise of text that will not come`);
     assert.equal(log.querySelector("p")!.getAttribute("aria-hidden"), "true", "read once, from the status region");
     const region = log.parentElement!.nextElementSibling!;

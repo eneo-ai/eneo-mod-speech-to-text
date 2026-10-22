@@ -1,6 +1,5 @@
 - main:
   - heading "Sammanfattning" [level=1]
-  - text: Väntar på din granskning
   - paragraph: Nämndmöte till rapport
   - paragraph: /Granska senast 3 jan \d+ \d+:\d+\. Därefter avbryts körningen\./
   - paragraph: Du kan ändra texten innan du godkänner och fortsätter.

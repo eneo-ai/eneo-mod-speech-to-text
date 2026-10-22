@@ -46,12 +46,14 @@ function inputHue(inputType: FlowSparsePublic["input_type"]): IconTileHue {
 }
 
 const TABLET = "(min-width: 768px)";
+// Below it a row has no tile: every flow's says the same on a phone (most take audio), and its 56 px are the name's.
+const TILED = "(min-width: 640px)";
 
 /**
  * The flows the user can run: one card per space, its name and how many flows it holds at the card's head (no head when
- * there is only one), two cards abreast where the column has room. Each flow a full row: its tile, the name whole,
- * however long, and the description in at most two lines, three on a phone, whose narrow row would cut the words that
- * tell two flows apart. The flow last used on this device comes first and says so.
+ * there is only one), two cards abreast where the column has room. Each flow a full row: its tile from 640 px, the name
+ * whole, however long, and the description in at most two lines, three on a phone, whose narrow row would cut the words
+ * that tell two flows apart. The flow last used on this device comes first and says so.
  */
 export function FlowList({ groups, lastFlowId }: { groups: FlowSpaceGroup[]; lastFlowId: string | null }) {
   if (groups.length === 1) {
@@ -94,6 +96,7 @@ function SpaceSection({ group, lastFlowId }: { group: FlowSpaceGroup; lastFlowId
 
 function FlowRows({ flows, lastFlowId }: { flows: FlowSparsePublic[]; lastFlowId: string | null }) {
   const tablet = useMediaQuery(TABLET, true);
+  const tiled = useMediaQuery(TILED, true);
   return (
     <List hasDividers density="spacious" className={styles.rows}>
       {withLastUsedFirst(flows, lastFlowId).map((flow) => (
@@ -101,7 +104,7 @@ function FlowRows({ flows, lastFlowId }: { flows: FlowSparsePublic[]; lastFlowId
           key={flow.id}
           className={styles.row}
           href={`/flows/${flow.id}`}
-          startContent={<IconTile icon={inputIcon(flow.input_type)} hue={inputHue(flow.input_type)} size={tablet ? "lg" : "md"} />}
+          startContent={tiled ? <IconTile icon={inputIcon(flow.input_type)} hue={inputHue(flow.input_type)} size={tablet ? "lg" : "md"} /> : undefined}
           // Nodes, not strings: a string is cut to one line with an ellipsis, and a name is never cut. "Senast använd" is
           // said after the name, set apart from it, and stays on the name's line, under it where the line has no room:
           // the description keeps its own two lines.
@@ -133,6 +136,7 @@ function FlowRows({ flows, lastFlowId }: { flows: FlowSparsePublic[]; lastFlowId
 /** The list's shape while it loads, so nothing moves when it arrives: a card of rows with their tiles, at the rows' size. */
 export function FlowListSkeleton() {
   const tile = useMediaQuery(TABLET, true) ? 48 : 40;
+  const tiled = useMediaQuery(TILED, true);
   return (
     <Card padding={0}>
       <List hasDividers density="spacious" className={styles.rows} aria-hidden>
@@ -140,7 +144,7 @@ export function FlowListSkeleton() {
           <ListItem
             key={row}
             className={styles.row}
-            startContent={<Skeleton width={tile} height={tile} radius={3} index={row} />}
+            startContent={tiled ? <Skeleton width={tile} height={tile} radius={3} index={row} /> : undefined}
             label={<Skeleton width="60%" height={16} index={row} />}
             description={<Skeleton width="80%" height={14} index={row} />}
           />

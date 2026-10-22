@@ -24,8 +24,8 @@
 }
 
 /* A phone's or tablet's actions for the document's file, in its card under the file's row. On a phone they share the
-   card's width in equal parts, the download first; on the narrowest (320 px) each is as wide as the card, the download on
-   top. */
+   card's width in equal parts, the download first; on the narrowest (320 px) the download takes the row beside Dela's
+   icon (ResultDocument). */
 .cardActions {
   padding: 0 var(--spacing-4) var(--spacing-4);
 }
@@ -37,8 +37,8 @@
 }
 
 @media (max-width: 359.98px) {
-  .cardActions > * {
-    flex: 1 1 100%;
+  .cardActions > :last-child:not(:first-child) {
+    flex: none;
   }
 }
 

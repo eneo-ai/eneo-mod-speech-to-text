@@ -148,7 +148,7 @@ test("a correction that cannot be saved says so, and offers another try and the 
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 });
 
-test("in the review, Byt namn på in a passage's Ändra talare opens Namnge talarna at that speaker, and Avbryt gives the focus back to the passage", async ({ page }, info) => {
+test("in the review, Byt namn på in a passage's Ändra talare opens Namnge talarna at that speaker, and Avbryt (on a phone's whole screen the title's Stäng) gives the focus back to the passage", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review")!.go(page, info);
   const passage = page.getByRole("button", { name: "Erik Lund, ändra talare" }).first();
   await passage.click();
@@ -156,7 +156,7 @@ test("in the review, Byt namn på in a passage's Ändra talare opens Namnge tala
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeFocused();
   await expect(page.getByRole("dialog", { name: "Ändra talare" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await dialog.getByRole("button", { name: info.project.use.viewport!.width < 480 ? "Stäng" : "Avbryt", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(passage).toBeFocused();
 });
@@ -167,11 +167,16 @@ test("the player's row keeps the position slider a usable width on a phone, with
   // Looking for a word stops the transcript following the playback: Följ is offered.
   await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("punkten");
   await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
-  const slider = await page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
-    const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
-    return track.getBoundingClientRect().width;
-  });
-  expect(slider, "the track of the position slider").toBeGreaterThanOrEqual(120);
+  const track = () =>
+    page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
+      const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
+      return track.getBoundingClientRect().width;
+    });
+  expect(await track(), "the track of the position slider").toBeGreaterThanOrEqual(120);
+  // The narrowest phone too, where the row keeps its speed and the position's time alone.
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect.poll(track, { message: "the track of the position slider at 320 px" }).toBeGreaterThanOrEqual(120);
+  await page.setViewportSize(info.project.use.viewport!);
   const player = await page.getByRole("region", { name: "Inspelning och transkribering" }).boundingBox();
   const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
   expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
@@ -413,7 +418,10 @@ test("a review says it waits for the person and when it must be done by, with th
     await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
     const main = page.getByRole("main");
-    await expect.soft(main.getByText("Väntar på din granskning", { exact: true })).toBeVisible();
+    // A pill beside the heading from 640 px; on a phone the deadline under the heading says that the review waits.
+    const pill = main.getByText("Väntar på din granskning", { exact: true });
+    if (info.project.use.viewport!.width > 640) await expect.soft(pill).toBeVisible();
+    else await expect.soft(pill).toHaveCount(0);
     await expect.soft(main.getByText(`Granska senast ${deadline}. Därefter avbryts körningen.`, { exact: true })).toBeVisible();
   }
 });

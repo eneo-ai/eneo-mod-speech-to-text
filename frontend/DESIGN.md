@@ -63,15 +63,15 @@ and the icon tiles; recording has the stage and its clock; reading has the speak
 Everything else stays quiet: no gradient, glow or wash, and nothing that moves to look alive.
 
 **Key Characteristics:**
-- One primary action per state: a 48 px accent button, full width in its column, docked at the bottom on a phone. A
-  review's decision is the design system's middle size (32 px with a mouse, 44 px on touch). The speaker review keeps
-  its decision in the page on a phone too, under the speakers: the transcript's player docks at the bottom there, and
-  two bars would cover a fifth of the screen.
+- One primary action per state: a 48 px accent button, full width in its column, docked at the bottom in one column (a
+  phone, a tablet upright). A review's decision is the design system's middle size (32 px with a mouse, 44 px on touch).
+  The speaker review keeps its decision in the page on a phone too, under the speakers: the transcript's player docks at
+  the bottom there, and two bars would cover a fifth of the screen.
 - The flow page is a column of 20 to 24 rem for the flow (name, description, how it works, classification) beside the
-  working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's
-  description and how it works, and the classification follows the choice. The setup's details (Deltagare) stand in
-  the working card at every width, by the speaker controls they fill in; while the page holds audio or a run they are
-  the flow's, folded on a phone or tablet.
+  working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's name
+  (on a tablet its description too), how it works follows the work, and the classification follows the choice. The
+  setup's details (Deltagare) stand in the working card at every width, by the speaker controls they fill in; while the
+  page holds audio or a run they are the flow's, folded on a phone or tablet.
 - Status uses icons and text together; colour never carries meaning alone.
 
 ## Colors
@@ -102,6 +102,7 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 **Body Font:** Figtree (bundled, same-origin) with platform fallbacks; scale base 16 px, ratio 1.2.
 
 - **Display** (700, 28 to 40 px fluid, −0.02 em): an arrival's title ("Välj ett flöde", the flow's name, the sign-in).
+  Under 360 px the setup's flow name is a step under it (23 px), so a name of a few words keeps one line.
 - **Headline** (700, 28 px, −0.01 em): a state's heading (h1).
 - **Title** (700, 23 px; h3 600, 19 px): h2 section headings ("Hur vill du lägga till ljudet?", "Tidigare körningar"). A
   heading's look follows its level in the outline: an h3 that says it is an h2 (`aria-level`) reads as an h3 in some
@@ -173,11 +174,13 @@ switches round. One-pixel borders are `var(--border-width)`.
 - **Decisions** (a review's Avvisa and its approval, a ready recording's Fortsätt spela in and Skapa dokument, a
   dialog's Avbryt and Spara): one row at the end of their space, the main action last; up to 640 px wide a stack across
   the whole width, the main action on top and first for the keyboard (`components/ActionRow.tsx`, as Astryx's alert
-  dialog lays out its own). An editor's own buttons are no decision: small, Avbryt before Spara, in the text's header
-  above the field (the review's Redigera, Avbryt redigering and Spara ändring) or under a passage being corrected. In
-  the header they stand at the end of the text's name where the row has room, and under it, from its start, where it
-  has not: never one button alone at the far end of a row. A long text under review keeps that header at the window's
-  top and the decision at its bottom, with one page scroll.
+  dialog lays out its own). A dialog that takes a phone's whole screen (the naming) keeps Spara alone: the × in its
+  title is the way out. A failed run's way on comes right after what went wrong, the line that says what it does under
+  it. An editor's own buttons are no decision: small, Avbryt before Spara, in the text's header above the field (the
+  review's Redigera, Avbryt redigering and Spara ändring) or under a passage being corrected. In the header they stand
+  at the end of the text's name where the row has room, and under it, from its start, where it has not: never one button
+  alone at the far end of a row. A long text under review keeps that header at the window's top and the decision at its
+  bottom, with one page scroll.
 - **A card's own action** stands at the end of the card's heading row, never on a row of its own between rules:
   "Transkribering … Ladda ner", "Talare … Namnge talarna". The review's decision is the page's, under the speakers' card
   and not in its group.
@@ -191,7 +194,7 @@ switches round. One-pixel borders are `var(--border-width)`.
 - The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow right under its heading, in the secondary colour (the result's meta line with its date, the review's own line). A review says by when right under the flow's name, in view before anything is scrolled; what to do follows, set apart.
 - An organisation's logo always stands in the bar. Its name without a logo stands on one line below 640 px, and only where the bar has room for it beside the product's name (measured, `components/Brand.tsx`): otherwise it is left out with its divider and the bar reads “Tal till text” alone. From 640 px the name takes two lines at most. The brand link names the organisation whole either way, and so does the sign-in's line under its card.
 - On a flow's page the brand stands in the bar from 768 px; on a phone the bar keeps its room for the way back and the account. While an upload is under way the page offers no way off it, and the brand alone fills the bar at every width, so the bar keeps its height and the organisation its place.
-- A pill that only says something ("Väntar på din granskning", "Senast använd", "Osäkert förslag") is as tall as its words, with a little room above and below them in its fill, at every pointer, so it never reads as a button beside one; only a removable chip is a control's height. A pill stands beside what it qualifies, never above a heading as a label: the review's state follows its heading on the same row, under it where the row has no room. A card's heading says what is left to do on its own (the unsent recordings).
+- A pill that only says something ("Väntar på din granskning", "Senast använd", "Osäkert förslag") is as tall as its words, with a little room above and below them in its fill, at every pointer, so it never reads as a button beside one; only a removable chip is a control's height. A pill stands beside what it qualifies, never above a heading as a label: the review's state follows its heading on the same row from 640 px; on a phone the deadline under the heading says it, and the row has no pill. A card's heading says what is left to do on its own (the unsent recordings).
 
 ### Version
 - Folded under “Version” at the end of the flow list: the release (no row without one), the commit and the build time as a key-value list, then Kopiera supportinformation and the commit on GitHub. Not in the account menu, whose rows fill Astryx's 300 px menu on a touch screen.
@@ -214,10 +217,11 @@ switches round. One-pixel borders are `var(--border-width)`.
   mikrofonen hör dig."). Nothing moves when a test starts or the browser names its microphones. The button keeps one
   width for both of its words, and its icon says which it is (the microphone, a stop); on a phone it takes the row, as
   the phone's other actions do.
-- On a phone the classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}",
-  docked with the primary action. From 768 px its own note is in view beside the action instead: the flow's column from a
-  laptop's width, the working card's end before it. A flow whose result goes on to a receiver says so above the setup's
-  action, and above the recording's Skapa dokument.
+- In one column the classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}",
+  docked with the primary action, where the window is taller than 640 px (a small phone's dock keeps to the action, and
+  the note at the working card's end says it). From a laptop's width its own note is in view beside the action instead,
+  in the flow's column. A flow whose result goes on to a receiver says so above the setup's action, and above the
+  recording's Skapa dokument.
 - The recordings to go on with or send stand above the working card, a card of their own, never in it, with the working
   card's padding, so the two share their content's edge. On a phone their card has no tile: its heading, its words and
   its actions share one edge.
@@ -227,12 +231,14 @@ switches round. One-pixel borders are `var(--border-width)`.
   field's edge, so the two still read as one control.
 
 ### How it works
-- "Så fungerar det" under the flow's description: the steps a run takes the person through, said only as the run contract
-  states them (`lib/flow-output.ts`, `howItWorks`), and tips for good sound folded under them. From 1024 px it is open
-  under its own heading; below, one folded row like the details' fold, so the ways in stay on the first screen.
+- "Så fungerar det": the steps a run takes the person through, said only as the run contract states them
+  (`lib/flow-output.ts`, `howItWorks`), and tips for good sound folded under them. From 1024 px it is open under its own
+  heading, under the flow's description; below, one folded row like the details' fold after the work, so the choice of
+  way in comes first. On a phone the flow's description opens it, read once there rather than over the choice: the
+  person read it in the flow's row of the list.
 
 ### Recording notices
-- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma.
+- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it.
 - Pinned on a short screen, the controls' card stands a gutter above the window's edge. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
 - From 768 px Pausa and Stoppa are the stage card's footer, at the middle of it (25 rem), with one hairline between the
   stage and them.
@@ -252,7 +258,7 @@ switches round. One-pixel borders are `var(--border-width)`.
 - Esc or "Lämna helskärm" brings the page back, and the room view ends with the recording.
 
 ### Files
-- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, after opening the file (an outlined icon) and Dela, all as tall as each other, and above the document's text when the text comes first. A row too short for the name and its actions puts the actions under the name, at the row's end as beside it, never a name of three lines between them.
+- A file is a row: its type, name and size, and its download at the row's end. Under 360 px the document's own file keeps its download and Dela on one row, Dela as its icon. The document's own file has the one filled download; from a laptop's width it stands on that row, after opening the file (an outlined icon) and Dela, all as tall as each other, and above the document's text when the text comes first. A row too short for the name and its actions puts the actions under the name, at the row's end as beside it, never a name of three lines between them.
 
 ### Transcript
 - The transcript's Kopiera and Ladda ner som text stand at the end of its heading's row where they fit on one line and
@@ -260,23 +266,25 @@ switches round. One-pixel borders are `var(--border-width)`.
   the transcript, and its heading is there only for a screen reader: the two then join the first row of the transcript's
   tools, after "Namnge talare" where the speakers can be named, so no row holds them alone. Passages stand 32 px apart.
 - Where the speakers can be named (a finished run whose transcript can be corrected) they have a row of their own above
-  the filter, at every width: "Talare" at its start, which is also the filter's name (the chips' group, or below 1024 px
-  the list that stands in for more than five chips), and "Namnge talare" at its end, a ghost button with its icon as the
-  heading's Kopiera and Ladda ner som text are. Where they cannot be named (a run waiting for its review, a failed run, a
-  transcript that cannot be corrected) the chips stand alone, named "Visa talare". The speaker review's own view has no
-  filter for the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's "Ändra
-  talare" offers "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's
-  pause alike: it opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
+  the filter: "Talare" at its start, which is also the filter's name (the chips' group, or the list that stands in for
+  them), and "Namnge talare" at its end, a ghost button with its icon as the heading's Kopiera and Ladda ner som text
+  are. Under 640 px the filter's list takes the word's place, and "Namnge talare" and the transcript's menu stand at its
+  end as icons: one row for three. Where they cannot be named (a run waiting for its review, a failed run, a transcript
+  that cannot be corrected) the chips stand alone, named "Visa talare". The speaker review's own view has no filter for
+  the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's "Ändra talare" offers
+  "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's pause alike: it
+  opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
-  window (`content-visibility: auto`): an hour's meeting is tens of thousands of words.
+  window (`content-visibility: auto`): an hour's meeting is tens of thousands of words. On a phone a passage's coloured
+  rule and its name say whose it is; its mark stands beside it from 640 px.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
   column.
 - The player docks to the text. On a phone it is under the text and stays at the window's bottom, where a thumb reaches
-  it, one row high where it can be: its speed stands in the row, and under 400 px, where the position slider would keep
-  less than 120 px beside it, on a row above it. From 640 to 1023 px, where the
+  it, one row high: its speed stands in the row, and under 400 px the time says the position alone, the speed its words
+  without a chevron, and the controls stand 8 px apart, so the slider keeps its 120 px. From 640 to 1023 px, where the
   page scrolls and a bottom player would cover the passages the window starts on, it stands above the text under the
-  tools and stays at the window's top. From 1024 px it sits at the bottom of the transcript's card, and on a screen under
-  600 px high at the text's end.
+  tools and stays at the window's top. From 1024 px it sits at the bottom of the transcript's card, and on a screen
+  under 480 px high at the text's end.
 - With a mouse, one quiet line above the player's row says its keys: "Tangenter: K spelar och pausar, J och L hoppar 10
   sekunder." Where the line is, K, J and L work from anywhere on the page. A touch screen has no line, so there they act
   only with the focus in the player (a keyboard of the tablet's own). The line ends with "Stäng av", set in the line's
@@ -292,9 +300,10 @@ switches round. One-pixel borders are `var(--border-width)`.
   is on or off. A line that says a
   state in its words offers the one action that changes it instead, as the player's line of keys does (Stäng av, Slå
   på) beside its Följ.
-- Filter chips (toggle buttons, the transcript's speakers) are the middle size, as tall as the search field under them,
-  and stand 8 px apart with any pointer. They have a control's edge at rest and the accent's edge and tint when
-  pressed.
+- Filter chips (toggle buttons, the transcript's speakers) are the middle size, as tall as the search field beside them
+  (under them where the row has no room for both), and stand 8 px apart with any pointer. They have a control's edge at
+  rest and the accent's edge and tint when pressed. Where they would take more than one row (more than five speakers
+  below 1024 px, more than two on a phone, any two under 360 px) the filter is a list.
 
 ### Bespoke surfaces
 - Transcript text with per-word spans, the level meter, the docked player, the live text sheet: CSS Modules with

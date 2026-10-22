@@ -9,7 +9,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
-import { addParticipants, backLink, chooseFile, isLaptop, record, setup, setupFromList, unsavedCorrections } from "./screens";
+import { addParticipants, backLink, chooseFile, isLaptop, record, resultTab, setup, setupFromList, startOver, unsavedCorrections } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width"));
 
@@ -180,12 +180,13 @@ for (const action of ["Alla flöden", "Ny inspelning"]) {
     await unsavedCorrections(page, "result");
     const held: Held = (p) => expect(p.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
     if (action === "Alla flöden") await backLink(page).click();
-    else await page.getByRole("button", { name: action, exact: true }).click();
+    else await startOver(page);
     await asked(page, held);
     await stay(page, held);
+    await resultTab(page, "Transkribering");
     await expect(page.getByRole("button", { name: "Talare 2, ändra talare" }).first()).toBeVisible();
     if (action === "Alla flöden") await backLink(page).click();
-    else await page.getByRole("button", { name: action, exact: true }).click();
+    else await startOver(page);
     await asked(page, held);
     await question(page).getByRole("button", { name: "Lämna sidan" }).click();
     await expect(page.getByRole("heading", { name: action === "Alla flöden" ? "Välj ett flöde" : "Hur vill du lägga till ljudet?" })).toBeVisible();

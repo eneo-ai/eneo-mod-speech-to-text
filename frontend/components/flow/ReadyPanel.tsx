@@ -158,6 +158,8 @@ export function ReadyPanel({
     wasConfirming.current = confirming;
   }, [confirming]);
   const name = recordingName(recording.startedAt);
+  // The player's time says the length once each part's is known, in whole seconds as its clock counts them.
+  const lengthPlayed = sources.length > 0 && sources.every((source) => (source.durationMs ?? 0) >= 1_000);
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
   // No audio reached the device: nothing to make or save, only going on and deleting.
   const audio = hasAudio(recording);
@@ -235,14 +237,17 @@ export function ReadyPanel({
             Inspelningen är klar
           </Heading>
         </StateHead>
+        {/* Its length where the player under it does not say it. */}
         <Text as="p" color="secondary">
-          {name} · {formatDuration(recording.durationMs)}
+          {lengthPlayed ? name : `${name} · ${formatDuration(recording.durationMs)}`}
         </Text>
       </VStack>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
       {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
-      {live && <LiveDraft live={live} makesText={makesText} />}
+      {/* The draft to read and copy: under the player, and on a phone under the decision, which it would push off the
+          first screen. */}
+      {live && !stacked && <LiveDraft live={live} makesText={makesText} />}
 
       {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
 
@@ -295,6 +300,7 @@ export function ReadyPanel({
           </Text>
         )}
       </VStack>
+      {live && stacked && <LiveDraft live={live} makesText={makesText} />}
       <AlertDialog
         isOpen={confirming && !signedOut}
         onOpenChange={setConfirming}

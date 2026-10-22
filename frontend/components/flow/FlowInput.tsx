@@ -23,6 +23,7 @@ import {
 } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowFrame } from "@/components/flow/FlowFrame";
+import { HowItWorks } from "@/components/flow/HowItWorks";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -81,6 +82,8 @@ const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 const REMOVED = "Inspelningen togs bort.";
 
 const PHONE = "(max-width: 767.98px)";
+// A small phone's window: the dock keeps to the action, so the ways in have the room above it.
+const SHORT = "(max-height: 640px)";
 // A touch screen, which locks and whose apps switch under a recording, tall enough that the bar's line about it leaves the
 // text its room; on a smaller one the line stands only among the tips before the start ("Så fungerar det").
 const TOUCH = "(pointer: coarse) and (min-height: 640px)";
@@ -175,6 +178,12 @@ export function FlowInput({
   // starts it; the flow's classification follows the choice there. The details stand in the working card at every width,
   // by the speaker controls they fill in, so a field being typed in never moves when the layout changes (a tablet turned).
   const choiceFirst = group === "setup" && !blocked && !columns;
+  // "Så fungerar det" is read once: beside the work from a laptop's width, after it in one column, where it would stand
+  // between the flow's name and the choice. On a phone the flow's description opens it instead of standing above the
+  // choice: the person has just read it in the flow's row of the list.
+  const guide = group === "setup" ? howItWorks(contract, snapshot.modes) : null;
+  const guideAfter = choiceFirst ? guide : null;
+  const descriptionInGuide = guideAfter !== null && phone && Boolean(published.description);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -213,7 +222,8 @@ export function FlowInput({
             published={published}
             classification={choiceFirst ? null : contract.security_classification}
             compact={holdsAudio}
-            guide={group === "setup" ? howItWorks(contract, snapshot.modes) : null}
+            described={!descriptionInGuide}
+            guide={columns ? guide : null}
             lead={recoveryFirst ? unsentRecordings : undefined}
             // In the setup the details are the working card's; while the page holds audio they are the flow's, folded on
             // a phone or tablet. The blocked setup asks for nothing: its details would be filled in for no run. What was
@@ -248,7 +258,7 @@ export function FlowInput({
             <SetupWorkspace
               contract={contract}
               input={input}
-              dock={phone ? dockSlot : null}
+              dock={columns ? null : dockSlot}
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
@@ -282,6 +292,12 @@ export function FlowInput({
               speakers={labelsSpeakers(contract.transcription?.speaker_labels, snapshot.speakerLabels)}
               makesText={text}
               room={workspace}
+            />
+          )}
+          {guideAfter && (
+            <HowItWorks
+              guide={guideAfter}
+              lead={descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>}
             />
           )}
         </VStack>
@@ -414,7 +430,7 @@ function SetupWorkspace({
 }: {
   contract: RunContract;
   input: Session;
-  /** On a phone: the page's bottom edge, where the primary action docks. */
+  /** In one column (a phone or tablet): the page's bottom edge, where the primary action docks. */
   dock: HTMLElement | null;
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
@@ -430,6 +446,7 @@ function SetupWorkspace({
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
+  const short = useMediaQuery(SHORT);
   // The browser's question about the microphone may wait for an answer that does not come: after a moment the page says
   // where the question is, and Avbryt stops waiting for it.
   const [unanswered, setUnanswered] = useState(false);
@@ -569,8 +586,8 @@ function SetupWorkspace({
 
       {oneColumn && <ClassificationNote classification={contract.security_classification} bare />}
 
-      {/* On a phone the dock keeps to the classification and the action, so the ways in stay in view above it: where the
-          recording is kept is said at the form's end. */}
+      {/* In one column the dock keeps to the classification and the action, so the ways in stay in view above it: where
+          the recording is kept is said at the form's end. */}
       {recordingMode && dock && (
         <Text as="p" type="supporting">
           {storage}
@@ -582,11 +599,12 @@ function SetupWorkspace({
       {(mode || modes.length === 0) &&
         docked(
           dock,
-          // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
+          // In one column the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
-            {/* Where the person commits on a phone: what the flow may take, once more in the dock. Elsewhere the
-                classification stands in view beside the action (the flow's column) or just above it (one column). */}
-            {dock && <ClassificationLine classification={contract.security_classification} />}
+            {/* Where the person commits in one column: what the flow may take, once more in the dock, where the window
+                has room for it (a small phone's leaves it to the note in the card). Elsewhere the classification stands
+                in view beside the action (the flow's column). */}
+            {dock && !short && <ClassificationLine classification={contract.security_classification} />}
             {forwardedLine(contract) && (
               <Text as="p" type="supporting" justify="center">
                 {forwardedLine(contract)}

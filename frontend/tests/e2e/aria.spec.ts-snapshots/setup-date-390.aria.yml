@@ -1,7 +1,5 @@
 - main:
   - heading "Nämndmöte med mötesdatum" [level=1]
-  - paragraph: Frågar efter dagen mötet hölls.
-  - button "Så fungerar det 2 steg"
   - region "Ljudet":
     - status
     - status
@@ -23,6 +21,7 @@
     - textbox "Mötesdatum Valfritt"
     - alert
     - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge efter att du har stoppat.
+    - button "Så fungerar det 2 steg"
   - button "Starta inspelning":
     - text: ""
     - status

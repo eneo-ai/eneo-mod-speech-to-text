@@ -693,14 +693,20 @@ test("a flow that sends its result on says so beside the action that sends, not 
 
 test("a flow that requires speaker labels Eneo cannot make now says so in place of every way in, and keeps an earlier recording to save", async () => {
   const usable = await mountAudioSetup({ selectable: false, required: true, default: true });
-  const usual = { ways: usable.offered(), details: usable.details() };
+  const usual = {
+    ways: usable.offered(),
+    details: usable.details(),
+    docked: usable.view.container.querySelector("[data-docked-action]")?.textContent ?? "",
+  };
   await usable.view.unmount();
-  // In one column the flow's details follow the way in, before the file and the action (FlowInput, choiceFirst).
+  // In one column the flow's details follow the way in, before the file (FlowInput, choiceFirst); "Så fungerar det" follows
+  // the work, and the action is docked at the page's bottom.
   assert.deepEqual(
     usual.ways,
-    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Välj ljudfil"],
+    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Så fungerar det 3 steg"],
     "the flow as it is when the labels can be made",
   );
+  assert.ok(usual.docked.includes("Välj ljudfil"), "its action docked");
   assert.ok(usual.details.includes("arende"), "with the details it asks for");
 
   const { view, audio, offered, details } = await mountAudioSetup({ selectable: false, required: true, default: true, unavailable_reason: "picked_unavailable" });
