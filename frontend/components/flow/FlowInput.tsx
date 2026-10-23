@@ -21,7 +21,7 @@ import {
   focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
-import { EarlierRuns, PendingReview } from "@/components/flow/EarlierRuns";
+import { EarlierRuns, PendingReview, pendingReviewSaid } from "@/components/flow/EarlierRuns";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { HowItWorks } from "@/components/flow/HowItWorks";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
@@ -31,7 +31,7 @@ import { ReadyPanel } from "@/components/flow/ReadyPanel";
 import { StateCard } from "@/components/flow/StateCard";
 import { LiveSheet } from "@/components/flow/LiveSheet";
 import { FocusedRecorder, RecordingBar, SignedOutControls } from "@/components/flow/Recorder";
-import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/recording-hooks";
+import { useDocumentTitle, useElapsed, useSaidLater, useSilence } from "@/components/flow/recording-hooks";
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { useSignedOut } from "@/components/AuthGate";
@@ -137,6 +137,9 @@ export function FlowInput({
   // "Ta bort" took the ready recording away: said in the page's status (nothing shown moves the setup), until a recording begins.
   const [removed, setRemoved] = useState(false);
   if (removed && group !== "setup") setRemoved(false);
+  // A run waiting for the person's review, said in the page's status once the earlier runs say so (the notice itself is a
+  // note: it arrives with its words, which a screen reader does not reliably read out).
+  const reviewSaid = useSaidLater(group === "setup" ? pendingReviewSaid(earlierRuns) : "");
   const [dockSlot, dockRef] = useDock();
   const phone = useMediaQuery(PHONE);
   const columns = useMediaQuery(COLUMNS);
@@ -259,7 +262,7 @@ export function FlowInput({
               when Strömma shows the section alone on the whole screen: a browser then hides the rest of the page from
               assistive technology. */}
           <VisuallyHidden as="p" role="status">
-            {removed ? REMOVED : recordingAnnouncement(phase)}
+            {removed ? REMOVED : group === "setup" ? reviewSaid : recordingAnnouncement(phase)}
           </VisuallyHidden>
           <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true && input.capture.refused === null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}

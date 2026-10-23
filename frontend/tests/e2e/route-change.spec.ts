@@ -303,7 +303,8 @@ test("a run that no longer exists leaves the address and says so above a new sta
 test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   await page.goto(`/flows/${ids.flows.flow2}`);
-  const banner = page.getByRole("status").filter({ hasText: "En körning väntar på din granskning" });
+  // A note on the page; the page's status region says it (aria.spec.ts).
+  const banner = page.getByRole("note").filter({ hasText: "En körning väntar på din granskning" });
   await expect(banner).toBeVisible();
   await expect(banner).toContainText("Den avbryts om den inte granskas i tid.");
   await banner.getByRole("button", { name: /^Granska, körningen / }).click();

@@ -121,3 +121,20 @@ export function useSettledLiveStatus(status: LiveStatus): LiveStatus {
   }, [status, shown]);
   return shown;
 }
+
+/** How long a live region is in the page, empty, before it is given words. */
+const REGION_SETTLES_MS = 250;
+
+/**
+ * `text` for a live region that appears with the view it speaks for: empty when the region is put on the page, and the
+ * words a moment later, as a change a screen reader reads out. A region that arrives with its words is not reliably read
+ * (NVDA, JAWS and VoiceOver differ).
+ */
+export function useSaidLater(text: string): string {
+  const [said, setSaid] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSaid(text), REGION_SETTLES_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  return said;
+}

@@ -24,24 +24,45 @@ const OUTCOME: Record<string, [LucideIcon, "success" | "error" | "secondary"]> =
  * earlier runs has them all.
  */
 export function PendingReview({ list, onOpen }: { list: EarlierRunsSnapshot; onOpen: (runId: string) => void }) {
-  const waiting = pendingReviews(list.runs);
-  const [newest] = waiting;
-  if (!newest) return null;
-  const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
+  const words = pendingReviewWords(list);
+  const newest = pendingReviews(list.runs)[0];
+  if (!words || !newest) return null;
   return (
+    // A note, not a live region: it arrives with its words when the list does, which a screen reader does not reliably
+    // read out. The setup's own status region, there from the start, says it (FlowInput, pendingReviewSaid).
     <Banner
+      role="note"
       status="info"
       collapsible={false}
-      title={waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`}
-      description={`${when ? `Startad ${when}. ` : ""}Den avbryts om den inte granskas i tid.`}
+      title={words.title}
+      description={words.description}
       endContent={
         // Named as the list's own Granska, so the two say which run.
-        <Button label={`Granska, körningen ${when}`} variant="secondary" onClick={() => onOpen(newest.id)}>
+        <Button label={`Granska, körningen ${words.when}`} variant="secondary" onClick={() => onOpen(newest.id)}>
           Granska
         </Button>
       }
     />
   );
+}
+
+/** What the notice of runs waiting for the person's review says, or null while none waits. */
+function pendingReviewWords(list: EarlierRunsSnapshot) {
+  const waiting = pendingReviews(list.runs);
+  const [newest] = waiting;
+  if (!newest) return null;
+  const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
+  return {
+    when,
+    title: waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`,
+    description: `${when ? `Startad ${when}. ` : ""}Den avbryts om den inte granskas i tid.`,
+  };
+}
+
+/** The notice of runs waiting for the person's review as one sentence for a status region, or "" while none waits. */
+export function pendingReviewSaid(list: EarlierRunsSnapshot): string {
+  const words = pendingReviewWords(list);
+  return words ? `${words.title}. ${words.description}` : "";
 }
 
 /** This flow's latest runs, so yesterday's document is one tap away, and more a page at a time. */

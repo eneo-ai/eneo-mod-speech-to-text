@@ -13,7 +13,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { SignedOutSlot } from "@/components/AuthGate";
 import { LevelMeter } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { useElapsed } from "@/components/flow/recording-hooks";
+import { useElapsed, useSaidLater } from "@/components/flow/recording-hooks";
 import type { Problem, SessionPhase } from "@/lib/flow-session";
 import { formatClock } from "@/lib/format";
 import type { RecordingCapture } from "@/lib/recording-session";
@@ -177,6 +177,7 @@ export function RecordingBar({
   const running = phase === "recording";
   const settled = useSettled();
   const crowded = useCrowded();
+  const caution = useSaidLater(cautions.join(" "));
   const marker = showStatus ? "" : undefined;
   const readout = (
     <div className={styles.readout}>
@@ -219,11 +220,12 @@ export function RecordingBar({
             ))}
           </VStack>
         )}
-        {/* Said once when it comes, from a region that is always there; shown above the controls at the body's size, as
-            the warnings are, not as a line under them, and with them: a short screen pins the controls, and the line
-            that keeps the sound from being lost is pinned with them. */}
+        {/* Said once when it comes, from a region that is there, empty, before its words (useSaidLater): the bar and the
+            caution come together at Starta. Shown above the controls at the body's size, as the warnings are, not as a
+            line under them, and with them: a short screen pins the controls, and the line that keeps the sound from
+            being lost is pinned with them. */}
         <VisuallyHidden as="p" role="status">
-          {cautions.join(" ")}
+          {caution}
         </VisuallyHidden>
         <VStack gap={3} className={styles.controls}>
           {cautions.length > 0 && (
