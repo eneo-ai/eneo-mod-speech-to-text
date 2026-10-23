@@ -85,12 +85,14 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     revisionRef.current = transcript.corrections.revision;
     draft.current = transcript.corrections;
   }, [transcript.pending, transcript.corrections]);
-  // Corrections a page before this one kept in the tab, once the first read has landed: Eneo has them already (the
-  // answer was lost), or they were made on what Eneo still has and are saved now, or someone saved over them since and
-  // they are the person's to take, as after any refused save.
+  // Corrections a page before this one kept in the tab, once a read they can be saved on has landed (one that failed in
+  // part leaves them kept until Läs in igen reads it whole): Eneo has them already (the answer was lost), or they were
+  // made on what Eneo still has and are saved now, or someone saved over them since and they are the person's to take,
+  // as after any refused save.
   const restored = useRef(false);
+  const savable = !transcript.pending && transcript.stepId !== null && !transcript.correctionProblem;
   useEffect(() => {
-    if (transcript.pending || restored.current) return;
+    if (!savable || restored.current) return;
     restored.current = true;
     const kept = ownerId && keptName ? readDraft(browserDrafts(), ownerId, keptName, isKept) : null;
     if (!kept || !ownerId || !keptName) return;
@@ -104,7 +106,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
       setLocalError(friendlyError(new ApiError(409, "", null, STALE_REVISION)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transcript.pending]);
+  }, [savable]);
   // Corrections a read took from the screen that are what Eneo has after all (a save whose answer was lost, sent again
   // and refused as stale): nothing was lost, and nothing is said to be.
   useEffect(() => {

@@ -359,6 +359,27 @@ test("a correction kept in the tab that Eneo already has, its answer lost, is no
   assert.equal(again.editing().hasDropped, false);
 });
 
+test("a correction kept in the tab waits for a read it can be saved on: after the word times failed to load, Läs in igen shows it and saves it once", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  await first.view.unmount();
+  // The next page's first read could not read the word times: nothing can be saved on it.
+  const problem = "Kunde inte läsa transkriberingens ordtider. Ladda om sidan innan du redigerar eller godkänner.";
+  const again = await correcting(t, { tabKept: true, first: { ...transcript, correctionProblem: problem } });
+  await again.settle();
+  assert.equal(again.requests.length, 0, "nothing is sent on a read that cannot be saved on");
+  // Läs in igen, and the read is whole this time.
+  await again.reread(transcript.corrections);
+  await again.settle();
+  assert.deepEqual(again.editing().corrections.occurrences, corrected(transcript.corrections).occurrences, "the correction is shown again");
+  assert.equal(again.requests.length, 1, "and saved");
+  assert.deepEqual(again.requests[0].body.occurrences, first.requests[0].body.occurrences);
+  await again.answer(0);
+  assert.equal(again.editing().saveState, "saved");
+  assert.equal(again.requests.length, 1, "exactly once");
+});
+
 /** A browser window whose network the test switches, for the page's connection status. */
 async function device() {
   const { createOnlineStatus } = await import("./online-status");
