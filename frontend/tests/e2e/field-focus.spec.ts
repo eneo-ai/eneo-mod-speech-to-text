@@ -24,3 +24,14 @@ test("the search field has one focus frame around its rounded edge", async ({ pa
   await field.focus();
   await hasOneFieldFrame(field);
 });
+
+test("a cancel Eneo refuses leaves the focus on Avbryt körningen, as Kör vidare does", async ({ page }, info) => {
+  await page.route("**/runs/*/cancel/", (route) => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ detail: "Run is not cancellable" }) }));
+  await STATES.find((s) => s.name === "run-progress")!.go(page, info);
+  const cancel = page.getByRole("button", { name: "Avbryt körningen" });
+  await cancel.click();
+  await page.getByRole("alertdialog", { name: "Avbryta körningen?" }).getByRole("button", { name: "Avbryt körningen" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Avbryta körningen?" })).toHaveCount(0);
+  await expect(page.getByRole("alert").or(page.locator(".astryx-banner")).first()).toBeVisible();
+  await expect(cancel, "not the page's body").toBeFocused();
+});

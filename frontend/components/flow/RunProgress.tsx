@@ -153,7 +153,8 @@ export function RunProgress({
         </Text>
         {error && <Banner status="error" title={error} collapsible={false} />}
         <HStack>
-          <Button ref={trigger} label="Avbryt körningen" variant="secondary" isLoading={cancelling} onClick={() => setAsking(true)} />
+          {/* Busy, not disabled, so the focus the question gives back stays on it, also when Eneo refuses the cancel. */}
+          <Button ref={trigger} label="Avbryt körningen" variant="secondary" isLoading={cancelling} isInterruptible onClick={() => !cancelling && setAsking(true)} />
         </HStack>
         <AlertDialog
           isOpen={asking && !signedOut}
