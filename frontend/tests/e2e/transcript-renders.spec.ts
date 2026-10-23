@@ -97,8 +97,26 @@ test("choosing a speaker and then everyone renders no passage: each stays in the
 
 test("after quick changes of speaker the list shows the last one chosen, and stays with it", async ({ page }, info) => {
   await longTranscript(page, info);
-  // Each choice's passages follow once its chip has been drawn, in a render the next choice interrupts.
-  for (const speaker of ["Talare 1", "Talare 2", "Alla", "Talare 3"]) await chooseSpeaker(page, info, speaker);
+  // A choice's passages follow once its chip has been drawn. Talare 1, Talare 2, Alla and Talare 3 are chosen each in a
+  // task of its own, none waiting for a frame, so each lands while the one before it is still on its way.
+  const phone = info.project.use.viewport!.width < 640;
+  const list = phone ? await page.getByRole("combobox", { name: "Talare" }).elementHandle() : null;
+  await page.evaluate(
+    async ({ list, speakers }) => {
+      const task = () => new Promise((resolve) => setTimeout(resolve));
+      for (const speaker of speakers) {
+        if (list) {
+          // On a phone the speakers' list: opened, and the speaker's option pressed once it is there.
+          (list as HTMLElement).click();
+          const option = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent!.trim().endsWith(speaker === "Alla" ? "Alla talare" : speaker));
+          while (!option()) await task();
+          option()!.click();
+        } else document.querySelector<HTMLElement>(`button[aria-label="${speaker}"]`)!.click();
+        await task();
+      }
+    },
+    { list, speakers: ["Talare 1", "Talare 2", "Alla", "Talare 3"] },
+  );
   const theirs = await page.locator('[data-turn-index][aria-label^="Talare 3,"]').count();
   const shown = page.locator("[data-turn-index]:not([hidden])");
   await expect(shown, "the last speaker's passages are shown").toHaveCount(theirs, { timeout: 30_000 });
