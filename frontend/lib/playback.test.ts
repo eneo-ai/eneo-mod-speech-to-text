@@ -75,6 +75,24 @@ test("the position follows the audio: the part, the place in it and on the whole
   assert.deepEqual([now.part, now.withinMs, now.atMs, now.playing, now.started], [0, 1_500, 1_500, true, true]);
 });
 
+test("audio that stops for want of data while it plays says so (the spinner), and stops saying it when it plays on", () => {
+  // A slow or dropping network: the element fires waiting, and playing once it has data again.
+  const { playback, media } = started();
+  playback.toggle();
+  playback.onPlay();
+  playTo(playback, media, 1);
+  assert.equal(playback.getSnapshot().buffering, false);
+  playback.onWaiting();
+  assert.deepEqual([playback.getSnapshot().buffering, playback.getSnapshot().playing], [true, true], "still playing: Pausa stops it");
+  playback.onPlaying();
+  assert.equal(playback.getSnapshot().buffering, false);
+  playback.onWaiting();
+  playback.onPause();
+  assert.equal(playback.getSnapshot().buffering, false, "paused, nothing is waited for");
+  playback.onWaiting();
+  assert.equal(playback.getSnapshot().buffering, false, "a paused element that loads is not a stalled playback");
+});
+
 test("a part played from its start is not sought: audio its browser cannot seek in still plays", () => {
   const seeks: number[] = [];
   const playback = new Playback(PARTS, async () => null);

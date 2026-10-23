@@ -334,6 +334,7 @@ export class RecordingStore {
   private heads = new Map<string, { part: number; data: Blob }>();
   // What the browser says of keeping this device's storage: true when it will not delete it; null until it has said.
   private kept: boolean | null = null;
+  private askedToKeep = false;
 
   constructor(
     private backend: Backend,
@@ -738,7 +739,9 @@ export class RecordingStore {
   }
 
   async requestPersistence(): Promise<void> {
-    if (this.kept) return;
+    // Once a page: Firefox asks the person in a bar over the page each time, and a refusal stands for the page.
+    if (this.kept || this.askedToKeep) return;
+    this.askedToKeep = true;
     try {
       const granted = await this.env.storage?.persist();
       if (granted === undefined || granted === this.kept) return;

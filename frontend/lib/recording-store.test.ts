@@ -1047,6 +1047,10 @@ test("the store learns from the browser whether it may delete the device's recor
   assert.equal(calls.persist, 0, "opening asks for nothing");
   await refused.requestPersistence();
   assert.equal(refused.evictable, true, "and still, once refused");
+  // Firefox asks the person in a bar over the page each time: one ask a page, not one at each recording's start.
+  const asked = calls.persist;
+  await refused.requestPersistence();
+  assert.equal(calls.persist, asked, "a page asks once");
 
   const granted = await openRecordingStore(device({ storage: browser(false, true) }));
   let heard = 0;

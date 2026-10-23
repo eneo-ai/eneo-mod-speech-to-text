@@ -49,6 +49,9 @@ const HIDDEN_GAP_MS = 3 * CHUNK_MS;
 // long after its part began to end, and after its latest audio, will not give it (WebKit after an interruption): the part
 // ends unconfirmed, and audio it hands over later is still kept.
 const END_WAIT_MS = 2 * CHUNK_MS;
+// How long Stoppa waits for the device's storage to say the recording is stopped. IndexedDB has no timeout of its own and
+// WebKit has hung instead of failing: past this the page stops as after a failed write, with the recording it holds.
+const STOP_STORE_WAIT_MS = 10_000;
 
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
@@ -427,12 +430,17 @@ export class RecordingCapture {
     let stopped: StoredRecording | null = null;
     let failure: string | null = null;
     let confirmed = true;
+    let waited: ReturnType<typeof setTimeout> | undefined;
     try {
       confirmed = await ended;
-      await store.setState(recording.id, "stopped");
-      stopped = await store.get(recording.id);
+      stopped = await Promise.race([
+        store.setState(recording.id, "stopped").then(() => store.get(recording.id)),
+        new Promise<never>((_, refuse) => (waited = setTimeout(() => refuse(new Error("the device's storage did not answer")), STOP_STORE_WAIT_MS))),
+      ]);
     } catch (error) {
       failure = notOnDevice(error) ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
+    } finally {
+      clearTimeout(waited);
     }
     // The stopped recording is on the page's screen: no other tab offers or deletes it until the page lets it go.
     if (stopped) store.hold(recording.id);

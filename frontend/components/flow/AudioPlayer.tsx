@@ -126,15 +126,18 @@ export function AudioPlayer({
         onTimeUpdate={playback.onTimeUpdate}
         onEnded={playback.onEnded}
         onError={playback.onError}
+        onWaiting={playback.onWaiting}
+        onPlaying={playback.onPlaying}
       />
       {/* Not isLoading, which disables the button: a press while the audio loads pauses that start. */}
       <IconButton
         label={playLabel}
         variant="secondary"
         aria-keyshortcuts={playKey}
-        data-loading={state.starting || undefined}
+        data-loading={state.starting || state.buffering || undefined}
         icon={
-          state.starting ? (
+          // A start that waits for the audio, or audio that stopped for want of data while it plays (a slow network).
+          state.starting || state.buffering ? (
             <span aria-hidden>
               <Spinner size="sm" shade="inherit" />
             </span>

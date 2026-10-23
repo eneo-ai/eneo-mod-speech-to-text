@@ -319,6 +319,24 @@ test("a recorder that stops without saying so is a lost microphone: the recordin
   await until(async () => (await texts(await store.readParts(id)))[0] === "abc", "every chunk the recorder handed over is kept");
 });
 
+test("a device's storage that never answers does not hold Stoppa: after a while the recording is stopped, with what failed said", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  // IndexedDB that stops answering (WebKit has hung instead of failing): the state is never written.
+  store.setState = () => new Promise<void>(() => undefined);
+  const stopping = capture.stop();
+  await settle();
+  assert.equal(capture.getSnapshot().stopping, true);
+  t.mock.timers.tick(10_000);
+  await until(() => capture.getSnapshot().stopping === false, "Stoppa ends without the device's word");
+  await stopping;
+  assert.equal(capture.getSnapshot().status, "stopped", "the ready view, with Spara ljudfil, is reachable");
+  assert.ok(capture.getSnapshot().recording, "the recording the page holds");
+  assert.equal(capture.getSnapshot().error, "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.");
+});
+
 test("a recorder that never confirms its end holds neither Stoppa nor a page that goes: the part ends unconfirmed after a while, and audio still kept", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
   const silentStop = (recorder: FakeRecorder) => (recorder.stop = () => void (recorder.state = "inactive"));
