@@ -491,22 +491,125 @@ test("while the login has ended the dialog is closed, and it is back with its ty
   assert.ok(trigger.isConnected);
 });
 
-test("the dialog follows the part of the screen the phone's keyboard leaves: its height, and its top where the browser moves it", async (t) => {
+/**
+ * The part of the window a phone's keyboard leaves visible (window.visualViewport), moved as the browser moves it, in a
+ * window whose layout is as tall as jsdom's window (jsdom lays nothing out, so its clientHeight is 0).
+ */
+function visualViewport(t: import("node:test").TestContext) {
   const listeners = new Set<() => void>();
   const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
   Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
-  t.after(() => void Reflect.deleteProperty(window, "visualViewport"));
+  Object.defineProperty(document.documentElement, "clientHeight", { value: window.innerHeight, configurable: true });
+  t.after(() => {
+    Reflect.deleteProperty(window, "visualViewport");
+    Reflect.deleteProperty(document.documentElement, "clientHeight");
+  });
+  const move = (height: number, offsetTop: number) => {
+    Object.assign(viewport, { height, offsetTop });
+    listeners.forEach((listener) => listener());
+  };
+  return move;
+}
+const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
+
+test("the dialog follows the part of the screen the phone's keyboard leaves: its height, and its top where the browser moves it", async (t) => {
+  const move = visualViewport(t);
   const { view } = await dialog();
-  const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
   assert.match(dialogElement().getAttribute("style") ?? "", new RegExp(`calc\\(${window.innerHeight}px`), "the dialog starts at the screen's height");
   assert.equal(dialogElement().classList.contains("atVisibleTop"), false, "in the middle of the window while all of it is visible");
   // The keyboard opens, and the browser moves the visible part down to keep the field in sight.
-  viewport.height = 420;
-  viewport.offsetTop = 120;
-  await view.act(async () => listeners.forEach((listener) => listener()));
+  await view.act(async () => move(420, 120));
   assert.match(dialogElement().getAttribute("style") ?? "", /calc\(420px/, "and keeps above the keyboard");
   assert.ok(dialogElement().classList.contains("atVisibleTop"), "at the top of the visible part");
   assert.equal(dialogElement().style.getPropertyValue("--visible-top"), "120px");
+});
+
+test("on a phone held upright the whole-screen dialog is as tall as what the keyboard leaves, so the focused field, the title and Spara namnen stay in sight", async (t) => {
+  // Below 480 px the dialog takes the whole screen.
+  const real = window.matchMedia;
+  window.matchMedia = ((query: string) => ({ ...real(query), matches: query === "(max-width: 479.98px)" })) as typeof window.matchMedia;
+  t.after(() => void (window.matchMedia = real));
+  const move = visualViewport(t);
+  const scrolled: { name: string; height: string }[] = [];
+  const original = window.Element.prototype.scrollIntoView;
+  window.Element.prototype.scrollIntoView = function (this: Element) {
+    if (this instanceof window.HTMLInputElement) scrolled.push({ name: computeAccessibleName(this), height: dialogElement().style.height });
+  };
+  t.after(() => void (window.Element.prototype.scrollIntoView = original));
+  const { view, field } = await dialog();
+  assert.equal(dialogElement().style.height, "", "the whole screen while all of it is visible");
+  // "Byt namn på Talare 2": the focus is in the lower speaker's field, and the keyboard covers all under 369 px.
+  await view.act(async () => field("Talare 2").focus());
+  scrolled.length = 0;
+  await view.act(async () => move(369, 0));
+  assert.deepEqual([dialogElement().style.top, dialogElement().style.height, dialogElement().style.maxHeight], ["0px", "369px", "369px"]);
+  assert.deepEqual(scrolled, [{ name: "Vem är Talare 2?", height: "369px" }], "the field is brought into the dialog's view once the dialog is that tall");
+  // The browser moves the visible part down: the dialog's title goes with it.
+  await view.act(async () => move(369, 171));
+  assert.equal(dialogElement().style.top, "171px");
+  // The keyboard closes.
+  await view.act(async () => move(window.innerHeight, 0));
+  assert.deepEqual([dialogElement().style.top, dialogElement().style.height], ["", ""]);
+  // Safari can report the window's height (innerHeight) as the part still visible, while the layout is as tall as ever.
+  const inner = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerHeight", { value: 369, configurable: true });
+  t.after(() => void (inner ? Object.defineProperty(window, "innerHeight", inner) : Reflect.deleteProperty(window, "innerHeight")));
+  await view.act(async () => move(369, 303));
+  assert.deepEqual([dialogElement().style.top, dialogElement().style.height], ["303px", "369px"], "it follows all the same");
+});
+
+test("with the keyboard open a name list ends where the dialog, and so the visible part, does: its last rows scroll into reach instead of lying under the keyboard", async (t) => {
+  const move = visualViewport(t);
+  // The name field ends at 311 px; the dialog at the window's end until it has followed the keyboard.
+  let dialogEnd = window.innerHeight;
+  const dialogs = window.HTMLDialogElement.prototype;
+  const boxes = window.HTMLDivElement.prototype;
+  dialogs.getBoundingClientRect = () => ({ top: 0, bottom: dialogEnd }) as DOMRect;
+  boxes.getBoundingClientRect = () => ({ top: 0, bottom: 311 }) as DOMRect;
+  // The dialog's size, watched: Chrome draws it at the keyboard's height a frame after the keyboard's own event.
+  const resized: ((entries: []) => void)[] = [];
+  const watcher = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(callback: (entries: []) => void) {
+      resized.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  t.after(() => {
+    Reflect.deleteProperty(dialogs, "getBoundingClientRect");
+    Reflect.deleteProperty(boxes, "getBoundingClientRect");
+    globalThis.ResizeObserver = watcher;
+  });
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const { view, field } = await dialog();
+  await view.act(async () => {
+    field("Talare 2").click();
+    move(396, 0);
+    await frame();
+  });
+  const list = () => document.querySelector<HTMLElement>('[aria-label="Förslag: Vem är Talare 2?"]')!.style.maxHeight;
+  // The dialog follows the keyboard: it ends at 396 px, where the keyboard starts.
+  dialogEnd = 396;
+  await view.act(async () => {
+    resized.forEach((callback) => callback([]));
+    await frame();
+  });
+  assert.equal(list(), "73px", "from under the field to the dialog's end, less a little room");
+  await view.act(async () => {
+    move(window.innerHeight, 0);
+    await frame();
+  });
+  assert.equal(list(), "", "the keyboard closed: the list is as long as it is");
+});
+
+test("with too little left visible to follow (a phone on its side with the keyboard open), the dialog keeps its size and the browser pans to the field", async (t) => {
+  const move = visualViewport(t);
+  const { view } = await dialog();
+  await view.act(async () => move(52, 228));
+  assert.doesNotMatch(dialogElement().getAttribute("style") ?? "", /52px/, "never shrunk to what 52 px leaves");
+  assert.equal(dialogElement().classList.contains("atVisibleTop"), false);
 });
 
 test("with no storage to keep drafts in (a private window), the dialog works and keeps nothing", async (t) => {

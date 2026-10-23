@@ -1,4 +1,4 @@
-import { cloneElement, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactElement, type MouseEvent, type Ref } from "react";
+import { cloneElement, useEffect, useId, useImperativeHandle, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent, type Ref } from "react";
 import { Headphones, Pause } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -54,6 +54,9 @@ function useVisibleViewport(active: boolean): { height: number; top: number } | 
   }, [height]);
   return visible;
 }
+
+/** 12rem at the browser's default size: the dialog's title, one field and Spara namnen. */
+const MIN_FOLLOWED_HEIGHT = 192;
 
 /** The button that opens the dialog, whatever it is: it keeps its own props and gets the dialog's. */
 type Trigger = ReactElement<{ onClick?: (event: MouseEvent<HTMLElement>) => void } & Record<string, unknown>>;
@@ -160,19 +163,25 @@ export function SpeakerNamingDialog({
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const visible = useVisibleViewport(shown);
+  // Too little visible to hold a title, a field and an action (a phone on its side with the keyboard open): the dialog
+  // keeps its own size, and the browser pans to the field as it does without the dialog following.
+  const seen = useVisibleViewport(shown);
+  const visible = seen && seen.height >= MIN_FOLLOWED_HEIGHT ? seen : null;
   const height = visible?.height ?? null;
   // Less is visible than the window holds (the keyboard is open, or the page is zoomed in): the dialog stands at the top
   // of what is visible (SpeakerNamingDialog.module.css), where the middle of the window would put its title out of sight.
-  const covered = visible !== null && visible.height < window.innerHeight - 1;
+  // The window is its layout's height: Safari can report innerHeight as the visible part's.
+  const covered = visible !== null && visible.height < document.documentElement.clientHeight - 1;
   const dialogElement = useRef<HTMLDialogElement>(null);
-  useLayoutEffect(() => {
-    if (covered) dialogElement.current?.style.setProperty("--visible-top", `${visible.top}px`);
-  }, [covered, visible?.top]);
   const saveButton = useRef<HTMLButtonElement>(null);
   const descriptionId = useId();
   // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
   const narrow = useMediaQuery("(max-width: 479.98px)");
+  // The whole screen ignores maxHeight, and the design system's size for it outranks a class: only the element's own
+  // style makes it as tall as what the keyboard leaves, at its top, so the title, the field and Spara namnen show.
+  const followed = (
+    !covered ? undefined : narrow ? { top: visible.top, height: visible.height, maxHeight: visible.height } : { "--visible-top": `${visible.top}px` }
+  ) as CSSProperties | undefined;
 
   // Esc, Stäng or the ×: what was typed is there when it opens again.
   const close = () => {
@@ -264,6 +273,7 @@ export function SpeakerNamingDialog({
         variant={narrow ? "fullscreen" : "standard"}
         width="42rem"
         className={covered && !narrow ? styles.atVisibleTop : undefined}
+        style={followed}
         maxHeight={height ? `min(90dvh, 48rem, calc(${height}px - 2 * var(--spacing-4)))` : "min(90dvh, 48rem)"}
         aria-describedby={descriptionId}
       >

@@ -164,6 +164,41 @@ export function NameCombobox({
   // The marked row is brought into view when it becomes the marked one, and when the list itself mounts.
   const reveal = useCallback((row: HTMLLIElement | null) => row?.scrollIntoView({ block: "nearest" }), []);
 
+  // A phone's keyboard covers the window's lower part without making it shorter, so the list, placed against the whole
+  // window, would go on under the keyboard, its last rows out of reach. While it is open the dialog around the field
+  // ends where the visible part does (SpeakerNamingDialog): the list ends there too, at least a row tall, and scrolls.
+  // Measured against the dialog, not visualViewport: Safari's boxes are relative to the visible part, Chrome's to the window.
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const dialog = rootRef.current?.closest("dialog");
+    if (!open || !viewport || !dialog) return;
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const list = listRef.current;
+        if (!list || !rootRef.current) return;
+        const covered = viewport.height < document.documentElement.clientHeight - 1;
+        const room = dialog.getBoundingClientRect().bottom - rootRef.current.getBoundingClientRect().bottom - 12;
+        list.style.maxHeight = covered ? `${Math.max(room, 44)}px` : "";
+      });
+    };
+    // As the keyboard opens or closes, again once the dialog has followed it (a frame later in Chrome), and as its body
+    // scrolls the field.
+    const resized = new ResizeObserver(fit);
+    resized.observe(dialog);
+    fit();
+    viewport.addEventListener("resize", fit);
+    dialog.addEventListener("scroll", fit, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      resized.disconnect();
+      viewport.removeEventListener("resize", fit);
+      dialog.removeEventListener("scroll", fit, true);
+    };
+  }, [open]);
+
   const activeId = open && active >= 0 && items[active] ? `${listId}-${active}` : undefined;
 
   return (
@@ -221,7 +256,7 @@ export function NameCombobox({
       />
       {popover.render(
         open ? (
-          <ul id={listId} role="listbox" aria-label={`Förslag: ${label}`} className={styles.list}>
+          <ul ref={listRef} id={listId} role="listbox" aria-label={`Förslag: ${label}`} className={styles.list}>
             {items.map((option, i) => {
               const selected = isSelected(option);
               const note = option.kind === "name" && !selected ? optionNote?.(option.name) : null;

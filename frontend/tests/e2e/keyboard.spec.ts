@@ -577,6 +577,49 @@ test("a name list closes when the focus moves on without Tab, as a phone keyboar
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 3?" }), "and the focus stays where it went").toBeFocused();
 });
 
+test("on a phone the naming keeps its title, the field typed in and Spara namnen above the keyboard", async ({ page }, info) => {
+  const size = info.project.use.viewport!;
+  test.skip(size.width >= 480, "a phone held upright: the dialog takes the whole screen");
+  // The keyboard as the page sees it: less of the window visible (window.visualViewport), and its top where the browser moves it.
+  await page.addInitScript(() => {
+    const real = window.visualViewport!;
+    let open: { height: number; offsetTop: number } | null = null;
+    const viewport = new Proxy(real, {
+      get(target, key) {
+        if (open && (key === "height" || key === "offsetTop")) return open[key];
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
+    Object.assign(window, {
+      keyboard: (height: number, offsetTop: number) => {
+        open = { height, offsetTop };
+        real.dispatchEvent(new Event("resize"));
+      },
+    });
+  });
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  // The lowest speaker's field, as "Byt namn på" focuses it, under a keyboard about as tall as an iPhone's.
+  const field = dialog.getByRole("combobox", { name: "Vem är Talare 3?" });
+  await field.focus();
+  const visible = size.height - 330;
+  const keyboard = (offsetTop: number) =>
+    page.evaluate(([height, top]) => (window as unknown as { keyboard: (h: number, t: number) => void }).keyboard(height, top), [visible, offsetTop]);
+  const inSight = async (locator: Locator, top: number) => {
+    const box = (await locator.boundingBox())!;
+    return box.y >= top && box.y + box.height <= top + visible;
+  };
+  for (const top of [0, 171]) {
+    // 171: the browser moved the visible part down, as iOS does to show a field; the dialog goes with it.
+    await keyboard(top);
+    await expect.poll(() => inSight(field, top), "the field typed in").toBe(true);
+    expect(await inSight(dialog.getByRole("heading", { name: "Namnge talarna" }), top), "the title and its Stäng").toBe(true);
+    expect(await inSight(dialog.getByRole("button", { name: "Spara namnen" }), top), "Spara namnen").toBe(true);
+  }
+});
+
 test("the account menu holds focus and gives it back", async ({ page }) => {
   await STATES.find((s) => s.name === "flow-list")!.go(page, test.info());
   await holdsFocus(page, page.getByRole("button", { name: /^Öppna konto för/ }), page.getByRole("menu"), 0);
