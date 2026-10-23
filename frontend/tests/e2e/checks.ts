@@ -434,9 +434,15 @@ export function reflow(page: Page) {
 export function placeholderContrast(page: Page) {
   return page.evaluate(() => {
     type Rgba = [number, number, number, number];
+    // A computed colour as the browser paints it: a mix or an alpha token computes to color(srgb …), whose 0–1 channels a
+    // pattern for rgb() would read as near-black.
+    const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
     const rgba = (color: string): Rgba => {
-      const n = (color.match(/[\d.]+/g) ?? []).map(Number);
-      return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
+      paint.clearRect(0, 0, 1, 1);
+      paint.fillStyle = color;
+      paint.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
     const luminance = ([r, g, b]: Rgba) =>
@@ -649,9 +655,15 @@ function probeFocus(page: Page) {
     document.querySelectorAll("[data-a11y-current]").forEach((e) => e.removeAttribute("data-a11y-current"));
     el.setAttribute("data-a11y-current", "");
     type Rgba = [number, number, number, number];
+    // A computed colour as the browser paints it: a mix or an alpha token computes to color(srgb …), whose 0–1 channels a
+    // pattern for rgb() would read as near-black.
+    const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
     const rgba = (color: string): Rgba => {
-      const n = (color.match(/[\d.]+/g) ?? []).map(Number);
-      return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
+      paint.clearRect(0, 0, 1, 1);
+      paint.fillStyle = color;
+      paint.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
     // The colour a box shows: its own background over those behind it.

@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { type AddressInfo } from "node:net";
 import { type Page, type TestInfo } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axe, blocking, focusStop, movingAnimations, settle, stopProblems, tabKey, tabWalk, targetSizes, undecidedContrast } from "./checks";
+import { axe, blocking, focusStop, movingAnimations, placeholderContrast, settle, stopProblems, tabKey, tabWalk, targetSizes, undecidedContrast } from "./checks";
 import { sweep } from "./controls";
 import { STATES, type State } from "./screens";
 
@@ -116,6 +116,15 @@ test("text behind an open modal dialog is out of reach, so its contrast is not m
   await page.evaluate(() => document.querySelector("dialog")!.showModal());
   const reasons = ["#behind", "#inert", "#inside"].map((target) => ({ target, reason: "bgOverlap" }));
   expect((await undecidedContrast(page, reasons)).map((item) => item.target)).toEqual(["#inside"]);
+});
+
+test("a placeholder colour the browser gives as color(srgb …) is read as it is, not as near-black", async ({ page }) => {
+  // A colour mix computes to color(srgb 0.6 0.6 0.6 / 0.8): #999 at 80 % on white, about 2.3:1.
+  await page.setContent(`
+    <style>input::placeholder { color: color-mix(in srgb, #999999 80%, transparent); } input.clear::placeholder { color: color-mix(in srgb, #333333 90%, transparent); }</style>
+    <main><h1>Prov</h1><input aria-label="Svag" placeholder="Svag"><input class="clear" aria-label="Tydlig" placeholder="Tydlig"></main>`);
+  expect(await page.locator("input").first().evaluate((el) => getComputedStyle(el, "::placeholder").color)).toMatch(/^color\(srgb /);
+  expect(await placeholderContrast(page)).toEqual([expect.stringMatching(/^input "Svag" 2\.\d\d:1$/)]);
 });
 
 test("with reduced motion, what moves on screen is caught and a fade is not", async ({ page }) => {
