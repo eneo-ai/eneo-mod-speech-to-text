@@ -17,8 +17,14 @@ const ADD_NAME = "Lägg till namn";
 const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 
 // Astryx's types leave out the attributes a phone's keyboard and the browser's suggestions read, but its field passes
-// them on to the input. A name is no word of the dictionary: the spelling check would underline most of them.
-const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter", spellCheck: "false" } as Record<string, string>;
+// them on to the input. A name is no word of the dictionary: the spelling check would underline most of them, and iOS's
+// autocorrect, which spellcheck="false" leaves on, would change them ("Maja" to "Mana").
+const NAME_HINTS = { autoCapitalize: "words", autoCorrect: "off", enterKeyHint: "enter", spellCheck: "false" } as Record<string, string>;
+
+// Each name added starts with a capital, as the first one typed does: iOS leaves its shift key off in the field the page
+// has emptied. Only the first letter; iOS capitalises each later word itself.
+// ponytail: "af Klint" becomes "Af Klint"; a speaker's name field takes it as typed.
+const capitalised = (names: string[]) => names.map((name) => name.charAt(0).toLocaleUpperCase("sv") + name.slice(1));
 
 /**
  * A `list` field as chips. "Lägg till" stands beside the input, one piece with
@@ -73,7 +79,7 @@ export function ParticipantsInput({
   const namesList = useRef<HTMLElement>(null);
 
   function add(added: string[]) {
-    const next = addNames(names, added);
+    const next = addNames(names, capitalised(added));
     const fresh = next.slice(names.length);
     if (fresh.length === 0) return;
     onChange(next);
@@ -102,7 +108,7 @@ export function ParticipantsInput({
   useEffect(
     () => () => {
       const { text: left, names: kept, onChange: change, onAdded: added } = typed.current;
-      const next = addNames(kept, splitNames(left));
+      const next = addNames(kept, capitalised(splitNames(left)));
       if (next.length === kept.length) return;
       change(next);
       added?.(next.slice(kept.length));

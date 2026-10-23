@@ -34,9 +34,20 @@ test("participants: a comma adds what came before it, and Backspace in the empty
   assert.deepEqual(shown(), ["Anna Berg"]);
 });
 
-test("participants: a name is not marked as misspelt, and a phone's keyboard starts each word with a capital", async () => {
+test("participants: each name added starts with a capital, as the first one typed does: iOS leaves its shift off in the field the page emptied", async () => {
+  const { view, input, shown, added } = await mountNames(["Kale Lindkvist"]);
+  const enter = () => input().dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await view.act(async () => type(input(), "elik"));
+  await view.act(async () => enter());
+  await view.act(async () => type(input(), "åsa Holm, Erik lund,"));
+  assert.deepEqual(shown(), ["Kale Lindkvist", "Elik", "Åsa Holm", "Erik lund"], "only the first letter: iOS capitalises each later word itself");
+  assert.deepEqual(added, [["Elik"], ["Åsa Holm", "Erik lund"]]);
+});
+
+test("participants: a name is not marked as misspelt or autocorrected, and a phone's keyboard starts each word with a capital", async () => {
   const { input } = await mountNames();
   assert.equal(input().getAttribute("spellcheck"), "false");
+  assert.equal(input().getAttribute("autocorrect"), "off", "iOS's autocorrect would change a name as the focus moves on");
   assert.equal(input().getAttribute("autocapitalize"), "words");
 });
 
