@@ -34,7 +34,8 @@ function cut(scope: Locator, heightOnly = false) {
     for (const element of [root, ...root.querySelectorAll("*")]) {
       if (!(element instanceof HTMLElement) || element.closest(".astryx-visually-hidden") || !element.textContent?.trim()) continue;
       const style = getComputedStyle(element);
-      if (style.display === "none" || element.clientWidth <= 1) continue;
+      // A box of no size is not drawn (a design system's copy of a label in bold, kept for its width).
+      if (style.display === "none" || element.clientWidth <= 1 || element.clientHeight === 0) continue;
       const x = !heightOnly && ["hidden", "clip"].includes(style.overflowX) && element.scrollWidth > element.clientWidth + 1;
       const y = ["hidden", "clip"].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 2;
       if (x || y) found.push(`${element.textContent.trim().slice(0, 30)} ${element.scrollWidth}x${element.scrollHeight}/${element.clientWidth}x${element.clientHeight}`);
@@ -196,3 +197,16 @@ for (const size of [AX2, AX5]) {
     expect(outside).toEqual([]);
   });
 }
+
+test("an iPad upright at the largest text: the speaker chips stand clear of the search under them", async ({ page }) => {
+  await at(page, "result-transcript-tab", { width: 834, height: 1031, root: 53 });
+  const chips = await page.locator(".astryx-toggle-button").evaluateAll((buttons) => buttons.map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0).map((r) => ({ top: r.top, bottom: r.bottom, left: r.left, right: r.right })));
+  const field = await page.getByRole("textbox", { name: "Sök i transkriberingen" }).evaluate((input) => {
+    const r = (input.closest(".astryx-text-input") ?? input).getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+  });
+  expect(chips.length, "the chips are shown").toBeGreaterThan(0);
+  const over = chips.filter((c) => Math.min(c.bottom, field.bottom) - Math.max(c.top, field.top) > 1 && Math.min(c.right, field.right) - Math.max(c.left, field.left) > 1);
+  expect(over, "no chip over the search field").toEqual([]);
+  expect(await cut(page.locator(".astryx-toggle-button").first())).toEqual([]);
+});
