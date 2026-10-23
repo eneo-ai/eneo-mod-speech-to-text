@@ -8,7 +8,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test } from "./gate";
-import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
+import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, movingAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
 import { STATES } from "./screens";
 
 for (const state of STATES) {
@@ -39,7 +39,9 @@ for (const state of STATES) {
       spaced = await reflow(page);
       await remove();
     }
-    const motion = info.project.use.reducedMotion === "reduce" ? await endlessAnimations(page) : [];
+    const reduced = info.project.use.reducedMotion === "reduce";
+    const motion = reduced ? await endlessAnimations(page) : [];
+    const moving = reduced ? await movingAnimations(page) : [];
 
     const findings = { state: state.name, project, axe: scan, unnamed, placeholders, targets, touchTargets, reflow: layout, textSpacing: spaced, motion };
     writeFileSync(info.outputPath("findings.json"), JSON.stringify(findings, null, 2));
@@ -66,5 +68,6 @@ for (const state of STATES) {
       expect.soft(spaced.truncated.filter((item) => /^h[1-6] /.test(item)), "a heading cut short with increased text spacing (WCAG 1.4.12)").toEqual([]);
     }
     expect.soft(motion, "endless animation despite reduced motion").toEqual([]);
+    expect.soft(moving, "something moves on screen despite reduced motion").toEqual([]);
   });
 }

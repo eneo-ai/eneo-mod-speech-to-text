@@ -351,6 +351,29 @@ export function endlessAnimations(page: Page) {
   );
 }
 
+/**
+ * Animations and transitions running now that move something: its place, its scale or its turn. With reduced motion the
+ * page may still change a colour, an opacity or a bar's length, never move what is on screen (WCAG 2.3.3, the house bar).
+ */
+export function movingAnimations(page: Page) {
+  return page.evaluate(() => {
+    const moves = /^(transform|translate|scale|rotate|top|left|right|bottom|inset|margin)/;
+    const kebab = (name: string) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    return document
+      .getAnimations()
+      .filter((animation) => animation.playState === "running")
+      .flatMap((animation) => {
+        const effect = animation.effect as KeyframeEffect | null;
+        const properties =
+          animation instanceof CSSTransition ? [animation.transitionProperty] : (effect?.getKeyframes() ?? []).flatMap((frame) => Object.keys(frame).map(kebab));
+        const moving = [...new Set(properties.filter((property) => moves.test(property)))];
+        if (!moving.length) return [];
+        const target = effect?.target as Element | null;
+        return [`${moving.join(", ")} on ${target?.tagName.toLowerCase()}.${(target?.getAttribute("class") ?? "").split(" ").slice(0, 3).join(".")}`];
+      });
+  });
+}
+
 export interface FocusStop {
   key: string;
   label: string;

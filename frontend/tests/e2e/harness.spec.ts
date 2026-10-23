@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { type AddressInfo } from "node:net";
 import { type Page, type TestInfo } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axe, blocking, focusStop, settle, stopProblems, tabKey, tabWalk, targetSizes } from "./checks";
+import { axe, blocking, focusStop, movingAnimations, settle, stopProblems, tabKey, tabWalk, targetSizes } from "./checks";
 import { sweep } from "./controls";
 import { STATES, type State } from "./screens";
 
@@ -78,6 +78,22 @@ test("colours are measured once a colour change has ended, not halfway through i
   await page.waitForFunction(() => document.getAnimations().length > 0);
   const scan = await axe(page);
   expect(scan.violations.map((v) => v.id)).not.toContain("color-contrast");
+});
+
+test("with reduced motion, what moves on screen is caught and a fade is not", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      .fade { transition: opacity 5s linear; } .fade.on { opacity: 0.2; }
+      .slide { transition: transform 5s linear; } .slide.on { transform: translateY(40px); }
+      @keyframes rise { from { margin-top: 20px; } to { margin-top: 0; } }
+      .rise { animation: rise 5s linear; }
+    </style>
+    <main><h1>Prov</h1><p class="fade">Tonar</p><p class="slide">Glider</p></main>`);
+  await page.evaluate(() => requestAnimationFrame(() => document.querySelectorAll(".fade, .slide").forEach((p) => p.classList.add("on"))));
+  await page.waitForFunction(() => document.getAnimations().length === 2);
+  expect(await movingAnimations(page)).toEqual(["transform on p.slide.on"]);
+  await page.evaluate(() => document.querySelector("h1")!.classList.add("rise"));
+  expect(await movingAnimations(page)).toContain("margin-top on h1.rise");
 });
 
 test("targets are measured once a smooth scroll has ended, not on their way past a pinned bar", async ({ page }) => {
