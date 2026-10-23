@@ -77,12 +77,15 @@ export function RunFailure({
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
 
-  // The transcript's heading takes the focus, which brings it into view; before it is read the link is a plain one.
+  // The transcript's heading takes the focus and comes to the window's top, as a link to a place on the page does: the
+  // focus alone scrolls only as far as the heading's line, at the window's bottom edge with the text under it. Before
+  // the transcript is read the link is a plain one.
   function toTranscript(event: MouseEvent) {
     const target = document.getElementById("run-transcript");
     if (!target) return;
     event.preventDefault();
-    target.focus();
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start", behavior: "instant" });
   }
 
   async function retry() {
