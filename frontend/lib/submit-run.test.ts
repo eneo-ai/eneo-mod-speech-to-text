@@ -2015,12 +2015,13 @@ test("a recording sent as one is not sent past Eneo's longest recording, all par
   const recording = await store.create(meeting);
   for (const hours of [3, 2.5]) {
     const index = await store.startPart(recording.id);
-    await store.append(recording.id, index, new Blob(["a"]), hours * HOUR);
+    // A kilobyte a minute: a recording that holds sound (soundless, lib/submit-run.ts).
+    await store.append(recording.id, index, new Blob([new Uint8Array(hours * 60 * 1024)]), hours * HOUR);
   }
   await store.setState(recording.id, "stopped");
   store.release(recording.id);
   await settle();
-  const step = { ...contract.steps_requiring_input![0], max_duration_seconds: 5 * 3600, max_recording_seconds: 5 * 3600 };
+  const step = { ...contract.steps_requiring_input![0], max_duration_seconds: 5 * 3600, max_recording_seconds: 5 * 3600, max_file_size_bytes: 1024 * 1024 };
   const together: RunContract = { ...contract, steps_requiring_input: [step], transcription: { single_recording: true } as RunContract["transcription"] };
 
   await assert.rejects(

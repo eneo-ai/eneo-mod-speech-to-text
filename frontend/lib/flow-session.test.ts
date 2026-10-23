@@ -1183,6 +1183,43 @@ test("a part longer than Eneo takes is not sent, whatever the page's copy of the
   assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
 });
 
+test("a recording of minutes that holds a few bytes is no sound: it is not sent, it stays on the device, and the page says so", async () => {
+  const { session, store } = await setup();
+  const contract = audioContract();
+  session.setContract(contract);
+  let uploads = 0;
+  session.setHandlers({
+    submit: async ({ input, payload }) => {
+      if (input?.kind !== "recording") return;
+      await submitRecording(
+        store,
+        input.recording.id,
+        { flowId: "flow-1", contract, stepId: "step-audio", inputPayload: payload, online: createOnlineStatus() },
+        { upload: async () => ({ id: `file-${++uploads}` }), startRun: async () => ({ id: "run-1", flow_id: "flow-1", status: "queued" }) },
+      );
+    },
+  });
+  // A microphone that gave nothing (a simulator's, one that ended under the recorder): 5 bytes in 2 min 17 s.
+  const recording = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["12345"]), 137_000);
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  session.adopt((await store.get(recording.id))!);
+
+  assert.equal(await session.createDocument(), false);
+  assert.equal(uploads, 0, "nothing uploaded for Eneo to fail on");
+  assert.equal(session.getSnapshot().problem?.title, "Inspelningen innehåller inget ljud.");
+  assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
+});
+
 test("a recording whose run request Eneo may already have answered is sent again as it was, whatever the details say now", async () => {
   const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
   const { session, store } = await setup();
