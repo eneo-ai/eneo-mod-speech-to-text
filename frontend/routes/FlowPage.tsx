@@ -206,6 +206,14 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const followAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
+  // The run's view on screen, ended when Back or Forward leaves it and when the page goes. An action started on it (a
+  // retry, a cancellation, a review's answer, a new document) that Eneo answers after that is not shown: Eneo keeps what
+  // it did, and the page stays where the person went.
+  const runView = useRef(new AbortController());
+  const leaveRunView = () => {
+    runView.current.abort();
+    runView.current = new AbortController();
+  };
   // The files Eneo holds from a send the person cancelled: the next send of the same file asks for the run from them, as
   // the same request under the same key, instead of uploading again. Forgotten when a send fails any other way.
   const uploadedFiles = useRef(new WeakMap<Blob, string>());
@@ -258,6 +266,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => {
       followAbortRef.current?.abort();
       submitAbortRef.current?.abort();
+      leaveRunView();
       // Left: what the browser could not keep is gone with the page.
       unstoredDrafts.forget();
     };
@@ -449,6 +458,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     if (navigationType !== "POP" || run.kind === "submitting" || snapshot.phase !== "setup") return;
     const wanted = new URLSearchParams(location.search).get(RUN_QUERY_PARAM);
     if (wanted === runIdOf(run)) return;
+    leaveRunView();
     if (wanted) {
       showRun(wanted);
     } else {
@@ -531,14 +541,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   async function onCancelRun(runId: string) {
     setRunError(null);
+    const { signal } = runView.current;
     try {
       await cancelRun(flowId, runId);
     } catch (err) {
-      setRunError(friendlyError(err));
+      if (!signal.aborted) setRunError(friendlyError(err));
       return;
     }
     // The cancelled run is read now, not at the next poll.
-    void follow(runId);
+    if (!signal.aborted) void follow(runId);
   }
 
   /**
@@ -552,15 +563,18 @@ function FlowDetail({ flowId }: { flowId: string }) {
     { describe = friendlyError, onSaved }: { describe?: (err: unknown) => string; onSaved?: () => void } = {},
   ): Promise<string | null> {
     setRunError(null);
+    const { signal } = runView.current;
     const hold = (cp: FlowRunReviewCheckpointPublic) =>
-      setRun((prev) => (prev.kind === "awaiting_review" ? { ...prev, checkpoint: cp } : prev));
+      !signal.aborted && setRun((prev) => (prev.kind === "awaiting_review" ? { ...prev, checkpoint: cp } : prev));
     try {
       const resumedRun = await continueFromPause({ flowId, runId, checkpoint, edit, onCheckpoint: hold, onHeld: onSaved });
+      if (signal.aborted) return null;
       setRun({ kind: "running", run: resumedRun, graph: null });
       void follow(resumedRun.id);
       return null;
     } catch (err) {
       const message = describe(err);
+      if (signal.aborted) return message;
       if (reviewPauseEnded(err)) {
         readRunAgain(runId);
         return message;
@@ -579,6 +593,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     describe: (err: unknown) => string = friendlyError,
   ): Promise<FlowRunReviewCheckpointPublic | { error: string }> {
     setRunError(null);
+    const { signal } = runView.current;
     try {
       const updated = await editReviewCheckpoint(
         flowId,
@@ -590,6 +605,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           edited_value: editedValue,
         },
       );
+      if (signal.aborted) return updated;
       setRun((prev) =>
         prev.kind === "awaiting_review"
           ? { ...prev, checkpoint: updated }
@@ -598,6 +614,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return updated;
     } catch (err) {
       const message = describe(err);
+      if (signal.aborted) return { error: message };
       if (reviewPauseEnded(err)) {
         readRunAgain(checkpoint.flow_run_id);
         return { error: message };
@@ -609,7 +626,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         flowId,
         checkpoint.flow_run_id,
       ).catch(() => null);
-      if (latest && latest.id === checkpoint.id) {
+      if (latest && latest.id === checkpoint.id && !signal.aborted) {
         setRun((prev) =>
           prev.kind === "awaiting_review"
             ? { ...prev, checkpoint: latest }
@@ -622,14 +639,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   async function onReject(checkpoint: FlowRunReviewCheckpointPublic, runId: string, reason: string) {
     setRunError(null);
+    const { signal } = runView.current;
     try {
       await rejectReviewCheckpoint(flowId, runId, checkpoint.id, {
         expected_checkpoint_revision: checkpoint.revision,
         reason,
       });
       // The run is cancelled: followed to its end, so that its steps and result are read as usual.
-      void follow(runId);
+      if (!signal.aborted) void follow(runId);
     } catch (err) {
+      if (signal.aborted) return;
       if (reviewPauseEnded(err)) return readRunAgain(runId);
       setRunError(friendlyError(err));
     }
@@ -658,12 +677,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function onRetry(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
     setRetryRefusal(null);
-    const abortController = new AbortController();
-    submitAbortRef.current = abortController;
+    const { signal } = runView.current;
     const outcome = await retryFailedRun(flowId, failed.run.id);
-    // The page went away while Eneo answered: nothing is shown or followed from here.
-    if (abortController.signal.aborted) return;
-    submitAbortRef.current = null;
+    // The view was left while Eneo answered: nothing is shown or followed from here.
+    if (signal.aborted) return;
     if (outcome.kind === "refused") {
       setRetryRefusal({ message: outcome.message, startAgain: outcome.startAgain });
       return;
@@ -846,6 +863,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const files = resultFileViews(run.run.result_files ?? []);
     const inputStep = selectRuntimeInputStep(contract);
     if (runOutcome(run.run.status) === "succeeded") {
+      const view = runView.current.signal;
       return (
         // The result has its own layout; its heading names the state, and the line under it the flow.
         <FlowFrame>
@@ -865,6 +883,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
                 onNewRecording={onRunAgain}
                 onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
                 onRegenerated={(regenerated) => {
+                  if (view.aborted) return;
                   // The new run is followed like any other, from its progress to its own result.
                   setRunError(null);
                   writeRunIdToUrl(regenerated.id);
