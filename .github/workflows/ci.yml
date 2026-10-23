@@ -36,6 +36,8 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Run the fake Eneo's own tests
         run: python -m unittest frontend/tests/e2e/test_stub_eneo.py
+      - name: Run apt-retry.sh's own tests
+        run: bash .github/apt-retry.test.sh
       - name: Run the acceptance scripts' own tests
         run: python -m unittest deploy/acceptance/test_live_load.py deploy/acceptance/test_checks.py
       - name: Audit production dependencies
