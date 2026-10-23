@@ -31,6 +31,7 @@ import { ProblemAlert } from "./ProblemAlert";
 import { IconTile } from "@/components/IconTile";
 import styles from "./ResultFiles.module.css";
 import { pressing, savingWay, useFileAccess, waiting, type FileAccess } from "./useFileAccess";
+import { useSaidLater } from "./recording-hooks";
 
 export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   pdf: FileText,
@@ -50,6 +51,8 @@ export const LAPTOP = "(min-width: 1024px)";
  * the same icon whichever way a tablet is turned, in the device's own viewer.
  */
 const WITH_A_MOUSE = "(hover: hover) and (pointer: fine)";
+/** How long a viewer that has drawn nothing is waited for before the dialog says the browser cannot show the file. */
+const VIEWER_GIVES_UP_MS = 8_000;
 
 /** A file's name, its date kept on one line: "… 2026-09-24.pdf" breaks before the date, never inside it. */
 export function FileName({ name }: { name: string }) {
@@ -163,6 +166,20 @@ export function OpenFile({
   // Whether the viewer has drawn the file: until then the dialog's empty viewer says that it is coming.
   const [shown, setShown] = useState(false);
   if (!open && shown) setShown(false);
+  // A browser with no PDF viewer of its own (a managed Firefox or Chrome told to download PDFs, Chrome on Android) draws
+  // nothing, and one that downloads or refuses the file never says it has loaded: the dialog says so, beside its Öppna i
+  // ny flik and Ladda ner, rather than spin for ever. Without a viewer the file is not even asked for (it would download).
+  const noViewer = typeof navigator !== "undefined" && navigator.pdfViewerEnabled === false;
+  const [stalled, setStalled] = useState(false);
+  if (!open && stalled) setStalled(false);
+  useEffect(() => {
+    if (!open || shown || noViewer) return;
+    const timer = setTimeout(() => setStalled(true), VIEWER_GIVES_UP_MS);
+    return () => clearTimeout(timer);
+  }, [open, shown, noViewer]);
+  const cannotShow = open && !shown && (noViewer || stalled);
+  // Said from a region that is in the dialog before its words are.
+  const note = useSaidLater(cannotShow ? "Webbläsaren kan inte visa filen här. Välj Öppna i ny flik eller Ladda ner." : "");
   // While the login has ended the page is covered and the dialog, which a cover does not reach, is closed; it is
   // back when the login is, with its viewer and where it was.
   const covered = useSignedOut();
@@ -265,8 +282,11 @@ export function OpenFile({
                   spinner behind the viewer, covered by the file once it is drawn and gone when the viewer has loaded. */}
               {open && (
                 <div className={styles.viewerArea}>
-                  {!shown && <Spinner size="lg" aria-label="Laddar filen" className={styles.viewerWait} />}
-                  <iframe src={url} title={file.name} tabIndex={-1} className={styles.viewer} onLoad={() => setShown(true)} />
+                  {!shown && !cannotShow && <Spinner size="lg" aria-label="Laddar filen" className={styles.viewerWait} />}
+                  <Text as="p" role="status" className={styles.viewerNote}>
+                    {note}
+                  </Text>
+                  {!noViewer && <iframe src={url} title={file.name} tabIndex={-1} className={styles.viewer} onLoad={() => setShown(true)} />}
                 </div>
               )}
             </LayoutContent>
