@@ -105,9 +105,11 @@ export function RunProgress({
             </Heading>
           </StateHead>
           <VStack gap={1}>
-            {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way. */}
+            {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way.
+                A step's name is its author's, often an order ("Skriv rapporten"): heard alone it is said to the listener,
+                so it is said as the list shows it, under way. */}
             <VisuallyHidden as="p" role="status">
-              {stage}
+              {steps.some((step) => step.state === "running" && step.label === stage) ? `Pågår: ${stage}` : stage}
             </VisuallyHidden>
             {steps.length === 0 && (
               <HStack gap={2} align="center" aria-hidden>
