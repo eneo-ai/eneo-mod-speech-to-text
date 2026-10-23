@@ -129,8 +129,8 @@ export function SpeakerNamingDialog({
   /** The button that opens the dialog; focus returns to it on close. */
   children: Trigger;
 }) {
-  // Names typed but not saved: kept through closing the dialog, by any of its ways out, and through a reload (it opens
-  // again with them); saving them ends them.
+  // Names typed but not saved: kept through closing the dialog by Esc or its ×, and through a reload (it opens again
+  // with them); saving them ends them, and so does Avbryt, which says it.
   const [typed, setTyped] = useState<TypedName[] | null>(() =>
     draftKey ? readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) : null,
   );
@@ -173,12 +173,12 @@ export function SpeakerNamingDialog({
   // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
   const narrow = useMediaQuery("(max-width: 479.98px)");
 
-  // Esc, Stäng, Avbryt or the ×: what was typed is there when it opens again.
+  // Esc, Stäng or the ×: what was typed is there when it opens again.
   const close = () => {
     setOpen(false);
     onStopListening?.();
   };
-  /** A save that went through: the dialog closes and what was typed is done with. */
+  /** A save that went through, or Avbryt: the dialog closes and what was typed is done with. */
   const end = () => {
     close();
     setTyped(null);
@@ -363,7 +363,7 @@ export function SpeakerNamingDialog({
                 {/* On a phone's whole screen the title's × is the way out: the footer keeps to Spara namnen, and the
                     speakers have its room. */}
                 <ActionRow>
-                  {!decided && !narrow && <Button variant="ghost" label="Avbryt" onClick={close} />}
+                  {!decided && !narrow && <Button variant="ghost" label="Avbryt" onClick={end} />}
                   {decided ? (
                     <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (
