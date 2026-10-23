@@ -11,6 +11,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { AccountMenu } from "@/components/AccountMenu";
 import { HeaderBrand } from "@/components/HeaderBrand";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import listStyles from "@/components/FlowList.module.css";
@@ -28,7 +29,7 @@ import {
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
-import { whenConnected } from "@/lib/lazy-component";
+import { flowPageCode } from "@/routes/flow-page-code";
 import { continueRecordingAddress, sendRecordingAddress } from "@/lib/flow-address";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
@@ -91,7 +92,7 @@ function FlowsListPage() {
     if (!listed || (navigator as { connection?: { saveData?: boolean } }).connection?.saveData) return;
     const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1));
     const cancel = window.cancelIdleCallback ?? window.clearTimeout;
-    const handle = idle(() => void whenConnected().then(() => import("./FlowPage")).catch(() => undefined));
+    const handle = idle(() => void flowPageCode.load().catch(() => undefined));
     return () => cancel(handle);
   }, [listed]);
   // Asked again (Uppdatera, or a Försök igen) and still none: the new Uppdatera takes the focus the pressed button had.
@@ -110,6 +111,8 @@ function FlowsListPage() {
             <Heading level={1} type="display-3">
               Välj ett flöde
             </Heading>
+            {/* The device's network or the module gone: said here, before a press on a flow finds it out. */}
+            <OfflineBanner waiting={null} />
 
             <VStack gap={10} className={listStyles.sections}>
             {/* Each action goes on in the recording's flow. The newest recording's main action is the page's one filled

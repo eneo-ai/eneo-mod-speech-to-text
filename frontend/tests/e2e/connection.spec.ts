@@ -4,7 +4,7 @@
  */
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
-import { run } from "./screens";
+import { flows, run } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "behaviour, at one width"));
 
@@ -70,4 +70,23 @@ test("an answer that was on its way when the network went does not bring the net
   await page.evaluate(() => new Promise<void>((drawn) => requestAnimationFrame(() => requestAnimationFrame(() => drawn()))));
   await expect(notice, "the page still says the device has no network").toBeVisible();
   await expect(page.getByText(/svarar inte just nu/)).toHaveCount(0);
+});
+
+test("the flow list says when the network goes, and a flow opened without one appears by itself when it is back", async ({ page, context, sentinel }) => {
+  sentinel.expect({ console: /net::ERR_INTERNET_DISCONNECTED/, optional: true }, { requestFailed: /net::ERR_INTERNET_DISCONNECTED$/, optional: true });
+  await flows(page);
+  // The list fetches the flow page's code while it is read (routes/FlowsPage.tsx).
+  await page.waitForLoadState("networkidle");
+
+  await context.setOffline(true);
+  await expect(page.getByRole("status").filter({ hasText: /^Ingen anslutning\.$/ })).toHaveCount(1);
+
+  await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Ingen anslutning." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 }), "the page's heading has the focus the link had").toBeFocused();
+
+  await context.setOffline(false);
+  const setup = page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" });
+  await expect(setup, "without a press on Försök igen").toBeVisible();
+  await expect(setup).toBeFocused();
 });
