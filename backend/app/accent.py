@@ -105,6 +105,12 @@ _GROUNDS = (
     "--color-background-muted",
     "--color-background-body",
 )
+# What a tinted passage lies on: a card, or a surface.
+_TINTED = ("--color-background-surface", "--color-background-card")
+# The transcript's accent tints where they lie thickest under its text (TranscriptPlayer.module.css), light then dark: the
+# playing passage, its sentence pointed at or focused while choosing one to correct, a word said and the said part of the
+# word being said. The others under its text are thinner; a search hit's, the theme's muted tint, is the accent's own.
+_TRANSCRIPT_TINTS = ((0.12, 0.20, 0.18, 0.45), (0.12, 0.20, 0.18, 0.25))
 # The greys that are read or seen, and the contrast each keeps on every ground: secondary text and its icons 4.5:1, a
 # control's edge 3:1 (WCAG 1.4.11).
 _DUTIES = {"--color-text-secondary": MIN_CONTRAST, "--color-icon-secondary": MIN_CONTRAST, "--color-border-emphasized": 3.0}
@@ -356,9 +362,6 @@ def accent_warning(accent: Accent) -> str | None:
     return None
 
 
-NO_ACCENT_CSS = "/* Ingen ORGANIZATION_ACCENT är satt: modulens standardfärg gäller. */\n"
-
-
 def _hued(accent: Accent) -> list[tuple[str, str]]:
     """NEUTRALS in the accent's hue, each mode's colour of a pair in that mode's accent."""
     light, dark = _hex(accent.light), _hex(accent.dark)
@@ -389,7 +392,8 @@ def _blue(rgb: RGB) -> bool:
 
 def _speakers(accent: Accent) -> list[tuple[str, str]]:
     """The speakers whose colour this accent changes: one in the accent's hue in either mode takes a spare's place, and
-    each keeps 4.5:1 on every ground of its mode and on the selected passage's tint, as the module's own do on Eneo's.
+    each keeps 4.5:1 on every ground of its mode and on the selected and the playing passage's tints, as the module's own
+    do on Eneo's.
 
     The light and the dark accent can lie in two hues, so the spares can run out (light #146E41 with dark #E198E1 leaves
     one for two speakers). A speaker then keeps its lightness and saturation in the hue, in steps of 5 degrees, that lies
@@ -399,7 +403,7 @@ def _speakers(accent: Accent) -> list[tuple[str, str]]:
     grounds = []
     for mode in (LIGHT, DARK):
         neutrals = _neutrals(accents[mode.side], mode)
-        tints = [_blend(accents[mode.side], neutrals[token], mode.tint) for token in ("--color-background-surface", "--color-background-card")]
+        tints = [_blend(accents[mode.side], neutrals[token], tint) for token in _TINTED for tint in (mode.tint, _TRANSCRIPT_TINTS[mode.side][0])]
         grounds.append([neutrals[token] for token in _GROUNDS] + tints)
 
     def readable(pair) -> tuple[RGB, RGB]:
@@ -407,25 +411,74 @@ def _speakers(accent: Accent) -> list[tuple[str, str]]:
         return light, dark
 
     spares = iter(pair for pair in SPARE_SPEAKERS if not near(pair))
-    chosen: list[tuple[RGB, RGB] | None] = [None if near(pair) else readable(pair) for pair in SPEAKERS]
-    for index, pair in enumerate(SPEAKERS):
-        if chosen[index] is None and (spare := next(spares, None)):
-            chosen[index] = readable(spare)
-    for index, pair in enumerate(SPEAKERS):
-        if chosen[index] is None:
-            others = [colours for colours in chosen if colours]
-            in_hue = lambda hue: readable(tuple(to_hex(_from_hls(hue / 360, *_hls(_hex(own))[1:])) for own in pair))  # noqa: E731
-            room = lambda colours: (  # noqa: E731
-                all(_hue_apart(colours[side], accents[side]) >= _SPEAKER_APART and not _blue(colours[side]) for side in (0, 1)),
-                min(_hue_apart(colours[side], other[side]) for side in (0, 1) for other in [accents, *others]),
-            )
-            chosen[index] = max((in_hue(hue) for hue in range(0, 360, 5)), key=room)
+    # Those apart from the accents first, as the others are placed apart from them. The spares go to the first in an
+    # accent's hue, so a speaker given a hue of its own is placed apart from every spare too.
+    chosen = {index: readable(pair) for index, pair in enumerate(SPEAKERS) if not near(pair)}
     changed = []
     for index, pair in enumerate(SPEAKERS):
-        light, dark = (to_hex(rgb) for rgb in chosen[index])  # type: ignore[union-attr]
+        if index in chosen:
+            colours = chosen[index]
+        elif spare := next(spares, None):
+            colours = readable(spare)
+        else:
+            in_hue = lambda hue: readable(tuple(to_hex(_from_hls(hue / 360, *_hls(_hex(own))[1:])) for own in pair))  # noqa: E731
+            room = lambda candidate: (  # noqa: E731
+                all(_hue_apart(candidate[side], accents[side]) >= _SPEAKER_APART and not _blue(candidate[side]) for side in (0, 1)),
+                min(_hue_apart(candidate[side], other[side]) for side in (0, 1) for other in [accents, *chosen.values()]),
+            )
+            colours = max((in_hue(hue) for hue in range(0, 360, 5)), key=room)
+        chosen[index] = colours
+        light, dark = (to_hex(rgb) for rgb in colours)
         if (light, dark) != pair:
             changed.append((f"--module-speaker-{index}", f"light-dark({light}, {dark})"))
     return changed
+
+
+def _tint_share(accent: RGB, mode: _Mode) -> float:
+    """The share of the transcript's tints, in hundredths, that keeps its text at 4.5:1 on them all together
+    (_TRANSCRIPT_TINTS): the whole of them, unless the accent is very light in dark mode or very dark in light mode."""
+    neutrals = _neutrals(accent, mode)
+
+    def holds(share: float) -> bool:
+        for token in _TINTED:
+            behind = neutrals[token]
+            for alpha in _TRANSCRIPT_TINTS[mode.side]:
+                behind = _blend(accent, behind, alpha * share)
+            if contrast(neutrals["--color-text-primary"], behind) < MIN_CONTRAST:
+                return False
+        return True
+
+    return next(share for share in (hundredths / 100 for hundredths in range(100, -1, -1)) if holds(share))
+
+
+def _transcript_tint(accent: Accent) -> list[tuple[str, str]]:
+    """What the transcript's tints are mixed from (--module-accent-tint), in a mode where the whole of them would take its
+    text under 4.5:1: the accent at its share (_tint_share) as the alpha. Nothing where both modes keep the whole tints."""
+    shares = (_tint_share(_hex(accent.light), LIGHT), _tint_share(_hex(accent.dark), DARK))
+    if shares == (1, 1):
+        return []
+    light, dark = (
+        colour if share == 1 else "rgba(%d, %d, %d, %g)" % (*_hex(colour), share)
+        for colour, share in zip((accent.light, accent.dark), shares)
+    )
+    return [("--module-accent-tint", f"light-dark({light}, {dark})")]
+
+
+def _default_tint() -> list[tuple[str, str]]:
+    """The transcript's tint for the theme's own accent, Eneo's: held to its text like any accent's, so the default and
+    ORGANIZATION_ACCENT set to Eneo's colours give the same."""
+    eneo = resolve_accent(*ENEO_ACCENT)
+    assert eneo is not None
+    return _transcript_tint(eneo)
+
+
+# Without ORGANIZATION_ACCENT the theme's own accent stays, and nothing but the transcript's tint is set.
+NO_ACCENT_CSS = (
+    "/* Ingen ORGANIZATION_ACCENT är satt: modulens standardfärg gäller. */\n"
+    + '[data-astryx-theme="eneo"] {\n'
+    + "".join(f"  {token}: {value};\n" for token, value in _default_tint())
+    + "}\n"
+)
 
 
 def theme_css(accent: Accent | None) -> str:
@@ -440,7 +493,7 @@ def theme_css(accent: Accent | None) -> str:
         '[data-astryx-theme="eneo"] {\n'
         f"  --color-accent: light-dark({accent.light}, {accent.dark});\n"
         f"  --color-on-accent: light-dark({accent.on_light}, {accent.on_dark});\n"
-        + "".join(f"  {token}: {value};\n" for token, value in _hued(accent) + _speakers(accent))
+        + "".join(f"  {token}: {value};\n" for token, value in _hued(accent) + _speakers(accent) + _transcript_tint(accent))
         + "}\n"
     )
 

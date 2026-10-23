@@ -184,7 +184,7 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
 
 @app.get("/api/branding/theme.css")
 async def get_branding_theme(request: Request) -> Response:
-    """The accent override the page links after its built theme; empty (a comment) without ORGANIZATION_ACCENT."""
+    """The accent override the page links after its built theme; without ORGANIZATION_ACCENT only the transcript's tint."""
     css = theme_css(settings.accent)
     headers = {
         "Cache-Control": "public, max-age=300",

@@ -916,7 +916,7 @@
         ],
         "summary": "Accentfärgens stilmall",
         "operationId": "get_api_branding_theme_css",
-        "description": "Sidan länkar den efter sitt byggda tema. Innehållet är en fast mall med en redan kontrollerad accent, eller en tom kommentar utan `ORGANIZATION_ACCENT`. `ETag` och `If-None-Match` ger `304`.",
+        "description": "Sidan länkar den efter sitt byggda tema. Innehållet är en fast mall med en redan kontrollerad accent, eller utan `ORGANIZATION_ACCENT` bara transkriberingens ton (`--module-accent-tint`). `ETag` och `If-None-Match` ger `304`.",
         "parameters": [
           {
             "name": "If-None-Match",
