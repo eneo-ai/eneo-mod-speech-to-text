@@ -125,12 +125,11 @@ jobs:
         if: matrix.suite == 'production' || matrix.suite == 'real-backend'
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - run: npm ci
-      # apt gives up on a stalled download and tries it again (.github/apt.conf).
-      - name: Let apt retry a stalled download
-        run: sudo cp ${{ github.workspace }}/.github/apt.conf /etc/apt/apt.conf.d/99-ci
+      # Three minutes a try, three tries, apt's settings first (.github/apt-retry.sh): a mirror that stalls or trickles is
+      # cut off and tried again.
       - name: Install the browsers' system libraries
-        timeout-minutes: 10
-        run: npx playwright install-deps $BROWSERS
+        timeout-minutes: 12
+        run: ${{ github.workspace }}/.github/apt-retry.sh npx playwright install-deps $BROWSERS
       # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install browsers
         timeout-minutes: 16
@@ -139,7 +138,7 @@ jobs:
       # which a runner has none of: one that plays into a sink of nothing stands in for a computer's.
       - name: A sound server for Firefox
         if: matrix.suite == 'firefox'
-        run: sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
+        run: ${{ github.workspace }}/.github/apt-retry.sh sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
       - name: Production build in three engines
         if: matrix.suite == 'production'
         run: npm run test:prod -- --workers=2 --add-reporter=json
@@ -271,15 +270,12 @@ jobs:
           cache-dependency-path: backend/requirements.lock
       - name: Install backend dependencies
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
-      # apt gives up on a stalled download and tries it again (.github/apt.conf).
-      - name: Let apt retry a stalled download
-        run: sudo cp ${{ github.workspace }}/.github/apt.conf /etc/apt/apt.conf.d/99-ci
       - name: Install what the acceptance's browser checks need
         working-directory: frontend
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           npm ci
-          npx playwright install-deps chromium
+          ${{ github.workspace }}/.github/apt-retry.sh npx playwright install-deps chromium
           for try in 1 2 3; do timeout 300 npx playwright install chromium && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       - name: Accept the image
         env:

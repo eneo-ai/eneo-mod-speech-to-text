@@ -42,11 +42,10 @@ jobs:
       # Astro generates content types during the build, including OpenAPI pages.
       - name: Check strict TypeScript
         run: npm run typecheck
-      # apt gives up on a stalled download and tries it again (.github/apt.conf).
-      - name: Let apt retry a stalled download
-        run: sudo cp ${{ github.workspace }}/.github/apt.conf /etc/apt/apt.conf.d/99-ci
+      # Three minutes a try, three tries, apt's settings first (.github/apt-retry.sh): a mirror that stalls or trickles is
+      # cut off and tried again.
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        run: ${{ github.workspace }}/.github/apt-retry.sh npx playwright install --with-deps chromium
       # Every documentation and API page in both themes, plus search, keyboard, narrow menus and diagrams.
       - name: Check the built site in a browser
         run: npm run check
