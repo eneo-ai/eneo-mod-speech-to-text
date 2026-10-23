@@ -13,8 +13,8 @@
  * another scale.
  */
 
-const EBML_HEADER = 0x1a45dfa3;
-const SEGMENT = 0x18538067;
+import { Bytes, bytesOf, EBML_HEADER, element, SEGMENT, type Element } from "./ebml";
+
 const SEEK_HEAD = 0x114d9b74;
 const INFO = 0x1549a966;
 const TIMECODE_SCALE = 0x2ad7b1;
@@ -23,40 +23,12 @@ const DURATION = 0x4489;
 const CRC_32 = 0xbf;
 /** Info comes before the first Cluster, a few hundred bytes in: only this much of a first chunk is read and copied. */
 const HEADER_BYTES = 16 * 1024;
-const HEADER_READ_MS = 2_000;
 const DEFAULT_TIMECODE_SCALE_NS = 1_000_000;
 
-interface Element {
-  id: number;
-  sizeStart: number;
-  sizeLength: number;
-  dataStart: number;
-  /** null: unknown size, the element runs to the end of its parent. */
-  size: number | null;
-}
-
-/** An EBML variable-length field's length: the leading zeros of its first byte, plus one. */
-function fieldLength(first: number | undefined): number {
-  return first ? Math.clz32(first) - 23 : 0;
-}
-
 /** The element at `start`, whole before `end` unless its size is unknown; null when cut off or malformed. */
-function readElement(bytes: Uint8Array, start: number, end = bytes.length): Element | null {
-  const idLength = fieldLength(bytes[start]);
-  const sizeStart = start + idLength;
-  const sizeLength = fieldLength(bytes[sizeStart]);
-  const dataStart = sizeStart + sizeLength;
-  if (idLength < 1 || sizeLength < 1 || dataStart > bytes.length) return null;
-  let id = 0;
-  for (let i = start; i < sizeStart; i++) id = id * 256 + bytes[i];
-  let size = bytes[sizeStart] & (0xff >> sizeLength);
-  let unknown = size === 0xff >> sizeLength;
-  for (let i = sizeStart + 1; i < dataStart; i++) {
-    size = size * 256 + bytes[i];
-    unknown &&= bytes[i] === 0xff;
-  }
-  if (!unknown && dataStart + size > end) return null;
-  return { id, sizeStart, sizeLength, dataStart, size: unknown ? null : size };
+function readElement(bytes: Bytes, start: number, end = bytes.end): Element | null {
+  const found = element(bytes, start);
+  return found && (found.size === null || found.dataStart + found.size <= end) ? found : null;
 }
 
 /** A size field for `value`, at least `minLength` bytes (all ones would mean "unknown"). */
@@ -72,17 +44,18 @@ function sizeField(value: number, minLength: number): Uint8Array {
 }
 
 export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Array | null {
-  const header = readElement(bytes, 0);
+  const elements = new Bytes([bytes]);
+  const header = readElement(elements, 0);
   if (header?.id !== EBML_HEADER || header.size === null) return null;
   // The Segment runs on past these first bytes; only its own id and size need to be here.
-  const segment = readElement(bytes, header.dataStart + header.size, Infinity);
+  const segment = readElement(elements, header.dataStart + header.size, Infinity);
   if (segment?.id !== SEGMENT) return null;
 
   // Info comes before the first Cluster, whose size a recorder leaves unknown.
   let info: (Element & { size: number }) | null = null;
   let seekHead = false;
   for (let at = segment.dataStart; !info; ) {
-    const child = readElement(bytes, at);
+    const child = readElement(elements, at);
     if (!child || child.size === null || child.id === CRC_32) return null;
     if (child.id === INFO) info = { ...child, size: child.size };
     seekHead ||= child.id === SEEK_HEAD;
@@ -93,7 +66,7 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
   let scale = DEFAULT_TIMECODE_SCALE_NS;
   let duration: Element | null = null;
   for (let at = info.dataStart; at < infoEnd; ) {
-    const child = readElement(bytes, at, infoEnd);
+    const child = readElement(elements, at, infoEnd);
     if (!child || child.size === null || child.id === CRC_32) return null;
     if (child.id === TIMECODE_SCALE) {
       scale = 0;
@@ -164,11 +137,7 @@ export async function withRecordedDuration(
   }
   const blob = first;
   const head = blob.slice(0, HEADER_BYTES);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const bytes = await Promise.race([
-    head.arrayBuffer().then((buffer) => new Uint8Array(buffer), () => null),
-    new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), HEADER_READ_MS))),
-  ]).finally(() => clearTimeout(timer));
+  const bytes = await bytesOf(head);
   const patched = bytes && withWebmDuration(bytes, durationMs);
   return patched ? new Blob([patched as BlobPart, blob.slice(head.size)]) : first;
 }

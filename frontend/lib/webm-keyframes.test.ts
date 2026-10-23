@@ -138,6 +138,18 @@ test("marked as the chunks come, a batch at a time, a part's bytes are those of 
   }
 });
 
+test("a part that needs no marking goes through the batches as its very chunks, wherever its first block is cut", async () => {
+  for (const size of [1, 2, 3, 5]) {
+    const chunks = cut(CHROME_WEBM, [...CHROME_WEBM.keys()].slice(1));
+    const mark = keyframeMarker("audio/webm");
+    const out: (Blob | ArrayBuffer | Uint8Array)[] = [];
+    for (let at = 0; at < chunks.length; at += size) out.push(...(await mark(chunks.slice(at, at + size))));
+    out.push(...(await mark([], true)));
+    assert.equal(out.length, chunks.length, `batches of ${size}`);
+    assert.ok(out.every((chunk, i) => chunk === chunks[i]), `batches of ${size}: the very chunks, in order`);
+  }
+});
+
 test("a Safari part of hours is read from the device a batch at a time, every block a keyframe, and never whole", async () => {
   const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
   const recording = await store.create(meeting);
