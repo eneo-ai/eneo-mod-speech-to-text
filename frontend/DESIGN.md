@@ -87,7 +87,8 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Body, surface and card** (`#F4F7FB`/`#070C16`, `#FFFFFF`/`#0B1322`, `#FFFFFF`/`#0F1828`): the page rests on the
   body colour; the bar is the surface; cards are white. In dark mode a surface lightens as it rises.
 - **Text** (`#141A26`/`#E4E9F0`, secondary `#4F5A6B`/`#9AA8BC`).
-- **Borders** (a hairline `rgba(20,40,80,.08)`; a control's edge `#758093`/`#6E7E96`, 3:1 on every ground).
+- **Borders** (a hairline `rgba(20,40,80,.08)`; a control's edge `#758093`/`#6E7E96`, 3:1 on every ground, also the
+  position slider's unplayed track).
 
 ### Categorical hues
 - web-next's purple, teal and green, as a tile's tint and icon (`components/IconTile.tsx`), and its yellow for "Osäkert
@@ -302,7 +303,7 @@ switches round. One-pixel borders are `var(--border-width)`.
   own find does; while a query shows its count and arrows, the search takes the row under the chips.
 
 ### Transcript feedback
-- A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
+- A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight; every other match its tint and a dotted underline, so no match is marked by colour alone.
 
 ### Choice
 - Radio lists for one choice of a few, each a row without a box of its own, its radio on the content's edge and its

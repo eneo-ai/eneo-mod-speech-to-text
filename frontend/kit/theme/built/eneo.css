@@ -537,6 +537,10 @@
     hyphens: auto;
   }
 
+  .astryx-slider-track {
+    background-color: var(--color-border-emphasized);
+  }
+
   .astryx-slider-control {
     min-block-size: 24px;
   }

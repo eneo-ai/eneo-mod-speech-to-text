@@ -225,6 +225,10 @@ export const eneoTheme = defineTheme({
     // the one not chosen at the window's edge.
     'tab-strip': {base: {flexWrap: 'wrap'}},
     tab: {base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', overflowWrap: 'break-word', hyphens: 'auto'}},
+    // The position slider's unplayed track is a control's edge colour: 3:1 on the card (WCAG 1.4.11), so where the
+    // recording ends shows at its start. The design system's track (--color-track) is 1.3:1; the level meter and the
+    // upload's bar keep that token, beside words that say the same.
+    'slider-track': {base: {backgroundColor: 'var(--color-border-emphasized)'}},
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
     'slider-control': {base: {minBlockSize: MOUSE_TARGET}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line. Chips stand 8 px apart

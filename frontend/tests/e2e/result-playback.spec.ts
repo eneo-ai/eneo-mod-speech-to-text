@@ -41,6 +41,61 @@ async function textContrast(target: Locator) {
   });
 }
 
+/** The contrast of `target`'s own fill against what it is drawn on (WCAG 1.4.11 for a control's part). */
+async function fillContrast(target: Locator) {
+  return target.evaluate((element) => {
+    type Color = [number, number, number, number];
+    const context = document.createElement("canvas").getContext("2d")!;
+    const color = (value: string): Color => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = value;
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
+    };
+    const over = ([r, g, b, a]: Color, [R, G, B]: Color): Color => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
+    const background = (node: Element | null): Color => {
+      if (!node) return [255, 255, 255, 1];
+      const own = color(getComputedStyle(node).backgroundColor);
+      return own[3] === 1 ? own : over(own, background(node.parentElement));
+    };
+    const luminance = ([r, g, b]: Color) => {
+      const channel = (v: number) => v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4;
+      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    };
+    const ground = background(element.parentElement);
+    const fill = over(color(getComputedStyle(element).backgroundColor), ground);
+    const [hi, lo] = [luminance(fill), luminance(ground)].sort((a, b) => b - a);
+    return { fill: fill.slice(0, 3), ground: ground.slice(0, 3), ratio: (hi + 0.05) / (lo + 0.05) };
+  });
+}
+
+test("the position slider's track shows where the recording ends, at 3:1 on its card in both colour modes", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "phone-390-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name));
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const track = page.locator("[data-docked-player] .astryx-slider-track");
+  const pair = await fillContrast(track);
+  expect(pair.ratio, `the unplayed track: ${JSON.stringify(pair)} (WCAG 1.4.11)`).toBeGreaterThanOrEqual(3);
+});
+
+test("every match of a search is marked by more than its tint, and apart from the current one (WCAG 1.4.1)", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name));
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("punkten");
+  const match = page.locator('[data-hit="match"]').first();
+  const current = page.locator('[data-hit="current"]');
+  await expect(match).toBeVisible();
+  const look = (hit: Locator) => hit.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { line: style.textDecorationLine, style: style.textDecorationStyle, outline: style.outlineStyle };
+  });
+  const [other, chosen] = [await look(match), await look(current)];
+  expect(other.line, "a match is underlined").toContain("underline");
+  expect(other, "the current match looks different").not.toEqual(chosen);
+});
+
 test("a word in the result plays its audio from the word, also from a pause, and the highlight follows playback", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light", "laptop-1440-dark", "forced-colors"].includes(info.project.name));
   await result(page);

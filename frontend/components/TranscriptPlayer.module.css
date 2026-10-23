@@ -663,9 +663,13 @@
   text-underline-offset: 3px;
 }
 
+/* Every match: its tint and a dotted line under it, so it is not marked by a colour of 1.2:1 alone (WCAG 1.4.1); the
+   current one has a solid line and its outline. */
 .match {
   background: var(--color-accent-muted);
   color: var(--color-text-primary);
+  text-decoration: underline dotted var(--color-accent);
+  text-underline-offset: var(--spacing-0-5);
 }
 
 .currentMatch {

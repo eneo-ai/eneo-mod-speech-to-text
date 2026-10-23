@@ -419,6 +419,11 @@ export const eneoTheme = {
         "hyphens": "auto"
       }
     },
+    "slider-track": {
+      "base": {
+        "backgroundColor": "var(--color-border-emphasized)"
+      }
+    },
     "slider-control": {
       "base": {
         "minBlockSize": "24px"
