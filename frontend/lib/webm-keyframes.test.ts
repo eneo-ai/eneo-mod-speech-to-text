@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import { openRecordingStore, type NewRecording } from "./recording-store";
+import { withRecordedDuration } from "./webm-duration";
+import * as keyframes from "./webm-keyframes";
 import { keyframeMarker, markKeyframes, withKeyframes } from "./webm-keyframes";
 
 const hex = (text: string) => Uint8Array.from(text.match(/../g) ?? [], (byte) => parseInt(byte, 16));
@@ -176,4 +178,54 @@ test("a Safari part of hours is read from the device a batch at a time, every bl
   assert.equal(flags.length, 600);
   assert.ok(flags.every((flag) => flag & 0x80), "every block flagged");
   assert.ok(Math.max(...reads) < 601, `read in batches, never whole: ${reads.join(", ")}`);
+});
+
+/**
+ * Sends a part the device refused from its first chunk (all of it held in this tab): the first chunk, then 600 of a block
+ * each, more than two batches. Its bytes must be those of marking it whole, through the marker a batch at a time.
+ * How many chunks it read.
+ */
+async function sendRefused(t: TestContext, first: BlobPart[], each: (timecode: string) => string): Promise<number> {
+  const put = IDBObjectStore.prototype.put;
+  t.mock.method(IDBObjectStore.prototype, "put", function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  });
+  const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  const timecode = (i: number) => (i % 256).toString(16).padStart(2, "0") + "00";
+  const chunks = [new Blob(first), ...Array.from({ length: 600 }, (_, i) => new Blob([hex(each(timecode(i)))]))];
+  for (const [i, chunk] of chunks.entries()) await store.append(recording.id, 0, chunk, 2_000 * (i + 1));
+  assert.equal(store.refused(recording.id), "full", "all of it only in this tab");
+  const unbatched = await withKeyframes(chunks, meeting.mimeType);
+  unbatched[0] = await withRecordedDuration(unbatched[0], 2_000 * chunks.length, meeting.mimeType);
+
+  const batches: number[] = [];
+  const marker = keyframes.keyframeMarker;
+  t.mock.method(keyframes, "keyframeMarker", (mimeType: string) => {
+    const mark = marker(mimeType);
+    return (batch: Parameters<typeof mark>[0], last?: boolean) => (batches.push(batch.length), mark(batch, last));
+  });
+  const reads = t.mock.method(Blob.prototype, "arrayBuffer");
+  const [file] = await store.readPartsToSend(recording.id);
+  const read = reads.mock.callCount();
+  assert.equal(batches.reduce((sum, n) => sum + n, 0), chunks.length, "every chunk through the marker");
+  assert.ok(Math.max(...batches) <= 256, `a batch at a time, never whole: ${batches.join(", ")}`);
+  assert.deepEqual(await asBytes([file.blob]), await asBytes(unbatched), "the bytes of reading it whole");
+  return read;
+}
+
+/** A SimpleBlock as Chrome writes it: a one-byte size, track 1, timecode, the keyframe flag, eight bytes of audio. */
+const chromeBlock = (timecode: string) => "a38c81" + timecode + "80" + "fb03ff0000000000";
+
+test("Chrome audio the device refused goes a batch at a time as its very bytes, read no further than its first block", async (t) => {
+  // The first chunk holds the header and the first blocks, as a recorder's does.
+  const first = [CHROME_WEBM, hex("0000000000" + chromeBlock("0014") + chromeBlock("0028"))];
+  assert.equal(await sendRefused(t, first, chromeBlock), 2, "the first chunk for its first block, and its header for the duration");
+});
+
+test("Safari audio the device refused is marked a batch at a time, every chunk read once", async (t) => {
+  // The duration goes into the marked copy of the first chunk, already in memory.
+  assert.equal(await sendRefused(t, [hex(SAFARI_HEADER + cluster("06"))], block), 601);
 });
