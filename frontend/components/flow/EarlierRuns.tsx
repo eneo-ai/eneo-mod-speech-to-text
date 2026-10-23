@@ -10,6 +10,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { pendingReviews, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { formatRelativeDate } from "@/lib/format";
 import { runOutcome, runStatusLabel } from "@/lib/run-progress";
+import { useNarrowerThan } from "./useRoomInRow";
 
 const OUTCOME: Record<string, [LucideIcon, "success" | "error" | "secondary"]> = {
   succeeded: [CheckCircle2, "success"],
@@ -59,6 +60,10 @@ export function EarlierRuns({
   // Test runs started from Eneo's editor are not this user's documents.
   const shown = list.runs.filter((run) => run.purpose !== "test");
   const section = useRef<HTMLElement>(null);
+  // A row is its icon, the date over the state, and the action at its end: 14 rem of the root text holds the longest of
+  // them. Narrower (the reader's largest text, a phone's 200 % zoom) the date and the state take the row's whole width
+  // and the action stands under them, so neither is cut off; the state's word says what the icon would.
+  const room = useNarrowerThan(14);
   // After "Visa fler körningar", focus goes to the first run it added.
   const firstNew = useRef<number | null>(null);
   useEffect(() => {
@@ -73,25 +78,37 @@ export function EarlierRuns({
       <Heading level={2} id="earlier-runs">
         Tidigare körningar
       </Heading>
-      <List hasDividers>
+      <List hasDividers ref={room.ref}>
         {shown.map((run) => {
           const outcome = runOutcome(run.status);
           const [glyph, color, action] = outcome
             ? [...OUTCOME[outcome], "Öppna"]
             : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
           const when = run.created_at ? formatRelativeDate(run.created_at) : "";
-          return (
+          // The name says which run, for a screen reader that lists the buttons; the words say what it does.
+          const open = (
+            <Button label={`${action}, körningen ${when}`} variant="secondary" size="sm" data-open-run onClick={() => onOpen(run.id)}>
+              {action}
+            </Button>
+          );
+          return room.narrow ? (
+            <ListItem
+              key={run.id}
+              label={when.replace(/^./, (c) => c.toUpperCase())}
+              description={
+                <VStack gap={2} align="start">
+                  <span>{runStatusLabel(run.status)}</span>
+                  {open}
+                </VStack>
+              }
+            />
+          ) : (
             <ListItem
               key={run.id}
               label={when.replace(/^./, (c) => c.toUpperCase())}
               description={runStatusLabel(run.status)}
               startContent={<Icon icon={glyph} color={color} />}
-              endContent={
-                // The name says which run, for a screen reader that lists the buttons; the words say what it does.
-                <Button label={`${action}, körningen ${when}`} variant="secondary" size="sm" data-open-run onClick={() => onOpen(run.id)}>
-                  {action}
-                </Button>
-              }
+              endContent={open}
             />
           );
         })}
