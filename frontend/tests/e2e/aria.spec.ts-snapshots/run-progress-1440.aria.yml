@@ -1,7 +1,7 @@
 - main:
   - status
   - heading "Dokumentet skapas" [level=1]
-  - status: Skriv rapporten
+  - status: "Pågår: Skriv rapporten"
   - region "Flödets steg":
     - list "Flödets steg":
       - listitem: Transkribera slutfört
