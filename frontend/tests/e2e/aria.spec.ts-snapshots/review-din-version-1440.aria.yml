@@ -13,7 +13,7 @@
     - button "Använd din version":
       - text: ""
       - status
-    - button "Släng din version":
+    - button "Ta bort din version":
       - text: ""
       - status
   - region "Innehåll för granskning":

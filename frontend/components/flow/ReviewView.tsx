@@ -772,7 +772,7 @@ export function ReviewView({
               ) : (
                 <>
                   <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
-                  <Button size="sm" variant="ghost" label="Släng din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+                  <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
                 </>
               )}
             </HStack>
