@@ -10,6 +10,7 @@
   border-style: dashed;
   cursor: pointer;
   text-align: center;
+  transition: border-color var(--duration-fast) var(--ease-standard);
 }
 
 /* With a mouse the edge firms up under the pointer: the whole zone is something to click. */

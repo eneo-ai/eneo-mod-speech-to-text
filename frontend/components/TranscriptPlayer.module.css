@@ -415,7 +415,7 @@
   gap: var(--spacing-3);
   padding: var(--spacing-4) var(--spacing-2);
   border-radius: var(--radius-container);
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
   content-visibility: auto;
   contain-intrinsic-size: auto 5.25rem;
 }
@@ -574,7 +574,7 @@
   border-radius: var(--radius-inner);
   box-decoration-break: clone;
   cursor: pointer;
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 /* The playhead's sentence and word are lit by useTranscriptPlayhead, as data attributes the list never renders. */
@@ -628,7 +628,7 @@
   border-radius: var(--radius-inner);
   box-decoration-break: clone;
   /* A word passed settles into the lighter tone of the words already said: short, and only its colour. */
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 /* Pressing the text plays from it: under a mouse, the word that would play shows it, or the sentence where words have no
@@ -748,7 +748,7 @@
   border: var(--border-width) solid var(--module-color-review);
   border-radius: var(--radius-full);
   color: var(--module-color-review);
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .confirmMark svg {

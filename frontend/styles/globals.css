@@ -1,10 +1,8 @@
-/* The module's own tokens. Motion is on the transitions.dev scale, namespaced: the design system declares
-   --duration-fast (175 ms) in a layer above this one, and a token here without the prefix would be overridden by it. A colour is
-   one declaration for both colour modes, and lib/accessibility.test.ts asserts its contrast against the design system's
-   surfaces. */
+/* The module's own tokens, namespaced: the design system declares its own in a layer above this one, and a token here
+   without the prefix would be overridden by it. Motion is the design system's (--duration-fast with --ease-standard).
+   A colour is one declaration for both colour modes, and lib/accessibility.test.ts asserts its contrast against the
+   design system's surfaces. */
 :root {
-  --module-duration-quick: 150ms;
-  --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* How long a wait goes on before its spinner shows: an answer within it leaves no blink of a spinner. */
   --module-wait-delay: 300ms;
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
@@ -149,6 +147,9 @@ html[data-dock~="top"] {
   *, *::before, *::after { scroll-behavior: auto !important; }
   /* Loading spinners stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
   .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
+  /* A chevron that turns to show open or closed shows it by its end position: no turn on the way (the design system's
+     icon keeps its transform transition, the module's own chevrons have none). */
+  .astryx-icon { transition: none; }
 }
 
 /* A heading takes the focus when its state appears, so a screen reader starts there; it is not a control, and a ring

@@ -39,6 +39,10 @@
 }
 
 /* Where a pointer hovers, the row tints and its chevron takes the accent; nothing moves. */
+.chevron {
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
 @media (hover: hover) {
   .row:hover .chevron {
     color: var(--color-accent);

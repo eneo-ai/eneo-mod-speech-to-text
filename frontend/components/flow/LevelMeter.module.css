@@ -20,9 +20,10 @@
   border-radius: var(--radius-full);
 }
 
+/* A step settles before the next-but-one reading (15 a second): the band's shortest, on the design system's curve. */
 .steps .bar {
   background: var(--color-track);
-  transition: background-color var(--duration-fast);
+  transition: background-color var(--duration-fast-min) var(--ease-standard);
 }
 
 .steps .bar[data-lit="true"] {

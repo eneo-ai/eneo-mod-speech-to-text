@@ -313,8 +313,8 @@ export const eneoTheme = defineTheme({
     // system's translucent grey is 1.5:1. Set as the grey the switch's own off, hover and disabled rules read, so its on
     // track and its forced-colours tracks stay the design system's.
     switch: {base: {'--color-background-gray': 'var(--color-border-emphasized)'}},
-    // A dialog opens over the medium band's longest step (--duration-medium-max, 550 ms), which reads as the page
-    // catching up with the press: the fast band's longest is enough to show where it came from. A dialog that has the
+    // A dialog opens over the fast band's longest step (--duration-fast-max, 230 ms): long enough to show where it came
+    // from, short enough not to hold up the press; it closes at once. A dialog that has the
     // focus itself (Firefox and Safari stop on it, Shift+Tab from its first control) rings itself inside its edge, on its
     // own surface: outside it the ring stands on the dimmed page, which the accent is not checked against (Eneo's blue
     // changes it by less than 3:1 there).

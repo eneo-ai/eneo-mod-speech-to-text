@@ -18,7 +18,7 @@
 }
 
 .chevron {
-  transition: transform var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: transform var(--duration-fast) var(--ease-standard);
 }
 
 .chevronOpen {
