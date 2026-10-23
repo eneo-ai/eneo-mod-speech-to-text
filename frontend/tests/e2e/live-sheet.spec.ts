@@ -4,10 +4,11 @@
  * while the reader is at the end, and "Visa senaste" brings it back after a scroll up. A stage that grows with its text
  * pushes the newest line out of the window and the bar's controls with it, which only a long text shows.
  */
-import { type Page } from "@playwright/test";
+import { type Page, type WebSocketRoute } from "@playwright/test";
 import { TEXT_SPACING } from "./checks";
 import { expect, test } from "./gate";
 import { longLiveText, WORDS } from "./live-relay";
+import { countRenders } from "./react-renders";
 import { record, setup } from "./screens";
 
 // The narrow windows are where the stage is the page's own height; one laptop is the control.
@@ -50,6 +51,32 @@ test("long live text scrolls inside its sheet above the recording bar, follows t
   await latest.click();
   await expect.poll(async () => (await geometry(page)).fromEnd, { message: "Visa senaste shows the newest line" }).toBeLessThan(4);
   await expect(latest).toBeHidden();
+});
+
+test("a word of live text renders the paragraph it joins, not the meeting's paragraphs before it", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "counts renders on the dev profile, on a phone and a laptop");
+  const texts = await countRenders(page, "Text");
+  let relay: WebSocketRoute | null = null;
+  await page.routeWebSocket(/\/api\/live\//, (ws) => {
+    relay = ws;
+    ws.send(JSON.stringify({ type: "ready", sample_rate: 16000, max_seconds: 18000 }));
+  });
+  const say = (text: string) => relay!.send(JSON.stringify({ type: "transcript.delta", text }));
+  await setup(page);
+  await record(page, "Strömma");
+  await expect.poll(() => relay !== null).toBe(true);
+  // Five sentences make a paragraph: twenty of them, as some twenty minutes of a meeting.
+  for (let sentence = 0; sentence < 120; sentence += 1) say(`${sentence ? " " : ""}Mening ${sentence + 1} är sagd.`);
+  const paragraphs = () => page.getByRole("log", { name: "Preliminär text" }).locator("p").count();
+  await expect.poll(paragraphs, { timeout: 30_000 }).toBeGreaterThanOrEqual(20);
+  await texts.settled();
+  await texts.reset();
+
+  say(" Nästa");
+  await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Nästa");
+  // The paragraph the word joins (its text and the words still arriving) and the sheet's own lines; every paragraph
+  // before it rendered again was twenty more.
+  expect(await texts.settled(), `Text rendered for one word, with ${await paragraphs()} paragraphs`).toBeLessThanOrEqual(6);
 });
 
 test("with the flow's details unfolded the page is taller than the window: the region scrolls to the bar, whose controls are then in reach", async ({ page }, info) => {

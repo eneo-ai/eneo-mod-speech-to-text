@@ -1,5 +1,5 @@
 import { Minimize2, Presentation } from "lucide-react";
-import { memo, type RefObject, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, type RefObject, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -27,13 +27,33 @@ export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   return out;
 }
 
-// A paragraph renders again only when one of its pieces is another (a new one, or the relay's final text in place of a
+const samePieces = (before: LivePiece[], after: LivePiece[]) => before.length === after.length && before.every((piece, i) => piece === after[i]);
+
+// A paragraph's pieces render again only when one of them is another (a new one, or the relay's final text in place of a
 // session's), not with every word still arriving.
 const Pieces = memo(
   function Pieces({ pieces }: { pieces: LivePiece[] }) {
     return pieces.map((piece, i) => <span key={i}>{(i > 0 ? " " : "") + piece.text}</span>);
   },
-  (before, after) => before.pieces.length === after.pieces.length && before.pieces.every((piece, i) => piece === after.pieces[i]),
+  (before, after) => samePieces(before.pieces, after.pieces),
+);
+
+// A paragraph renders again only when its pieces or the words still arriving at its end change: a word renders the last
+// paragraph, never the hours of them before it.
+const Paragraph = memo(
+  function Paragraph({ pieces, pending, forRoom }: { pieces: LivePiece[]; pending: string; forRoom: boolean }) {
+    return (
+      <Text as="p" {...(forRoom ? ({ type: "inherit" } as const) : ({ size: "lg" } as const))}>
+        <Pieces pieces={pieces} />
+        {pending && (
+          <Text type="inherit" color="secondary" aria-hidden>
+            {" " + pending.trim()}
+          </Text>
+        )}
+      </Text>
+    );
+  },
+  (before, after) => before.pending === after.pending && before.forRoom === after.forRoom && samePieces(before.pieces, after.pieces),
 );
 
 const TABLET = "(min-width: 768px)";
@@ -84,7 +104,7 @@ export function LiveSheet({
   const fullscreen = useFullscreen(room ?? noRoom);
   const forRoom = fullscreen.active;
   const status = liveStatusLine(useSettledLiveStatus(snapshot.status), snapshot.started, recorder, forRoom);
-  const groups = paragraphs(snapshot.pieces);
+  const groups = useMemo(() => paragraphs(snapshot.pieces), [snapshot.pieces]);
   const noText = groups.length === 0 && !snapshot.pending;
   // A failure replaces the placeholder; the persistent status region announces it once.
   const empty = noText && (status !== null || snapshot.status !== "unavailable");
@@ -165,14 +185,7 @@ export function LiveSheet({
           )}
           <VStack gap={4} maxWidth="68ch" className={styles.text}>
             {groups.map((group, index) => (
-              <Text as="p" {...size} key={index}>
-                <Pieces pieces={group} />
-                {index === groups.length - 1 && snapshot.pending && (
-                  <Text type="inherit" color="secondary" aria-hidden>
-                    {" " + snapshot.pending.trim()}
-                  </Text>
-                )}
-              </Text>
+              <Paragraph key={index} pieces={group} pending={index === groups.length - 1 ? snapshot.pending : ""} forRoom={forRoom} />
             ))}
             {groups.length === 0 && snapshot.pending && (
               <Text as="p" {...size} color="secondary" aria-hidden>
