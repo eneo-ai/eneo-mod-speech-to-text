@@ -9,7 +9,7 @@ import { TEXT_SPACING } from "./checks";
 import { expect, test } from "./gate";
 import { longLiveText, WORDS } from "./live-relay";
 import { countRenders } from "./react-renders";
-import { record, setup } from "./screens";
+import { record, setup, stop } from "./screens";
 
 // The narrow windows are where the stage is the page's own height; one laptop is the control.
 test.beforeEach(({}, info) =>
@@ -255,5 +255,32 @@ test("on a phone the sheet's head says Preliminär on its first line and when th
     expect(Math.abs(sentence.left - pill.left), "from the same edge").toBeLessThan(2);
   } else {
     expect(sentence.left, "beside the pill").toBeGreaterThan(pill.left + 20);
+  }
+});
+
+test("after Stoppa, the draft keeps its reading position and the focus when the window crosses the phone's width, either way", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone turned on its side and back");
+  await longLiveText(page);
+  await setup(page);
+  await record(page, "Strömma");
+  await expect.poll(async () => (await geometry(page)).words, { timeout: 30_000 }).toBeGreaterThanOrEqual(WORDS - 5);
+  await stop(page);
+  const draft = page.getByRole("region", { name: "Preliminär text" });
+  // How far into the text the box's top line is, as a share of the text: the lines wrap anew at another width.
+  const reading = () =>
+    draft.evaluate((element) => ({
+      share: Math.round((element.scrollTop / element.scrollHeight) * 100) / 100,
+      focused: document.activeElement === element,
+    }));
+  await draft.focus();
+  await draft.evaluate((element) => void (element.scrollTop = (element.scrollHeight - element.clientHeight) / 2));
+  const read = await reading();
+  expect(read.share, "the draft scrolls, and is read in its middle").toBeGreaterThan(0.3);
+
+  for (const width of [844, 390]) {
+    await page.setViewportSize({ width, height: 390 });
+    await expect.poll(reading, { message: `the same place in the text and the focus at ${width} px` }).toEqual(
+      expect.objectContaining({ focused: true, share: expect.closeTo(read.share, 1) }),
+    );
   }
 });

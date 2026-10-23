@@ -13,10 +13,12 @@ export async function longLiveText(page: Page) {
       if (sent >= WORDS) return clearInterval(timer);
       send({ type: "transcript.delta", text: (sent ? " " : "") + SENTENCE[sent++ % SENTENCE.length] });
     }, 8);
+    // The final text is the words sent, as a relay's is: the draft after Stoppa keeps them.
+    const said = () => Array.from({ length: sent }, (_, i) => SENTENCE[i % SENTENCE.length]).join(" ");
     ws.onClose(() => clearInterval(timer));
     ws.onMessage((message) => {
       if (typeof message === "string" && JSON.parse(message).type === "stop") {
-        send({ type: "transcript.done", text: "" });
+        send({ type: "transcript.done", text: said() });
         ws.close();
       }
     });
