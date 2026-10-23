@@ -219,6 +219,24 @@ export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: 
 }
 
 /**
+ * Whether a reload or a closed tab asks the browser's own question. Not for a stopped recording the device keeps: it
+ * waits among the unsent recordings and can be continued there, as the page's own question says. It is asked while the
+ * recording runs, is being finished (`finishing`), or is held only in this tab, while something is sent, and for typed
+ * work the browser could not keep.
+ */
+export function asksBeforeClosing(state: {
+  phase: SessionPhase;
+  persistent: boolean | null;
+  refused: DeviceRefusal | null;
+  finishing: boolean;
+  sending: boolean;
+  unstored: boolean;
+}): boolean {
+  const keptOnDevice = state.phase === "ready" && state.persistent === true && !state.refused && !state.finishing;
+  return (state.phase !== "setup" && !keptOnDevice) || state.sending || state.unstored;
+}
+
+/**
  * What "Lämna sidan?" says. A running recording stops: it does not go on in
  * the background. The recording is promised back among unsent recordings
  * only when the device keeps it; otherwise leaving loses it, and the way to

@@ -36,6 +36,8 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Run the fake Eneo's own tests
         run: python -m unittest frontend/tests/e2e/test_stub_eneo.py
+      - name: Run apt-retry.sh's own tests
+        run: bash .github/apt-retry.test.sh
       - name: Run the acceptance scripts' own tests
         run: python -m unittest deploy/acceptance/test_live_load.py deploy/acceptance/test_checks.py
       - name: Audit production dependencies
@@ -97,6 +99,7 @@ jobs:
           - { suite: branding, shard: 1, total: 1 }
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+      CONTROLS_PROJECTS: --project=phone-390-light --project=laptop-1440-light
       BROWSERS: ${{ matrix.suite == 'production' && 'chromium webkit firefox' || matrix.suite == 'webkit' && 'webkit' || matrix.suite == 'firefox' && 'firefox' || 'chromium' }}
     defaults:
       run:
@@ -109,7 +112,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # The browsers of the locked Playwright, kept between runs: their download is what has hung (a job waited 2 h 19 min
-      # in it) and failed on a name lookup. The system libraries are still installed each time (install-deps).
+      # in it) and failed on a name lookup. The system libraries are still installed each time (.github/apt-retry.sh).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -124,9 +127,11 @@ jobs:
         if: matrix.suite == 'production' || matrix.suite == 'real-backend'
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - run: npm ci
+      # apt-get update and install as `sudo timeout`, three tries, the runner's mirror and then two others (.github/apt-retry.sh):
+      # a mirror that stalls or trickles is cut off and another tried.
       - name: Install the browsers' system libraries
-        timeout-minutes: 10
-        run: npx playwright install-deps $BROWSERS
+        timeout-minutes: 18
+        run: ${{ github.workspace }}/.github/apt-retry.sh --playwright $BROWSERS
       # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install browsers
         timeout-minutes: 16
@@ -135,17 +140,26 @@ jobs:
       # which a runner has none of: one that plays into a sink of nothing stands in for a computer's.
       - name: A sound server for Firefox
         if: matrix.suite == 'firefox'
-        run: sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
+        run: ${{ github.workspace }}/.github/apt-retry.sh pulseaudio && pulseaudio --start --exit-idle-time=-1
       - name: Production build in three engines
         if: matrix.suite == 'production'
         run: npm run test:prod -- --workers=2 --add-reporter=json
       # Controls account for most browser time. Shard them separately so a shard of short scans does not wait for them, and by
       # each test's measured time (scripts/controls-shard.mjs), so that no shard holds the slowest states of both projects.
-      - name: Every control, one phone and one laptop
+      # The shard's filter is a step of its own: a filter that cannot be made, or an empty one (which matches every test),
+      # fails the job instead of running every control in every shard.
+      - name: This shard's controls
+        id: shard
         if: matrix.suite == 'controls'
         run: |
-          projects="--project=phone-390-light --project=laptop-1440-light"
-          npx playwright test controls.spec.ts $projects --workers=2 --grep="$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $projects)" --add-reporter=json
+          filter=$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $CONTROLS_PROJECTS) || exit 1
+          test -n "$filter" || exit 1
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+      - name: Every control, one phone and one laptop
+        if: matrix.suite == 'controls'
+        env:
+          FILTER: ${{ steps.shard.outputs.filter }}
+        run: npx playwright test controls.spec.ts $CONTROLS_PROJECTS --workers=2 --grep="$FILTER" --add-reporter=json
       - name: Accessibility gate, one phone and one laptop
         if: matrix.suite == 'accessibility'
         run: npx playwright test --grep-invert='controls\.spec\.ts' --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
@@ -260,10 +274,10 @@ jobs:
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - name: Install what the acceptance's browser checks need
         working-directory: frontend
-        timeout-minutes: 20
+        timeout-minutes: 35
         run: |
           npm ci
-          npx playwright install-deps chromium
+          ${{ github.workspace }}/.github/apt-retry.sh --playwright chromium
           for try in 1 2 3; do timeout 300 npx playwright install chromium && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       - name: Accept the image
         env:

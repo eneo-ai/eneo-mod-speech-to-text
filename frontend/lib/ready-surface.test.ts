@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
-import { createElement } from "react";
+import { createElement, useSyncExternalStore } from "react";
 
 import { loginState } from "./login-state";
+import type { RunContract } from "./api";
 import type { StoredRecording } from "./recording-store";
 import { cleanup, installDom, mount } from "./test-dom";
 
@@ -43,6 +44,8 @@ async function ready(props: Record<string, unknown> = {}) {
   );
   return { ...view, calls };
 }
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 const question = () => document.querySelector<HTMLDialogElement>('[role="alertdialog"]');
 
@@ -284,4 +287,117 @@ test("an unconfirmed recorder's audio can be saved but cannot be sent until conf
   await view.act(async () => view.rerender(createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate() {}, onDiscard() {} })));
   assert.ok(named(view.container, "Skapa dokument"));
   assert.doesNotMatch(view.container.textContent!, /bekräftat inspelningens stopp/);
+});
+
+/** A browser's recorder as the capture uses it: its last audio and its stop event come after the current task. */
+class Recorder {
+  state: RecordingState = "inactive";
+  private listeners = new Map<string, Set<(event: unknown) => void>>();
+  addEventListener(type: string, listener: (event: unknown) => void) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)!.add(listener);
+  }
+  removeEventListener(type: string, listener: (event: unknown) => void) {
+    this.listeners.get(type)?.delete(listener);
+  }
+  start() {
+    this.state = "recording";
+  }
+  requestData() {}
+  hand(data: Blob) {
+    this.listeners.get("dataavailable")?.forEach((listener) => listener({ data }));
+  }
+  stop() {
+    if (this.state === "inactive") return;
+    this.state = "inactive";
+    setImmediate(() => {
+      this.hand(new Blob(["."]));
+      this.listeners.get("stop")?.forEach((listener) => listener({}));
+    });
+  }
+}
+
+test("a stop the device's storage answers late shows no empty recording meanwhile, and the whole recording with Spara ljudfil once it answers", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { IDBFactory, IDBKeyRange } = await import("fake-indexeddb");
+  const { openRecordingStore } = await import("./recording-store");
+  const { FlowSession } = await import("./flow-session");
+  const { ReadyPanel } = await import("../components/flow/ReadyPanel");
+  const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
+  const recorders: Recorder[] = [];
+  const track = { muted: false, readyState: "live", stop() {}, addEventListener() {}, removeEventListener() {} };
+  const session = new FlowSession({
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    ownerId: "user-1",
+    openStore: () => store,
+    captureDeps: {
+      getStream: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) as unknown as MediaStream,
+      createRecorder: () => {
+        recorders.push(new Recorder());
+        return recorders.at(-1) as unknown as MediaRecorder;
+      },
+    },
+    pickMimeType: () => "audio/webm;codecs=opus",
+  });
+  session.setContract({
+    flow_id: "flow-1",
+    published_flow_version: 1,
+    form_fields: [],
+    steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", accepted_mimetypes: ["audio/webm"] }],
+    transcription: { live: { available: false, reason: null }, speaker_labels: { selectable: true, required: false, default: false } },
+  } as unknown as RunContract);
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].hand(new Blob(["a"]));
+  // The device stops answering at the next audio (WebKit's IndexedDB has hung instead of failing): its write, and every
+  // read and write after it, waits.
+  let land: (() => void) | undefined;
+  const late = new Blob(["b"]);
+  recorders[0].hand(
+    Object.assign(new Blob(["b"]), {
+      arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => (land = () => void late.arrayBuffer().then(resolve))),
+    }),
+  );
+  const stopping = session.stop();
+  for (let i = 0; i < 1_000 && !land; i += 1) await settle();
+  assert.ok(land, "the write that waits");
+  for (let i = 0; i < 5; i += 1) await settle();
+  t.mock.timers.tick(10_000);
+  await stopping;
+  // The ready state as FlowInput shows it.
+  function Ready() {
+    const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
+    if (snapshot.phase !== "ready" || !snapshot.recording) return null;
+    return createElement(ReadyPanel, {
+      recording: snapshot.recording,
+      awaitingDevice: snapshot.awaitingDevice,
+      persistent: session.capture.getSnapshot().persistent,
+      problem: snapshot.problem,
+      onCreate() {},
+      onContinue() {},
+      onDiscard() {},
+    });
+  }
+  const view = await mount(createElement(Ready));
+  try {
+    const said = () => view.container.textContent ?? "";
+    assert.match(said(), /Inspelningen är klar/, "Stoppa ends without the device's word");
+    assert.match(said(), /det gick inte att bekräfta att den sparades på enheten/, "and says what it has not confirmed");
+    assert.equal(session.capture.getSnapshot().persistent, false, "leaving still asks");
+    assert.doesNotMatch(said(), /Inget ljud sparades/, "audio the device has not read back is not said to be missing");
+    assert.doesNotMatch(said(), / · 0/, "nor a length it does not know");
+    assert.equal(named(view.container, "Fortsätt spela in"), null, "and nothing is offered on a recording not yet read back");
+
+    // The device answers: the recording as it holds it, and the ways on with it.
+    await view.act(async () => land!());
+    for (let i = 0; i < 100 && !named(view.container, "Spara ljudfil"); i += 1) await view.act(settle);
+    assert.ok(named(view.container, "Spara ljudfil"), "Spara ljudfil is back");
+    assert.ok(named(view.container, "Skapa dokument"), "and Skapa dokument");
+    assert.doesNotMatch(said(), /Inget ljud sparades/);
+    assert.equal(session.getSnapshot().recording?.parts[0]?.bytes, 3, "the whole recording: every chunk the recorder handed over");
+  } finally {
+    await view.unmount();
+    session.dispose();
+  }
 });

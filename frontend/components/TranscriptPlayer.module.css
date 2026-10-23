@@ -280,7 +280,11 @@
   color: var(--color-text-secondary);
 }
 
+/* What the passages' tints are mixed from: the accent, or where its whole tints would take the text under 4.5:1 on one
+   another (Eneo's own accent in dark mode among them), the accent at the lower alpha the backend gives
+   (backend/app/accent.py). */
 .turns {
+  --wash: var(--module-accent-tint, var(--color-accent));
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -450,7 +454,7 @@
 }
 
 .turn[data-active="true"] {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--wash) 12%, transparent);
 }
 
 .turnBody {
@@ -608,7 +612,7 @@
 
 /* The playhead's sentence and word are lit by useTranscriptPlayhead, as data attributes the list never renders. */
 .sentence[data-active="true"] {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  background: color-mix(in srgb, var(--wash) 10%, transparent);
 }
 
 /* While choosing, the sentence itself is the control: a tint on every sentence, stronger where pointed at or focused (a
@@ -616,18 +620,18 @@
    on a touch screen each sentence is a 44 px row. */
 .choosable {
   padding-block: var(--spacing-1);
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--wash) 12%, transparent);
   background-clip: content-box;
 }
 
 .choosable:focus-visible {
-  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--wash) 20%, transparent);
   background-clip: content-box;
 }
 
 @media (hover: hover) {
   .choosable:hover {
-    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    background: color-mix(in srgb, var(--wash) 20%, transparent);
     background-clip: content-box;
   }
 }
@@ -665,7 +669,7 @@
 @media (hover: hover) and (pointer: fine) {
   .sentence:not(.choosable) .word[data-word-start]:not([data-lit]):hover,
   .sentence:not(.choosable):not(:has([data-word-start])):hover {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    background: color-mix(in srgb, var(--wash) 16%, transparent);
   }
 }
 
@@ -714,7 +718,7 @@
    lighter. Nothing is switched on and off a few times a second, and the text keeps its own colour. */
 .word[data-said],
 .word[data-lit] {
-  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  background-color: color-mix(in srgb, var(--wash) 18%, transparent);
 }
 
 /* The words said and the spaces between them are one band. */
@@ -722,10 +726,12 @@
   border-radius: 0;
 }
 
+/* Under the playing turn's, sentence's and word's tints, the said part of the word keeps the text at 4.5:1. Eneo's light
+   dark-mode blue at 45 % left 3.7:1 there, so dark mode fills with a quarter. */
 .word[data-lit] {
   background-image: linear-gradient(
     to right,
-    color-mix(in srgb, var(--color-accent) 45%, transparent) var(--said, 100%),
+    light-dark(color-mix(in srgb, var(--wash) 45%, transparent), color-mix(in srgb, var(--wash) 25%, transparent)) var(--said, 100%),
     transparent calc(var(--said, 100%) + 6%)
   );
 }

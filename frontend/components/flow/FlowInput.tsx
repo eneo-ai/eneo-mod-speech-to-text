@@ -285,6 +285,7 @@ export function FlowInput({
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
               recording={snapshot.recording}
+              awaitingDevice={snapshot.awaitingDevice}
               persistent={input.persistent}
               problem={snapshot.problem}
               live={snapshot.live}

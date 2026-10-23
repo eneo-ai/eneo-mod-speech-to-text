@@ -49,7 +49,9 @@ test("the running view names the stage once in a status region and says each ste
   );
 
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
-  assert.deepEqual(statuses(html), ["Analysera mötesinnehållet"], "the stage, once, in the only status region");
+  // A step's name is its author's, often an order ("Skriv rapporten"): heard alone it is said to the listener, so the
+  // status says it as the list shows it, under way.
+  assert.deepEqual(statuses(html), ["Pågår: Analysera mötesinnehållet"], "the stage, once, in the only status region");
   const words = text(html);
   // A finished step also carries the design system's own word for a screen reader, between its name and the page's.
   assert.match(words, /Transkribera mötet (?:\S+ )?Klar/);

@@ -1,8 +1,10 @@
 import colorsys
+import functools
 import math
 import re
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from app import accent as accent_module
@@ -88,6 +90,9 @@ class ContrastMathTests(unittest.TestCase):
             f"color-mix(in {space}, var(--color-accent) {dark:.0%}, transparent))"
         )
         self.assertIn(f"--color-accent-muted: {mix('srgb', LIGHT.tint, DARK.tint)}", css)
+        # The transcript's tints, whose stack the backend keeps readable (TranscriptTintTests.PLAYED): no other share.
+        player = (built.parents[3] / "components" / "TranscriptPlayer.module.css").read_text()
+        self.assertEqual(sorted({int(share) for share in re.findall(r"var\(--wash\) (\d+)%", player)}), [10, 12, 16, 18, 20, 25, 45])
 
 
 class NeutralsTests(unittest.TestCase):
@@ -112,7 +117,7 @@ class NeutralsTests(unittest.TestCase):
             accent = resolve_accent(light, None)
             assert accent is not None, light
             css = theme_css(accent)
-            colours = [tuple(int(c) for c in found) for found in re.findall(r"rgba\((\d+), (\d+), (\d+),", css)]
+            colours = [(int(r), int(g), int(b)) for r, g, b in re.findall(r"rgba\((\d+), (\d+), (\d+),", css)]
             colours += [_hex(found) for found in re.findall(r"#[0-9A-F]{6}", css.split("\n", 1)[1])]
             self.assertGreater(len(colours), 40, light)
             self.assertEqual([c for c in colours if self.blue(c)], [], light)
@@ -173,24 +178,60 @@ class SpeakerTests(unittest.TestCase):
             for side in (0, 1):
                 self.assertLess(self.apart(_hex(kept[side]), _hex(base[side])), 5, (kept, base))
 
-    def test_no_speaker_is_in_the_accents_hue_and_each_stays_readable(self) -> None:
+    def assert_speakers_hold(self, accent: Accent) -> list[tuple[str, str]]:
+        """Every speaker 30 degrees from the accent's hue in each mode, 4.5:1 on every ground and on the selected tint, no
+        two alike, and none blue (the branding gate's rule: a deployment's page keeps no blue)."""
         names = ("--color-background-surface", "--color-background-card", "--color-background-popover",
                  "--color-background-muted", "--color-background-body")
+        speakers = self.speakers(theme_css(accent))
+        for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
+            neutrals = _neutrals(_hex(colour), mode)
+            grounds = [neutrals[name] for name in names]
+            # A passage's speaker name on the selected passage's tint.
+            grounds.append(accent_module._blend(_hex(colour), neutrals["--color-background-surface"], mode.tint))
+            for index, pair in enumerate(speakers):
+                rgb = _hex(pair[mode.side])
+                if accent.light != "#000000" and colour != "#000000":
+                    self.assertGreaterEqual(self.apart(rgb, _hex(colour)), 30, (accent, mode.name, index, pair))
+                self.assertGreaterEqual(min(contrast(rgb, ground) for ground in grounds), 4.5, (accent, mode.name, index, pair))
+                self.assertFalse(NeutralsTests.blue(rgb), (accent, mode.name, index, pair))
+        self.assertEqual(len(set(speakers)), len(speakers), accent)
+        return speakers
+
+    def test_no_speaker_is_in_the_accents_hue_and_each_stays_readable(self) -> None:
         for light in self.ACCENTS:
             accent = resolve_accent(light, None)
             assert accent is not None, light
-            speakers = self.speakers(theme_css(accent))
-            for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
-                neutrals = _neutrals(_hex(colour), mode)
-                grounds = [neutrals[name] for name in names]
-                # A passage's speaker name on the selected passage's tint.
-                grounds.append(accent_module._blend(_hex(colour), neutrals["--color-background-surface"], mode.tint))
-                for index, pair in enumerate(speakers):
-                    rgb = _hex(pair[mode.side])
-                    if light != "#000000" and colour != "#000000":
-                        self.assertGreaterEqual(self.apart(rgb, _hex(colour)), 30, (light, mode.name, index, pair))
-                    self.assertGreaterEqual(min(contrast(rgb, ground) for ground in grounds), 4.5, (light, mode.name, index, pair))
-            self.assertEqual(len(set(speakers)), len(speakers), light)
+            self.assert_speakers_hold(accent)
+
+    def test_a_light_and_dark_pair_that_spends_both_spares_keeps_every_speaker_apart(self) -> None:
+        # The light green is near the teal and the green speaker, and the dark is the magenta spare itself: only the
+        # yellow green is left, for two speakers.
+        accent = resolve_accent("#146E41", "#E198E1")
+        assert accent is not None
+        speakers = self.assert_speakers_hold(accent)
+        for side in (0, 1):
+            hues = [_hex(pair[side]) for pair in speakers]
+            closest = min(self.apart(one, other) for index, one in enumerate(hues) for other in hues[index + 1 :])
+            self.assertGreaterEqual(closest, 25, (side, speakers))
+
+    def test_any_accepted_light_and_dark_pair_keeps_every_speaker_apart_and_readable(self) -> None:
+        # The two accents are set apart, so they can lie in any two hues: around the wheel, each at the first lightness
+        # its mode accepts.
+        def accepted(hue: int, mode: Any, lightnesses: range) -> str:
+            for percent in lightnesses:
+                rgb = accent_module._from_hls(hue / 360, percent / 100, 0.7)
+                if _problem(rgb, mode) is None:
+                    return accent_module.to_hex(rgb)
+            raise AssertionError((hue, mode.name))
+
+        lights = [accepted(hue, LIGHT, range(45, 10, -5)) for hue in range(0, 360, 30)]
+        darks = [accepted(hue, DARK, range(55, 95, 5)) for hue in range(0, 360, 30)]
+        for light in lights:
+            for dark in darks:
+                accent = resolve_accent(light, dark)
+                assert accent is not None
+                self.assert_speakers_hold(accent)
 
     def test_a_spare_is_apart_from_every_speaker_and_is_not_blue(self) -> None:
         for spare in SPARE_SPEAKERS:
@@ -198,6 +239,89 @@ class SpeakerTests(unittest.TestCase):
                 self.assertFalse(NeutralsTests.blue(_hex(spare[side])), spare)
                 for pair in SPEAKERS:
                     self.assertGreaterEqual(self.apart(_hex(spare[side]), _hex(pair[side])), 30, (spare, pair))
+
+
+class TranscriptTintTests(unittest.TestCase):
+    """The transcript's accent tints lie on one another under its text, which keeps 4.5:1 on them all together for every
+    accent the backend accepts."""
+
+    # TranscriptPlayer.module.css's tints under the transcript's text, light then dark: the playing passage 12 %; its
+    # sentence 10 %, or 20 % pointed at or focused while choosing one to correct; a word said 18 %; the said part of the
+    # word being said 45 %, in dark mode 25 %. Each is that share of --module-accent-tint, the accent where the stylesheet
+    # sets none. A search hit is the theme's muted tint of the accent itself (10 %, in dark mode 16 %).
+    PLAYED = {
+        "the word being said": ((0.12, 0.10, 0.18, 0.45), (0.12, 0.10, 0.18, 0.25)),
+        "the word being said, its sentence focused while choosing": ((0.12, 0.20, 0.18, 0.45), (0.12, 0.20, 0.18, 0.25)),
+        "a search hit, its sentence focused while choosing": ((0.12, 0.20), (0.12, 0.20)),
+    }
+    PASSAGE = 0.12
+    # What the transcript lies on: its card, or a surface (in dark mode a step darker).
+    GROUNDS = ("--color-background-surface", "--color-background-card")
+    COLOUR = r"#[0-9A-F]{6}|rgba\(\d+, \d+, \d+, [\d.]+\)"
+
+    def tint(self, css: str, accent: str, side: int) -> tuple[tuple[int, int, int], float]:
+        """The colour the transcript's tints are mixed from in a mode, and its alpha, as the page gets them."""
+        found = re.search(rf"--module-accent-tint: light-dark\(({self.COLOUR}), ({self.COLOUR})\);", css)
+        value = found[1 + side] if found else accent
+        if value.startswith("#"):
+            return _hex(value), 1.0
+        r, g, b, alpha = value[5:-1].split(", ")
+        return (int(r), int(g), int(b)), float(alpha)
+
+    def assert_text_holds(self, accent: Accent, css: str | None = None) -> None:
+        css = theme_css(accent) if css is None else css
+        speakers = SpeakerTests.speakers(css)
+        for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
+            neutrals = _neutrals(_hex(colour), mode)
+            tint, alpha = self.tint(css, colour, mode.side)
+            for ground in (neutrals[token] for token in self.GROUNDS):
+                on = lambda shares: functools.reduce(lambda under, share: accent_module._blend(tint, under, share * alpha), shares, ground)  # noqa: E731
+                behind = {name: on(shares[mode.side]) for name, shares in self.PLAYED.items()}
+                hit = "a search hit, its sentence focused while choosing"
+                behind[hit] = accent_module._blend(_hex(colour), behind[hit], mode.tint)
+                for name, rgb in behind.items():
+                    self.assertGreaterEqual(contrast(neutrals["--color-text-primary"], rgb), 4.5, (accent, mode.name, name, ground))
+                # The passage's head: its secondary text and the speaker's name.
+                for text in [neutrals["--color-text-secondary"]] + [_hex(pair[mode.side]) for pair in speakers]:
+                    self.assertGreaterEqual(contrast(text, on([self.PASSAGE])), 4.5, (accent, mode.name, "the playing passage", text, ground))
+
+    def test_the_lightest_and_darkest_accents_keep_the_played_word_readable(self) -> None:
+        # White and a pale yellow, the lightest dark accents, with a green; black, the darkest light one; Sundsvall's; Eneo's.
+        for light, dark in (("#146E41", "#FFFFFF"), ("#146E41", "#FFF7D1"), ("#000000", "#FFFFFF"), ("#004595", "#52B1FF"), ENEO_ACCENT):
+            accent = resolve_accent(light, dark)
+            assert accent is not None
+            self.assert_text_holds(accent)
+
+    def test_any_accepted_light_and_dark_pair_keeps_the_played_word_readable(self) -> None:
+        # Around the wheel, each mode's accent at the darkest and at the lightest lightness that mode accepts.
+        def accepted(hue: int, mode: Any, lightnesses: range) -> str:
+            for percent in lightnesses:
+                rgb = accent_module._from_hls(hue / 360, percent / 100, 0.7)
+                if _problem(rgb, mode) is None:
+                    return accent_module.to_hex(rgb)
+            raise AssertionError((hue, mode.name))
+
+        hues = range(0, 360, 30)
+        lights = [accepted(hue, LIGHT, lightnesses) for hue in hues for lightnesses in (range(5, 50, 5), range(45, 0, -5))]
+        darks = [accepted(hue, DARK, lightnesses) for hue in hues for lightnesses in (range(95, 50, -5), range(55, 100, 5))]
+        for light in lights:
+            for dark in darks:
+                accent = resolve_accent(light, dark)
+                assert accent is not None
+                self.assert_text_holds(accent)
+
+    def test_the_default_accent_keeps_the_played_word_readable_as_eneos_set_explicitly(self) -> None:
+        # Without ORGANIZATION_ACCENT the page keeps Eneo's accent, whose whole tints take the text under 4.5:1 in dark mode.
+        default = theme_css(None)
+        self.assert_text_holds(ENEO, default)
+        explicit = resolve_accent(*ENEO_ACCENT)
+        assert explicit is not None
+        tint = lambda css: re.findall(r"  --module-accent-tint: .*;\n", css)  # noqa: E731
+        self.assertEqual(tint(default), tint(theme_css(explicit)))
+        self.assertEqual(len(tint(default)), 1)
+
+    def test_an_accent_whose_whole_tints_keep_the_text_readable_sets_no_share(self) -> None:
+        self.assertNotIn("--module-accent-tint", theme_css(GREEN))
 
 
 class ResolveTests(unittest.TestCase):
@@ -299,9 +423,9 @@ class WarningTests(unittest.TestCase):
 
 
 class ThemeCssTests(unittest.TestCase):
-    def test_no_accent_is_a_harmless_comment(self) -> None:
+    def test_no_accent_sets_nothing_but_the_transcripts_tint(self) -> None:
         self.assertEqual(theme_css(None), NO_ACCENT_CSS)
-        self.assertRegex(NO_ACCENT_CSS, r"\A/\*[^{}]*\*/\n\Z")
+        self.assertRegex(NO_ACCENT_CSS, r'\A/\*[^{}]*\*/\n\[data-astryx-theme="eneo"\] \{\n  --module-accent-tint: [^;\n]+;\n\}\n\Z')
 
     def test_the_stylesheet_is_the_accent_and_the_greys_in_its_hue(self) -> None:
         css = theme_css(GREEN)

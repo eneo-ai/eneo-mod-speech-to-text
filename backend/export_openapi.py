@@ -297,7 +297,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Märke",
         "Accentfärgens stilmall",
         "Sidan länkar den efter sitt byggda tema. Innehållet är en fast mall med en redan kontrollerad accent, eller "
-        "en tom kommentar utan `ORGANIZATION_ACCENT`. "
+        "utan `ORGANIZATION_ACCENT` bara transkriberingens ton (`--module-accent-tint`). "
         "`ETag` och `If-None-Match` ger `304`.",
         success={
             "200": reply(

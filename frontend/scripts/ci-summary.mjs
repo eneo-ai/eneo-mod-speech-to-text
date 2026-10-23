@@ -27,13 +27,14 @@ const tests = [];
 const walk = (suite) => {
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests) {
-      const last = test.results.at(-1);
+      // The last attempt that failed: a flaky test's last attempt passed and holds no error.
+      const failed = test.results.findLast((result) => result.error || result.errors?.length);
       tests.push({
         title: `${spec.file}:${spec.line} ${spec.title}`,
         project: test.projectName,
         status: test.status, // expected | unexpected | flaky | skipped
         seconds: test.results.reduce((sum, result) => sum + result.duration, 0) / 1000,
-        error: last?.error?.message ?? last?.errors?.[0]?.message ?? "",
+        error: failed?.error?.message ?? failed?.errors?.[0]?.message ?? "",
         skip: test.annotations.find((a) => a.type === "skip")?.description ?? "no reason given",
       });
     }
@@ -60,8 +61,12 @@ const listed = (status, heading) => {
 listed("unexpected", "Failed");
 // A retry passed: the test is not reliable, and the nightly gate fails on it (GATE_FAIL_ON_FLAKY).
 listed("flaky", "Flaky: failed, then passed on the retry");
-if (artifact && tests.some((t) => t.status === "unexpected" || t.status === "flaky")) {
-  lines.push("", `Pictures, page snapshots and traces: the artifact \`${artifact}\` (\`npm run ci:failure -- <run id>\` fetches it).`);
+// The workflows keep a job's results only when it fails: on a failed test, or on a flaky one where that fails the job.
+const kept = tests.some((t) => t.status === "unexpected" || (t.status === "flaky" && process.env.GATE_FAIL_ON_FLAKY));
+if (artifact && kept) {
+  const { GITHUB_RUN_ID: run = "<run id>", GITHUB_REPOSITORY: repository } = process.env;
+  const download = `gh run download ${run}${repository ? ` -R ${repository}` : ""} -n ${artifact} -D ${artifact}`;
+  lines.push("", `Pictures, page snapshots and traces: the artifact \`${artifact}\` (\`${download}\`).`);
 }
 
 const skips = Object.entries(Object.groupBy(tests.filter((t) => t.status === "skipped"), (t) => t.skip)).sort((a, b) => b[1].length - a[1].length);

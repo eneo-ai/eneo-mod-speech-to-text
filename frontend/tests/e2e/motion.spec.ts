@@ -42,8 +42,15 @@ test("following the playhead to a passage far away jumps there, rather than glid
   await page.waitForTimeout(900);
   await box.evaluate((element) => element.scrollTo({ top: element.scrollHeight, behavior: "instant" }));
   await box.dispatchEvent("wheel");
+  // A glide stops at the positions on the way, one a frame for up to 1.5 s; a jump lands with no stop between. Counted,
+  // not timed: laying out two thousand passages on a slow runner takes its own time before either begins.
+  await box.evaluate((element) => {
+    const passed: number[] = [];
+    (window as unknown as { passed: number[] }).passed = passed;
+    element.addEventListener("scroll", () => element.scrollTop >= 2_000 && passed.push(element.scrollTop));
+  });
   await page.getByRole("button", { name: "Följ uppspelningen" }).click({ timeout: 5_000 });
-  const start = Date.now();
-  await expect.poll(() => box.evaluate((element) => element.scrollTop), { timeout: 2_000, intervals: [20] }).toBeLessThan(2_000);
-  expect(Date.now() - start, "there at once, not after a glide").toBeLessThan(400);
+  await expect.poll(() => box.evaluate((element) => element.scrollTop), { timeout: 5_000, intervals: [20] }).toBeLessThan(2_000);
+  const passed = await page.evaluate(() => (window as unknown as { passed: number[] }).passed);
+  expect(passed, "there at once, not after a glide").toEqual([]);
 });

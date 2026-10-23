@@ -11,7 +11,7 @@ import {
 } from "./recording-store";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus } from "./online-status";
-import { recordingNotices } from "./recording-view";
+import { asksBeforeClosing, recordingNotices } from "./recording-view";
 import { mayContinue, RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
 import { submitRecording } from "./submit-run";
 
@@ -336,6 +336,37 @@ test("a device's storage that never answers does not hold Stoppa: after a while 
   assert.equal(capture.getSnapshot().status, "stopped", "the ready view, with Spara ljudfil, is reachable");
   assert.ok(capture.getSnapshot().recording, "the recording the page holds");
   assert.equal(capture.getSnapshot().error, "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.");
+});
+
+test("Stoppa whose last audio the device has not taken yet keeps the browser's question on closing the tab, until the device has it", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
+  const { capture, recorders } = await setup({ store });
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  // The device stops answering at the next audio (WebKit's IndexedDB has hung instead of failing): its write waits.
+  let land: (() => void) | undefined;
+  const late = new Blob(["b"]);
+  const stuck = Object.assign(new Blob(["b"]), {
+    arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => (land = () => void late.arrayBuffer().then(resolve))),
+  });
+  recorders[0].dispatchEvent(Object.assign(new Event("dataavailable"), { data: stuck }));
+  const stopping = capture.stop();
+  await until(() => land !== undefined, "the write that waits");
+  for (let i = 0; i < 5; i += 1) await settle();
+  t.mock.timers.tick(10_000);
+  await stopping;
+  const closing = () => {
+    const { persistent, refused } = capture.getSnapshot();
+    return asksBeforeClosing({ phase: "ready", persistent, refused, finishing: false, sending: false, unstored: false });
+  };
+  assert.equal(capture.getSnapshot().status, "stopped");
+  assert.equal(closing(), true, "closing the tab asks: the device has not said it has the last audio");
+  // The device answers after all: it keeps the whole recording, and closing the tab loses nothing.
+  land!();
+  await until(() => !closing(), "the device's word");
+  const { id } = capture.getSnapshot().recording!;
+  assert.deepEqual(await texts(await store.readPartsToSend(id)), ["ab."]);
 });
 
 test("a recorder that never confirms its end holds neither Stoppa nor a page that goes: the part ends unconfirmed after a while, and audio still kept", async (t) => {

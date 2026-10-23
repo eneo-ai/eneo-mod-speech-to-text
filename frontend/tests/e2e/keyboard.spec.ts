@@ -320,7 +320,8 @@ test("a cancel Eneo refuses gives the focus back to Avbryt körningen, under the
 
 // A page cannot hear Escape while focus is inside the browser's PDF viewer. The viewer either is no Tab stop (its
 // content is a link away, in a tab of its own), or Tab leads out of it back to the dialog's own controls (WCAG
-// 2.1.2). From those controls, Escape closes the dialog.
+// 2.1.2); a browser without a viewer of its own gets none, and a sentence in its place. From the dialog's controls,
+// Escape closes the dialog.
 test("the PDF preview holds focus, never traps it in the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
   test.skip(!pdfInDialog(info), "below a laptop's width, and on a touch screen, the PDF opens in a new tab");
   await run(page, ids.runs.done);
@@ -377,7 +378,13 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
     expect.soft(ring, "the viewer's frame shows focus (WCAG 2.4.7)").toBeGreaterThanOrEqual(frame.perimeter);
   } else {
     expect(cycled, "Tab goes round the dialog's controls").toBe(true);
-    await expect(dialog.locator("iframe"), "the viewer is taken out of the Tab order").toHaveAttribute("tabindex", "-1");
+    // A browser with no PDF viewer of its own (Firefox under test) gets no viewer: the dialog says so in its place.
+    if (await page.evaluate(() => navigator.pdfViewerEnabled)) {
+      await expect(dialog.locator("iframe"), "the viewer is taken out of the Tab order").toHaveAttribute("tabindex", "-1");
+    } else {
+      await expect(dialog.locator("iframe"), "no viewer to draw nothing").toHaveCount(0);
+      await expect(dialog.getByText("Webbläsaren kan inte visa filen här. Välj Öppna i ny flik eller Ladda ner.")).toBeVisible();
+    }
     await expect(dialog.getByRole("link", { name: /ny flik/ }), "the file is a link away, in a tab of its own").toHaveAttribute("target", "_blank");
   }
   // The walk can end on a control whose tooltip is up (the close button, where Tab has nowhere to go on to, as in
