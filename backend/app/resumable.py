@@ -95,7 +95,9 @@ class IncomingUpload:
     async def release(self) -> None:
         with anyio.CancelScope(shield=True):
             try:
-                await self.file.close()
+                # Closed all the same when a full disk refuses what is still buffered: the file goes with it.
+                with contextlib.suppress(OSError):
+                    await self.file.close()
             finally:
                 self.slots.close()
 

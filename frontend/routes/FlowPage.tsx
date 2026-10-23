@@ -49,7 +49,7 @@ import { makesText } from "@/lib/flow-output";
 import { followRun, readActivePause, readFinishedRun, VISIBLE_POLL_MS, type SavedCorrections } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { filesIn, recordingStore } from "@/lib/recording-store";
-import { leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
+import { asksBeforeClosing, leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import {
   finishedRun,
@@ -263,21 +263,30 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const holdsAudio = snapshot.phase !== "setup";
   const submitting = run.kind === "submitting";
   const unstored = useSyncExternalStore(unstoredDrafts.subscribe, unstoredDrafts.any, () => false);
+  // Back or Forward to this flow's entry of another run, or of the setup, takes the run shown off the page (below): with
+  // work held in it, that asks first too. With a recording on the page, the page stays as it is.
+  const replacesShownRun = (next: { search: string }) => {
+    const shown = runIdOf(run);
+    return shown !== null && snapshot.phase === "setup" && new URLSearchParams(next.search).get(RUN_QUERY_PARAM) !== shown;
+  };
   const leaving = useLeaveQuestion(
     submitting || holdsAudio || unstored,
     submitting || holdsAudio
       ? leaveWarning(input.persistent, snapshot.phase, submitting && (submission.kind === "starting" ? "starting" : "uploading"), input.capture.refused)
       : UNSTORED_LEAVE,
     leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
+    replacesShownRun,
   );
-  // The browser's own question (a reload, a closed tab) is not asked for a stopped recording the device keeps: it waits
-  // among the unsent recordings and can be continued there, as the page's own question says. It is asked while the
-  // recording runs, is being finished, or is held only in this tab.
-  const keptOnDevice =
-    snapshot.phase === "ready" && input.persistent === true && !input.capture.refused && !snapshot.finishing && !snapshot.finishQueued;
+  const asksOnClose = asksBeforeClosing({
+    phase: snapshot.phase,
+    persistent: input.persistent,
+    refused: input.capture.refused,
+    finishing: snapshot.finishing || snapshot.finishQueued,
+    sending: submitting,
+    unstored,
+  });
   useEffect(() => {
-    const shouldWarn = (holdsAudio && !keptOnDevice) || submitting || unstored;
-    if (!shouldWarn) return;
+    if (!asksOnClose) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -285,7 +294,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [holdsAudio, keptOnDevice, submitting, unstored]);
+  }, [asksOnClose]);
 
   // A file dropped outside Ladda upp's zone would make the browser open it and leave the page (and a recording). The zone's
   // own handlers run first (React's root listeners are below window) and mark their event handled, so only a drop that

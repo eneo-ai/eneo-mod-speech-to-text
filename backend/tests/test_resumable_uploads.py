@@ -1,6 +1,8 @@
 """The browser can recover a lost part/acknowledgement without forwarding two files to Eneo."""
 
 import asyncio
+import errno
+import io
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -12,6 +14,51 @@ from app import main
 from app import resumable
 
 FLOW, STEP = str(uuid4()), str(uuid4())
+
+
+class Disk(io.RawIOBase):
+    """The spool's disk: it takes `space["room"]` bytes more (all when None), then refuses with ENOSPC."""
+
+    def __init__(self, space):
+        self.space, self.data, self.position = space, bytearray(), 0
+
+    def readable(self):
+        return True
+
+    def writable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def readinto(self, buffer):
+        chunk = self.data[self.position:self.position + len(buffer)]
+        buffer[:len(chunk)] = chunk
+        self.position += len(chunk)
+        return len(chunk)
+
+    def write(self, data):
+        room = self.space["room"]
+        taken = len(data) if room is None else min(len(data), room)
+        if taken == 0:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        if room is not None:
+            self.space["room"] = room - taken
+        self.data[self.position:self.position + taken] = bytes(data[:taken])
+        self.position += taken
+        return taken
+
+    def seek(self, offset, whence=io.SEEK_SET):
+        self.position = {io.SEEK_SET: 0, io.SEEK_CUR: self.position, io.SEEK_END: len(self.data)}[whence] + offset
+        return self.position
+
+    def tell(self):
+        return self.position
+
+    def truncate(self, size=None):
+        size = self.position if size is None else size
+        del self.data[size:]
+        return size
 
 
 class ResumableTests(Case):
@@ -118,6 +165,54 @@ class ResumableTests(Case):
         again = await self.part(self.data[:6], 0)
         self.assertEqual(again.status_code, 200, "the part goes once there is room: nothing was left held")
         self.assertEqual(again.json()["offset"], 6)
+
+    def spool_on(self, space):
+        """Every spool from here on is buffered, as a real one, over a disk whose room the test sets."""
+        patcher = patch.object(resumable.tempfile, "TemporaryFile", lambda: io.BufferedRandom(Disk(space)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def made_again_and_forwarded_whole(self):
+        self.assertEqual((await self.client.get(self.path)).status_code, 404, "what the spool holds is not known: its receipt goes")
+        self.assertEqual((await self.create())["offset"], 0, "the upload is made again")
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        self.assertEqual((await self.part(self.data[6:], 6)).status_code, 200)
+        self.release_forward.set()
+        await self.client.post(self.path + "/complete")
+        await asyncio.wait_for(self.forward_started.wait(), 1)
+        self.assertEqual(self.forwarded[0][1], self.data)
+
+    async def test_a_part_the_full_disk_takes_only_in_part_is_a_507_and_the_upload_is_made_again(self):
+        space = {"room": None}
+        self.spool_on(space)
+        await self.create()
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        # Two bytes of the next part fit; the rest stays in the spool's buffer, which the full disk refuses again.
+        space["room"] = 2
+        refused = await self.part(self.data[6:], 6)
+        self.assertEqual(refused.status_code, 507, refused.text)
+        space["room"] = None
+        await self.made_again_and_forwarded_whole()
+
+    async def test_a_rollback_the_full_disk_refuses_leaves_no_receipt_and_the_upload_is_forwarded_whole(self):
+        space = {"room": None}
+        self.spool_on(space)
+        await self.create()
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        # The next part's first bytes wait in the spool's buffer when its sender goes quiet; going back to the last whole
+        # part writes them first, and the disk takes one byte of them.
+        space["room"] = 1
+
+        async def interrupted():
+            yield b"sec"
+            await asyncio.sleep(1)
+
+        with patch.object(main.settings, "upload_receive_idle_timeout_seconds", .02):
+            answer = await self.client.patch(self.path, content=interrupted(), headers={
+                "Upload-Offset": "6", "Content-Type": "application/octet-stream", "Content-Length": "6"})
+        self.assertEqual(answer.status_code, 408, answer.text)
+        space["room"] = None
+        await self.made_again_and_forwarded_whole()
 
     async def test_owner_origin_contract_and_capacity_are_checked_before_parts(self):
         await self.create()

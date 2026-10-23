@@ -359,6 +359,50 @@ test("a correction kept in the tab that Eneo already has, its answer lost, is no
   assert.equal(again.editing().hasDropped, false);
 });
 
+test("a correction kept in the tab waits for a read it can be saved on: after the word times failed to load, Läs in igen shows it and saves it once", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  await first.view.unmount();
+  // The next page's first read could not read the word times: nothing can be saved on it.
+  const problem = "Kunde inte läsa transkriberingens ordtider. Ladda om sidan innan du redigerar eller godkänner.";
+  const again = await correcting(t, { tabKept: true, first: { ...transcript, correctionProblem: problem } });
+  await again.settle();
+  assert.equal(again.requests.length, 0, "nothing is sent on a read that cannot be saved on");
+  // Läs in igen, and the read is whole this time.
+  await again.reread(transcript.corrections);
+  await again.settle();
+  assert.deepEqual(again.editing().corrections.occurrences, corrected(transcript.corrections).occurrences, "the correction is shown again");
+  assert.equal(again.requests.length, 1, "and saved");
+  assert.deepEqual(again.requests[0].body.occurrences, first.requests[0].body.occurrences);
+  await again.answer(0);
+  assert.equal(again.editing().saveState, "saved");
+  assert.equal(again.requests.length, 1, "exactly once");
+});
+
+test("a correction kept in the tab that was made on another source of the transcript is not sent, and is the person's to take", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  await first.view.unmount();
+  // The next page reads a transcript whose source is not the one the correction was made on.
+  const replaced = { ...transcript, corrections: { ...transcript.corrections, segmentsHash: "b".repeat(64) } };
+  const again = await correcting(t, { tabKept: true, first: replaced });
+  await again.settle();
+  assert.equal(again.requests.length, 0, "nothing is sent over the other source");
+  assert.equal(again.editing().hasDropped, true, "the correction is offered to take");
+  assert.equal(again.editing().localError, READ_AGAIN, "and the page says it was not saved");
+  assert.equal(asksBeforeLeaving(), true, "closing the page asks first");
+  await again.view.unmount();
+  // Not taken yet: the tab still has it.
+  const third = await correcting(t, { tabKept: true, first: replaced });
+  await third.settle();
+  assert.equal(third.editing().hasDropped, true, "the next page offers it again");
+  const kept = await third.takeDropped();
+  assert.deepEqual(kept.occurrences, corrected(transcript.corrections).occurrences, "the correction, to take with them");
+  assert.equal(kept.segmentsHash, transcript.corrections.segmentsHash, "with the source it was made on");
+});
+
 /** A browser window whose network the test switches, for the page's connection status. */
 async function device() {
   const { createOnlineStatus } = await import("./online-status");

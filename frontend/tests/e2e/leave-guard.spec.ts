@@ -122,6 +122,33 @@ test("the page writing ?run= (a run starts) asks nothing and adds no history ent
   await expect(question(page)).toHaveCount(0);
 });
 
+test("Back from an earlier review opened from the setup, with an edit the browser would not keep, asks first; Stanna kvar keeps the edit", async ({ page }) => {
+  // The tab keeps nothing: the edit is the page's alone.
+  await page.addInitScript(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (this === window.sessionStorage) throw new DOMException("full", "QuotaExceededError");
+      return set.call(this, key, value);
+    };
+  });
+  // Among the flow's earlier runs, a review waits for this person.
+  await page.route(
+    (url) => url.pathname === `/api/eneo/flows/${ids.flows.flow1}/runs/`,
+    (route) => route.fulfill({ json: { items: [{ id: ids.runs.reviewText, flow_id: ids.flows.flow1, status: "awaiting_review", created_at: "2026-09-24T09:00:00Z" }], has_more: false, count: 1 } }),
+  );
+  await setup(page);
+  await page.getByRole("button", { name: /^Granska, körningen / }).first().click();
+  await page.getByRole("button", { name: "Redigera", exact: true }).click();
+  const field = page.getByRole("textbox", { name: "Innehåll för granskning" });
+  await field.fill("Beslutet som bara sidan har.");
+  const edited: Held = () => expect(field).toHaveValue("Beslutet som bara sidan har.");
+  const review = await address(page);
+  await page.goBack();
+  await asked(page, edited);
+  await stay(page, edited);
+  expect(await address(page), "the review's entry stays").toBe(review);
+});
+
 test("the bar's way back and the brand beside it ask each time; Stanna kvar stays", async ({ page }, info) => {
   await recordingInVisit(page);
   const before = await historyOf(page);

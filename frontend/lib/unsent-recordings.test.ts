@@ -119,6 +119,25 @@ test("a recording the device stopped keeping does not say it is on the device: t
   assert.match(refused.container.textContent!, /Det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./);
 });
 
+test("among several recordings, each one the device stopped keeping says so in its own row, in view, and none is said to be on the device", async () => {
+  // An older recording a reload cut off is kept on the device; a newer one, stopped when the device was full, has its
+  // latest audio only in this tab.
+  const kept = { ...recording("kept", 60_000, at(23, 9, 0)), state: "recording" as const };
+  const tabOnly: UnsentRecording = { ...recording("tab", 12_000, at(23, 10, 12)), refused: "full" };
+  for (const folded of [true, false]) {
+    const { container, unmount } = await render({ recordings: [tabOnly, kept], onContinue: () => {}, folded });
+    assert.doesNotMatch(container.textContent!, /finns (kvar )?på den här enheten/, "no word that would make the person close the tab");
+    const fold = container.querySelector("[aria-controls]");
+    const hidden = fold && document.getElementById(fold.getAttribute("aria-controls")!);
+    const row = rowsOf(container).find((r) => r.textContent!.includes("Inspelning 23 sep 10:12"))!;
+    assert.match(row.textContent!, /Enheten är full, så det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./, `folded: ${folded}`);
+    assert.ok(!hidden?.contains(row), "not folded away");
+    const durable = rowsOf(container).find((r) => r.textContent!.includes("Inspelning 23 sep 09:00"))!;
+    assert.doesNotMatch(durable.textContent!, /Stäng inte fliken/, "the recording the device keeps is not said to be in the tab");
+    await unmount();
+  }
+});
+
 test("each unsent recording offers Skapa dokument, Spara ljudfil and Ta bort, described by its summary", async () => {
   const { container } = await render({
     recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 120_000, at(23, 9, 0))],
