@@ -115,3 +115,13 @@ test("the tab strip owns only its tabs, also while the document can be made agai
   const owned = await strip.evaluate((list) => [...list.querySelectorAll("*")].filter((element) => element.getAttribute("role") === "tooltip").length);
   expect(owned, "no tooltip in the tab strip").toBe(0);
 });
+
+test("the tab chosen is kept for the run through a reload, as a phone's browser does to a tab in the background", async ({ page }) => {
+  await result(page);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Transkribering" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Dokument" }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Dokument" })).toHaveAttribute("aria-selected", "true");
+});
