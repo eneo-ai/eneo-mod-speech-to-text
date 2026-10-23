@@ -503,7 +503,7 @@ export const isSegmentsHash = (value: unknown): value is string => typeof value 
 export function correctionWriteProblem(set: CorrectionSet): string | null {
   const version = set.schemaVersion ?? 2;
   if (![1, 2, 3].includes(version)) return "Rättningarnas version stöds inte. Uppdatera Tal till text.";
-  if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriberingens originalunderlag saknas. Läs in sidan igen innan du sparar.";
+  if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriberingens originalunderlag saknas. Ladda om sidan innan du sparar.";
   if (version < 3 && set.speaker_edits.some((e) => e.decision === "unresolved" || e.speaker === null || e.original_speaker === null || e.speaker === e.original_speaker)) {
     return "Talarbeslut kräver Eneos uppdaterade underlag för transkriberingen.";
   }

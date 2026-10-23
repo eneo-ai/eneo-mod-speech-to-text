@@ -67,7 +67,8 @@ export function microphoneChoices(
   const systemName =
     system &&
     (named.find((device) => device.groupId && device.groupId === system.groupId)?.label ??
-      system.label.replace(/^\s*(default|standard)\s*[-–—:]\s*/i, ""));
+      // "Default - Headset", and Android's bare "Default", which names nothing.
+      system.label.replace(/^\s*(default|standard)\s*([-–—:]\s*|$)/i, ""));
   const found = preferred !== null && named.some((device) => device.deviceId === preferred);
   const standard = { value: "", label: systemName ? `Standard (${systemName})` : "Standard" };
   // Before the browser names its microphones, the remembered one is what a test and a recording ask for.

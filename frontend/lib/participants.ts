@@ -44,6 +44,25 @@ export function addNames(current: readonly string[], names: readonly string[]): 
 }
 
 const recentKey = (ownerId: string) => `tal-till-text:${ownerId}:recent-names`;
+// A person's names under either key: `tal-till-text:<owner>:recent-names` and `tal-till-text:<owner>:last-names:...`.
+const NAMES_KEY = /^tal-till-text:([^:]+):(?:recent-names$|last-names:)/;
+
+/**
+ * Someone signed in here: every other person's names go (a shared computer), as their drafts and confirmed words do.
+ * The signed-in person's stay.
+ */
+export function keepOnlyNamesOf(storage: Pick<Storage, "key" | "length" | "removeItem"> | null | undefined, ownerId: string): void {
+  try {
+    if (!storage) return;
+    for (let index = storage.length - 1; index >= 0; index -= 1) {
+      const name = storage.key(index);
+      const owner = name ? NAMES_KEY.exec(name)?.[1] : undefined;
+      if (name && owner && owner !== ownerId) storage.removeItem(name);
+    }
+  } catch {
+    // A refused storage holds nothing.
+  }
+}
 
 /** The names this user entered before, most recent first. */
 export function recentNames(storage: KeyValueStorage | null | undefined, ownerId: string): string[] {

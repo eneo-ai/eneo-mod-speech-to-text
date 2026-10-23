@@ -11,6 +11,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { AccountMenu } from "@/components/AccountMenu";
 import { HeaderBrand } from "@/components/HeaderBrand";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import listStyles from "@/components/FlowList.module.css";
@@ -28,6 +29,7 @@ import {
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
+import { flowPageCode } from "@/routes/flow-page-code";
 import { continueRecordingAddress, sendRecordingAddress } from "@/lib/flow-address";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
@@ -82,14 +84,15 @@ function FlowsListPage() {
 
   // A flow is what a person opens from here: once the list is shown, its page's code is fetched while the browser is
   // idle, so opening one does not wait for it, and the list's own answer never waits for that code. Not when the browser
-  // asks to save data. The route's own module: nothing of the page runs until it is opened, and a fetch that fails is
-  // the route's to say then, as when it fails on the press.
+  // asks to save data, and not while the device has no network (a fetch that fails offline would fail the press too).
+  // The route's own module: nothing of the page runs until it is opened, and a fetch that fails is the route's to say
+  // then, as when it fails on the press.
   const listed = groups !== null && !empty;
   useEffect(() => {
     if (!listed || (navigator as { connection?: { saveData?: boolean } }).connection?.saveData) return;
     const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1));
     const cancel = window.cancelIdleCallback ?? window.clearTimeout;
-    const handle = idle(() => void import("./FlowPage").catch(() => undefined));
+    const handle = idle(() => void flowPageCode.load().catch(() => undefined));
     return () => cancel(handle);
   }, [listed]);
   // Asked again (Uppdatera, or a Försök igen) and still none: the new Uppdatera takes the focus the pressed button had.
@@ -108,6 +111,8 @@ function FlowsListPage() {
             <Heading level={1} type="display-3">
               Välj ett flöde
             </Heading>
+            {/* The device's network or the module gone: said here, before a press on a flow finds it out. */}
+            <OfflineBanner waiting={null} />
 
             <VStack gap={10} className={listStyles.sections}>
             {/* Each action goes on in the recording's flow. The newest recording's main action is the page's one filled

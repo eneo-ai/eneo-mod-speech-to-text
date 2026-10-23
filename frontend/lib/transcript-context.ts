@@ -260,12 +260,12 @@ export async function loadTranscriptContext({
         // A 404 is normal: the step stored no word times. Any other failure leaves the uncertain words unseen.
         getTranscriptWords(flowId, runId, stepId).catch((error) => {
           if (!(error instanceof ApiError && error.status === 404)) {
-            wordsProblem = "Kunde inte läsa transkriberingens ordtider. Läs in sidan igen innan du redigerar eller godkänner.";
+            wordsProblem = "Kunde inte läsa transkriberingens ordtider. Ladda om sidan innan du redigerar eller godkänner.";
           }
           return null;
         }),
         savedRead(flowId, runId, savedCorrections).catch(() => {
-          correctionProblem = "Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.";
+          correctionProblem = "Kunde inte läsa sparade rättningar. Ladda om sidan innan du redigerar eller godkänner.";
           return [];
         }),
       ]);
@@ -283,7 +283,7 @@ export async function loadTranscriptContext({
       correctionProblem ??= wordsProblem;
     }
   } catch {
-    correctionProblem = "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner.";
+    correctionProblem = "Kunde inte läsa transkriberingens underlag. Ladda om sidan innan du godkänner.";
     // Utan stegdata visas texten som den är, utan ljud.
   }
   const fromMetadata = segments !== null;

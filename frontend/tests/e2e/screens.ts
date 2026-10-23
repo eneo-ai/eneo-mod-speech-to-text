@@ -661,7 +661,9 @@ export const STATES: State[] = [
     // A flow's name longer than a phone's line wraps in the card; the recording's date and time and its length stay whole.
     name: "unsent-recordings-long-flow-name",
     go: async (page) => {
-      await page.goto("/flows");
+      // The list first, whole: a reload while its code and its flows are still on their way cancels them, and WebKit
+      // reports each cancel as an error of the page it leaves.
+      await flows(page);
       await keptRecording(page, 1_000, "stopped", "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor");
       await page.reload();
       await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
@@ -728,6 +730,25 @@ export const STATES: State[] = [
       await expect(page.getByRole("button", { name: "Sluta testa" })).toBeVisible();
     },
   },
+  // The browser refuses the microphone when Starta inspelning asks for it: blocked for the page, no device, or held by
+  // another app. Each says why and what to do above the setup, which stays as it was.
+  ...([
+    ["setup-microphone-blocked", "NotAllowedError", "Mikrofonen är blockerad."],
+    ["setup-microphone-missing", "NotFoundError", "Ingen mikrofon hittades."],
+    ["setup-microphone-in-use", "NotReadableError", "Mikrofonen kunde inte startas."],
+  ] as const).map(([name, refusal, title]) => ({
+    name,
+    go: async (page: Page) => {
+      await page.addInitScript((error) => {
+        if (typeof MediaDevices === "undefined") return;
+        MediaDevices.prototype.getUserMedia = () => Promise.reject(new DOMException("The microphone could not be used", error));
+      }, refusal);
+      await setup(page);
+      await chooseMode(page, "Spela in");
+      await page.getByRole("button", { name: "Starta inspelning" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: title })).toBeVisible();
+    },
+  })),
   {
     name: "setup-count-from-names",
     go: async (page) => {
@@ -1249,6 +1270,19 @@ export const STATES: State[] = [
       await run(page, ids.runs.failed);
       await heading(page, "Dokumentet kunde inte skapas");
       await page.getByRole("button", { name: "Visa teknisk information" }).click();
+    },
+  },
+  {
+    // A run the person stopped (Avbryt körningen), as Eneo answers it: cancelled, with no error. Its way on is a new run of
+    // the same audio, or back to a new recording or file.
+    name: "failure-cancelled",
+    go: async (page) => {
+      await page.route(new RegExp(`/runs/${ids.runs.failed}/(status/)?$`), async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ response, json: { ...(await response.json()), status: "cancelled", error: null } });
+      });
+      await run(page, ids.runs.failed);
+      await heading(page, "Körningen avbröts");
     },
   },
   {

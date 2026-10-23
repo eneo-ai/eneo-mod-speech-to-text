@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { type AddressInfo } from "node:net";
 import { type Page, type TestInfo } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axe, blocking, focusStop, settle, stopProblems, tabKey, tabWalk, targetSizes } from "./checks";
+import { axe, blocking, focusStop, movingAnimations, placeholderContrast, settle, stopProblems, tabKey, tabWalk, targetSizes, undecidedContrast } from "./checks";
 import { sweep } from "./controls";
 import { STATES, type State } from "./screens";
 
@@ -80,13 +80,78 @@ test("colours are measured once a colour change has ended, not halfway through i
   expect(scan.violations.map((v) => v.id)).not.toContain("color-contrast");
 });
 
+test("text that axe cannot decide (over a gradient) is measured on the screen's pixels: too faint fails, clear passes", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      body { margin: 0; font: 16px/1.5 sans-serif; }
+      .ground { padding: 16px; background: linear-gradient(90deg, #ffffff, #f2f2f2); }
+    </style>
+    <main><h1>Prov</h1>
+      <div class="ground"><p id="faint" style="color: #959595">Svag text</p><p id="clear" style="color: #333333">Tydlig text</p><p id="none" style="color: transparent">Ingen färg</p></div>
+    </main>`);
+  const scan = await axe(page);
+  const targets = scan.undecidedText.map((item) => item.target);
+  expect(targets, "axe leaves both to a person").toEqual(expect.arrayContaining(["#faint", "#clear"]));
+  const measured = await undecidedContrast(page, scan.undecidedText);
+  const ratio = (target: string) => measured.find((item) => item.target === target)!;
+  expect(ratio("#faint").ratio).toBeLessThan(ratio("#faint").needed);
+  expect(ratio("#clear").ratio).toBeGreaterThanOrEqual(7);
+  expect(await page.locator("[data-contrast-probe]").count(), "the page is left as it was").toBe(0);
+  // Drawn in no colour (a field whose value another layer shows): no text a person reads there, not measured.
+  expect(await undecidedContrast(page, [{ target: "#none", reason: "bgGradient" }])).toEqual([]);
+  // Covered by a layer of its own colour (a popover over the page): not text a person reads, not measured.
+  await page.evaluate(() => {
+    const cover = Object.assign(document.createElement("div"), { style: "position: fixed; inset: 0; background: #959595" });
+    document.body.append(cover);
+  });
+  expect(await undecidedContrast(page, [{ target: "#faint", reason: "bgOverlap" }])).toEqual([]);
+  expect(await page.evaluate(() => getComputedStyle(document.getElementById("clear")!).color)).toBe("rgb(51, 51, 51)");
+});
+
+test("text behind an open modal dialog is out of reach, so its contrast is not measured; the dialog's own is", async ({ page }) => {
+  await page.setContent(`
+    <style>body { margin: 0; font: 16px/1.5 sans-serif; } dialog { inset-block-start: 60vh; } dialog::backdrop { background: rgb(0 0 0 / 0.6); }</style>
+    <main><h1>Prov</h1><p id="behind" style="color: #333333">Bakom dialogen</p><p id="inert" inert style="color: #333333">Inert</p></main>
+    <dialog><p id="inside" style="color: #959595">I dialogen</p></dialog>`);
+  await page.evaluate(() => document.querySelector("dialog")!.showModal());
+  const reasons = ["#behind", "#inert", "#inside"].map((target) => ({ target, reason: "bgOverlap" }));
+  expect((await undecidedContrast(page, reasons)).map((item) => item.target)).toEqual(["#inside"]);
+});
+
+test("a placeholder colour the browser gives as color(srgb …) is read as it is, not as near-black", async ({ page }) => {
+  // A colour mix computes to color(srgb 0.6 0.6 0.6 / 0.8): #999 at 80 % on white, about 2.3:1.
+  await page.setContent(`
+    <style>input::placeholder { color: color-mix(in srgb, #999999 80%, transparent); } input.clear::placeholder { color: color-mix(in srgb, #333333 90%, transparent); }</style>
+    <main><h1>Prov</h1><input aria-label="Svag" placeholder="Svag"><input class="clear" aria-label="Tydlig" placeholder="Tydlig"></main>`);
+  expect(await page.locator("input").first().evaluate((el) => getComputedStyle(el, "::placeholder").color)).toMatch(/^color\(srgb /);
+  expect(await placeholderContrast(page)).toEqual([expect.stringMatching(/^input "Svag" 2\.\d\d:1$/)]);
+});
+
+test("with reduced motion, what moves on screen is caught and a fade is not", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      .fade { transition: opacity 5s linear; } .fade.on { opacity: 0.2; }
+      .slide { transition: transform 5s linear; } .slide.on { transform: translateY(40px); }
+      @keyframes rise { from { margin-top: 20px; } to { margin-top: 0; } }
+      .rise { animation: rise 5s linear; }
+    </style>
+    <main><h1>Prov</h1><p class="fade">Tonar</p><p class="slide">Glider</p></main>`);
+  await page.evaluate(() => requestAnimationFrame(() => document.querySelectorAll(".fade, .slide").forEach((p) => p.classList.add("on"))));
+  await page.waitForFunction(() => document.getAnimations().length === 2);
+  expect(await movingAnimations(page)).toEqual(["transform on p.slide.on"]);
+  await page.evaluate(() => document.querySelector("h1")!.classList.add("rise"));
+  expect(await movingAnimations(page)).toContain("margin-top on h1.rise");
+});
+
 test("targets are measured once a smooth scroll has ended, not on their way past a pinned bar", async ({ page }) => {
   // A step to the next passage scrolls it to the window's middle, smoothly: what it scrolls by passes under the dock.
   await page.setContent(`<main><h1>Prov</h1><div style="block-size: 6000px"></div><button>Mål</button><div style="block-size: 6000px"></div></main>`);
   await page.evaluate(() => document.querySelector("button")!.scrollIntoView({ block: "start", behavior: "smooth" }));
   await settle(page);
-  // Within half a pixel of the top: Firefox can rest a fraction above it (Math.round gives -0, which toBe(0) refuses).
-  expect(await page.evaluate(() => document.querySelector("button")!.getBoundingClientRect().top), "the scroll has come to rest").toBeCloseTo(0, 0);
+  // Firefox comes to rest at a fraction of a pixel (and Math.round of -0.3 is -0, which toBe tells from 0); a scroll still
+  // under way is hundreds of pixels off.
+  const top = await page.evaluate(() => document.querySelector("button")!.getBoundingClientRect().top);
+  expect(Math.abs(top), "the scroll has come to rest").toBeLessThanOrEqual(1);
 });
 
 test("a control Tab focuses is measured where the engine's own scroll brings it, not on that scroll's way", async ({ page }) => {
@@ -189,6 +254,10 @@ test("a main command under another layer is caught: no pointer presses it, and t
     // Enter on the button would have been answered: a press that cannot land is not made with the keyboard instead.
     expect(problems, `with a ${pointer}`).toEqual([expect.stringContaining(`button "Skapa dokument" (1 of 1): a ${pointer} cannot press it`)]);
   }
+  // The sweep's copies are contexts of its own: the copy that failed leaves its picture and its tree in the report.
+  const attached = info.attachments.map((attachment) => attachment.name);
+  expect(attached).toContain('button-Skapa-dokument-1-of-1-.png');
+  expect(attached).toContain('button-Skapa-dokument-1-of-1-.aria.yml');
   await covered.go(page, info);
   const { stops } = await tabWalk(page);
   expect(stopProblems(stops)).toContainEqual(expect.stringContaining('button "Skapa dokument": entirely hidden by div'));

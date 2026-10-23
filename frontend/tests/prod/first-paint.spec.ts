@@ -26,8 +26,13 @@ type Painted = { frames: Frame[] };
 /** Runs before any script of the page, in every frame of the navigation. */
 function sampleFrames() {
   const painted: Painted = ((window as unknown as { painted: Painted }).painted = { frames: [] });
+  // Through a canvas: a mix computes to color(srgb …), whose 0–1 channels a pattern for rgb() reads as black.
+  const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
   const modeOf = (colour: string): Frame["mode"] => {
-    const [r, g, b, alpha = 1] = (colour.match(/[\d.]+/g) ?? []).map(Number);
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = colour;
+    paint.fillRect(0, 0, 1, 1);
+    const [r, g, b, alpha] = paint.getImageData(0, 0, 1, 1).data;
     if (alpha === 0) return "unstyled";
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5 ? "dark" : "light";
   };

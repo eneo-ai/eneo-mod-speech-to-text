@@ -196,6 +196,64 @@ test("a device with no network says so, in the words the page's notice uses, not
   assert.ok(button(container, "Försök igen"));
 });
 
+test("a page opened while the device had no network appears by itself when the network is back", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  const browserFetch = globalThis.fetch;
+  let online = false;
+  globalThis.fetch = (async (url: string | URL | Request) =>
+    !online ? Promise.reject(new TypeError("Failed to fetch")) : String(url).startsWith("/api/auth/status") ? json(signedIn) : json({})) as typeof fetch;
+  window.dispatchEvent(new Event("offline"));
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+    window.dispatchEvent(new Event("online"));
+  });
+  t.mock.method(console, "error", () => undefined);
+  const { container, act } = await mount(withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows", entries: ["/flows"] }).tree);
+  for (let i = 0; i < 10; i += 1) await act(settle);
+  assert.match(container.textContent ?? "", /Ingen anslutning\./);
+
+  online = true;
+  await act(async () => window.dispatchEvent(new Event("online")));
+  for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
+  assert.ok(container.textContent?.includes("Sidan"), "the page, without a press on Försök igen");
+});
+
+test("a module that does not answer is asked again by itself, and the page appears when it does, without the notice going in between", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  const { onlineStatus } = await import("./online-status");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const browserFetch = globalThis.fetch;
+  let up = false;
+  let reads = 0;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).startsWith("/api/auth/status")) reads += 1;
+    if (!up) return new Response("{}", { status: 503, headers: { "content-type": "application/json" } });
+    return String(url).startsWith("/api/auth/status") ? json(signedIn) : json({ ok: true });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+    onlineStatus.reportReachable();
+  });
+  t.mock.method(console, "error", () => undefined);
+  const { container, act } = await mount(withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows", entries: ["/flows"] }).tree);
+  for (let i = 0; i < 10; i += 1) await act(settle);
+  const notice = container.querySelector('[role="alert"]');
+  assert.match(notice?.textContent ?? "", /Tal till text svarar inte just nu/);
+  assert.equal(reads, 1);
+
+  await act(async () => t.mock.timers.tick(5_000));
+  for (let i = 0; i < 5; i += 1) await act(settle);
+  assert.equal(reads, 2, "asked again after 5 s");
+  assert.equal(container.querySelector('[role="alert"]'), notice, "the notice stays as it was while it asks: nothing moves, nothing is said again");
+
+  up = true;
+  await act(async () => t.mock.timers.tick(10_000));
+  for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
+  assert.ok(container.textContent?.includes("Sidan"), "the page once the module answers");
+});
+
 test("a status that says nobody is signed in goes to the sign-in page, with the address to come back to", async (t) => {
   const { createElement } = await import("react");
   const { AuthGate } = await import("../components/AuthGate");

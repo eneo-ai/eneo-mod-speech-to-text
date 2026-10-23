@@ -227,7 +227,7 @@ test("the pause's view takes the focus on its heading, so a screen reader starts
     const view = await review(start);
     const focused = document.activeElement;
     assert.ok(focused?.tagName === "H1" && focused.textContent === name, `focus on ${focused?.tagName} "${focused?.textContent}"`);
-    assert.equal(document.title, `${name} · Tal till text`);
+    assert.equal(document.title, `${name} · Nämndmöte · Tal till text`, "the flow named, as the run's other states do");
     await view.unmount();
   }
 });

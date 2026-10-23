@@ -968,10 +968,17 @@ test("the cancel question: Kör vidare leaves the run alone, Avbryt körningen c
   await view.unmount();
 });
 
-test("a cancel that is on its way keeps its button off until Eneo has answered, and a refusal shows once as an alert", async () => {
+test("a cancel that is on its way takes no second press until Eneo has answered, and a refusal shows once as an alert", async () => {
   let answer: () => void = () => undefined;
   const pending = new Promise<void>((resolve) => (answer = resolve));
-  const { view, question, ask } = await mountRunning(() => pending, { error: "Körningen kunde inte avbrytas just nu." });
+  let cancels = 0;
+  const { view, question, ask } = await mountRunning(
+    () => {
+      cancels += 1;
+      return pending;
+    },
+    { error: "Körningen kunde inte avbrytas just nu." },
+  );
   const trigger = () => button(view.container, "Avbryt körningen")!;
   assert.equal(view.container.querySelectorAll('[role="alert"]').length, 1);
   assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /Körningen kunde inte avbrytas just nu\./);
@@ -979,10 +986,15 @@ test("a cancel that is on its way keeps its button off until Eneo has answered, 
 
   await ask();
   await view.act(async () => button(question(), "Avbryt körningen")!.click());
-  assert.equal(trigger().disabled, true, "pressed twice, cancelled once");
+  // Busy, not disabled, so the focus a refusal gives back stays on it; a press meanwhile asks nothing.
   assert.equal(trigger().getAttribute("aria-busy"), "true");
+  await ask();
+  assert.equal(question().hasAttribute("open"), false, "pressed twice, asked once");
+  assert.equal(cancels, 1, "cancelled once");
   await view.act(async () => answer());
-  assert.equal(trigger().disabled, false, "free again once it is settled");
+  assert.notEqual(trigger().getAttribute("aria-busy"), "true", "free again once it is settled");
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
   await view.unmount();
 });
 

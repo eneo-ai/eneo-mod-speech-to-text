@@ -62,6 +62,13 @@ test("Försök igen is offered only where trying again can help, and an owner's 
   }
 });
 
+test("a module whose upload disk is full says so in one sentence, and the upload is tried again", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  // The module's own answer to a part it had no room for (backend/app/main.py _spool_full).
+  const full = new ApiError(507, "The module has no room for the upload now.", { error: "module_storage_full" }, "module_storage_full");
+  assert.deepEqual(errorAdvice(full), { message: "Servern har inte plats för filen just nu. Försök igen om en stund.", retry: true, ownerMustFix: false });
+});
+
 test("Eneo's own words go to the console once, for support", (t) => {
   const warn = t.mock.method(console, "warn", () => undefined);
   const error = eneo(409, "flow_assistant_snapshot_republish_required", "Assistant snapshot is missing.");
@@ -87,7 +94,8 @@ test("a flow that cannot be opened says why in Swedish, and offers Försök igen
   );
   assert.deepEqual(republish, {
     title: "Flödet kan inte användas just nu.",
-    detail: "Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.",
+    // The heading says the first sentence; the line under it does not say it again.
+    detail: "Den som ansvarar för det behöver publicera det på nytt.",
     retry: false,
   });
   assert.equal(unavailableCopy(eneo(503, undefined, "Service Unavailable")).retry, true);
@@ -219,7 +227,7 @@ test("a refused name says why in its reason: a speaker the transcript no longer 
   t.mock.method(console, "warn", () => undefined);
   const refused = (reason: string) =>
     friendlyError(new ApiError(400, "x", { code: "flow_transcript_corrections_invalid_speaker_edit", context: { reason } }, "flow_transcript_corrections_invalid_speaker_edit"));
-  assert.equal(refused("unknown_speaker_label"), "En talare som fick ett namn finns inte längre i transkriberingen. Läs in sidan igen och försök på nytt.");
+  assert.equal(refused("unknown_speaker_label"), "En talare som fick ett namn finns inte längre i transkriberingen. Ladda om sidan och försök på nytt.");
   assert.equal(refused("run_not_completed"), "Namnen kan bara ändras när körningen är klar.");
   // Any other reason is the code's own sentence.
   assert.equal(refused("speaker_unchanged"), "Talarbytet kunde inte sparas. Ladda om sidan och försök igen.");

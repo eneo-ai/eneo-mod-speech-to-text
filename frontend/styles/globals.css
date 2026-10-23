@@ -23,7 +23,7 @@
   --module-speaker-2: light-dark(#94590A, #E8B775);
   --module-speaker-3: light-dark(#B03A5B, #E99DB6);
   --module-speaker-4: light-dark(#1E7A32, #7CBF8B);
-  --module-speaker-5: light-dark(hsl(70 45% 28%), #B9C57E);
+  --module-speaker-5: light-dark(#5D6827, #B9C57E);
   --module-color-review: light-dark(hsl(42 95% 28%), hsl(47 92% 58%));
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }

@@ -4,14 +4,23 @@
  */
 import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
-import { chooseMode, keptRecording, setup, wav } from "./screens";
+import { chooseMode, keptRecording, needsRecording, setup, wav } from "./screens";
 import { declare } from "./sentinel";
 
 const PIECE = 4 * 1024 * 1024;
 
-test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "one laptop and one phone"));
+/** A part the module has and whose reply is lost is made by passing the request on and dropping the answer: WebKit's
+ *  routes do not see a file's bytes (no post data for a Blob body), so the part would go on without them. */
+const lostReplyNeedsBody = (browserName: string) =>
+  test.skip(browserName === "webkit", "WebKit's routes cannot pass a file's bytes on, so a part the module has cannot be made here");
 
-test("a large file resumes after a lost part reply, then starts one run", async ({ page }) => {
+// One laptop and one phone, and the same in WebKit (an iPhone's engine) and Firefox: the upload is the engine's own request.
+test.beforeEach(({}, info) =>
+  test.skip(!["laptop-1440-light", "phone-390-light", "phone-390-webkit", "laptop-1440-firefox"].includes(info.project.name), "one laptop and one phone, in each engine"),
+);
+
+test("a large file resumes after a lost part reply, then starts one run", async ({ page, browserName }) => {
+  lostReplyNeedsBody(browserName);
   declare(page, [{ console: /net::ERR_FAILED.*\/api\/uploads\// }, { requestFailed: /PATCH .*\/api\/uploads\/.*net::ERR_FAILED/ }]);
   const offsets: number[] = [];
   const resources = new Set<string>();
@@ -48,7 +57,9 @@ test("a large file resumes after a lost part reply, then starts one run", async 
   expect(runs).toBe(1);
 });
 
-test("a recording's send cut off by a reload goes on where the module has it, with the bar from there, and starts one run", async ({ page }) => {
+test("a recording's send cut off by a reload goes on where the module has it, with the bar from there, and starts one run", async ({ page, browserName }) => {
+  needsRecording();
+  lostReplyNeedsBody(browserName);
   const size = PIECE + 300_000; // two pieces
   const asked: string[] = [];
   let pieceIn!: () => void;

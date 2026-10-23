@@ -656,6 +656,19 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelledHtml, /data-status="info"/);
   assert.doesNotMatch(cancelledHtml, /data-status="error"/);
   assert.equal([...cancelledHtml.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1);
+  // The person stopped it: no word that it could not be finished, and a way back to a new recording or file beside the
+  // new run, which stays the one filled action.
+  assert.doesNotMatch(text(cancelledHtml), /kunde inte slutföras/);
+  const backToSetup = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onStartAgain: () => undefined, onChooseInput: () => undefined }),
+  );
+  assert.match(text(backToSetup), /Välj nytt ljud/);
+  assert.deepEqual([...backToSetup.matchAll(/<button[^>]*data-variant="primary"[^>]*>/g)].length, 1, "one filled action");
+  assert.doesNotMatch(backToSetup, /<button[^>]*data-variant="primary"[^>]*aria-label="Välj nytt ljud"/);
+  const onlyBack = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onChooseInput: () => undefined }),
+  );
+  assert.match(text(onlyBack), /Välj nytt ljud/, "a run that cannot be started again still has the way back");
 });
 
 /**
@@ -715,7 +728,7 @@ test("the transcript is not copied or downloaded while its saved corrections cou
   assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
-  const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
+  const unread = render("Kunde inte läsa sparade rättningar. Ladda om sidan innan du redigerar eller godkänner.");
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.ok(names(unread).includes("Läs in igen"));
@@ -838,7 +851,7 @@ test("words the flow's service could not time are said quietly, only where there
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
-  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner." });
+  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Ladda om sidan innan du godkänner." });
   assert.match(html, /Kunde inte läsa transkriberingens underlag/);
   assert.deepEqual(names(html), ["Läs in igen"]);
   const empty = transcriptView({ segments: [] });

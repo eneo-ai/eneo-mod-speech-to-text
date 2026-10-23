@@ -9,7 +9,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
-import { addParticipants, backLink, chooseFile, isLaptop, record, resultTab, setup, setupFromList, startOver, unsavedCorrections } from "./screens";
+import { addParticipants, backLink, chooseFile, isLaptop, record, resultTab, setup, setupFromList, startOver, stop, unsavedCorrections } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width"));
 
@@ -174,6 +174,38 @@ test("unsaved transcript corrections ask before leaving; a successful retry remo
   await expect(question(page)).toHaveCount(0);
 });
 
+test("Logga ut while recording, answered Stanna kvar: the focus goes back to the account's button, as the menu is gone", async ({ page }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  const account = page.getByRole("button", { name: /^Öppna konto för/ });
+  await account.click();
+  await page.getByRole("menuitem", { name: "Logga ut" }).click();
+  await asked(page);
+  await stay(page);
+  await expect(account, "where the person was, not the page's body").toBeFocused();
+});
+
+test("unsaved result corrections are kept in the tab: after a reload the page shows them and saves them", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
+  await unsavedCorrections(page, "result");
+  // The network is back; the tab is reloaded (as a phone does with a tab it put away), the browser's question accepted.
+  await page.unroute("**/transcript-corrections**");
+  const saved: unknown[] = [];
+  await page.route("**/steps/*/transcript-corrections/", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = route.request().postDataJSON();
+    saved.push(body);
+    await route.fulfill({ json: { ...body, flow_run_id: ids.runs.done, step_id: ids.steps.audio, revision: (body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-25T20:00:00Z" } });
+  });
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  await resultTab(page, "Transkribering");
+  await expect.poll(() => saved.length, { message: "the kept correction is saved again" }).toBe(1);
+  await expect(page.getByRole("button", { name: "Talare 2, ändra talare" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toHaveCount(0);
+});
+
 for (const action of ["Alla flöden", "Ny inspelning"]) {
   test(`unsaved result corrections survive cancelling ${action}`, async ({ page, sentinel }) => {
     sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
@@ -276,6 +308,30 @@ test("a reload asks only through the browser's beforeunload", async ({ page }) =
   expect(dialogs).toEqual(["beforeunload"]);
   await expect(question(page)).toHaveCount(0);
   await recordingRuns(page);
+});
+
+test("a stopped recording the device keeps is left without the browser's question, which would say what the page's does not; one the device cannot keep still asks", async ({ page }) => {
+  const dialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.type());
+    void dialog.dismiss();
+  });
+  await recordingInVisit(page);
+  await stop(page);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+  expect(dialogs, "kept on the device, it waits among the unsent recordings").toEqual([]);
+
+  // A browser with no storage for recordings keeps it in this tab alone: a reload would lose it.
+  await page.addInitScript(() => Object.defineProperty(window, "indexedDB", { value: undefined }));
+  await page.reload();
+  await setup(page);
+  await record(page, "Spela in");
+  await stop(page);
+  await page.reload({ timeout: 3_000 }).catch(() => null);
+  await page.waitForTimeout(500);
+  expect(dialogs).toEqual(["beforeunload"]);
+  await expect(page.getByRole("heading", { name: "Inspelningen är klar" })).toBeVisible();
 });
 
 test("the gate is not run again by any of this: the status is read once for each page, and its own way to the start when the first read says nobody is signed in is not asked", async ({ page }) => {

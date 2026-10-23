@@ -9,6 +9,7 @@ import { Brand } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { connectionLost } from "@/lib/online-status";
 import { PRODUCT_NAME } from "@/lib/product";
+import { moveFocusToHeading } from "@/routes/RouteEffects";
 
 /**
  * The page where the session's answer did not come (the device has no network, the module is down): it says which, in
@@ -18,8 +19,12 @@ import { PRODUCT_NAME } from "@/lib/product";
 export function ModuleUnreachable({ onRetry, retried = false }: { onRetry: () => void; retried?: boolean }) {
   // Shown again after a Försök igen that failed: the new page's Försök igen takes the focus the pressed one had.
   const retry = useRef<HTMLButtonElement>(null);
+  // Shown in place of a page whose link took the focus with it: its heading takes it, so the person starts from here. It
+  // says nothing of the route being ready, so the page that replaces it when the module answers gets the navigation's
+  // focus and announcement then (routes/RouteEffects).
   useEffect(() => {
     if (retried) retry.current?.focus();
+    else moveFocusToHeading();
   }, []);
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>

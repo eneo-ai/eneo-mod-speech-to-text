@@ -470,6 +470,23 @@
                 }
               }
             }
+          },
+          "507": {
+            "description": "Modulens disk för uppladdningar som pågår är full. Inget av delen sparades; skicka samma del igen när uppladdningar före den har gått vidare till Eneo. error är module_storage_full.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "const": "30"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BffError"
+                }
+              }
+            }
           }
         }
       },
@@ -4479,6 +4496,7 @@
           "error": {
             "type": "string",
             "enum": [
+              "module_storage_full",
               "streams_busy",
               "upload_receive_timeout",
               "uploads_busy",

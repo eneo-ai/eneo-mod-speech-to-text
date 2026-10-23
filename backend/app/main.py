@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import enum
 import json
 import logging
@@ -258,6 +259,16 @@ def _upstream_redirect() -> JSONResponse:
             "error": "upstream_redirect",
             "detail": "Eneo answered with a redirect, which the module does not follow.",
         },
+    )
+
+
+def _spool_full() -> JSONResponse:
+    """The disk the module keeps uploads on while they arrive (the spool) is full: nothing of the part is kept, and the
+    same part goes through once uploads before it have gone on to Eneo and left room."""
+    return JSONResponse(
+        status_code=507,
+        content={"error": "module_storage_full", "detail": "The module has no room for the upload now."},
+        headers={"Retry-After": "30"},
     )
 
 
@@ -628,6 +639,9 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                     await anyio.to_thread.run_sync(entry.file.file.truncate, entry.offset)
                 if isinstance(error, TimeoutError):
                     raise HTTPException(408, "The upload part timed out") from None
+                if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT):
+                    logger.error("The upload spool is full: a part of %s bytes was refused", length)
+                    return _spool_full()
                 raise
             entry.offset += received
             entry.touch()

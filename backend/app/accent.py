@@ -81,6 +81,22 @@ NEUTRALS: tuple[tuple[str, str], ...] = (
     ),
     ("--module-shadow-dock", "0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), transparent)"),
 )
+# The transcript's speaker colours, light then dark, as the module's stylesheet declares them (styles/globals.css
+# --module-speaker-N). None is Eneo's blue, so a name does not read as a link; another accent can be one of them.
+SPEAKERS: tuple[tuple[str, str], ...] = (
+    ("#6D46B8", "#B69FE7"),
+    ("#0B6E69", "#70CDC4"),
+    ("#94590A", "#E8B775"),
+    ("#B03A5B", "#E99DB6"),
+    ("#1E7A32", "#7CBF8B"),
+    ("#5D6827", "#B9C57E"),
+)
+# A speaker in the accent's hue is given one of these instead, the first not in that hue: a magenta, then a yellow
+# green, each at least _SPEAKER_APART from every speaker above and neither blue (a deployment's page shows none).
+SPARE_SPEAKERS: tuple[tuple[str, str], ...] = (("#993399", "#E198E1"), ("#2B6E0C", "#7EC25E"))
+# Nearer in hue than this, in degrees, a speaker's name reads as the accent: a link, the focus ring, the selected chip.
+# Eneo's own palette keeps its nearest speaker, the teal, 33 degrees from Eneo's blue.
+_SPEAKER_APART = 30
 # What the page is read on: each surface, the body last.
 _GROUNDS = (
     "--color-background-surface",
@@ -357,6 +373,34 @@ def _hued(accent: Accent) -> list[tuple[str, str]]:
     return hued
 
 
+def _hue_apart(one: RGB, other: RGB) -> float:
+    """How far apart two colours are in hue, in degrees; a grey has no hue, so it is apart from every colour."""
+    if max(one) - min(one) < 26 or max(other) - min(other) < 26:
+        return 180.0
+    turn = abs(_hls(one)[0] - _hls(other)[0]) * 360
+    return min(turn, 360 - turn)
+
+
+def _speakers(accent: Accent) -> list[tuple[str, str]]:
+    """The speakers whose colour this accent changes: one in the accent's hue in either mode takes a spare's place, and
+    each keeps 4.5:1 on every ground of its mode and on the selected passage's tint, as the module's own do on Eneo's."""
+    accents = (_hex(accent.light), _hex(accent.dark))
+    near = lambda pair: any(_hue_apart(_hex(pair[side]), accents[side]) < _SPEAKER_APART for side in (0, 1))  # noqa: E731
+    grounds = []
+    for mode in (LIGHT, DARK):
+        neutrals = _neutrals(accents[mode.side], mode)
+        tints = [_blend(accents[mode.side], neutrals[token], mode.tint) for token in ("--color-background-surface", "--color-background-card")]
+        grounds.append([neutrals[token] for token in _GROUNDS] + tints)
+    spares = iter(pair for pair in SPARE_SPEAKERS if not near(pair))
+    changed = []
+    for index, pair in enumerate(SPEAKERS):
+        chosen = next(spares, pair) if near(pair) else pair
+        light, dark = (to_hex(_reaching(_hex(chosen[mode.side]), grounds[mode.side], MIN_CONTRAST, mode)) for mode in (LIGHT, DARK))
+        if (light, dark) != pair:
+            changed.append((f"--module-speaker-{index}", f"light-dark({light}, {dark})"))
+    return changed
+
+
 def theme_css(accent: Accent | None) -> str:
     """The stylesheet that overrides the built theme's accent, and its greys with the accent's hue. Only an ``Accent``
     (already checked) is formatted."""
@@ -369,7 +413,7 @@ def theme_css(accent: Accent | None) -> str:
         '[data-astryx-theme="eneo"] {\n'
         f"  --color-accent: light-dark({accent.light}, {accent.dark});\n"
         f"  --color-on-accent: light-dark({accent.on_light}, {accent.on_dark});\n"
-        + "".join(f"  {token}: {value};\n" for token, value in _hued(accent))
+        + "".join(f"  {token}: {value};\n" for token, value in _hued(accent) + _speakers(accent))
         + "}\n"
     )
 

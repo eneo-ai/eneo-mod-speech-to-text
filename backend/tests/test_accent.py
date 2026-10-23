@@ -13,6 +13,8 @@ from app.accent import (
     LIGHT,
     NEUTRALS,
     NO_ACCENT_CSS,
+    SPARE_SPEAKERS,
+    SPEAKERS,
     Accent,
     _hex,
     _hued,
@@ -78,6 +80,8 @@ class ContrastMathTests(unittest.TestCase):
         for token, value in NEUTRALS:
             self.assertIn(f"{token}: {value};", css if token.startswith(("--color", "--shadow")) else globals_css, token)
         self.assertIn(f"--color-accent: light-dark({ENEO_ACCENT[0]}, {ENEO_ACCENT[1]});", css)
+        for index, (light, dark) in enumerate(SPEAKERS):
+            self.assertIn(f"--module-speaker-{index}: light-dark({light}, {dark});", globals_css, index)
         self.assertIn(f"--color-error: light-dark({ERROR[0]}, {ERROR[1]});", css)
         mix = lambda space, light, dark: (  # noqa: E731
             f"light-dark(color-mix(in {space}, var(--color-accent) {light:.0%}, transparent), "
@@ -141,6 +145,59 @@ class NeutralsTests(unittest.TestCase):
                 on = [neutrals[token] for token in grounds]
                 for token, ratio in (("--color-text-secondary", 4.5), ("--color-text-primary", 4.5), ("--color-border-emphasized", 3.0)):
                     self.assertGreaterEqual(min(contrast(neutrals[token], ground) for ground in on), ratio, (light, mode.name, token))
+
+
+class SpeakerTests(unittest.TestCase):
+    """A speaker's colour is never the accent's: a name in it would read as a link, the focus ring or the selected chip."""
+
+    ACCENTS = NeutralsTests.ACCENTS + ("#6D46B8", "#0B6E69", "#C2185B", "#7A4FD0", "#8A5A00")
+
+    @staticmethod
+    def hue(rgb: tuple[int, int, int]) -> float:
+        return colorsys.rgb_to_hls(*(c / 255 for c in rgb))[0] * 360
+
+    def apart(self, one: tuple[int, int, int], other: tuple[int, int, int]) -> float:
+        turn = abs(self.hue(one) - self.hue(other))
+        return min(turn, 360 - turn)
+
+    @staticmethod
+    def speakers(css: str) -> list[tuple[str, str]]:
+        """The speakers' colours on a deployment's page: the stylesheet's where it gives one, the module's own otherwise."""
+        given = dict(re.findall(r"--module-speaker-(\d): light-dark\((#[0-9A-F]{6}, #[0-9A-F]{6})\);", css))
+        return [tuple(given[str(index)].split(", ")) if str(index) in given else pair for index, pair in enumerate(SPEAKERS)]  # type: ignore[misc]
+
+    def test_eneos_own_accent_keeps_the_speakers_and_a_grey_one_their_hues(self) -> None:
+        self.assertNotIn("--module-speaker", theme_css(ENEO))
+        # A grey has no hue to collide with: a speaker may be darker, to stay readable on its grey tint, never another.
+        for kept, base in zip(self.speakers(theme_css(resolve_accent("#000000", None))), SPEAKERS):
+            for side in (0, 1):
+                self.assertLess(self.apart(_hex(kept[side]), _hex(base[side])), 5, (kept, base))
+
+    def test_no_speaker_is_in_the_accents_hue_and_each_stays_readable(self) -> None:
+        names = ("--color-background-surface", "--color-background-card", "--color-background-popover",
+                 "--color-background-muted", "--color-background-body")
+        for light in self.ACCENTS:
+            accent = resolve_accent(light, None)
+            assert accent is not None, light
+            speakers = self.speakers(theme_css(accent))
+            for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
+                neutrals = _neutrals(_hex(colour), mode)
+                grounds = [neutrals[name] for name in names]
+                # A passage's speaker name on the selected passage's tint.
+                grounds.append(accent_module._blend(_hex(colour), neutrals["--color-background-surface"], mode.tint))
+                for index, pair in enumerate(speakers):
+                    rgb = _hex(pair[mode.side])
+                    if light != "#000000" and colour != "#000000":
+                        self.assertGreaterEqual(self.apart(rgb, _hex(colour)), 30, (light, mode.name, index, pair))
+                    self.assertGreaterEqual(min(contrast(rgb, ground) for ground in grounds), 4.5, (light, mode.name, index, pair))
+            self.assertEqual(len(set(speakers)), len(speakers), light)
+
+    def test_a_spare_is_apart_from_every_speaker_and_is_not_blue(self) -> None:
+        for spare in SPARE_SPEAKERS:
+            for side in (0, 1):
+                self.assertFalse(NeutralsTests.blue(_hex(spare[side])), spare)
+                for pair in SPEAKERS:
+                    self.assertGreaterEqual(self.apart(_hex(spare[side]), _hex(pair[side])), 30, (spare, pair))
 
 
 class ResolveTests(unittest.TestCase):
@@ -258,8 +315,12 @@ class ThemeCssTests(unittest.TestCase):
             css,
         )
         self.assertTrue(css.endswith("}\n"))
-        self.assertEqual([line.split(":")[0].strip() for line in css.splitlines()[4:-1]], [token for token, _ in NEUTRALS])
+        # The greys, then the one speaker whose colour is the accent's green, with a spare in its place.
+        self.assertEqual(
+            [line.split(":")[0].strip() for line in css.splitlines()[4:-1]], [token for token, _ in NEUTRALS] + ["--module-speaker-4"]
+        )
         self.assertIn("  --color-text-secondary: light-dark(#4F5E52, #A0AAA3);\n", css)
+        self.assertIn(f"  --module-speaker-4: light-dark({SPARE_SPEAKERS[0][0]}, {SPARE_SPEAKERS[0][1]});\n", css)
 
     def test_whatever_is_resolved_formats_to_nothing_but_the_template(self) -> None:
         colour = r"(#[0-9A-F]{6}|rgba\(\d{1,3}, \d{1,3}, \d{1,3}, [01]?\.?\d*\)|transparent)"
@@ -268,7 +329,7 @@ class ThemeCssTests(unittest.TestCase):
             r'|\[data-astryx-theme="eneo"\] \{|\}'
             r"|  --color-accent: light-dark\(#[0-9A-F]{6}, #[0-9A-F]{6}\);"
             r"|  --color-on-accent: light-dark\(#[0-9A-F]{6}, #[0-9A-F]{6}\);"
-            rf"|  --(color|shadow|module)-[a-z-]+: ((inset )?(-?\d+(px)? ){{3,4}})?light-dark\({colour}, {colour}\)"
+            rf"|  --(color|shadow|module)-[a-z0-9-]+: ((inset )?(-?\d+(px)? ){{3,4}})?light-dark\({colour}, {colour}\)"
             rf"(, ((inset )?(-?\d+(px)? ){{3,4}})light-dark\({colour}, {colour}\))*;"
         )
         for light in ("#004595", "#1C7531", "#B3261E", "#6B1EFD", "#00695C", "#5E6B00", "#0000FF", "#000000", "#1c7531"):

@@ -185,7 +185,9 @@ RANGE = header("Range", "Ett byteintervall, som `bytes=0-1023`. Skickas vidare t
 PROXY_ERRORS = ("upstream_unreachable", "upstream_too_large", "upstream_redirect")
 UPLOAD_ERRORS = (*PROXY_ERRORS, "upstream_upload_timeout", "upload_receive_timeout", "uploads_busy")
 STREAM_ERRORS = ("upstream_unreachable", "upstream_redirect", "upstream_invalid", "streams_busy")
-BFF_ERRORS = sorted({*PROXY_ERRORS, *UPLOAD_ERRORS, *STREAM_ERRORS})
+# The disk the module keeps a resumable upload's parts on while they arrive is full (507).
+SPOOL_ERRORS = ("module_storage_full",)
+BFF_ERRORS = sorted({*PROXY_ERRORS, *UPLOAD_ERRORS, *STREAM_ERRORS, *SPOOL_ERRORS})
 # What Eneo refuses a file with comes back with its status and its answer in `detail`.
 STREAM_ANSWERS = {"default": {"$ref": "#/components/responses/EneoRefusal"}}
 
@@ -232,7 +234,10 @@ OPERATIONS: dict[tuple[str, str], Op] = {
                  "409": reply("Positionen eller tillståndet skiljer sig. Läs status innan nästa del.", json_of(ERROR)),
                  "411": reply("Content-Length saknas.", json_of(ERROR)),
                  "415": reply("Innehållstypen måste vara application/octet-stream.", json_of(ERROR)),
-                 "503": reply("En annan del behandlas eller kapaciteten är upptagen. Försök igen efter två sekunder.", json_of(ERROR))}),
+                 "503": reply("En annan del behandlas eller kapaciteten är upptagen. Försök igen efter två sekunder.", json_of(ERROR)),
+                 "507": reply("Modulens disk för uppladdningar som pågår är full. Inget av delen sparades; skicka samma del igen "
+                              "när uppladdningar före den har gått vidare till Eneo. `error` är `module_storage_full`.",
+                              json_of({"$ref": "#/components/schemas/BffError"}), {"Retry-After": {"schema": {"const": "30"}}})}),
     ("POST", "/api/uploads/{flow_id}/{step_id}/{upload_id}/complete"): Op(
         "Uppladdning", "Lämna den färdiga filen till Eneo",
         "Kontrollerar körningskontraktet igen och startar en enda vidarebefordran. Svaret kommer genast; läs GET tills "

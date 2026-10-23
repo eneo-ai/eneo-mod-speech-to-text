@@ -73,16 +73,20 @@ export function RunFailure({
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
   const offerStartAgain = Boolean(onStartAgain) && (cancelled || Boolean(refusal?.startAgain));
-  const offerChooseInput = Boolean(onChooseInput) && Boolean(failure?.inputMustChange);
+  // The way back to a new recording or file: when the input itself has to change, and after a cancellation, which the
+  // person chose (with a new run of the same audio beside it, the filled one).
+  const offerChooseInput = Boolean(onChooseInput) && (Boolean(failure?.inputMustChange) || cancelled);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
 
-  // The transcript's heading takes the focus, which brings it into view; before it is read the link is a plain one.
+  // The transcript's heading takes the focus and comes to the window's top, as a jump does; focus alone scrolls only as
+  // far as shows it, which on a laptop is its first line at the window's foot. Before it is read the link is a plain one.
   function toTranscript(event: MouseEvent) {
     const target = document.getElementById("run-transcript");
     if (!target) return;
     event.preventDefault();
-    target.focus();
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start" });
   }
 
   async function retry() {
@@ -117,7 +121,7 @@ export function RunFailure({
             role="note"
             status={cancelled ? "info" : failure?.inputMustChange || run.error?.retryable ? "warning" : "error"}
             title={failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
-            description={failure?.summary ?? "Körningen kunde inte slutföras."}
+            description={failure?.summary ?? (cancelled ? undefined : "Körningen kunde inte slutföras.")}
             collapsible={false}
           />
           <VStack gap={3}>
@@ -132,7 +136,13 @@ export function RunFailure({
             {(offerChooseInput || offerRetry || offerStartAgain) && (
               <ActionRow align="start">
                 {offerChooseInput && (
-                  <Button label="Välj nytt ljud" variant="primary" size="lg" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
+                  <Button
+                    label="Välj nytt ljud"
+                    variant={offerStartAgain ? "secondary" : "primary"}
+                    size="lg"
+                    icon={<Icon icon={Upload} size="sm" color="inherit" />}
+                    onClick={() => leaveFirst(() => onChooseInput?.())}
+                  />
                 )}
                 {offerRetry && (
                   // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.

@@ -265,9 +265,17 @@ export function sealed(recording: StoredRecording): boolean {
   return recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
 }
 
-/** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
-export function continuable(recording: StoredRecording): boolean {
+/** Its capture ended without a stop (a reload, a killed tab). */
+export function cutOff(recording: StoredRecording): boolean {
   return recording.state === "recording" || recording.state === "paused";
+}
+
+/**
+ * "Fortsätt spela in" adds a part: to a capture that was cut off, and to one the person stopped, also after leaving the
+ * page it was stopped on, until a send of it has begun (it is then sealed).
+ */
+export function continuable(recording: StoredRecording): boolean {
+  return cutOff(recording) || recording.state === "stopped";
 }
 
 /** A recording's files: its parts with audio. */
@@ -326,6 +334,7 @@ export class RecordingStore {
   private heads = new Map<string, { part: number; data: Blob }>();
   // What the browser says of keeping this device's storage: true when it will not delete it; null until it has said.
   private kept: boolean | null = null;
+  private askedToKeep = false;
 
   constructor(
     private backend: Backend,
@@ -730,7 +739,9 @@ export class RecordingStore {
   }
 
   async requestPersistence(): Promise<void> {
-    if (this.kept) return;
+    // Once a page: Firefox asks the person in a bar over the page each time, and a refusal stands for the page.
+    if (this.kept || this.askedToKeep) return;
+    this.askedToKeep = true;
     try {
       const granted = await this.env.storage?.persist();
       if (granted === undefined || granted === this.kept) return;

@@ -36,10 +36,29 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
   }, [guarded]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => guarded && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
   const [pendingAction, setPendingAction] = useState<(() => void | Promise<void>) | null>(null);
+  // Where the focus was when the question was asked, to give it back to when the person stays. The dialog gives it back
+  // itself, but not to what went while it was open: a menu's item (Logga ut) goes with its menu, and its button is
+  // then where the person was.
+  const returnTo = useRef<HTMLElement | null>(null);
+  const remember = () => {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const menu = active?.closest<HTMLElement>('[role="menu"]');
+    returnTo.current = (menu?.id ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(menu.id)}"]`) : null) ?? active;
+  };
 
   const stay = () => {
     setPendingAction(null);
     if (blocker.state === "blocked") blocker.reset();
+    // Once the dialog, closing, has given the focus back where it could: on the page's body, it goes to `returnTo`.
+    const back = returnTo.current;
+    returnTo.current = null;
+    const until = performance.now() + 1_000;
+    const check = () => {
+      const active = document.activeElement;
+      if (!active || active === document.body) return void (back?.isConnected && back.focus());
+      if (active.closest("dialog") && performance.now() < until) requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
   };
   const leave = () => {
     const goOn = pendingAction;
@@ -74,7 +93,11 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
       onAction={leave}
     />
   );
-  const leaveFirst = (goOn: () => void | Promise<void>) => (guarded ? setPendingAction(() => goOn) : void goOn());
+  const leaveFirst = (goOn: () => void | Promise<void>) => {
+    if (!guarded) return void goOn();
+    remember();
+    setPendingAction(() => goOn);
+  };
 
   return { leaveFirst, holdUnsavedCorrections, question };
 }

@@ -852,6 +852,21 @@ test("a denied or missing microphone says what happened and what to do next, and
   // Choosing another mode clears the problem; so does a start that works.
   missing.session.selectMode("ladda-upp");
   assert.equal(missing.session.getSnapshot().problem, null);
+
+  // Held by another app (Teams in a meeting room), and a reason the page does not know.
+  for (const [name, problem] of [
+    ["NotReadableError", { title: "Mikrofonen kunde inte startas.", detail: "Stäng andra appar som använder mikrofonen och försök igen.", retry: true }],
+    ["AbortError", { title: "Inspelningen kunde inte starta.", detail: "Försök igen eller välj Ladda upp.", retry: true }],
+  ] as const) {
+    const refused = await setup({
+      getStream: async () => {
+        throw new DOMException("The microphone could not start", name);
+      },
+    });
+    refused.session.setContract(audioContract());
+    await refused.session.start();
+    assert.deepEqual(refused.session.getSnapshot().problem, problem, name);
+  }
 });
 
 test("Fortsätt spela in after a lost microphone says why the recorder refused it, and a second press while it waits says nothing", async () => {
@@ -1165,6 +1180,43 @@ test("a part longer than Eneo takes is not sent, whatever the page's copy of the
     session.getSnapshot().problem?.title,
     "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1\u00a0h\u00a030\u00a0min). Spara den som fil för att behålla den.",
   );
+  assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
+});
+
+test("a recording of minutes that holds a few bytes is no sound: it is not sent, it stays on the device, and the page says so", async () => {
+  const { session, store } = await setup();
+  const contract = audioContract();
+  session.setContract(contract);
+  let uploads = 0;
+  session.setHandlers({
+    submit: async ({ input, payload }) => {
+      if (input?.kind !== "recording") return;
+      await submitRecording(
+        store,
+        input.recording.id,
+        { flowId: "flow-1", contract, stepId: "step-audio", inputPayload: payload, online: createOnlineStatus() },
+        { upload: async () => ({ id: `file-${++uploads}` }), startRun: async () => ({ id: "run-1", flow_id: "flow-1", status: "queued" }) },
+      );
+    },
+  });
+  // A microphone that gave nothing (a simulator's, one that ended under the recorder): 5 bytes in 2 min 17 s.
+  const recording = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["12345"]), 137_000);
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  session.adopt((await store.get(recording.id))!);
+
+  assert.equal(await session.createDocument(), false);
+  assert.equal(uploads, 0, "nothing uploaded for Eneo to fail on");
+  assert.equal(session.getSnapshot().problem?.title, "Inspelningen innehåller inget ljud.");
   assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
 });
 

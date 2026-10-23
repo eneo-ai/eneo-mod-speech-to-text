@@ -13,6 +13,8 @@ const allowed: Record<string, string> = {
   "lib/live-transcriber.ts": "the live socket; its address names the user (liveSocketUrl)",
   "components/flow/live-audio.ts": "the live socket; browserLiveDeps gives it the user",
   "components/flow/ResultDocument.tsx": "a GET of the result file's own link, to share it: a read, not a write to Eneo",
+  "lib/online-status.ts": "a GET of the module's public health route, to know when it answers again: no user, nothing of Eneo",
+  "components/Brand.tsx": "a GET of the organisation's logo files, held for a mark first shown offline: public, no user, nothing of Eneo",
 };
 const networkCall = /\bfetch\(|\bXMLHttpRequest\b|\bsendBeacon\b|\bWebSocket\b|\bEventSource\b/;
 

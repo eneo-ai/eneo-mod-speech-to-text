@@ -118,3 +118,55 @@ test("an answer to a request that left before the network went does not bring it
   status.reportReachable(status.sending());
   assert.equal(status.connection, "online", "a request that left after the browser said so, and was answered, says the browser is wrong");
 });
+
+test("a module that did not answer is asked again by itself, less and less often, until it answers", async (t) => {
+  // After one failed request the page says Tal till text does not answer; nothing else may come by to clear that.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const flush = async () => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  };
+  const asked: number[] = [];
+  let answers = false;
+  let clock = 0;
+  const status = createOnlineStatus(fakeBrowser(true).target, () => clock, async () => {
+    asked.push(clock);
+    return answers;
+  });
+  const tick = async (ms: number) => {
+    clock += ms;
+    t.mock.timers.tick(ms);
+    await flush();
+  };
+  const heard: boolean[] = [];
+  status.subscribe((online) => heard.push(online));
+
+  status.reportNetworkFailure();
+  await tick(4_999);
+  assert.deepEqual(asked, [], "not at once: the failure is fresh");
+  await tick(1);
+  assert.deepEqual(asked, [5_000], "asked after 5 s");
+  await tick(10_000);
+  assert.deepEqual(asked, [5_000, 15_000], "then after twice as long");
+  answers = true;
+  await tick(20_000);
+  assert.equal(status.connection, "online", "it answered: the page is told");
+  assert.deepEqual(heard, [false, true]);
+  await tick(120_000);
+  assert.equal(asked.length, 3, "and nothing is asked once it answers");
+});
+
+test("a device with no network is not asked about: the browser says when it is back", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const browser = fakeBrowser(true);
+  let asked = 0;
+  const status = createOnlineStatus(browser.target, undefined, async () => {
+    asked += 1;
+    return true;
+  });
+  browser.go(false);
+  status.reportNetworkFailure();
+  t.mock.timers.tick(120_000);
+  await Promise.resolve();
+  assert.equal(asked, 0);
+  assert.equal(status.connection, "offline");
+});

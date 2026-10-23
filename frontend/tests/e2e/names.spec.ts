@@ -303,8 +303,9 @@ for (const [state, title] of [
   ["signin-sso", "Logga in · Tal till text"],
   ["flow-list", "Välj ett flöde · Tal till text"],
   ["flow-gone", "Flödet är inte längre tillgängligt · Tal till text"],
-  ["review", "Vem är vem? · Tal till text"],
-  ["review-text-edit", "Sammanfattning · Tal till text"],
+  // A review names its flow, as the run's other states do: two tabs with a review each are told apart.
+  ["review", "Vem är vem? · Intervju till sammanfattning · Tal till text"],
+  ["review-text-edit", "Sammanfattning · Nämndmöte till rapport · Tal till text"],
 ]) {
   test(`the ${state} page's title says what it is`, async ({ page }, info) => {
     await STATES.find((s) => s.name === state)!.go(page, info);

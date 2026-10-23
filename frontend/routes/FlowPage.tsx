@@ -6,7 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useNavigationType, useParams } from "react-router";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
@@ -88,8 +88,8 @@ type RunState =
   | { kind: "submitting" }
   // An earlier run is being read; its state is not known yet.
   | { kind: "opening"; runId: string }
-  // The run has ended, but its result or steps could not be read.
-  | { kind: "unread"; runId: string; message: string }
+  // The run has ended, or waits for review (`review`), but its result, steps or pause could not be read.
+  | { kind: "unread"; runId: string; message: string; review?: boolean }
   | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
@@ -115,6 +115,21 @@ const RUN_GONE = "Körningen finns inte längre. Du kan starta en ny här.";
 
 function readRunIdFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
+}
+
+/** The run a state shows, or null for the setup and a send under way. */
+function runIdOf(run: RunState): string | null {
+  switch (run.kind) {
+    case "opening":
+    case "unread":
+      return run.runId;
+    case "running":
+    case "awaiting_review":
+    case "done":
+      return run.run.id;
+    default:
+      return null;
+  }
 }
 
 function FlowDetail({ flowId }: { flowId: string }) {
@@ -205,6 +220,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
   });
   const { session, snapshot } = input;
   const currentRecordingId = snapshot.recording?.id ?? null;
+  // What was said about the last run (one that is gone, one that could not be read) belongs to the setup it was said on:
+  // a recording that starts there leaves it behind. Every other writer of it shows a run, where the setup is not drawn.
+  useEffect(() => {
+    if (snapshot.phase !== "setup") setRunError(null);
+  }, [snapshot.phase]);
   const unsentList = useUnsentRecordings(user.id, flowId);
   const unsent = { ...unsentList, recordings: unsentList.recordings.filter((recording) => recording.id !== currentRecordingId) };
 
@@ -250,8 +270,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
       : UNSTORED_LEAVE,
     leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
   );
+  // The browser's own question (a reload, a closed tab) is not asked for a stopped recording the device keeps: it waits
+  // among the unsent recordings and can be continued there, as the page's own question says. It is asked while the
+  // recording runs, is being finished, or is held only in this tab.
+  const keptOnDevice =
+    snapshot.phase === "ready" && input.persistent === true && !input.capture.refused && !snapshot.finishing && !snapshot.finishQueued;
   useEffect(() => {
-    const shouldWarn = holdsAudio || submitting || unstored;
+    const shouldWarn = (holdsAudio && !keptOnDevice) || submitting || unstored;
     if (!shouldWarn) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -260,7 +285,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [holdsAudio, submitting, unstored]);
+  }, [holdsAudio, keptOnDevice, submitting, unstored]);
 
   // A file dropped outside Ladda upp's zone would make the browser open it and leave the page (and a recording). The zone's
   // own handlers run first (React's root listeners are below window) and mark their event handled, so only a drop that
@@ -378,14 +403,49 @@ function FlowDetail({ flowId }: { flowId: string }) {
     void earlier.reload();
   }
 
-  /** Takes up an existing run (from the address or the list) and follows it. */
+  /** Takes up an existing run (from the address, or read again) and follows it. */
   function resumeRun(runId: string) {
+    writeRunIdToUrl(runId);
+    showRun(runId);
+  }
+
+  function showRun(runId: string) {
     setRunError(null);
     setRetryRefusal(null);
-    writeRunIdToUrl(runId);
     setRun({ kind: "opening", runId });
     void follow(runId);
   }
+
+  /** A run the person opens from the setup's list: an entry of its own, so Back goes to the setup it was opened from. */
+  function openRun(runId: string) {
+    const search = new URLSearchParams(window.location.search);
+    search.set(RUN_QUERY_PARAM, runId);
+    void navigate({ search: search.toString() });
+    showRun(runId);
+  }
+
+  // Back and Forward between this flow's own entries (a run the person opened, and the setup they opened it from): the
+  // page shows what the entry's address names. Not while a recording or a send is on the page: those stay where they are.
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const seenEntry = useRef(location.key);
+  useEffect(() => {
+    if (seenEntry.current === location.key) return;
+    seenEntry.current = location.key;
+    if (navigationType !== "POP" || run.kind === "submitting" || snapshot.phase !== "setup") return;
+    const wanted = new URLSearchParams(location.search).get(RUN_QUERY_PARAM);
+    if (wanted === runIdOf(run)) return;
+    if (wanted) {
+      showRun(wanted);
+    } else {
+      followAbortRef.current?.abort();
+      setRunError(null);
+      setRetryRefusal(null);
+      setRun({ kind: "idle" });
+      loadEarlierRuns();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   /**
    * Follows the run by its status and its run-locked graph until it is done or waits for review. The step results (an
@@ -411,8 +471,17 @@ function FlowDetail({ flowId }: { flowId: string }) {
       });
       if (!last || signal.aborted) return;
       if (last.run.status === "awaiting_review") {
-        // Eneo answers null while the pause is not visible yet; an error is not that, and ends the following below.
-        const { checkpoint, corrections } = await readActivePause(flowId, runId);
+        // Eneo answers null while the pause is not visible yet. An error is not that: it is said once, on the run's own
+        // page with a way to read it again, and not polled (the run waits for this person in Eneo; the start page would
+        // invite a second run).
+        let pause: Awaited<ReturnType<typeof readActivePause>>;
+        try {
+          pause = await readActivePause(flowId, runId);
+        } catch (err) {
+          if (!signal.aborted) setRun({ kind: "unread", runId, message: friendlyError(err), review: true });
+          return;
+        }
+        const { checkpoint, corrections } = pause;
         if (signal.aborted) return;
         if (checkpoint) {
           // Paused until the person has acted; the review view starts the following again.
@@ -441,6 +510,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
       if (gone) writeRunIdToUrl(null);
       setRunError(gone ? RUN_GONE : friendlyError(err));
       setRun({ kind: "idle" });
+      // The run the person meant may be among the earlier ones, which a page opened at a run's address has not read.
+      loadEarlierRuns();
     }
   }
 
@@ -657,7 +728,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           ownerId={user.id}
           notice={runError}
           earlierRuns={earlierRuns}
-          onOpenRun={resumeRun}
+          onOpenRun={openRun}
           onMoreRuns={() => void earlier.more()}
           unsent={unsent}
           afterRun={shownRun}
@@ -722,7 +793,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
     if (run.kind === "opening") return flowPage(<RunOpening retrying={pollTrouble} onRetry={() => void follow(run.runId)} />);
 
-    if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
+    if (run.kind === "unread") return flowPage(<RunUnread message={run.message} review={run.review} onRetry={() => resumeRun(run.runId)} />);
 
     if (run.kind === "running") {
       // What the run was started with: what the page holds for it, or the run's own where it carries it. A run opened

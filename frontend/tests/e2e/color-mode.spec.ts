@@ -18,8 +18,13 @@ for (const [stored, system] of [["dark", "light"], ["light", "dark"], ["system",
       if (stored) localStorage.setItem("theme", stored);
       else localStorage.removeItem("theme");
       const modes: string[] = ((window as unknown as Sampled).modes = []);
+      // Through a canvas: a mix computes to color(srgb …), whose 0–1 channels a pattern for rgb() reads as black.
+      const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
       const dark = (color: string) => {
-        const [r, g, b] = (color.match(/[\d.]+/g) ?? []).map(Number);
+        paint.clearRect(0, 0, 1, 1);
+        paint.fillStyle = color;
+        paint.fillRect(0, 0, 1, 1);
+        const [r, g, b] = paint.getImageData(0, 0, 1, 1).data;
         return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
       };
       let frames = 0;

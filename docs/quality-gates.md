@@ -56,6 +56,7 @@ Hela gaten är timmar på en dator. Kör lokalt det en ändring rör (`npm run t
 |---|---|
 | axe | Varje WCAG-överträdelse stoppar, oavsett allvarlighet; övriga regler när de är allvarliga eller kritiska. |
 | Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. Mäts i Chromium, vars träd gaten kan läsa; i WebKit och Firefox är det axe som hittar ett saknat namn. |
+| Text som axe inte kan avgöra | Text där axe lämnar kontrasten åt en människa (en toning bakom, något som ligger över eller under) mäts på skärmens pixlar: texten görs osynlig ett ögonblick, medianen av det som syns bakom är bakgrunden, och kravet är 4,5:1 (3:1 för stor text). Text bakom en öppen modal dialog, text utan färg och glyfer från ett ikontypsnitt mäts inte. |
 | Platshållartext | Kontrast 4,5:1. |
 | Målstorlek | 24 px med mus, 44 px med finger (`pointer: coarse`). |
 | Reflow och textavstånd | Ingen text eller kontroll utanför fönstrets kant och inget avklippt av en ruta som klipper, i varje läge på varje bredd gaten har (också 1000 px, strax under laptopens två kolumner); ökat radavstånd, teckenavstånd och ordavstånd klipper inget, och en rubrik kapas inte. |
@@ -95,6 +96,7 @@ ARIA-ögonblicksbilderna är redigerade för hand: ett mönster där ett värde 
 | ARIA-ögonblicksbilderna (`aria.spec.ts`) | `phone-390-light`, `laptop-1440-light`, `phone-390-webkit`, `laptop-1440-webkit`, `laptop-1440-firefox` |
 | Kontrollernas egna tester (`harness.spec.ts`) | `laptop-1440-light`, `laptop-1440-webkit`, `laptop-1440-firefox`: en gång per motor |
 | En PDF som sparas på en iPhone eller iPad öppnas i en egen flik och sidan står kvar (`touch-pdf.spec.ts`) | `phone-390-webkit`, `tablet-landscape-webkit`: Safaris motor på pekskärm |
+| Uppladdningen i delar och utan nätverk (`resumable-upload.spec.ts`, `offline-upload.spec.ts`) | `phone-390-light`, `laptop-1440-light`, `phone-390-webkit`, `laptop-1440-firefox`: uppladdningen är motorns egen begäran. I WebKit ser en route inte filens byte, så de två testerna med en del som modulen har men vars svar försvann hoppas över där |
 
 Övriga specar körs bara i Chromium: namnen (`names.spec.ts`), läckorna, stilla sida (`still.spec.ts`) och beteendespecarna. Motorprojekten tar inte med dem, och flera av dem väljer själva en eller några av Chromium-projekten.
 
@@ -125,6 +127,8 @@ Motorprojekten är `phone-390-webkit`, `tablet-landscape-webkit`, `laptop-1440-w
 - En omdirigering fäller testet, utom inloggningens egna (`/api/auth/login`, `/api/auth/callback` och stubbens `/module-login`).
 - Ett konsolfel, ett ofångat fel eller ett misslyckat anrop fäller testet om läget inte deklarerat det med `expects` i `screens.ts`, och ett deklarerat fel som inte inträffar fäller det också: ett läge som ska orsaka ett fel bevisar att det gör det. Ett anrop som webbläsaren eller sidan själv avbrutit (`net::ERR_ABORTED`, och WebKits och Firefox ord för samma sak) räknas inte; vaktposten bevakar också varje tryck i `controls.spec.ts`, i alla tre motorerna.
 - `sentinel.spec.ts` orsakar vart och ett av dem och ser att vaktposten ser det.
+
+`server-faults.spec.ts` körs bara här: stubben svarar på en fil med Eneos egna fel efter filens namn (`trasig` ett 500, `html` ett 502 med en proxys HTML-sida, `avbruten` en anslutning som stängs utan svar, `trunkerad` ett 201 vars JSON är avklippt), den riktiga backenden för dem vidare eller ger sitt eget 502, och testet läser vad sidan säger, att filen finns kvar och att den går att skicka igen.
 
 `REAL_EXTERNAL_URL` kör gaten mot en backend som redan är igång (imagen bakom Traefik, som imagens acceptans gör) i stället för att starta en; stubben är då den driftsättningens Eneo, på en adress webbläsaren når.
 
@@ -230,6 +234,7 @@ CI delar kontrollernas tester i fem delar och övriga tester mot utvecklingsserv
 |---|---|---|
 | `targets under 44 px on a coarse pointer (house bar)` | Ett pekmål är för litet | Rätta storleken i temat, inte på ett enskilt ställe. |
 | `axe: WCAG violations …` med regel-id och selektor | En axe-överträdelse | `findings.json` för testet har alla noder och förklaringen. |
+| `text whose contrast axe left undecided …` | Text under sitt kontrastkrav, mätt på pixlarna | Raden anger selektorn, axe:s skäl, kvoten och de två färgerna. Se läget med `SHOTS=1` och rätta färgen i temat. |
 | `content past the edge or cut off` | Reflow- eller textavståndsfel | Kör läget i projektet som felade (`npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=<projekt>`) och se det i alla storlekar med `npm run ux:shots -- -g "<läge>"`; leta efter en minsta bredd, en fast kolumn eller text som inte får brytas, och kontrollera långa svenska ord. |
 | `<sida> loads X KB of JS, the budget is Y KB` | Sidan blev tyngre än budgeten | Hitta importen som växte; höj budgeten bara med skäl. |
 | `a <style data-astryx-theme*> means the theme is built in the browser` | Temat byggs i webbläsaren | Importera det byggda temat, `kit/theme/built/eneo`. |

@@ -20,6 +20,7 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -44,6 +45,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
@@ -72,6 +74,8 @@ jobs:
   frontend-browser:
     name: frontend-browser (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     runs-on: ubuntu-latest
+    # About 20 minutes for the longest shard; a hang ends here with its report rather than at GitHub's six hours.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +97,7 @@ jobs:
           - { suite: branding, shard: 1, total: 1 }
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+      BROWSERS: ${{ matrix.suite == 'production' && 'chromium webkit firefox' || matrix.suite == 'webkit' && 'webkit' || matrix.suite == 'firefox' && 'firefox' || 'chromium' }}
     defaults:
       run:
         working-directory: frontend
@@ -103,6 +108,12 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # The browsers of the locked Playwright, kept between runs: their download is what has hung (a job waited 2 h 19 min
+      # in it) and failed on a name lookup. The system libraries are still installed each time (install-deps).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ env.BROWSERS }}
       # Each runner has its own app and stub. Only built-app suites need the backend's dependencies.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -113,8 +124,13 @@ jobs:
         if: matrix.suite == 'production' || matrix.suite == 'real-backend'
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - run: npm ci
+      - name: Install the browsers' system libraries
+        timeout-minutes: 10
+        run: npx playwright install-deps $BROWSERS
+      # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install browsers
-        run: npx playwright install --with-deps ${{ matrix.suite == 'production' && 'chromium webkit firefox' || matrix.suite == 'webkit' && 'webkit' || matrix.suite == 'firefox' && 'firefox' || 'chromium' }}
+        timeout-minutes: 16
+        run: for try in 1 2 3; do timeout 300 npx playwright install $BROWSERS && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       # Firefox runs Web Audio (the level meter, the silence it hears, the live text's capture) only with a sound server,
       # which a runner has none of: one that plays into a sink of nothing stands in for a computer's.
       - name: A sound server for Firefox
@@ -123,10 +139,13 @@ jobs:
       - name: Production build in three engines
         if: matrix.suite == 'production'
         run: npm run test:prod -- --workers=2 --add-reporter=json
-      # Controls account for most browser time. Shard them separately so a shard of short scans does not wait for them.
+      # Controls account for most browser time. Shard them separately so a shard of short scans does not wait for them, and by
+      # each test's measured time (scripts/controls-shard.mjs), so that no shard holds the slowest states of both projects.
       - name: Every control, one phone and one laptop
         if: matrix.suite == 'controls'
-        run: npx playwright test controls.spec.ts --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
+        run: |
+          projects="--project=phone-390-light --project=laptop-1440-light"
+          npx playwright test controls.spec.ts $projects --workers=2 --grep="$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $projects)" --add-reporter=json
       - name: Accessibility gate, one phone and one laptop
         if: matrix.suite == 'accessibility'
         run: npx playwright test --grep-invert='controls\.spec\.ts' --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
@@ -153,6 +172,10 @@ jobs:
       - name: Branding gate, a deployment with its own organisation and accent
         if: matrix.suite == 'branding'
         run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark --workers=2 --add-reporter=json
+      # What failed or was flaky, with its first lines, on the job's page.
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: node scripts/ci-summary.mjs test-results/results.json frontend-browser-results-${{ matrix.suite }}-${{ matrix.shard }} >> "$GITHUB_STEP_SUMMARY"
       - name: Keep test results and timings
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
@@ -168,6 +191,7 @@ jobs:
 
   compose:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The file an operator pastes into Dokploy or Portainer, alone; and merged with the developer's override, as `docker compose up` runs it.
@@ -180,6 +204,8 @@ jobs:
   # nothing is rebuilt after the acceptance, and nothing reaches a registry before it. The candidate lives in this job's own registry.
   image:
     runs-on: ubuntu-latest
+    # About 17 minutes.
+    timeout-minutes: 40
     services:
       registry:
         image: registry:3@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
@@ -234,9 +260,11 @@ jobs:
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - name: Install what the acceptance's browser checks need
         working-directory: frontend
+        timeout-minutes: 20
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          npx playwright install-deps chromium
+          for try in 1 2 3; do timeout 300 npx playwright install chromium && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       - name: Accept the image
         env:
           ACCEPT_IMAGE: ${{ env.CANDIDATE }}@${{ steps.build.outputs.digest }}

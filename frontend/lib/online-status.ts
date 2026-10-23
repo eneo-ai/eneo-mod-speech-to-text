@@ -8,7 +8,11 @@
  * left after the browser said it: an answer that was already on its way when
  * the network went says nothing of the network now. The two causes are told
  * apart (`connection`): a page says "no connection" only of the device, and
- * that the module does not answer of the rest.
+ * that the module does not answer of the rest. While the module does not
+ * answer and the device has its network, the module is asked again by itself
+ * (`probe`, after 5 s and then twice as long each time, at most a minute), so
+ * a page whose next request is far off does not go on saying it does not
+ * answer.
  */
 
 export type Connection = "online" | "offline" | "unreachable";
@@ -31,18 +35,50 @@ export interface OnlineTarget {
   addEventListener(type: "online" | "offline", listener: () => void): void;
 }
 
-export function createOnlineStatus(target?: OnlineTarget, now: () => number = () => performance.now()): OnlineStatus {
+const FIRST_PROBE_MS = 5_000;
+const LAST_PROBE_MS = 60_000;
+
+/**
+ * `probe` asks whether the module answers (true when it does); without one, only requests and the browser's events tell.
+ */
+export function createOnlineStatus(target?: OnlineTarget, now: () => number = () => performance.now(), probe?: () => Promise<boolean>): OnlineStatus {
   let browserOnline = target?.navigator.onLine ?? true;
   // When the browser last said there is no network: a page opened offline was told so before anything left it.
   let saidOffline = browserOnline ? null : -Infinity;
   let requestFailed = false;
   const listeners = new Set<(online: boolean) => void>();
   const connection = (): Connection => (!browserOnline ? "offline" : requestFailed ? "unreachable" : "online");
+  // The next ask of the module, while it does not answer; the wait doubles with each ask that finds it still quiet.
+  let probing = false;
+  let wait = FIRST_PROBE_MS;
+  const askLater = () => {
+    if (!probe || probing || connection() !== "unreachable") return;
+    probing = true;
+    const timer = setTimeout(async () => {
+      const sent = now();
+      const answered = await probe().catch(() => false);
+      probing = false;
+      if (connection() !== "unreachable") return;
+      if (answered) return reportReachable(sent);
+      wait = Math.min(wait * 2, LAST_PROBE_MS);
+      askLater();
+    }, wait);
+    // In Node (the unit tests) a pending ask does not keep the process alive; a browser's timer is a number.
+    (timer as { unref?: () => void }).unref?.();
+  };
   const change = (apply: () => void) => {
     const before = connection();
     apply();
-    if (connection() !== before) listeners.forEach((listener) => listener(connection() === "online"));
+    const after = connection();
+    if (after !== "unreachable") wait = FIRST_PROBE_MS;
+    if (after !== before) listeners.forEach((listener) => listener(after === "online"));
+    askLater();
   };
+  const reportReachable = (sent?: number) =>
+    change(() => {
+      requestFailed = false;
+      if (!browserOnline && sent !== undefined && saidOffline !== null && sent > saidOffline) browserOnline = true;
+    });
 
   target?.addEventListener("online", () =>
     change(() => {
@@ -70,17 +106,18 @@ export function createOnlineStatus(target?: OnlineTarget, now: () => number = ()
     },
     reportNetworkFailure: () => change(() => (requestFailed = true)),
     sending: now,
-    reportReachable: (sent) =>
-      change(() => {
-        requestFailed = false;
-        if (!browserOnline && sent !== undefined && saidOffline !== null && sent > saidOffline) browserOnline = true;
-      }),
+    reportReachable,
   };
 }
 
-export const onlineStatus = createOnlineStatus(
-  typeof window === "undefined" ? undefined : window,
-);
+/** The module's own health route answers: it is reached (a proxy's error page in front of it is not it). */
+const moduleAnswers = () =>
+  fetch("/api/healthz", { cache: "no-store", credentials: "same-origin" }).then(
+    (response) => response.ok,
+    () => false,
+  );
+
+export const onlineStatus = typeof window === "undefined" ? createOnlineStatus() : createOnlineStatus(window, undefined, moduleAnswers);
 
 /** What a page says of each cause, in the same words wherever it says it. */
 export const CONNECTION_LOST = {

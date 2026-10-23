@@ -9,6 +9,8 @@ import { browserStorage } from "@/lib/browser-storage";
 import { keepOnlyConfirmedWordsOf } from "@/lib/confirmed-words";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState, type Question } from "@/lib/login-state";
+import { onlineStatus } from "@/lib/online-status";
+import { keepOnlyNamesOf } from "@/lib/participants";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { PHASE_HEADING } from "@/routes/RouteEffects";
 import { sessionUser } from "@/lib/user-identity";
@@ -93,6 +95,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // The first read did not come back: neither signed in nor out is known, so the address stays.
   const [unreachable, setUnreachable] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Reads that failed in a row: the page asks again by itself, later each time (below).
+  const [failures, setFailures] = useState(0);
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
 
   useEffect(() => {
@@ -151,9 +155,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
         setUser(sessionIdentity);
+        setUnreachable(false);
+        setFailures(0);
         // Someone else's unsent details and edits are not this person's to see.
         keepOnlyDraftsOf(browserDrafts(), sessionIdentity.id);
         keepOnlyConfirmedWordsOf(browserStorage(), sessionIdentity.id);
+        keepOnlyNamesOf(browserStorage(), sessionIdentity.id);
         endPage = loginState.begin(sessionIdentity, recheck);
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.
@@ -162,7 +169,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {
-        if (!cancelled) setUnreachable(true);
+        if (cancelled) return;
+        setUnreachable(true);
+        setFailures((count) => count + 1);
       });
 
     return () => {
@@ -173,6 +182,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [navigate, attempt]);
+
+  // Not reached: asked again by itself, at once when the device has its network back, else after 5 s, then twice as long
+  // each time up to a minute. The notice stays as it is meanwhile (nothing moves or is said again); the page replaces it
+  // when an answer comes. "Försök igen" asks at once.
+  useEffect(() => {
+    if (!unreachable) return;
+    const again = () => setAttempt((count) => count + 1);
+    const stop = onlineStatus.subscribe((online) => online && again());
+    const timer = onlineStatus.connection === "offline" ? undefined : setTimeout(again, Math.min(60_000, 5_000 * 2 ** Math.max(0, failures - 1)));
+    return () => {
+      stop();
+      clearTimeout(timer);
+    };
+  }, [unreachable, failures]);
 
   if (unreachable) {
     return (

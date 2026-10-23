@@ -83,3 +83,31 @@ test("the names a flow's list field was last sent with are kept per person, flow
   assert.deepEqual(lastNames(blocked, "user-1", "flow-1", "deltagare"), []);
   keepLastNames(blocked, "user-1", "flow-1", "deltagare", ["Anna Berg"]);
 });
+
+test("someone else signing in here leaves no colleague's names in the browser: only the signed-in person's stay", async () => {
+  const { keepLastNames, keepOnlyNamesOf } = await import("./participants");
+  const data: Record<string, string> = {};
+  const storage = {
+    getItem: (key: string) => data[key] ?? null,
+    setItem: (key: string, value: string) => void (data[key] = value),
+    removeItem: (key: string) => void delete data[key],
+    key: (index: number) => Object.keys(data)[index] ?? null,
+    get length() {
+      return Object.keys(data).length;
+    },
+  };
+  rememberNames(storage, "user-1", ["Anna Berg"]);
+  keepLastNames(storage, "user-1", "flow-1", "deltagare", ["Anna Berg"]);
+  rememberNames(storage, "user-2", ["Erik Lund"]);
+  keepLastNames(storage, "user-2", "flow-1", "deltagare", ["Erik Lund"]);
+  // The page's own settings, keyed by flow and not by person, are no one's names.
+  data["tal-till-text:mode:flow-1"] = "spela-in";
+  data["tal-till-text:draft:user-1:details"] = "{}";
+  keepOnlyNamesOf(storage, "user-2");
+  assert.deepEqual(Object.keys(data).sort(), [
+    "tal-till-text:draft:user-1:details",
+    "tal-till-text:mode:flow-1",
+    "tal-till-text:user-2:last-names:flow-1:deltagare",
+    "tal-till-text:user-2:recent-names",
+  ]);
+});

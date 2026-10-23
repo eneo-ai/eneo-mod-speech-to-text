@@ -298,6 +298,34 @@ test("a run that no longer exists leaves the address and says so above a new sta
   await expect(page.getByRole("alert").filter({ hasText: "Körningen finns inte längre. Du kan starta en ny här." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   expect(new URL(page.url()).searchParams.has("run")).toBe(false);
+  // The run the person meant is likely among the flow's earlier runs: they are listed under the setup as usual.
+  await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+});
+
+test("the word that a linked run is gone does not follow the person into the recording", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "behaviour, at one width");
+  sentinel.expect({ console: /status of 404.*\/runs\/00000000-0000-4000-8000-00000000dead\// });
+  await page.goto(`/flows/${ids.flows.flow1}?run=00000000-0000-4000-8000-00000000dead`);
+  const gone = page.getByRole("alert").filter({ hasText: "Körningen finns inte längre" });
+  await expect(gone).toBeVisible();
+  await record(page, "Spela in");
+  await expect(gone).toHaveCount(0);
+});
+
+test("an earlier run opened from the setup is an entry of its own: Back goes to the setup and its list, Forward to the run", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await setup(page);
+  await page.getByRole("button", { name: /^Öppna, körningen / }).first().click();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(`/flows/${ids.flows.flow1}`);
+  expect(new URL(page.url()).searchParams.has("run")).toBe(false);
+
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
 });
 
 test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
@@ -310,4 +338,17 @@ test("a run waiting for review is said above the setup, and Granska opens Vem ä
   const heading = page.getByRole("heading", { name: "Vem är vem?", level: 1 });
   await expect(heading).toBeVisible();
   await expect(heading).toBeFocused();
+});
+
+test("Gå till transkriberingen on a failed run brings the transcript's heading up the window, with the focus", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "on a laptop the transcript starts at the window's foot");
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.failed}`);
+  await page.getByRole("link", { name: "Gå till transkriberingen" }).click();
+  const heading = page.locator("#run-transcript");
+  await expect(heading).toBeFocused();
+  // As far up as the page scrolls: to its top, or where the page's end stops it (the transcript is its last part). Focus
+  // alone left it at the window's foot (y 844 of 900).
+  await expect.poll(async () => (await heading.boundingBox())?.y, { message: "in the window's upper quarter" }).toBeLessThan(900 / 4);
+  expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(0);
 });

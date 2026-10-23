@@ -100,6 +100,25 @@ class ResumableTests(Case):
         await asyncio.wait_for(self.forward_started.wait(), 1)
         self.assertEqual(self.forwarded[0][1], self.data)
 
+    async def test_a_full_spool_is_a_507_the_offset_stays_and_the_part_can_be_sent_again(self):
+        import errno
+        import starlette.datastructures
+
+        await self.create()
+
+        async def full(file, data):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        with patch.object(starlette.datastructures.UploadFile, "write", full):
+            refused = await self.part(self.data[:6], 0)
+        self.assertEqual(refused.status_code, 507, refused.text)
+        self.assertEqual(refused.json()["error"], "module_storage_full")
+        self.assertIn("Retry-After", refused.headers)
+        self.assertEqual((await self.client.get(self.path)).json()["offset"], 0, "nothing of the part is kept")
+        again = await self.part(self.data[:6], 0)
+        self.assertEqual(again.status_code, 200, "the part goes once there is room: nothing was left held")
+        self.assertEqual(again.json()["offset"], 6)
+
     async def test_owner_origin_contract_and_capacity_are_checked_before_parts(self):
         await self.create()
         other = f"/api/uploads/{FLOW}/{STEP}/{uuid4()}"
