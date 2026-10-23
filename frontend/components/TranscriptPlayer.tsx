@@ -931,6 +931,7 @@ export function TranscriptPlayer(
   const tools = !reviewEnabled && hasSegments;
   // The page's actions join the speakers' row, which then needs no row of its own above it: one row less over the text.
   const actionsBySpeakers = actions !== undefined && tools && canName;
+  const actionsAbove = actionsBySpeakers ? undefined : actions;
   // Naming the speakers after the run: at the end of the speakers' own row above their filter, or on a row of its own
   // above the review's view, which has no filter for the speakers' word to name.
   const namingControl = canName && (
@@ -1014,16 +1015,21 @@ export function TranscriptPlayer(
         </HStack>
       )}
       {/* The review's view has no speakers' row: its naming shares the row of the page's actions for the transcript, so
-          no row holds it alone above the text; without those actions it has the row to itself. */}
-      {actions && !actionsBySpeakers && (
-        <HStack ref={actionsRow.ref} hAlign="end" vAlign="center" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3} className={styles.inset}>
+          no row holds it alone above the text; without those actions it has the row to itself. One row either way: the
+          actions come and go beside the naming (a result crossing a laptop's width), which keeps its open dialog. */}
+      {(actionsAbove || (reviewEnabled && canName)) && (
+        <HStack
+          ref={actionsAbove ? actionsRow.ref : undefined}
+          hAlign="end"
+          vAlign="center"
+          gap={actionsAbove ? 2 : undefined}
+          paddingInline={3}
+          paddingBlockStart={actionsAbove ? 4 : undefined}
+          paddingBlockEnd={actionsAbove ? 3 : 2}
+          className={join(styles.inset, !actionsAbove && styles.trailingButton)}
+        >
           {reviewEnabled && namingControl}
-          {actions(actionsRow.fits)}
-        </HStack>
-      )}
-      {reviewEnabled && namingControl && !(actions && !actionsBySpeakers) && (
-        <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2} className={join(styles.inset, styles.trailingButton)}>
-          {namingControl}
+          {actionsAbove?.(actionsRow.fits)}
         </HStack>
       )}
       {tools && (
