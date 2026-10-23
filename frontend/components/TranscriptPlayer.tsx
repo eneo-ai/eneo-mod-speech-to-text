@@ -47,7 +47,7 @@ import { browserStorage } from "@/lib/browser-storage";
 import { downloadBlob } from "@/lib/download";
 import { letterKeysOn, setLetterKeysOn } from "@/lib/letter-keys";
 import { playbackRate, RATES, setPlaybackRate } from "@/lib/playback-rate";
-import { scrollBehavior } from "@/lib/motion";
+import { scrollBehaviorFor } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { useSignedOut } from "@/components/AuthGate";
 import { ActionRow } from "@/components/ActionRow";
@@ -692,7 +692,11 @@ export function TranscriptPlayer(
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block || withinReadingZone(block, listRef.current)) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    // Far away it jumps: following the playhead back from the transcript's other end glided 1.5 s past the text.
+    const scrolls = listRef.current.scrollHeight > listRef.current.clientHeight;
+    const view = scrolls ? listRef.current.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+    const box = block.getBoundingClientRect();
+    block.scrollIntoView({ block: "center", behavior: scrollBehaviorFor(box.top + box.height / 2 - (view.top + view.height / 2), view.height) });
   }, []);
   // The review editor lights its own words; the playhead only keeps its place in view there.
   const playheadAt = useTranscriptPlayhead(listRef, playback, shown, keepInView, !reviewEnabled);

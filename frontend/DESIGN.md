@@ -332,7 +332,7 @@ the secondary colour. A status stands still: the recording's red dot does not pu
 records. A page's loading spinner shows only after `--module-wait-delay` (300 ms), so an answer within it
 leaves no blink. A search hit is brought into view at once, as a browser's own find does. Hover styles apply only where
 a pointer hovers (`@media (hover: hover)`): on a touch screen a tapped control would keep them. With reduced motion
-nothing fades and spinners stand still.
+nothing fades, nothing turns (a chevron shows open or closed by where it ends) and spinners stand still. A scroll the page makes by itself over more than a window and a half jumps rather than glides.
 
 ## Do's and Don'ts
 
