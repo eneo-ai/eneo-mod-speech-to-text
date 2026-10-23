@@ -58,7 +58,7 @@ function OrganizationMark({ organization }: { organization: Organization }) {
     );
   }
   // A name a step smaller than the product's: on one line below 640 px, where the lockup leaves it out when the bar has
-  // no room for it (useRoomForName), and in two lines at most from there (styles/globals.css). The link's name and the
+  // no room for it (useRoomForMark), and in two lines at most from there (styles/globals.css). The link's name and the
   // sign-in's line under its card say it whole.
   return (
     <Text weight="semibold" size="sm" maxLines={2} hasTruncateTooltip={false} data-brand-logo="name">
@@ -68,13 +68,13 @@ function OrganizationMark({ organization }: { organization: Organization }) {
 }
 
 /**
- * Whether a name without a logo has room in the bar: the bar's start, measured with the name in it before the first
+ * Whether the organisation's mark has room in the bar: the bar's start, measured with the mark in it before the first
  * paint, against the room the account leaves it. Measured again whenever the bar or the lockup changes size (a phone
- * turned, the reader's text spacing); a name left out by the width it took when it last stood in the bar. A font still
- * on its way when the name was measured changes that width: once it has arrived the name is put back and measured
+ * turned, the reader's text spacing); a mark left out by the width it took when it last stood in the bar. A font still
+ * on its way when the mark was measured changes that width: once it has arrived the mark is put back and measured
  * again, before the next paint. `ref` goes on the lockup.
  */
-function useRoomForName() {
+function useRoomForMark() {
   const [lockup, ref] = useState<HTMLElement | null>(null);
   const [fits, setFits] = useState(true);
   const needs = useRef(0);
@@ -87,7 +87,7 @@ function useRoomForName() {
       setFits(needs.current <= start.clientWidth);
     };
     measure();
-    // Once a font that was on its way has arrived, the name is measured as if it had never been left out.
+    // Once a font that was on its way has arrived, the mark is measured as if it had never been left out.
     if (document.fonts?.status === "loading") {
       void document.fonts.ready.then(() => {
         if (!live) return;
@@ -109,8 +109,10 @@ function useRoomForName() {
 // The header lockup: the organisation's mark, a divider and the product name; without an organisation the product name alone.
 export function Brand({ href }: BrandProps) {
   const { organization } = useContext(BrandingContext);
-  // A logo always stands in the bar; a name without one only where it fits on the bar's one line, its divider with it.
-  const room = useRoomForName();
+  // The mark (a logo, or a name without one) stands in the bar where it fits on the bar's one line beside the product's
+  // name, its divider with it: a logo has that room at any width, but not with the reader's largest text or a phone's
+  // 200 % zoom, where the product's name alone fills the bar. The link names the organisation either way.
+  const room = useRoomForMark();
   // On the narrowest phones the mark is smaller (styles/globals.css) and stands closer to its divider: the product name
   // and the account button then keep their room with a wide font and the reader's text spacing.
   const narrowest = useMediaQuery("(max-width: 359px)");
@@ -125,7 +127,7 @@ export function Brand({ href }: BrandProps) {
   );
   return (
     <TopNavHeading
-      ref={organization?.logo === null ? room.ref : undefined}
+      ref={organization ? room.ref : undefined}
       as={RouterLink}
       logo={room.fits && mark}
       heading={PRODUCT_NAME}

@@ -76,3 +76,30 @@ for (const [project, name, most] of NAMES) {
     await expect(mark).toHaveCount(0);
   });
 }
+
+// The reader's own text size (iOS's largest sizes set the page's root at 47 and 53 px) and a phone's 200 % page zoom (a
+// 412 px phone at 206 CSS px): the logo leaves the bar with its divider where it has no room beside the product's name, as
+// a name does. The link still names the organisation.
+const LARGE: [width: number, height: number, root: number][] = [
+  [390, 844, 40],
+  [390, 844, 53],
+  [206, 395, 16],
+];
+for (const [width, height, root] of LARGE) {
+  test(`at ${width} px with ${root} px text the product's name and the account keep apart, and the bar does not overflow`, async ({ page }, info) => {
+    test.skip(info.project.name !== "phone-390-light", "the window's size and text are set here");
+    await page.setViewportSize({ width, height });
+    await flows(page);
+    await addStyles(page, `html { font-size: ${root}px !important; }`);
+    const brand = page.getByRole("link", { name: /^Tal till text –/ });
+    const account = page.getByRole("button", { name: /^Öppna konto för/ });
+    await expect(brand).toBeVisible();
+    await expect.poll(async () => {
+      const [brandBox, accountBox] = [await brand.boundingBox(), await account.boundingBox()];
+      return accountBox!.x - (brandBox!.x + brandBox!.width);
+    }, "the room between them").toBeGreaterThanOrEqual(0);
+    const name = brand.getByText("Tal till text", { exact: true });
+    expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth), "the name is not cut off").toBe(true);
+    expect(await page.locator(".astryx-top-nav").evaluate((bar) => bar.scrollWidth <= bar.clientWidth), "nothing past the bar's edge").toBe(true);
+  });
+}
