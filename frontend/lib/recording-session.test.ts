@@ -338,9 +338,11 @@ test("a device's storage that never answers does not hold Stoppa: after a while 
   assert.equal(capture.getSnapshot().error, "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.");
 });
 
-test("Stoppa whose last audio the device has not taken yet keeps the browser's question on closing the tab, until the device has it", async (t) => {
+test("Stoppa whose last audio the device has not taken yet keeps the browser's question on closing the tab, until the device has it, and the recording on this page until it lets it go", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
-  const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const store = await openRecordingStore(device);
+  const otherTab = await openRecordingStore(device);
   const { capture, recorders } = await setup({ store });
   await capture.start(meeting);
   recorders[0].emit("a");
@@ -367,6 +369,15 @@ test("Stoppa whose last audio the device has not taken yet keeps the browser's q
   await until(() => !closing(), "the device's word");
   const { id } = capture.getSnapshot().recording!;
   assert.deepEqual(await texts(await store.readPartsToSend(id)), ["ab."]);
+  for (let i = 0; i < 5; i += 1) await settle(); // the recorder's queued writes are done, and it lets go of them
+
+  // The ready view still offers Spara and Skicka: another tab of the same person neither offers it nor deletes it.
+  const groups = await otherTab.listUnsentGroups("user-1");
+  assert.deepEqual([groups.offered.map((r) => r.id), groups.elsewhere.map((r) => r.id)], [[], [id]], "held by the page that shows it");
+  await assert.rejects(otherTab.remove(id), /används i en annan flik/);
+  // "Spela in på nytt": the page lets it go, and the other tab offers it.
+  capture.reset();
+  assert.deepEqual((await otherTab.listUnsent("user-1")).map((r) => r.id), [id]);
 });
 
 test("a recorder that never confirms its end holds neither Stoppa nor a page that goes: the part ends unconfirmed after a while, and audio still kept", async (t) => {
