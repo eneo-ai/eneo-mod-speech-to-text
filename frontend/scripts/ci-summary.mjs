@@ -27,13 +27,14 @@ const tests = [];
 const walk = (suite) => {
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests) {
-      const last = test.results.at(-1);
+      // The last attempt that failed: a flaky test's last attempt passed and holds no error.
+      const failed = test.results.findLast((result) => result.error || result.errors?.length);
       tests.push({
         title: `${spec.file}:${spec.line} ${spec.title}`,
         project: test.projectName,
         status: test.status, // expected | unexpected | flaky | skipped
         seconds: test.results.reduce((sum, result) => sum + result.duration, 0) / 1000,
-        error: last?.error?.message ?? last?.errors?.[0]?.message ?? "",
+        error: failed?.error?.message ?? failed?.errors?.[0]?.message ?? "",
         skip: test.annotations.find((a) => a.type === "skip")?.description ?? "no reason given",
       });
     }
