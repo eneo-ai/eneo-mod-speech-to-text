@@ -280,8 +280,9 @@
   color: var(--color-text-secondary);
 }
 
-/* What the passages' tints are mixed from: the accent, or for a deployment whose accent would take the text under 4.5:1
-   where the tints lie on one another, the accent at the lower alpha the backend gives (backend/app/accent.py). */
+/* What the passages' tints are mixed from: the accent, or where its whole tints would take the text under 4.5:1 on one
+   another (Eneo's own accent in dark mode among them), the accent at the lower alpha the backend gives
+   (backend/app/accent.py). */
 .turns {
   --wash: var(--module-accent-tint, var(--color-accent));
   display: flex;

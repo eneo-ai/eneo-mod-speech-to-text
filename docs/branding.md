@@ -65,7 +65,8 @@ markerad rad och på stycket som spelas, även i accentens ton.
 
 **Transkriberingen när den spelas.** Stycket som spelas, dess mening, orden som har sagts och ordet som sägs får var sin
 ton av accentfärgen, lagda på varandra. Med en mycket ljus färg i mörkt läge, eller en mycket mörk i ljust läge, skulle
-texten på dem hamna under 4,5:1. Då gör backend alla tonerna lika mycket svagare, så att texten når 4,5:1.
+texten på dem hamna under 4,5:1. Då gör backend alla tonerna lika mycket svagare, så att texten når 4,5:1. Det gäller
+också modulens egen blå i mörkt läge, med eller utan `ORGANIZATION_ACCENT`.
 
 **Mörkt läge.** Utelämnar du `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrolleras på samma sätt.
 
@@ -152,8 +153,8 @@ Kontrollera efter omstarten att `curl -s https://din-modul.example/api/branding`
 1. **Öppna sidan** i ljust och mörkt läge (kontomenyn, "Tema"). Inloggningssidan, flödeslistan, en flödessida och
    en inspelning ska ha organisationens logga och färg, och ingenting i modulens blå.
 2. **Titta på stilmallen:** `curl -i https://din-modul.example/api/branding/theme.css`. Utan
-   `ORGANIZATION_ACCENT` är den en enda kommentar. Med den innehåller den din färg, och färgen i mörkt läge efter
-   `light-dark(`.
+   `ORGANIZATION_ACCENT` sätter den bara tonen i transkriberingen (`--module-accent-tint`). Med den innehåller den din
+   färg, och färgen i mörkt läge efter `light-dark(`.
 
 ## Vad som inte kan ändras utan kod
 

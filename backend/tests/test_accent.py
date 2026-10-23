@@ -268,8 +268,8 @@ class TranscriptTintTests(unittest.TestCase):
         r, g, b, alpha = value[5:-1].split(", ")
         return (int(r), int(g), int(b)), float(alpha)
 
-    def assert_text_holds(self, accent: Accent) -> None:
-        css = theme_css(accent)
+    def assert_text_holds(self, accent: Accent, css: str | None = None) -> None:
+        css = theme_css(accent) if css is None else css
         speakers = SpeakerTests.speakers(css)
         for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
             neutrals = _neutrals(_hex(colour), mode)
@@ -309,6 +309,16 @@ class TranscriptTintTests(unittest.TestCase):
                 accent = resolve_accent(light, dark)
                 assert accent is not None
                 self.assert_text_holds(accent)
+
+    def test_the_default_accent_keeps_the_played_word_readable_as_eneos_set_explicitly(self) -> None:
+        # Without ORGANIZATION_ACCENT the page keeps Eneo's accent, whose whole tints take the text under 4.5:1 in dark mode.
+        default = theme_css(None)
+        self.assert_text_holds(ENEO, default)
+        explicit = resolve_accent(*ENEO_ACCENT)
+        assert explicit is not None
+        tint = lambda css: re.findall(r"  --module-accent-tint: .*;\n", css)  # noqa: E731
+        self.assertEqual(tint(default), tint(theme_css(explicit)))
+        self.assertEqual(len(tint(default)), 1)
 
     def test_an_accent_whose_whole_tints_keep_the_text_readable_sets_no_share(self) -> None:
         self.assertNotIn("--module-accent-tint", theme_css(GREEN))
@@ -413,9 +423,9 @@ class WarningTests(unittest.TestCase):
 
 
 class ThemeCssTests(unittest.TestCase):
-    def test_no_accent_is_a_harmless_comment(self) -> None:
+    def test_no_accent_sets_nothing_but_the_transcripts_tint(self) -> None:
         self.assertEqual(theme_css(None), NO_ACCENT_CSS)
-        self.assertRegex(NO_ACCENT_CSS, r"\A/\*[^{}]*\*/\n\Z")
+        self.assertRegex(NO_ACCENT_CSS, r'\A/\*[^{}]*\*/\n\[data-astryx-theme="eneo"\] \{\n  --module-accent-tint: [^;\n]+;\n\}\n\Z')
 
     def test_the_stylesheet_is_the_accent_and_the_greys_in_its_hue(self) -> None:
         css = theme_css(GREEN)

@@ -362,9 +362,6 @@ def accent_warning(accent: Accent) -> str | None:
     return None
 
 
-NO_ACCENT_CSS = "/* Ingen ORGANIZATION_ACCENT är satt: modulens standardfärg gäller. */\n"
-
-
 def _hued(accent: Accent) -> list[tuple[str, str]]:
     """NEUTRALS in the accent's hue, each mode's colour of a pair in that mode's accent."""
     light, dark = _hex(accent.light), _hex(accent.dark)
@@ -465,6 +462,23 @@ def _transcript_tint(accent: Accent) -> list[tuple[str, str]]:
         for colour, share in zip((accent.light, accent.dark), shares)
     )
     return [("--module-accent-tint", f"light-dark({light}, {dark})")]
+
+
+def _default_tint() -> list[tuple[str, str]]:
+    """The transcript's tint for the theme's own accent, Eneo's: held to its text like any accent's, so the default and
+    ORGANIZATION_ACCENT set to Eneo's colours give the same."""
+    eneo = resolve_accent(*ENEO_ACCENT)
+    assert eneo is not None
+    return _transcript_tint(eneo)
+
+
+# Without ORGANIZATION_ACCENT the theme's own accent stays, and nothing but the transcript's tint is set.
+NO_ACCENT_CSS = (
+    "/* Ingen ORGANIZATION_ACCENT är satt: modulens standardfärg gäller. */\n"
+    + '[data-astryx-theme="eneo"] {\n'
+    + "".join(f"  {token}: {value};\n" for token, value in _default_tint())
+    + "}\n"
+)
 
 
 def theme_css(accent: Accent | None) -> str:

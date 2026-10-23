@@ -98,7 +98,7 @@ class Settings(BaseModel):
     organization: Organization | None = DEFAULT_ORGANIZATION
     organization_logo: LogoFile | None = None
     organization_logo_dark: LogoFile | None = None
-    # None keeps the theme's own accent (Eneo's blue): GET /api/branding/theme.css is then an empty stylesheet.
+    # None keeps the theme's own accent (Eneo's blue): GET /api/branding/theme.css then sets only the transcript's tint.
     accent: Accent | None = None
     # Which build runs, as /health answers it. The commit and the time of the build are the image's own (its build record);
     # the release is the deployment's (MODULE_VERSION), because a release gives a tested image its version without
