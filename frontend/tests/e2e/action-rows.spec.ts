@@ -170,6 +170,15 @@ test("an unsent recording's open delete question keeps the focus on its button w
   await expect(card, "the recording is still on the device").toBeVisible();
 });
 
+test("the ready recording's footer keeps the focus on its button when the window crosses 640 px", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "ready")!.go(page, info);
+  await keepsFocusAcross640(
+    page,
+    info,
+    ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"].map((name) => page.getByRole("button", { name, exact: true })),
+  );
+});
+
 test("the text review's editor: its buttons stand small in the text's header, Spara ändring only with a change", async ({ page }) => {
   await run(page, ids.runs.reviewText);
   await page.getByRole("button", { name: "Redigera" }).click();
