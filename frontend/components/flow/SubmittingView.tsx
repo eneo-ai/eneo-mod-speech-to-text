@@ -85,9 +85,9 @@ export function SubmittingView({
           )}
         </VStack>
         {isUploading ? (
-          <UploadProgress submission={submission} onCancel={onCancelSubmission} />
+          <UploadProgress submission={submission} onCancel={onCancelSubmission} onRetried={() => heading.current?.focus()} />
         ) : (
-          submission.kind === "starting" && <Starting submission={submission} onCancel={onCancelSubmission} />
+          submission.kind === "starting" && <Starting submission={submission} onCancel={onCancelSubmission} onRetried={() => heading.current?.focus()} />
         )}
       </VStack>
     </StateCard>
@@ -110,7 +110,7 @@ function stage(submission: SubmissionState): string {
  * Eneo has the file and is asked to start the run. It may not answer for a while, so there is a way out at once: Avbryt
  * keeps the file and the details, and a recording can be saved as a file meanwhile.
  */
-function Starting({ submission, onCancel }: { submission: Extract<SubmissionState, { kind: "starting" }>; onCancel: () => void }) {
+function Starting({ submission, onCancel, onRetried }: { submission: Extract<SubmissionState, { kind: "starting" }>; onCancel: () => void; onRetried: () => void }) {
   const [saveProblem, setSaveProblem] = useState(false);
   const { wait, recording } = submission;
   const saving = useSaveRecording(recording?.id ?? "", recording?.files ?? 0);
@@ -125,7 +125,7 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
           {recording ? "Inspelningen" : "Filen"} är uppladdad. {wait.retryAt === null ? "Flödet startar inte just nu." : "Vi försöker starta flödet igen."}
         </Text>
       )}
-      <RetryNotice wait={wait} />
+      <RetryNotice wait={wait} onRetried={onRetried} />
       <HStack gap={2} wrap="wrap">
         {/* What it stops: the start. The file and the details stay. */}
         <Button label="Avbryt starten" variant="secondary" onClick={onCancel} />
@@ -145,9 +145,11 @@ const uploadMilestone = (percent: number | null) =>
 function UploadProgress({
   submission,
   onCancel,
+  onRetried,
 }: {
   submission: Extract<SubmissionState, { kind: "uploading" }>;
   onCancel: () => void;
+  onRetried: () => void;
 }) {
   const percent = Math.max(0, Math.min(100, submission.percent ?? 0));
   return (
@@ -173,7 +175,7 @@ function UploadProgress({
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}
       </VisuallyHidden>
-      <RetryNotice wait={submission.wait} />
+      <RetryNotice wait={submission.wait} onRetried={onRetried} />
       {/* The card's last row, as the run's Avbryt körningen is: what it stops, said whole. */}
       <HStack paddingBlockStart={2}>
         <Button label="Avbryt uppladdningen" variant="secondary" onClick={onCancel} />
