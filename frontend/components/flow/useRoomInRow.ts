@@ -84,7 +84,9 @@ export function useNarrowerThan(rem: number) {
     if (!element) return;
     const measure = () => {
       const root = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      setNarrow(element.getBoundingClientRect().width < rem * root);
+      // A box with no width has not been laid out (a hidden one): nothing to judge, so its row keeps its words.
+      const width = element.getBoundingClientRect().width;
+      setNarrow(width > 0 && width < rem * root);
     };
     measure();
     if (typeof ResizeObserver !== "function") return;
