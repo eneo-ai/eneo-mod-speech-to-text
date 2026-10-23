@@ -260,6 +260,9 @@ export class RecordingCapture {
   // Following the store's word on keeping the recording, from the first start until the page goes.
   private unfollow: (() => void) | null = null;
   private backOnDeviceTimer: ReturnType<typeof setTimeout> | null = null;
+  // The recording Stoppa left without the device's word that it has it, stopped and with its last audio: only this tab
+  // may have that audio, so it is not said to be on the device (`persistent`) until the device answers.
+  private unconfirmed: string | null = null;
   private microphone: MediaStream | null = null;
   // The part recording now, and a full part still recording its overlap.
   private part: Part | null = null;
@@ -433,16 +436,28 @@ export class RecordingCapture {
     let failure: string | null = null;
     let confirmed = true;
     let waited: ReturnType<typeof setTimeout> | undefined;
+    let written: Promise<StoredRecording | null> | null = null;
     try {
       confirmed = await ended;
+      // After the recorders' last audio, which is in the store's queue before it.
+      written = store.setState(recording.id, "stopped").then(() => store.get(recording.id));
       stopped = await Promise.race([
-        store.setState(recording.id, "stopped").then(() => store.get(recording.id)),
+        written,
         new Promise<never>((_, refuse) => (waited = setTimeout(() => refuse(new Error("the device's storage did not answer")), STOP_STORE_WAIT_MS))),
       ]);
     } catch (error) {
       failure = notOnDevice(error) ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
     } finally {
       clearTimeout(waited);
+    }
+    this.unconfirmed = failure === null ? null : recording.id;
+    // A device that answers late has the recording after all: from then on it is said to be kept there.
+    if (failure !== null) {
+      void written?.then(() => {
+        if (this.unconfirmed !== recording.id) return;
+        this.unconfirmed = null;
+        this.followStore();
+      }, () => undefined);
     }
     // The stopped recording is on the page's screen: no other tab offers or deletes it until the page lets it go.
     if (stopped) store.hold(recording.id);
@@ -454,8 +469,8 @@ export class RecordingCapture {
       : { error: this.snapshot.error ?? END_UNCONFIRMED };
     this.set(
       failure === null
-        ? { status: "stopped", recording: stopped, stream: null, stopping: false, ...unconfirmed }
-        : { status: "stopped", stream: null, stopping: false, error: failure },
+        ? { status: "stopped", recording: stopped, stream: null, stopping: false, persistent: store.persistent, ...unconfirmed }
+        : { status: "stopped", stream: null, stopping: false, persistent: false, error: failure },
     );
     return stopped;
   }
@@ -534,7 +549,7 @@ export class RecordingCapture {
       this.set({
         recording: found,
         lowSpace,
-        persistent: store.persistent,
+        persistent: store.persistent && this.unconfirmed !== found.id,
         refused: store.refused(found.id),
       });
       this.record(stream);
@@ -905,8 +920,9 @@ export class RecordingCapture {
     const { recording, refused: was, status } = this.snapshot;
     if (!store || !recording) return;
     const refused = store.refused(recording.id);
-    if (refused !== was || store.persistent !== this.snapshot.persistent) {
-      this.set({ persistent: store.persistent, refused });
+    const persistent = store.persistent && this.unconfirmed !== recording.id;
+    if (refused !== was || persistent !== this.snapshot.persistent) {
+      this.set({ persistent, refused });
     }
     // Stopped recorders may deliver their last audio after the UI's wait ended. Publish its metadata too, so the
     // ready view's audio, export and send decisions follow the stored recording rather than the timeout's snapshot.
