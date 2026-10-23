@@ -71,3 +71,20 @@ test("a network that goes in the middle of a part: the page waits for it, and th
   expect(offsets.at(-1), "the last part is the second").toBe(4 * 1024 * 1024);
   expect(runs).toBe(1);
 });
+
+test("the header's mark that first shows while the device is offline is drawn, not a broken image", async ({ page, context }) => {
+  declare(page, [
+    { console: /net::ERR_INTERNET_DISCONNECTED/, optional: true },
+    { requestFailed: /net::ERR_INTERNET_DISCONNECTED$/, optional: true },
+  ]);
+  // A phone's setup shows the way back and no mark: the sending view is the first to show it.
+  await setup(page);
+  await chooseFile(page);
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await expect(page.getByRole("status").filter({ hasText: WAITS })).toHaveCount(1);
+  const mark = page.locator("img[data-brand-logo]:visible");
+  await expect(mark).toHaveCount(1);
+  await expect.poll(() => mark.evaluate((img: HTMLImageElement) => img.naturalWidth), { message: "the mark is drawn" }).toBeGreaterThan(0);
+  await context.setOffline(false);
+});

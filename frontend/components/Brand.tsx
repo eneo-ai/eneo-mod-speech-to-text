@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Divider } from "@astryxdesign/core/Divider";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -14,8 +14,37 @@ const BrandingContext = createContext<Branding>({ organization: null });
 // Eneo's wordmark, the bundled default, for each colour mode: its viewBox's proportions (lib/brand.test.ts reads the file).
 const DEFAULT_LOGO = { light: "/brand/eneo-logotyp.svg", dark: "/brand/eneo-logotyp-mork.svg", width: 650, height: 172 };
 
+// A deployment's own logo, light and dark, from the module (the page's policy allows only its own images).
+const CUSTOM_LOGO = { light: "/api/branding/logo/light", dark: "/api/branding/logo/dark" };
+
+/** The files an organisation's mark shows: Eneo's wordmark pair, the deployment's logo (one or a pair), or none. */
+function logoFiles({ logo, logo_sizes: sizes }: Organization): string[] {
+  if (logo === "default") return [DEFAULT_LOGO.light, DEFAULT_LOGO.dark];
+  if (logo === "custom" && sizes) return sizes.dark ? [CUSTOM_LOGO.light, CUSTOM_LOGO.dark] : [CUSTOM_LOGO.light];
+  return [];
+}
+
+// Each file of the mark as the page holds it once it has arrived: a blob: URL (the policy's img-src allows it), kept for the
+// page's life. A view that shows the mark first while the device is offline (a phone's sending view, after a setup that
+// shows only the way back) draws it from here; an <img> made then would ask the network, as the files are revalidated.
+const held = new Map<string, string>();
+
+/** What an <img> of the mark shows: the file the page holds, or its address until it does. */
+const drawn = (file: string) => held.get(file) ?? file;
+
 /** The deployment's branding, read from the page once, before the first render (routes/Root.tsx). */
 export function BrandingProvider({ value, children }: { value: Branding; children: ReactNode }) {
+  // The mark's files are fetched once, at the start, while there is a network.
+  useEffect(() => {
+    for (const file of value.organization ? logoFiles(value.organization) : []) {
+      if (held.has(file)) continue;
+      held.set(file, file);
+      void fetch(file)
+        .then((response) => (response.ok ? response.blob() : null))
+        .then((blob) => blob && held.set(file, URL.createObjectURL(blob)))
+        .catch(() => held.delete(file));
+    }
+  }, [value]);
   return <BrandingContext.Provider value={value}>{children}</BrandingContext.Provider>;
 }
 
@@ -42,8 +71,8 @@ function OrganizationMark({ organization }: { organization: Organization }) {
     const size = { width: DEFAULT_LOGO.width, height: DEFAULT_LOGO.height };
     return (
       <>
-        <img src={DEFAULT_LOGO.light} alt={name} {...size} data-brand-logo="light" data-wordmark="" />
-        <img src={DEFAULT_LOGO.dark} alt={name} {...size} data-brand-logo="dark" data-wordmark="" />
+        <img src={drawn(DEFAULT_LOGO.light)} alt={name} {...size} data-brand-logo="light" data-wordmark="" />
+        <img src={drawn(DEFAULT_LOGO.dark)} alt={name} {...size} data-brand-logo="dark" data-wordmark="" />
       </>
     );
   }
@@ -52,8 +81,8 @@ function OrganizationMark({ organization }: { organization: Organization }) {
     const compact = (size: { width: number; height: number }) => (size.width < 1.5 * size.height ? "" : undefined);
     return (
       <>
-        <img src="/api/branding/logo/light" alt={name} {...sizes.light} data-brand-logo={sizes.dark ? "light" : "plain"} data-compact={compact(sizes.light)} />
-        {sizes.dark && <img src="/api/branding/logo/dark" alt={name} {...sizes.dark} data-brand-logo="dark" data-compact={compact(sizes.dark)} />}
+        <img src={drawn(CUSTOM_LOGO.light)} alt={name} {...sizes.light} data-brand-logo={sizes.dark ? "light" : "plain"} data-compact={compact(sizes.light)} />
+        {sizes.dark && <img src={drawn(CUSTOM_LOGO.dark)} alt={name} {...sizes.dark} data-brand-logo="dark" data-compact={compact(sizes.dark)} />}
       </>
     );
   }
