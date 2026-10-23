@@ -108,21 +108,6 @@ test("after quick changes of speaker the list shows the last one chosen, and sta
   expect(await page.locator('[data-turn-index]:not([hidden]):not([aria-label^="Talare 3,"])').count(), "with no other speaker's").toBe(0);
 });
 
-test("a long transcript far from the window is skipped a group of passages at a time, so a frame looks at a few dozen groups and not at every passage", async ({ page }, info) => {
-  const { total } = await openLong(page, info);
-  // A passage the browser looks at for being near the window on every frame that scrolls or plays: one that is not inside
-  // something skipped (content-visibility: auto). Each passage alone, it was all two thousand.
-  const looked = await page.evaluate(
-    () =>
-      [...document.querySelectorAll<HTMLElement & { checkVisibility(options: object): boolean }>("[data-turn-index]")].filter((passage) =>
-        passage.checkVisibility({ contentVisibilityAuto: true }),
-      ).length,
-  );
-  // The groups near the window (50 passages each) and the list's last group, whose passages go one by one.
-  expect(looked, `passages looked at of ${total}`).toBeLessThanOrEqual(4 * 50);
-  expect(looked, "and those in view are").toBeGreaterThan(0);
-});
-
 test("a search with its count and arrows keeps a field to read what was typed in, under the chips it shared a row with", async ({ page }, info) => {
   test.skip(!isLaptop(info), "where the chips and the search share a row; a phone gives the search a row of its own");
   await result(page);

@@ -118,12 +118,6 @@ type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
-/**
- * Passages far from the window are skipped this many at a time (TranscriptPlayer.module.css, .group): on every frame that
- * scrolls or plays the browser then looks at a few dozen groups, and finds what is under the pointer through them, never
- * through every passage of a long meeting. The group's estimate in the CSS is this many passages'.
- */
-const GROUP = 50;
 
 /**
  * The transcript's keys: Space or K plays and pauses, the arrow keys move five
@@ -862,7 +856,6 @@ export function TranscriptPlayer(
   // Every passage stays in the page under the speaker filter, hidden while it is filtered out: a filter flips an attribute
   // on each passage instead of taking an hour's meeting out of the page and building it again.
   const renamePassage = canName || onRenameSpeaker ? renameSpeaker : undefined;
-  const filtered = listFilter !== "all";
   const shownTurns = useMemo(() => new Set(visibleTurns), [visibleTurns]);
   const passages = useMemo(() => {
     const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
@@ -871,67 +864,59 @@ export function TranscriptPlayer(
       if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
       else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
     }
-    const groups = (part: TranscriptTurn[]) => Array.from({ length: Math.ceil(part.length / GROUP) }, (_, g) => part.slice(g * GROUP, (g + 1) * GROUP));
-    const shown = (some: TranscriptTurn[]) => some.some((turn) => shownTurns.has(turn));
     return parts.map((part) => (
-      <div key={part.fileIndex} className={styles.part} hidden={!shown(part.turns)}>
+      <div key={part.fileIndex} className={styles.part} hidden={!part.turns.some((turn) => shownTurns.has(turn))}>
         {totalFiles > 1 && <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>}
-        {/* The passages stand in groups (.group) that assistive technology does not see (role="none"): the list and its
-            items say their roles themselves, as a group between them would otherwise keep an accessibility check from
-            seeing them as one. */}
-        <ol className={styles.turns} role="list" data-filtered={filtered || undefined} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
-          {groups(part.turns).map((group, g) => (
-            <div key={g} role="none" className={styles.group} hidden={!shown(group)}>
-              {group.map((turn) => {
-                // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
-                const editableTurn =
-                  canEdit &&
-                  (pendingSpeakerReview(turn) ||
-                  turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
-                    ? canDecide
-                    : true);
-                // A passage is given only what is its own: the line being edited and the hits when they are in it.
-                const editingHere = turn.parts.some((p) => p.segmentIndex === editingIndex);
-                const hitHere = turn.parts.some((p) => hitsBySegment.has(p.segmentIndex));
-                return (
-                  <TurnItem
-                    key={turn.index}
-                    hidden={!shownTurns.has(turn)}
-                    turn={turn}
-                    rawSegments={segments}
-                    correctedIndices={correctedIndices}
-                    correctedRanges={correctedRanges}
-                    hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
-                    partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                    labelled={labelled}
-                    displayName={displayName}
-                    labelOptions={labelOptions}
-                    samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
-                    canEdit={canEdit}
-                    canPickSpeaker={editableTurn && labelled}
-                    textForEdit={textForEdit}
-                    confirmedWords={confirmedWords}
-                    onToggleConfirmed={onToggleConfirmed}
-                    editingIndex={editingHere ? editingIndex : -1}
-                    onStartEdit={startEdit}
-                    onCancelEdit={cancelEdit}
-                    onCommitLine={commitTurnLine}
-                    onRevertLine={revertTurnLine}
-                    onReassign={reassignTurn}
-                    onRename={renamePassage}
-                    onSeekTurn={seekTurn}
-                    onPartClick={clickPart}
-                  />
-                );
-              })}
-            </div>
-          ))}
+        {/* A list said as one (role="list"): Safari leaves out the role of a list drawn without bullets. */}
+        <ol className={styles.turns} role="list" aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
+          {part.turns.map((turn) => {
+            // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
+            const editableTurn =
+              canEdit &&
+              (pendingSpeakerReview(turn) ||
+              turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
+                ? canDecide
+                : true);
+            // A passage is given only what is its own: the line being edited and the hits when they are in it.
+            const editingHere = turn.parts.some((p) => p.segmentIndex === editingIndex);
+            const hitHere = turn.parts.some((p) => hitsBySegment.has(p.segmentIndex));
+            return (
+              <TurnItem
+                key={turn.index}
+                hidden={!shownTurns.has(turn)}
+                turn={turn}
+                rawSegments={segments}
+                correctedIndices={correctedIndices}
+                correctedRanges={correctedRanges}
+                hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
+                partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
+                labelled={labelled}
+                displayName={displayName}
+                labelOptions={labelOptions}
+                samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
+                canEdit={canEdit}
+                canPickSpeaker={editableTurn && labelled}
+                textForEdit={textForEdit}
+                confirmedWords={confirmedWords}
+                onToggleConfirmed={onToggleConfirmed}
+                editingIndex={editingHere ? editingIndex : -1}
+                onStartEdit={startEdit}
+                onCancelEdit={cancelEdit}
+                onCommitLine={commitTurnLine}
+                onRevertLine={revertTurnLine}
+                onReassign={reassignTurn}
+                onRename={renamePassage}
+                onSeekTurn={seekTurn}
+                onPartClick={clickPart}
+              />
+            );
+          })}
         </ol>
       </div>
     ));
     // The callbacks are steady (useSteady): they call the latest code without being dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [turns, shownTurns, filtered, totalFiles, canEdit, canDecide, corrections, segments, editingIndex, hitsBySegment, correctedIndices, correctedRanges, labelled, displayName, labelOptions, settledPassages, confirmedWords, onToggleConfirmed, renamePassage]);
+  }, [turns, shownTurns, totalFiles, canEdit, canDecide, corrections, segments, editingIndex, hitsBySegment, correctedIndices, correctedRanges, labelled, displayName, labelOptions, settledPassages, confirmedWords, onToggleConfirmed, renamePassage]);
 
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.

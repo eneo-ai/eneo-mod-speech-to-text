@@ -111,6 +111,13 @@ test("a long transcript is one list of all its passages, those far from the wind
   const all = await items();
   expect(all, "every passage is an item of the list").toHaveLength(2_000);
   expect(all.filter((line) => !passage.test(line)), "and nothing else is").toEqual([]);
+  if (browserName === "chromium") {
+    // Chromium leaves out of its tree what is inside a box it skips: a passage far from the window must be such a box
+    // itself, so that it is still an item, named, whose words come in as it nears the window.
+    const tree = await listChildren(page);
+    expect(tree, "Chromium gives the list every passage").toHaveLength(2_000);
+    expect(tree.filter((child) => !/^listitem "Talare [123], [\d:]+"$/.test(child)), "as its items, nothing between").toEqual([]);
+  }
 
   await chooseSpeaker(page, info, "Talare 2");
   const theirs = await page.locator('[data-turn-index][aria-label^="Talare 2,"]').count();
