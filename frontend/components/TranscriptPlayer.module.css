@@ -23,8 +23,8 @@
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
-/* Firefox stops on a box that scrolls on its own: the transcript's, from a laptop's width. Its own border carries the
-   ring, where the card does not clip it. */
+/* The transcript's box is a Tab stop only when nothing in it is (TranscriptPlayer.tsx): its own border carries the ring,
+   where the card does not clip it. */
 .scrollport:focus-visible {
   border-color: var(--focus-outline-color);
   outline: none;

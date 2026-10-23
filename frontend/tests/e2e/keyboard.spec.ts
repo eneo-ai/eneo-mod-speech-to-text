@@ -181,6 +181,21 @@ test("Avbryt redigering with a change asks first: Fortsätt redigera gives the f
   await expect(page.getByRole("button", { name: "Redigera" }), "the control that took the edit's place").toBeFocused();
 });
 
+// From a laptop's width the transcript scrolls in its own box. Firefox makes a box that scrolls a Tab stop of its own, but
+// gives it no focus: the next Tab after the link before the passages landed on nothing (2.4.7). Its passages' controls are
+// the way through it.
+test("from the link before the transcript, Tab goes to its first passage's control", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "the transcript scrolls in its own box from a laptop's width");
+  await result(page);
+  await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+  await page.keyboard.press(tabKey(page));
+  const focused = await page.evaluate(() => {
+    const element = document.activeElement!;
+    return { tag: element.tagName, name: element.getAttribute("aria-label") ?? element.textContent };
+  });
+  expect(focused).toEqual({ tag: "BUTTON", name: "Talare 1, ändra talare" });
+});
+
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
   const { stops, left } = await tabWalk(page);

@@ -1170,12 +1170,16 @@ export function TranscriptPlayer(
       >
         Hoppa förbi transkriberingen
       </a>
-      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
+      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. Its passages' controls
+          are the keyboard's way through it, and the box is no Tab stop of its own: Firefox makes a box that scrolls one, and
+          gives it no focus, so a Tab landed on nothing. A transcript with no control in it (no audio, nothing to correct)
+          is a stop of its own, named, so the keyboard can scroll it. */}
       <div
         ref={listRef}
         onWheel={onUserScroll}
         onTouchMove={onUserScroll}
         className={join(styles.scrollport, !reviewEnabled && styles.padded)}
+        {...(reviewEnabled || hasAudio || canEdit ? { tabIndex: -1 } : { tabIndex: 0, role: "group", "aria-label": "Transkriberingen" })}
       >
         {reviewEnabled ? <ReviewEditorAtPlayhead playback={playback} raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
