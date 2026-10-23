@@ -43,3 +43,31 @@ test("the account button ends where the page's column does", async ({ page }) =>
     expect(Math.abs(accountBox.x + accountBox.width - columnEnd), `at ${width} px, the account under the column's end`).toBeLessThanOrEqual(3);
   }
 });
+
+/** How wide a paragraph is in its own font's "0"s: a line of 55ch holds about 75 characters of Figtree. */
+const measure = (paragraph: import("@playwright/test").Locator) =>
+  paragraph.evaluate((p) => {
+    const probe = document.createElement("span");
+    probe.textContent = "0".repeat(10);
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap";
+    p.append(probe);
+    const ch = probe.getBoundingClientRect().width / 10;
+    probe.remove();
+    return Math.round(p.getBoundingClientRect().width / ch);
+  });
+
+for (const [state, width, words] of [
+  ["setup", 820, /^Inspelningen sparas/],
+  ["setup", 1440, /^Inspelningen sparas/],
+  ["ready", 1440, /skickar inspelningen till Eneo/],
+  ["setup-speakers-blocked", 1440, /^Flödet behöver/],
+] as const) {
+  test(`a note across a wide card keeps a reading measure: ${state} at ${width} px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const { STATES } = await import("./screens");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const paragraph = page.getByRole("main").locator("p").filter({ hasText: words }).first();
+    await expect(paragraph).toBeVisible();
+    expect(await measure(paragraph), "the paragraph's width in ch (data-measure is 55)").toBeLessThanOrEqual(56);
+  });
+}

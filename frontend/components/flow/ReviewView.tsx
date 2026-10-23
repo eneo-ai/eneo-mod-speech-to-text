@@ -562,7 +562,7 @@ export function ReviewView({
         {deadline}
       </VStack>
       {!(narrow && isSpeakerMapping && !SPEAKER_REVIEW_ENABLED) && (
-        <Text as="p" color="secondary" className={styles.description}>
+        <Text as="p" color="secondary" className={styles.description} data-measure>
           {isSpeakerMapping
             ? SPEAKER_REVIEW_ENABLED
               ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten."

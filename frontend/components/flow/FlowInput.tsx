@@ -517,7 +517,7 @@ function SetupWorkspace({
             <Heading level={2} data-phase-heading tabIndex={-1}>
               {SPEAKERS_UNAVAILABLE.title}
             </Heading>
-            <Text as="p">{SPEAKERS_UNAVAILABLE.detail}</Text>
+            <Text as="p" data-measure>{SPEAKERS_UNAVAILABLE.detail}</Text>
             <HStack>
               <BackToFlows variant="primary" size="md" />
             </HStack>
@@ -604,7 +604,7 @@ function SetupWorkspace({
       {/* In one column the dock keeps to the classification and the action, so the ways in stay in view above it: where
           the recording is kept is said at the form's end. */}
       {recordingMode && dock && (
-        <Text as="p" type="supporting">
+        <Text as="p" type="supporting" data-measure>
           {storage}
         </Text>
       )}
@@ -655,7 +655,7 @@ function SetupWorkspace({
               </VStack>
             )}
             {recordingMode && !dock && (
-              <Text as="p" type="supporting" justify="center" textWrap="balance">
+              <Text as="p" type="supporting" justify="center" data-measure>
                 {storage}
               </Text>
             )}

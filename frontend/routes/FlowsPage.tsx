@@ -147,7 +147,7 @@ function FlowsListPage() {
                     <Heading level={2} justify="center">
                       Det finns inga publicerade flöden som du kan använda än.
                     </Heading>
-                    <Text as="p" color="secondary" justify="center">
+                    <Text as="p" color="secondary" justify="center" data-measure>
                       När ett flöde publiceras i Eneo visas det här. {ASK_ENEO_OWNER} om du saknar ett flöde.
                     </Text>
                   </VStack>

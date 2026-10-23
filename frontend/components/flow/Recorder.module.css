@@ -321,10 +321,18 @@
   display: none;
 }
 
-/* A note of two lines breaks them evenly, never one word alone on the second. */
+/* A note of two lines breaks them evenly, never one word alone on the second, at a reading measure (55ch, about 75
+   characters) across a laptop's bar, centred under Spela in's controls and from the bar's start in Strömma. */
 .cautions p,
 .notes p {
+  max-inline-size: 55ch;
+  margin-inline: auto;
   text-wrap: balance;
+}
+
+.cautions[data-status] p,
+.notes[data-status] p {
+  margin-inline: 0;
 }
 
 /* In Strömma on a short screen, a phone or a tablet upright, the room goes to the live text; the warnings above stay.
