@@ -68,6 +68,9 @@ const noHarness = specs("harness");
 const portable = ["a11y", "keyboard", "controls", "aria"];
 // What the module does only for Safari's engine on a touch screen, an iPhone's and an iPad's: its WebKit touch projects run it.
 const touchSafari = "touch-pdf";
+// A file going up is the engine's own XMLHttpRequest, and the network going away its own events: the uploads run on an
+// iPhone's engine and on Firefox's laptop as well.
+const uploads = ["resumable-upload", "offline-upload"];
 
 // The sentinel's own tests cause what it watches for, so they need it, and the real target.
 const SENTINEL_SPEC = /sentinel\.spec\.ts/;
@@ -141,10 +144,10 @@ export default defineConfig({
     { name: "reduced-motion", use: { ...touch(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
     // The other engines, as engine checks and not as the products built on them (Playwright's WebKit is ahead of Safari):
     // WebKit where an iPhone, an iPad and a Mac have it, Firefox on a laptop. The tablet has no snapshots, as Chromium's.
-    { name: "phone-390-webkit", use: { ...touch(390, 844), ...webkit, colorScheme: "light" }, testMatch: specs(...portable, touchSafari) },
+    { name: "phone-390-webkit", use: { ...touch(390, 844), ...webkit, colorScheme: "light" }, testMatch: specs(...portable, touchSafari, ...uploads) },
     { name: "tablet-landscape-webkit", use: { ...touch(1024, 768), isMobile: false, ...webkit, colorScheme: "light" }, testMatch: specs("a11y", "keyboard", "controls", touchSafari) },
     { name: "laptop-1440-webkit", use: { ...laptop, ...webkit, colorScheme: "light" }, testMatch: specs(...portable, "harness") },
-    { name: "laptop-1440-firefox", use: { ...laptop, ...firefox, colorScheme: "light" }, testMatch: specs(...portable, "harness") },
+    { name: "laptop-1440-firefox", use: { ...laptop, ...firefox, colorScheme: "light" }, testMatch: specs(...portable, "harness", ...uploads) },
   ]),
   webServer: [
     {

@@ -96,6 +96,7 @@ ARIA-ögonblicksbilderna är redigerade för hand: ett mönster där ett värde 
 | ARIA-ögonblicksbilderna (`aria.spec.ts`) | `phone-390-light`, `laptop-1440-light`, `phone-390-webkit`, `laptop-1440-webkit`, `laptop-1440-firefox` |
 | Kontrollernas egna tester (`harness.spec.ts`) | `laptop-1440-light`, `laptop-1440-webkit`, `laptop-1440-firefox`: en gång per motor |
 | En PDF som sparas på en iPhone eller iPad öppnas i en egen flik och sidan står kvar (`touch-pdf.spec.ts`) | `phone-390-webkit`, `tablet-landscape-webkit`: Safaris motor på pekskärm |
+| Uppladdningen i delar och utan nätverk (`resumable-upload.spec.ts`, `offline-upload.spec.ts`) | `phone-390-light`, `laptop-1440-light`, `phone-390-webkit`, `laptop-1440-firefox`: uppladdningen är motorns egen begäran. I WebKit ser en route inte filens byte, så de två testerna med en del som modulen har men vars svar försvann hoppas över där |
 
 Övriga specar körs bara i Chromium: namnen (`names.spec.ts`), läckorna, stilla sida (`still.spec.ts`) och beteendespecarna. Motorprojekten tar inte med dem, och flera av dem väljer själva en eller några av Chromium-projekten.
 

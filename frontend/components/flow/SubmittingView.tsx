@@ -1,5 +1,5 @@
 import { CloudUpload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -11,7 +11,6 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { formatBytes, formatPercent } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
 import { creatingHeading } from "@/lib/flow-output";
-import { preloadStepList } from "@/components/flow/RunProgress";
 import { StateCard, StateHead } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
@@ -58,8 +57,6 @@ export function SubmittingView({
   // change.
   const percent = isUploading ? submission.percent : null;
   const heading = usePhaseHeading(percent != null ? `${formatPercent(Math.floor(percent))} · ${title}` : title);
-  // The run's view follows this one: its steps' code is fetched while the file goes up.
-  useEffect(() => void preloadStepList(), []);
   return (
     <StateCard>
       <VStack gap={6}>

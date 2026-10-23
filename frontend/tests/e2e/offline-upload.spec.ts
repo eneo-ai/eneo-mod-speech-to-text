@@ -8,7 +8,10 @@ import { expect, test } from "./gate";
 import { chooseFile, chooseMode, setup, wav } from "./screens";
 import { declare } from "./sentinel";
 
-test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "one laptop and one phone"));
+// One laptop and one phone, and the same in WebKit (an iPhone's engine) and Firefox: the upload is the engine's own request.
+test.beforeEach(({}, info) =>
+  test.skip(!["laptop-1440-light", "phone-390-light", "phone-390-webkit", "laptop-1440-firefox"].includes(info.project.name), "one laptop and one phone, in each engine"),
+);
 
 const WAITS = "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka.";
 
@@ -50,12 +53,21 @@ test("a network that goes in the middle of a part: the page waits for it, and th
       // The device loses its network while the first part is on its way.
       cut = true;
       await context.setOffline(true);
+      wentOffline();
       return route.abort("internetdisconnected");
     }
     return route.fallback();
   });
   await page.route(/\/flows\/[^/]+\/runs\/$/, (route) => {
     if (route.request().method() === "POST") runs += 1;
+    return route.fallback();
+  });
+  // Code the page would fetch while the part goes up is held until the network has gone: a fetch the network cut fails
+  // for the page's life, and the run could then not be shown when it is back.
+  let wentOffline!: () => void;
+  const offline = new Promise<void>((resolve) => (wentOffline = resolve));
+  await page.route(/\/StepList[^/]*\.(tsx|js)(\?|$)/, async (route) => {
+    await offline;
     return route.fallback();
   });
   await setup(page);
