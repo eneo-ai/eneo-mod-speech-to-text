@@ -97,6 +97,7 @@ jobs:
           - { suite: branding, shard: 1, total: 1 }
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+      CONTROLS_PROJECTS: --project=phone-390-light --project=laptop-1440-light
       BROWSERS: ${{ matrix.suite == 'production' && 'chromium webkit firefox' || matrix.suite == 'webkit' && 'webkit' || matrix.suite == 'firefox' && 'firefox' || 'chromium' }}
     defaults:
       run:
@@ -144,11 +145,20 @@ jobs:
         run: npm run test:prod -- --workers=2 --add-reporter=json
       # Controls account for most browser time. Shard them separately so a shard of short scans does not wait for them, and by
       # each test's measured time (scripts/controls-shard.mjs), so that no shard holds the slowest states of both projects.
-      - name: Every control, one phone and one laptop
+      # The shard's filter is a step of its own: a filter that cannot be made, or an empty one (which matches every test),
+      # fails the job instead of running every control in every shard.
+      - name: This shard's controls
+        id: shard
         if: matrix.suite == 'controls'
         run: |
-          projects="--project=phone-390-light --project=laptop-1440-light"
-          npx playwright test controls.spec.ts $projects --workers=2 --grep="$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $projects)" --add-reporter=json
+          filter=$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $CONTROLS_PROJECTS) || exit 1
+          test -n "$filter" || exit 1
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+      - name: Every control, one phone and one laptop
+        if: matrix.suite == 'controls'
+        env:
+          FILTER: ${{ steps.shard.outputs.filter }}
+        run: npx playwright test controls.spec.ts $CONTROLS_PROJECTS --workers=2 --grep="$FILTER" --add-reporter=json
       - name: Accessibility gate, one phone and one laptop
         if: matrix.suite == 'accessibility'
         run: npx playwright test --grep-invert='controls\.spec\.ts' --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json

@@ -118,10 +118,19 @@ jobs:
       # Firefox runs Web Audio only with a sound server (as in ci.yml).
       - name: A sound server for Firefox
         run: sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
-      # Sharded by each test's measured time, as in ci.yml (scripts/controls-shard.mjs).
+      # Sharded by each test's measured time, the filter in a step of its own, as in ci.yml (scripts/controls-shard.mjs).
+      - name: This shard's controls
+        id: shard
+        if: matrix.suite == 'controls'
+        run: |
+          filter=$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $CONTROLS_PROJECTS) || exit 1
+          test -n "$filter" || exit 1
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
       - name: The press on every control, on the tablets and in Firefox
         if: matrix.suite == 'controls'
-        run: npx playwright test controls.spec.ts $CONTROLS_PROJECTS --workers=2 $GLOBAL_TIMEOUT --grep="$(node scripts/controls-shard.mjs ${{ matrix.shard }}/${{ matrix.total }} $CONTROLS_PROJECTS)" --add-reporter=json
+        env:
+          FILTER: ${{ steps.shard.outputs.filter }}
+        run: npx playwright test controls.spec.ts $CONTROLS_PROJECTS --workers=2 $GLOBAL_TIMEOUT --grep="$FILTER" --add-reporter=json
       - name: Everything else in the other projects
         if: matrix.suite == 'scan'
         run: npx playwright test $SCAN_PROJECTS --grep-invert='controls\.spec\.ts' --workers=2 $GLOBAL_TIMEOUT --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
