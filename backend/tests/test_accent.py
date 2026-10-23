@@ -113,7 +113,7 @@ class NeutralsTests(unittest.TestCase):
             accent = resolve_accent(light, None)
             assert accent is not None, light
             css = theme_css(accent)
-            colours = [tuple(int(c) for c in found) for found in re.findall(r"rgba\((\d+), (\d+), (\d+),", css)]
+            colours = [(int(r), int(g), int(b)) for r, g, b in re.findall(r"rgba\((\d+), (\d+), (\d+),", css)]
             colours += [_hex(found) for found in re.findall(r"#[0-9A-F]{6}", css.split("\n", 1)[1])]
             self.assertGreater(len(colours), 40, light)
             self.assertEqual([c for c in colours if self.blue(c)], [], light)

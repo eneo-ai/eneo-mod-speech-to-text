@@ -401,7 +401,11 @@ def _speakers(accent: Accent) -> list[tuple[str, str]]:
         neutrals = _neutrals(accents[mode.side], mode)
         tints = [_blend(accents[mode.side], neutrals[token], mode.tint) for token in ("--color-background-surface", "--color-background-card")]
         grounds.append([neutrals[token] for token in _GROUNDS] + tints)
-    readable = lambda pair: tuple(_reaching(_hex(pair[mode.side]), grounds[mode.side], MIN_CONTRAST, mode) for mode in (LIGHT, DARK))  # noqa: E731
+
+    def readable(pair) -> tuple[RGB, RGB]:
+        light, dark = (_reaching(_hex(pair[mode.side]), grounds[mode.side], MIN_CONTRAST, mode) for mode in (LIGHT, DARK))
+        return light, dark
+
     spares = iter(pair for pair in SPARE_SPEAKERS if not near(pair))
     chosen: list[tuple[RGB, RGB] | None] = [None if near(pair) else readable(pair) for pair in SPEAKERS]
     for index, pair in enumerate(SPEAKERS):
