@@ -117,3 +117,19 @@ test("playing and pausing renders no passage", async ({ page }, info) => {
   await expect(page.getByRole("button", { name: "Spela upp", exact: true }).first()).toBeVisible();
   expect(await turns.settled(), "passages rendered by playing and pausing").toBeLessThanOrEqual(5);
 });
+
+test("while the recording plays, its player renders as often as its thumb moves, not on every frame", async ({ page }, info) => {
+  const player = await countRenders(page, "AudioPlayer");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await player.settled();
+  await player.reset();
+  await page.locator("[data-docked-player]").getByRole("button", { name: "Spela upp" }).click();
+  await page.waitForTimeout(3_000);
+  const renders = await player.renders();
+  await page.getByRole("button", { name: "Pausa uppspelningen" }).first().click();
+  // A 20 s recording on an 800 px track moves its thumb a pixel every 25 ms: at most 20 times a second, 60 in 3 s. Drawn
+  // on every frame it was about 180.
+  expect(renders, "the thumb is drawn while it plays").toBeGreaterThan(10);
+  expect(renders, "renders in 3 s of playing").toBeLessThan(90);
+});
