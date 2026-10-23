@@ -463,6 +463,25 @@ class UploadTests(SignedIn):
         self.assertEqual(call(self.stub, "GET", "/__reset")[0], 200)
         self.assertEqual(json.loads(call(self.stub, "GET", "/__log")[2]), [])
 
+    def test_eneos_faults_on_a_file_reach_the_page_as_the_module_relays_or_names_them(self) -> None:
+        # Eneo's answer is relayed as it is, an error too (the page words it by its status); a connection that closes with
+        # no answer is the module's own 502, which says Eneo could not be reached. server-faults.spec.ts reads the words.
+        def send(filename: str):
+            headers, body = multipart(KB, filename=filename)
+            status, answer_headers, answer, _ = self.api("POST", self.PATH, headers=headers, body=body)
+            return status, answer_headers["content-type"], answer
+
+        self.assertEqual(send("trasig.webm"), (500, "application/json", b'{"detail": "Internal Server Error"}'))
+        status, content_type, answer = send("html.webm")
+        self.assertEqual((status, content_type), (502, "text/html; charset=utf-8"))
+        self.assertIn(b"502 Bad Gateway", answer)
+        status, content_type, answer = send("avbruten.webm")
+        self.assertEqual((status, json.loads(answer)), (502, {"error": "upstream_unreachable", "detail": "Eneo could not be reached."}))
+        status, _, answer = send("trunkerad.webm")
+        self.assertEqual(status, 201)
+        with self.assertRaises(ValueError, msg="cut off: the page cannot read it, and says so"):
+            json.loads(answer)
+
     def test_a_file_named_for_the_gate_is_refused_as_too_long(self) -> None:
         headers, body = multipart(KB, filename="for-lang.webm")
 

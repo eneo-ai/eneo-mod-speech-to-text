@@ -128,6 +128,8 @@ Motorprojekten är `phone-390-webkit`, `tablet-landscape-webkit`, `laptop-1440-w
 - Ett konsolfel, ett ofångat fel eller ett misslyckat anrop fäller testet om läget inte deklarerat det med `expects` i `screens.ts`, och ett deklarerat fel som inte inträffar fäller det också: ett läge som ska orsaka ett fel bevisar att det gör det. Ett anrop som webbläsaren eller sidan själv avbrutit (`net::ERR_ABORTED`, och WebKits och Firefox ord för samma sak) räknas inte; vaktposten bevakar också varje tryck i `controls.spec.ts`, i alla tre motorerna.
 - `sentinel.spec.ts` orsakar vart och ett av dem och ser att vaktposten ser det.
 
+`server-faults.spec.ts` körs bara här: stubben svarar på en fil med Eneos egna fel efter filens namn (`trasig` ett 500, `html` ett 502 med en proxys HTML-sida, `avbruten` en anslutning som stängs utan svar, `trunkerad` ett 201 vars JSON är avklippt), den riktiga backenden för dem vidare eller ger sitt eget 502, och testet läser vad sidan säger, att filen finns kvar och att den går att skicka igen.
+
 `REAL_EXTERNAL_URL` kör gaten mot en backend som redan är igång (imagen bakom Traefik, som imagens acceptans gör) i stället för att starta en; stubben är då den driftsättningens Eneo, på en adress webbläsaren når.
 
 ## Produktionstesterna

@@ -45,7 +45,10 @@ checked as Eneo checks them (names only for the transcript's speakers and its ed
 done); a fixture run's are what they are, so tests side by side see the same. A run made again from the reviewed
 transcript gets its source's corrections, names too, and a document that is the transcript under the given names.
 An upload whose file name starts with "langsam" is answered after 6 s; one
-starting with "for-lang" is refused as longer than the flow takes.
+starting with "for-lang" is refused as longer than the flow takes. Eneo's own
+faults, by the file's name, for the module's mapping of them (server-faults.spec):
+"trasig" a 500, "html" a 502 with a proxy's HTML page, "avbruten" the connection
+closed with no answer, "trunkerad" a 201 whose JSON is cut off.
 flow3 refuses a new run as a newer published version (409); flow4 needs
 republishing (409 on the contract); any unknown flow is gone (404). flow2
 ends in text (Skapa text) and, labelling speakers, asks Antal talare; flows 1
@@ -1050,6 +1053,16 @@ class Handler(BaseHTTPRequestHandler):
             if b'filename="for-lang' in head:
                 return self.send(400, {"code": "flow_run_audio_exceeds_limit", "eneo_error_code": 9000,
                                        "message": "Audio exceeds the longest recording"})
+            if b'filename="trasig' in head:
+                return self.send(500, {"detail": "Internal Server Error"})
+            if b'filename="html' in head:
+                return self.send(502, b"<html><head><title>502 Bad Gateway</title></head><body><h1>502 Bad Gateway</h1></body></html>",
+                                 ctype="text/html")
+            if b'filename="avbruten' in head:
+                self.close_connection = True  # no answer at all: the connection closes under the request
+                return None
+            if b'filename="trunkerad' in head:
+                return self.send(201, b'{"id": "00000000-0000-4000-a000-', ctype="application/json")
             return self.send(201, {"id": new_file_id(received), "filename": "upload"})
         if parts[:2] == ["api", "auth"]:
             return self.send(200, {"ok": True})
