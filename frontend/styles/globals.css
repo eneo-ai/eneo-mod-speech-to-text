@@ -179,6 +179,23 @@ a.astryx-top-nav-heading:focus-visible,
   overflow-wrap: break-word;
 }
 
+/* The design system's alert dialog pins its buttons under its words: in a window as low as 400 % zoom (320 x 200) its words
+   were a strip of 46 px over them, a scroller with no Tab stop. Below 480 px of height the dialog scrolls as a whole, as
+   the sign-in dialog does: its words, then its buttons. (Its layout's wrappers have no class of their own.) */
+@media (max-height: 479.98px) {
+  dialog.astryx-dialog[role="alertdialog"] > div,
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout-content {
+    overflow: visible;
+  }
+
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout,
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout > div,
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout > div > div {
+    flex: none;
+    block-size: auto;
+  }
+}
+
 /* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
    gives it back, for every button the design system draws. */
 @media (forced-colors: active) {
