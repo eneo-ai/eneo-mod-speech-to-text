@@ -9,9 +9,10 @@ const NONE_ID = "none";
 const ADD_ID = "add";
 const WRITE_ID = "write";
 
-// A name, as the participants' field takes one: each word starts with a capital on a phone's keyboard, and no spelling
-// check underlines it. Astryx's types leave these attributes out, but its field passes them on to the input.
-const NAME_HINTS = { autoCapitalize: "words", spellCheck: "false" } as Record<string, string>;
+// A name, as the participants' field takes one: each word starts with a capital on a phone's keyboard, no spelling
+// check underlines it and iOS does not autocorrect it. Astryx's types leave these attributes out, but its field passes
+// them on to the input.
+const NAME_HINTS = { autoCapitalize: "words", autoCorrect: "off", spellCheck: "false" } as Record<string, string>;
 
 type Option =
   | { id: string; kind: "name"; name: string }
@@ -38,7 +39,13 @@ export function NameCombobox({
   label,
   description,
   problem,
+  enterKeyHint,
+  onEnter,
 }: {
+  /** What a phone's Enter key says it does: "next" where another field follows, "done" on the last. */
+  enterKeyHint?: "next" | "done";
+  /** Enter on a name that is done (no row marked by the arrows or the pointer): the list closes, and this goes on. */
+  onEnter?: () => void;
   /** The chosen or typed name, or null for none. */
   value: string | null;
   /** The known names to choose among. */
@@ -139,11 +146,14 @@ export function NameCombobox({
       }
       setMoved(active < 0 ? (delta > 0 ? 0 : items.length - 1) : (active + delta + items.length) % items.length);
     } else if (e.key === "Enter") {
-      if (!open) return;
+      // A row the arrows or the pointer marked is chosen, and the field keeps the focus. Otherwise the name in the field
+      // stands as it is (the list marks nothing else), and Enter ends it: the list closes and the focus goes on.
+      const option = moved === null ? undefined : items[active];
+      if (!open && !onEnter) return;
       e.preventDefault();
-      const option = items[active];
-      if (option) choose(option);
-      else popover.hide();
+      if (open && option) return choose(option);
+      popover.hide();
+      onEnter?.();
     } else if (e.key === "Tab") {
       // Closed here, not by the blur this press causes: a list hidden during the focus move makes the browser drop
       // the focus. Escape is the layer stack's: it closes the list and leaves a dialog around it open.
@@ -170,6 +180,7 @@ export function NameCombobox({
         aria-activedescendant={activeId}
         autoComplete="off"
         {...NAME_HINTS}
+        {...({ enterKeyHint } as Record<string, string | undefined>)}
         value={text}
         placeholder={placeholder}
         isDisabled={disabled}
@@ -185,6 +196,13 @@ export function NameCombobox({
         // Not on focus: a list that opens on every Tab covers the next field.
         onClick={() => openList()}
         onKeyDown={onKeyDown}
+        // The focus moved on without Tab (a phone keyboard's arrows or its Next): the list goes too, once the focus has
+        // moved, so it does not cover the next speaker's row.
+        onBlur={() =>
+          requestAnimationFrame(() => {
+            if (!rootRef.current?.contains(document.activeElement)) popover.hide();
+          })
+        }
       />
       <IconButton
         variant="ghost"

@@ -169,6 +169,7 @@ export function SpeakerNamingDialog({
   useLayoutEffect(() => {
     if (covered) dialogElement.current?.style.setProperty("--visible-top", `${visible.top}px`);
   }, [covered, visible?.top]);
+  const saveButton = useRef<HTMLButtonElement>(null);
   const descriptionId = useId();
   // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
   const narrow = useMediaQuery("(max-width: 479.98px)");
@@ -196,10 +197,11 @@ export function SpeakerNamingDialog({
   }, [open]);
   // Opened at one speaker: once the dialog is open (its title has the focus), that speaker's name field takes it.
   const [startAt, setStartAt] = useState<string | null>(null);
+  const fieldOf = (label: string) =>
+    [...(dialogElement.current?.querySelectorAll<HTMLElement>("li[data-speaker]") ?? [])].find((li) => li.dataset.speaker === label)?.querySelector("input");
   useEffect(() => {
     if (!shown || startAt === null) return;
-    const row = [...(dialogElement.current?.querySelectorAll<HTMLElement>("li[data-speaker]") ?? [])].find((li) => li.dataset.speaker === startAt);
-    row?.querySelector("input")?.focus();
+    fieldOf(startAt)?.focus();
     setStartAt(null);
   }, [shown, startAt]);
   useImperativeHandle(ref, () => ({
@@ -276,7 +278,8 @@ export function SpeakerNamingDialog({
                   moves focus with preventScroll), so the list brings whatever takes focus into view itself. */}
               {shown && (
                 <ul className={styles.rows} onFocus={(e) => e.target.scrollIntoView({ block: "nearest" })}>
-                  {draft.map((row) => {
+                  {draft.map((row, index) => {
+                    const next = draft[index + 1];
                     const count = passages(row.label);
                     const said = quote(row.label);
                     const unavailable = listenUnavailableReason?.(row.label) ?? null;
@@ -322,7 +325,8 @@ export function SpeakerNamingDialog({
                             label={`Vem är ${speakerDisplayLabel(row.label)}?`}
                             description={unsure ? "Osäkert förslag" : undefined}
                             value={row.name}
-                            options={names}
+                            // The field's own text is no known name: typed, it is offered to add.
+                            options={names.filter((name) => name !== row.name?.trim() || offered.includes(name))}
                             disabled={disabled || decided || saving}
                             placeholder="Välj eller skriv ett namn"
                             noneLabel="Inget namn (behåll etiketten)"
@@ -330,6 +334,10 @@ export function SpeakerNamingDialog({
                             optionNote={(name) => usedBy(name, row.label)}
                             problem={problems[row.label]}
                             onChange={(name) => rename(row.label, name)}
+                            // Enter goes on to the next speaker; after the last, to Spara namnen, which closes a
+                            // phone's keyboard and saves nothing by itself, so a stray Enter sends no names.
+                            enterKeyHint={next ? "next" : "done"}
+                            onEnter={() => (next ? fieldOf(next.label) : saveButton.current)?.focus()}
                           />
                           {/* A status, as on the page's list; the field says it to a screen reader. */}
                           {unsure && (
@@ -368,6 +376,7 @@ export function SpeakerNamingDialog({
                     <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (
                     <Button
+                      ref={saveButton}
                       variant="primary"
                       label={saving ? "Sparar…" : "Spara namnen"}
                       isDisabled={disabled || saving}

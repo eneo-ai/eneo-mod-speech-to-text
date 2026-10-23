@@ -544,6 +544,39 @@ test("Tab closes the name list at once, and the next control is reached and not 
   expect(stopProblems(stop ? [stop] : []), "visible and not covered").toEqual([]);
 });
 
+test("Enter ends a speaker's name and goes on to the next speaker, and after the last to Spara namnen, saving nothing", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const field = (speaker: string) => dialog.getByRole("combobox", { name: `Vem är ${speaker}?` });
+  const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" });
+  // A phone's Enter key says what it does: Next, and Done on the last field.
+  await expect(field("Talare 2")).toHaveAttribute("enterkeyhint", "next");
+  await expect(field("Talare 3")).toHaveAttribute("enterkeyhint", "done");
+  await expect(field("Talare 3")).toHaveAttribute("autocorrect", "off");
+  await field("Talare 2").fill("Bertil Eklund");
+  await expect(list, "typing opens the list").toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(list).toBeHidden();
+  await expect(field("Talare 3")).toBeFocused();
+  await expect(field("Talare 2")).toHaveValue("Bertil Eklund");
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("button", { name: "Spara namnen" })).toBeFocused();
+  await expect(dialog, "a stray Enter sends nothing").toBeVisible();
+  const stop = await focusStop(page);
+  expect(stopProblems(stop ? [stop] : []), "Spara namnen is in sight and not covered").toEqual([]);
+});
+
+test("a name list closes when the focus moves on without Tab, as a phone keyboard's arrows or its Next move it", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" });
+  await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).click();
+  await expect(list).toBeVisible();
+  await dialog.getByRole("combobox", { name: "Vem är Talare 3?" }).evaluate((element: HTMLElement) => element.focus());
+  await expect(list, "it no longer covers the next speaker's row").toBeHidden();
+  await expect(dialog.getByRole("combobox", { name: "Vem är Talare 3?" }), "and the focus stays where it went").toBeFocused();
+});
+
 test("the account menu holds focus and gives it back", async ({ page }) => {
   await STATES.find((s) => s.name === "flow-list")!.go(page, test.info());
   await holdsFocus(page, page.getByRole("button", { name: /^Öppna konto för/ }), page.getByRole("menu"), 0);
