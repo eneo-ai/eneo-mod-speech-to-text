@@ -465,8 +465,9 @@ export class RecordingCapture {
         this.followStore();
       }, () => undefined);
     }
-    // The stopped recording is on the page's screen: no other tab offers or deletes it until the page lets it go.
-    if (stopped) store.hold(recording.id);
+    // The stopped recording is on the page's screen, also when the device has not answered (as the capture last read it):
+    // no other tab offers or deletes it until the page lets it go, nor once the device's late writes are done.
+    if (stopped || failure !== null) store.hold(recording.id);
     this.finish();
     // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed. A reason
     // given before (the flow's limit) is said rather than a recorder that did not confirm its end.
