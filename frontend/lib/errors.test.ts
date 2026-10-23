@@ -94,7 +94,8 @@ test("a flow that cannot be opened says why in Swedish, and offers Försök igen
   );
   assert.deepEqual(republish, {
     title: "Flödet kan inte användas just nu.",
-    detail: "Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.",
+    // The heading says the first sentence; the line under it does not say it again.
+    detail: "Den som ansvarar för det behöver publicera det på nytt.",
     retry: false,
   });
   assert.equal(unavailableCopy(eneo(503, undefined, "Service Unavailable")).retry, true);

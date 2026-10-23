@@ -276,6 +276,18 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
   await holdsFocus(page, page.getByRole("button", { name: "Avbryt körningen" }), page.getByRole("alertdialog", { name: "Avbryta körningen?" }));
 });
 
+test("a cancel Eneo refuses gives the focus back to Avbryt körningen, under the refusal", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "focus after a refusal, at one width");
+  sentinel.expect({ console: /status of 409.*\/cancel\// });
+  await page.route("**/cancel/", (route) => route.fulfill({ status: 409, json: { code: "flow_run_not_cancellable" } }));
+  await run(page, ids.runs.running);
+  const trigger = page.getByRole("button", { name: "Avbryt körningen" });
+  await trigger.click();
+  await page.getByRole("alertdialog", { name: "Avbryta körningen?" }).getByRole("button", { name: "Avbryt körningen" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(trigger, "the button that asked, not the page's body").toBeFocused();
+});
+
 // A page cannot hear Escape while focus is inside the browser's PDF viewer. The viewer either is no Tab stop (its
 // content is a link away, in a tab of its own), or Tab leads out of it back to the dialog's own controls (WCAG
 // 2.1.2). From those controls, Escape closes the dialog.

@@ -174,6 +174,17 @@ test("unsaved transcript corrections ask before leaving; a successful retry remo
   await expect(question(page)).toHaveCount(0);
 });
 
+test("Logga ut while recording, answered Stanna kvar: the focus goes back to the account's button, as the menu is gone", async ({ page }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  const account = page.getByRole("button", { name: /^Öppna konto för/ });
+  await account.click();
+  await page.getByRole("menuitem", { name: "Logga ut" }).click();
+  await asked(page);
+  await stay(page);
+  await expect(account, "where the person was, not the page's body").toBeFocused();
+});
+
 test("unsaved result corrections are kept in the tab: after a reload the page shows them and saves them", async ({ page, sentinel }) => {
   sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
   await unsavedCorrections(page, "result");

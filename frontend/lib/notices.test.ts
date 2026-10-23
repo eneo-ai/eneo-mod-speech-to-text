@@ -174,6 +174,18 @@ test("a waiting send says it in one sentence in the live region, and the countdo
   assert.equal(now, 1, "Försök nu tries at once");
 });
 
+test("Försök nu goes with the wait it ended, and the focus it had goes to the view's heading, not the page's body", async () => {
+  // The sending view as it stands: its heading, and the notice under it; the press ends the wait, and the button with it.
+  let view!: Awaited<ReturnType<typeof mount>>;
+  const sending = (current: ReturnType<typeof wait> | null) =>
+    createElement("main", null, createElement("h1", { tabIndex: -1 }, "Dokumentet skapas"), createElement(RetryNotice, { wait: current }));
+  view = await mount(sending(wait(Date.now() + 5_000, () => view.rerender(sending(null)))));
+  button(view.container, "Försök nu")!.focus();
+  await view.act(async () => button(view.container, "Försök nu")!.click());
+  assert.equal(button(view.container, "Försök nu"), null);
+  assert.equal(document.activeElement?.tagName, "H1");
+});
+
 test("a send that has stopped trying by itself says so, with no countdown, and Försök igen tries at once", async () => {
   let tried = 0;
   const { container, act } = await mount(createElement(RetryNotice, { wait: wait(null, () => void tried++) }));

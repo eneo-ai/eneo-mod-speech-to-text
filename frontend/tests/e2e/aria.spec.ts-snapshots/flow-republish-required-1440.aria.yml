@@ -13,4 +13,4 @@
       - status
 - main:
   - heading "Flödet kan inte användas just nu." [level=1]
-  - paragraph: Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.
+  - paragraph: Den som ansvarar för det behöver publicera det på nytt.
