@@ -180,16 +180,24 @@ const luminance = ([r, g, b]: readonly number[]) => {
 };
 
 /**
- * The text axe left undecided, measured as a person sees it: the text made transparent for a moment, its box captured,
- * the median pixel of what is behind it taken as its background and held against the text's own colour. Each with the
- * ratio it needs (WCAG 1.4.3: 4.5:1, or 3:1 for large text: 24 px, or 18.66 px bold). A glyph is not measured, nor text
- * that something else covers where it stands or that is drawn in no colour.
+ * The text axe left undecided, measured as a person sees it: its box captured three times, the text drawn in black, in
+ * white and in no colour. Where a letter stands the black and the white differ, whatever is behind it; what the box shows
+ * there without the text is the background behind the text (WCAG 1.4.3), and the worst of it against the text's own
+ * colour is the ratio. The rest of the box decides nothing, so text whose letters partly stand on a ground of their own
+ * colour fails however much of the box is clear. Words inside it in a colour of their own are their own text and keep
+ * it. Each with the ratio it needs (4.5:1, or 3:1 for large text: 24 px, or 18.66 px bold). A glyph is not measured, nor
+ * text that something else covers where it stands or that is drawn in no colour.
  */
 export async function undecidedContrast(page: Page, undecided: { target: string; reason: string }[]) {
   const measured: { target: string; reason: string; ratio: number; needed: number; text: number[]; behind: number[] }[] = [];
   const remove = await addStyles(
     page,
-    "[data-contrast-probe], [data-contrast-probe] * { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; text-decoration-color: transparent !important; transition: none !important; }",
+    `[data-contrast-probe] { text-shadow: none !important; text-decoration-color: transparent !important; }
+     [data-contrast-probe="dark"] { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+     [data-contrast-probe="light"] { color: #fff !important; -webkit-text-fill-color: #fff !important; }
+     [data-contrast-probe="none"] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+     [data-contrast-probe] * { -webkit-text-fill-color: currentcolor !important; }
+     [data-contrast-probe], [data-contrast-probe] * { transition: none !important; }`,
   );
   try {
     for (const { target, reason } of undecided.filter((item) => !NOT_TEXT.has(item.reason))) {
@@ -217,19 +225,30 @@ export async function undecidedContrast(page: Page, undecided: { target: string;
           // Text drawn in no colour (a field whose value another layer shows, as the design system's date field's): none to read.
           if (a === 0) return null;
           const size = parseFloat(style.fontSize);
-          node.setAttribute("data-contrast-probe", "");
           return { clip: { x: left, y: top, width: right - left, height: bottom - top }, text: [r, g, b, a / 255], large: size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700) };
         })
         .catch(() => null);
       if (!seen) continue;
       try {
-        const { rgba, width, height } = pixelsOf(await page.screenshot({ clip: seen.clip, animations: "disabled", caret: "hide" }));
-        const all = Array.from({ length: width * height }, (_, i) => [rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]]).sort((p, q) => luminance(p) - luminance(q));
-        const behind = all[Math.floor(all.length / 2)];
+        const shot = async (probe: string) => {
+          await element.evaluate((node, probe) => node.setAttribute("data-contrast-probe", probe), probe);
+          return pixelsOf(await page.screenshot({ clip: seen.clip, animations: "disabled", caret: "hide" })).rgba;
+        };
+        const [dark, light, bare] = [await shot("dark"), await shot("light"), await shot("none")];
+        // A letter's pixel: black and white text differ there by more than 8 of 255 (its edge's faintest shade aside).
+        const letters = Array.from({ length: bare.length / 4 }, (_, i) => i).filter((i) => Math.abs(dark[i * 4] - light[i * 4]) > 8);
+        // No letter drawn in the box (covered, or cut off): no text to read.
+        if (!letters.length) continue;
         const [r, g, b, a] = seen.text;
-        const text = [r * a + behind[0] * (1 - a), g * a + behind[1] * (1 - a), b * a + behind[2] * (1 - a)].map(Math.round);
-        const [hi, lo] = [luminance(text), luminance(behind)].sort((p, q) => q - p);
-        measured.push({ target, reason, ratio: Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100, needed: seen.large ? 3 : 4.5, text, behind });
+        let worst = { ratio: Infinity, text: [] as number[], behind: [] as number[] };
+        for (const i of letters) {
+          const behind = [bare[i * 4], bare[i * 4 + 1], bare[i * 4 + 2]];
+          const text = [r * a + behind[0] * (1 - a), g * a + behind[1] * (1 - a), b * a + behind[2] * (1 - a)].map(Math.round);
+          const [hi, lo] = [luminance(text), luminance(behind)].sort((p, q) => q - p);
+          const ratio = (hi + 0.05) / (lo + 0.05);
+          if (ratio < worst.ratio) worst = { ratio, text, behind };
+        }
+        measured.push({ target, reason, ratio: Math.round(worst.ratio * 100) / 100, needed: seen.large ? 3 : 4.5, text: worst.text, behind: worst.behind });
       } finally {
         await element.evaluate((node) => node.removeAttribute("data-contrast-probe")).catch(() => undefined);
       }

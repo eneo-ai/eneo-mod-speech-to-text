@@ -108,6 +108,31 @@ test("text that axe cannot decide (over a gradient) is measured on the screen's 
   expect(await page.evaluate(() => getComputedStyle(document.getElementById("clear")!).color)).toBe("rgb(51, 51, 51)");
 });
 
+test("undecided text is measured on what is behind its letters, not on the rest of its box", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      body { margin: 0; font: 16px/1.5 sans-serif; }
+      p { width: fit-content; margin: 16px; color: #000000; }
+      /* Most of the box is white, but its first words stand on black. */
+      #mixed { padding-right: 120px; background: linear-gradient(90deg, #000000 0 40%, #ffffff 40%); }
+      /* Most of the box is black, in a padding where no letter stands; the words stand on white. */
+      #beside { padding-left: 200px; background: linear-gradient(90deg, #000000 0 190px, #ffffff 190px); }
+      /* A word in a colour and on a ground of its own is its own text, not its parent's. */
+      #parent { background: linear-gradient(90deg, #ffffff, #f2f2f2); }
+      #parent mark { color: #ffffff; background: #000000; }
+    </style>
+    <main><h1>Prov</h1>
+      <p id="mixed">Delvis på svart botten</p><p id="beside">På vit botten</p><p id="parent">Text och <mark>märkt</mark> ord</p>
+    </main>`);
+  const scan = await axe(page);
+  expect(scan.undecidedText.map((item) => item.target), "axe leaves them to a person").toEqual(expect.arrayContaining(["#mixed", "#beside", "#parent"]));
+  const measured = await undecidedContrast(page, scan.undecidedText);
+  const of = (target: string) => measured.find((item) => item.target === target)!;
+  expect(of("#mixed").ratio, "letters on black: about 1:1, whatever the white around them").toBeLessThan(of("#mixed").needed);
+  expect(of("#beside").ratio, "letters on white: 21:1, whatever the black beside them").toBeGreaterThanOrEqual(7);
+  expect(of("#parent").ratio, "the marked word's black ground is not under the parent's black letters").toBeGreaterThanOrEqual(7);
+});
+
 test("text behind an open modal dialog is out of reach, so its contrast is not measured; the dialog's own is", async ({ page }) => {
   await page.setContent(`
     <style>body { margin: 0; font: 16px/1.5 sans-serif; } dialog { inset-block-start: 60vh; } dialog::backdrop { background: rgb(0 0 0 / 0.6); }</style>

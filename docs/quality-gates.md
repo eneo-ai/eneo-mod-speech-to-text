@@ -56,7 +56,7 @@ Hela gaten är timmar på en dator. Kör lokalt det en ändring rör (`npm run t
 |---|---|
 | axe | Varje WCAG-överträdelse stoppar, oavsett allvarlighet; övriga regler när de är allvarliga eller kritiska. |
 | Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. Mäts i Chromium, vars träd gaten kan läsa; i WebKit och Firefox är det axe som hittar ett saknat namn. |
-| Text som axe inte kan avgöra | Text där axe lämnar kontrasten åt en människa (en toning bakom, något som ligger över eller under) mäts på skärmens pixlar: texten görs osynlig ett ögonblick, medianen av det som syns bakom är bakgrunden, och kravet är 4,5:1 (3:1 för stor text). Text bakom en öppen modal dialog, text utan färg och glyfer från ett ikontypsnitt mäts inte. |
+| Text som axe inte kan avgöra | Text där axe lämnar kontrasten åt en människa (en toning bakom, något som ligger över eller under) mäts på skärmens pixlar: textens ruta fotograferas med texten och med texten osynlig ett ögonblick. Där bokstäverna står är bakgrunden det som syns utan dem, och den sämsta kontrasten där ska nå 4,5:1 (3:1 för stor text). Resten av rutan avgör inget, och ord inuti med en egen färg mäts som sin egen text. Text bakom en öppen modal dialog, text utan färg och glyfer från ett ikontypsnitt mäts inte. |
 | Platshållartext | Kontrast 4,5:1. |
 | Målstorlek | 24 px med mus, 44 px med finger (`pointer: coarse`). |
 | Reflow och textavstånd | Ingen text eller kontroll utanför fönstrets kant och inget avklippt av en ruta som klipper, i varje läge på varje bredd gaten har (också 1000 px, strax under laptopens två kolumner); ökat radavstånd, teckenavstånd och ordavstånd klipper inget, och en rubrik kapas inte. |
