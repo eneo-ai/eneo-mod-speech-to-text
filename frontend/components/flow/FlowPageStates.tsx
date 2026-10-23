@@ -62,7 +62,9 @@ export function unavailableCopy(error: unknown): { title: string; detail: string
     };
   }
   const { message, retry, ownerMustFix } = errorAdvice(error);
-  return { title: ownerMustFix ? "Flödet kan inte användas just nu." : "Flödet kunde inte laddas.", detail: message, retry };
+  const title = ownerMustFix ? "Flödet kan inte användas just nu." : "Flödet kunde inte laddas.";
+  // The heading is said once: a message that starts with it keeps only what it adds under it.
+  return { title, detail: message.startsWith(title) ? message.slice(title.length).trimStart() : message, retry };
 }
 
 /**

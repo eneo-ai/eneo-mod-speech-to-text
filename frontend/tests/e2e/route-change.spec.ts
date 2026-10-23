@@ -312,3 +312,13 @@ test("a run waiting for review is said above the setup, and Granska opens Vem ä
   await expect(heading).toBeVisible();
   await expect(heading).toBeFocused();
 });
+
+test("a flow that must be published again says its heading once: the line under it says what to do", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// });
+  await page.goto(`/flows/${ids.flows.flow4}`);
+  const title = page.getByRole("heading", { level: 1 });
+  await expect(title).toHaveText("Flödet kan inte användas just nu.");
+  const line = title.locator("xpath=following-sibling::p[1]");
+  await expect(line).not.toContainText("Flödet kan inte användas just nu.");
+  await expect(line).toContainText("publicera det på nytt");
+});
