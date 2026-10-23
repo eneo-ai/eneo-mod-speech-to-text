@@ -1,17 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { onlineStatus, type OnlineStatus } from "@/lib/online-status";
 import type { RetryWait } from "@/lib/submit-run";
 import { moveFocusToHeading } from "@/routes/RouteEffects";
 
 /**
  * Shown while a send waits to try again. The countdown stays outside the live
- * region, so a screen reader hears one sentence rather than every second.
+ * region, so a screen reader hears one sentence rather than every second. While
+ * the page's offline notice (OfflineBanner) says why nothing goes, this one says
+ * only when it tries again: the failure is said once.
  */
-export function RetryNotice({ wait }: { wait: RetryWait | null }) {
+export function RetryNotice({ wait, status = onlineStatus }: { wait: RetryWait | null; status?: OnlineStatus }) {
+  const said = useSyncExternalStore(status.subscribe, () => status.connection !== "online", () => false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!wait) return;
@@ -30,15 +34,15 @@ export function RetryNotice({ wait }: { wait: RetryWait | null }) {
   return (
     <VStack gap={3}>
       <VisuallyHidden as="p" role="status">
-        {wait ? (wait.retryAt === null ? "Det går fortfarande inte att skicka." : "Det gick inte att skicka just nu. Försöker igen automatiskt.") : ""}
+        {wait && !said ? (wait.retryAt === null ? "Det går fortfarande inte att skicka." : "Det gick inte att skicka just nu. Försöker igen automatiskt.") : ""}
       </VisuallyHidden>
       {wait && (
         <HStack gap={3} wrap="wrap" align="center" justify="between">
-          {/* Tabular figures and the unit kept with its number: the counting seconds do not shake the line. */}
-          <Text as="p" type="supporting" hasTabularNumbers>
-            {wait.retryAt === null
-              ? "Det går fortfarande inte att skicka. Försök igen när du vill."
-              : `Det gick inte att skicka just nu. Försöker igen om ${seconds}\u00a0s.`}
+          {/* Tabular figures and the unit kept with its number: the counting seconds do not shake the line. Body text: it
+              says what happens to the person's file. */}
+          <Text as="p" hasTabularNumbers>
+            {said ? "" : wait.retryAt === null ? "Det går fortfarande inte att skicka. " : "Det gick inte att skicka just nu. "}
+            {wait.retryAt === null ? "Försök igen när du vill." : `Försöker igen om ${seconds}\u00a0s.`}
           </Text>
           <Button
             label={wait.retryAt === null ? "Försök igen" : "Försök nu"}

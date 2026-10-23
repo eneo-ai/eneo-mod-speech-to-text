@@ -230,6 +230,29 @@ function device() {
   };
 }
 
+test("a send that waits while the offline notice speaks says only when it tries again: the failure is said once", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000_000 });
+  const { status, network } = device();
+  // The sending view: the page's offline notice above, the send's own notice in the card.
+  const sending = createElement("main", null, createElement(OfflineBanner, { waiting: "upload", status }), createElement(RetryNotice, { wait: wait(1_005_000), status }));
+  const { container, act } = await mount(sending);
+  assert.match(container.textContent ?? "", /Det gick inte att skicka just nu\. Försöker igen om 5\u00a0s\./, "online, the send says why it waits");
+
+  await act(async () => network(false));
+  // What is on screen: the live regions say it again, for a screen reader.
+  const shown = container.cloneNode(true) as HTMLElement;
+  shown.querySelectorAll('[role="status"]').forEach((region) => region.remove());
+  const text = shown.textContent ?? "";
+  assert.equal(text.match(/Ingen anslutning|inte just nu|inte att skicka/g)?.length, 1, text);
+  assert.match(text, /Försöker igen om 5\u00a0s\./);
+  const spoken = [...container.querySelectorAll('[role="status"]')].map((region) => region.textContent).filter(Boolean);
+  assert.deepEqual(spoken, ["Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka."], "one sentence for a screen reader");
+
+  // A send that has stopped trying says only what is left to do.
+  const stopped = await mount(createElement(RetryNotice, { wait: wait(null), status }));
+  assert.equal(stopped.container.querySelector("p:not([role])")?.textContent, "Försök igen när du vill.");
+});
+
 // What waits, said for a device with no network, and for a module that does not answer.
 const OFFLINE: [OfflineWaiting, string][] = [
   ["recording", "Ingen anslutning. Inspelningen fortsätter."],
