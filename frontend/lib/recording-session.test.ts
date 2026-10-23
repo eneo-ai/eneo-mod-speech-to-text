@@ -134,7 +134,7 @@ async function setup(
     window?: EventTarget;
     now?: () => number;
     /** A denied microphone, or one the browser grants only once `wait` settles. */
-    microphone?: { denied?: boolean; wait?: Promise<void> };
+    microphone?: { denied?: boolean; wait?: Promise<void>; refusal?: string };
     /** The screen's wake lock is granted only once this settles. */
     wakeLock?: Promise<void>;
     /** The browser's own answer to a wake lock request, in place of one that grants every request. */
@@ -149,6 +149,7 @@ async function setup(
   const deps: CaptureDeps = {
     getStream: async (asked) => {
       if (options.microphone?.denied) throw new DOMException("Permission denied", "NotAllowedError");
+      if (options.microphone?.refusal) throw new DOMException("The microphone could not start", options.microphone.refusal);
       await options.microphone?.wait;
       constraints.push(asked);
       const stream = new FakeStream();
@@ -871,6 +872,13 @@ test("a stopped recording is not continued while another tab holds it, once it i
     ["stopped", "Tillåt mikrofonen i webbläsaren för att spela in."],
   );
   assert.equal(await denied.store.lease(denied.stopped.id), true, "its lease let go");
+
+  // A microphone another app holds (Teams in a meeting room) says what to do, as the setup's start does.
+  const taken: { refusal?: string } = {};
+  const inUse = await stoppedCapture({ microphone: taken });
+  taken.refusal = "NotReadableError";
+  await inUse.capture.continueStopped(inUse.stopped.id, limits);
+  assert.equal(inUse.capture.getSnapshot().error, "Mikrofonen kunde inte startas. Stäng andra appar som använder mikrofonen och försök igen.");
 });
 
 test("Stoppa while 'Fortsätt spela in' waits for the microphone starts no recorder afterwards", async () => {

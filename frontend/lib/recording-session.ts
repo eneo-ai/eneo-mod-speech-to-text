@@ -211,6 +211,8 @@ function microphoneError(error: unknown): string {
   if (name === "NotFoundError" || name === "OverconstrainedError") {
     return "Ingen mikrofon hittades.";
   }
+  // Held by another app (a call in a meeting room): what to do, as the setup's start says it (lib/flow-session).
+  if (name === "NotReadableError") return "Mikrofonen kunde inte startas. Stäng andra appar som använder mikrofonen och försök igen.";
   return "Mikrofonen kunde inte startas. Försök igen.";
 }
 

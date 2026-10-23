@@ -728,6 +728,25 @@ export const STATES: State[] = [
       await expect(page.getByRole("button", { name: "Sluta testa" })).toBeVisible();
     },
   },
+  // The browser refuses the microphone when Starta inspelning asks for it: blocked for the page, no device, or held by
+  // another app. Each says why and what to do above the setup, which stays as it was.
+  ...([
+    ["setup-microphone-blocked", "NotAllowedError", "Mikrofonen är blockerad."],
+    ["setup-microphone-missing", "NotFoundError", "Ingen mikrofon hittades."],
+    ["setup-microphone-in-use", "NotReadableError", "Mikrofonen kunde inte startas."],
+  ] as const).map(([name, refusal, title]) => ({
+    name,
+    go: async (page: Page) => {
+      await page.addInitScript((error) => {
+        if (typeof MediaDevices === "undefined") return;
+        MediaDevices.prototype.getUserMedia = () => Promise.reject(new DOMException("The microphone could not be used", error));
+      }, refusal);
+      await setup(page);
+      await chooseMode(page, "Spela in");
+      await page.getByRole("button", { name: "Starta inspelning" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: title })).toBeVisible();
+    },
+  })),
   {
     name: "setup-count-from-names",
     go: async (page) => {

@@ -852,6 +852,21 @@ test("a denied or missing microphone says what happened and what to do next, and
   // Choosing another mode clears the problem; so does a start that works.
   missing.session.selectMode("ladda-upp");
   assert.equal(missing.session.getSnapshot().problem, null);
+
+  // Held by another app (Teams in a meeting room), and a reason the page does not know.
+  for (const [name, problem] of [
+    ["NotReadableError", { title: "Mikrofonen kunde inte startas.", detail: "Stäng andra appar som använder mikrofonen och försök igen.", retry: true }],
+    ["AbortError", { title: "Inspelningen kunde inte starta.", detail: "Försök igen eller välj Ladda upp.", retry: true }],
+  ] as const) {
+    const refused = await setup({
+      getStream: async () => {
+        throw new DOMException("The microphone could not start", name);
+      },
+    });
+    refused.session.setContract(audioContract());
+    await refused.session.start();
+    assert.deepEqual(refused.session.getSnapshot().problem, problem, name);
+  }
 });
 
 test("Fortsätt spela in after a lost microphone says why the recorder refused it, and a second press while it waits says nothing", async () => {
