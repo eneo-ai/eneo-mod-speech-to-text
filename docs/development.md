@@ -2,7 +2,7 @@
 
 ## Kom igång
 
-1. **Du behöver ett Eneo som modulen når**, med en servicenyckel och modulen installerad ([Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo)). Har du inget kör du stubben som Eneo i stället ([utan Eneo](#den-riktiga-backenden-utan-ett-eneo)).
+1. **Du behöver ett Eneo som modulen når**, med en servicenyckel och modulen installerad ([Kom igång](kom-igang.md)). Har du inget kör du stubben som Eneo i stället ([utan Eneo](#den-riktiga-backenden-utan-ett-eneo)).
 2. **Hämta koden och inställningarna:**
 
    ```bash
@@ -86,7 +86,7 @@ Eneos egen devcontainer lägger webben på port 3000 och API:t på 8123. Vem som
 | `MODULE_PUBLIC_URL` | `http://localhost:3001` | `http://localhost:3002` |
 | `COOKIE_SECURE` | `false` | `false` |
 
-Registrera modulen som i [Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo), med callback `<MODULE_PUBLIC_URL>/api/auth/callback`: `http://localhost:3001/api/auth/callback` eller `http://localhost:3002/api/auth/callback`.
+Registrera modulen som i [Installera modulen i Eneo](kom-igang.md#3-installera-modulen-i-eneo), med callback `<MODULE_PUBLIC_URL>/api/auth/callback`: `http://localhost:3001/api/auth/callback` eller `http://localhost:3002/api/auth/callback`.
 
 ### Den riktiga backenden utan ett Eneo
 
