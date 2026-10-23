@@ -196,6 +196,21 @@ test("from the link before the transcript, Tab goes to its first passage's contr
   expect(focused).toEqual({ tag: "BUTTON", name: "Talare 1, ändra talare" });
 });
 
+// A refused Skapa dokument moves the focus to the field to mend. Firefox and Safari scroll a focused field only to the
+// window's nearest edge, which left the sentence under it (what to mend) behind a phone's docked action.
+for (const [state, message] of [["setup-own-count-invalid", "Skriv ett heltal från 1, eller lämna fältet tomt."], ["setup-required-detail", "Fyll i det här för att skapa dokumentet."]] as const) {
+  test(`on a phone, the field ${state} moves the focus to has its sentence above the docked action`, async ({ page }, info) => {
+    test.skip(!isPhone(info), "the docked action is a phone's");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const sentence = (await page.getByRole("main").getByText(message).boundingBox())!;
+    const dock = await page.evaluate(() => {
+      const docked = [...document.querySelectorAll<HTMLElement>("*")].find((element) => getComputedStyle(element).position === "sticky" && element.getBoundingClientRect().bottom >= innerHeight - 1 && element.getBoundingClientRect().height > 0);
+      return docked ? docked.getBoundingClientRect().top : innerHeight;
+    });
+    expect(sentence.y + sentence.height, "the sentence ends above the dock").toBeLessThanOrEqual(dock + 0.5);
+  });
+}
+
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
   const { stops, left } = await tabWalk(page);
