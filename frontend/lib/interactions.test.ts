@@ -1597,6 +1597,32 @@ test("the level meter goes quiet when the stream ends, whichever way it is drawn
   }
 });
 
+test("a stream is read once for the meter and the silence watch that listen to it: one audio context, closed with the last", async (t) => {
+  const { createElement, Fragment } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  const { useSilence } = await import("../components/flow/recording-hooks");
+  const { restore, contexts } = listening(t, { value: 0.5 });
+  const microphone = {} as MediaStream;
+  function Watch() {
+    useSilence(microphone, true);
+    return null;
+  }
+  try {
+    // Spela in's bar: the meter and the watch for a muted microphone, on the one stream being recorded.
+    const view = await mount(createElement(Fragment, null, createElement(LevelMeter, { stream: microphone, bars: 8, variant: "steps" }), createElement(Watch)));
+    await view.act(async () => t.mock.timers.tick(66));
+    assert.equal(contexts.length, 1, "one audio context for the stream, not one for each that listens");
+    assert.ok([...view.container.querySelectorAll<HTMLElement>("span")].some((bar) => bar.dataset.lit === "true"), "and the meter hears it");
+    // Paused: the meter lets the stream go, the watch keeps it.
+    await view.act(async () => view.rerender(createElement(Fragment, null, createElement(LevelMeter, { stream: null, bars: 8, variant: "steps" }), createElement(Watch))));
+    assert.equal(contexts[0].state, "running", "still read for the watch");
+    await view.unmount();
+    assert.equal(contexts[0].state, "closed", "closed with the last that listened");
+  } finally {
+    restore();
+  }
+});
+
 test("the level's audio is resumed when the system suspends or interrupts it, and when the page is shown again", async (t) => {
   const { createElement } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
