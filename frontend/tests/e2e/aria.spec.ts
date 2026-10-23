@@ -169,3 +169,54 @@ test("a lost microphone reaches a live region's text once", async ({ page }, inf
   const said = (await heard(page)).filter((s) => s.text.includes("mikrofonen försvann"));
   expect(said, "the sentence reaches a live region exactly once").toHaveLength(1);
 });
+
+/**
+ * Records each live region that is added to the page with its words already in it: a region that arrives with its text
+ * is not reliably read out (NVDA, JAWS and VoiceOver differ). A region must be there first, empty, and receive them.
+ */
+function arrivals() {
+  const added: string[] = [];
+  const live = '[aria-live]:not([aria-live="off"]), [role="status"], [role="log"]';
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        for (const region of [node, ...node.querySelectorAll(live)].filter((element) => element.matches(live))) {
+          if (region.hasAttribute("data-astryx-live-region")) continue;
+          const text = (region.textContent ?? "").replace(/\s+/g, " ").trim();
+          if (text) added.push(text);
+        }
+      }
+    }
+  }).observe(document, { subtree: true, childList: true });
+  (window as unknown as { added: string[] }).added = added;
+}
+const arrived = (page: Page) => page.evaluate(() => (window as unknown as { added: string[] }).added);
+
+test("a run waiting for the person's review is said from a region that was there before it", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "one width is enough");
+  await page.addInitScript(arrivals);
+  await page.addInitScript(listen);
+  // The earlier runs answer a moment after the page has its heading, as a real Eneo can.
+  await page.route("**/runs/?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.continue();
+  });
+  await STATES.find((s) => s.name === "setup-review-waiting")!.go(page, info);
+  await page.waitForTimeout(300);
+  expect((await arrived(page)).filter((text) => /väntar på din granskning/.test(text)), "no region arrives with the notice in it").toEqual([]);
+  expect((await heard(page)).filter((s) => /väntar på din granskning/.test(s.text)), "the notice reaches a live region once").toHaveLength(1);
+});
+
+test("on a phone the caution against locking the screen is said from a region that was there before it", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "the caution is a touch screen's");
+  await page.addInitScript(arrivals);
+  await page.addInitScript(listen);
+  await STATES.find((s) => s.name === "setup")!.go(page, info);
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await page.getByRole("button", { name: "Starta inspelning" }).click();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
+  await page.waitForTimeout(1_000);
+  expect((await arrived(page)).filter((text) => /Lås inte skärmen/.test(text)), "no region arrives with the caution in it").toEqual([]);
+  expect((await heard(page)).filter((s) => /Lås inte skärmen/.test(s.text)), "the caution reaches a live region once").toHaveLength(1);
+});

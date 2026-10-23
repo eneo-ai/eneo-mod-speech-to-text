@@ -87,7 +87,8 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Body, surface and card** (`#F4F7FB`/`#070C16`, `#FFFFFF`/`#0B1322`, `#FFFFFF`/`#0F1828`): the page rests on the
   body colour; the bar is the surface; cards are white. In dark mode a surface lightens as it rises.
 - **Text** (`#141A26`/`#E4E9F0`, secondary `#4F5A6B`/`#9AA8BC`).
-- **Borders** (a hairline `rgba(20,40,80,.08)`; a control's edge `#758093`/`#6E7E96`, 3:1 on every ground).
+- **Borders** (a hairline `rgba(20,40,80,.08)`; a control's edge `#758093`/`#6E7E96`, 3:1 on every ground, also the
+  position slider's unplayed track).
 
 ### Categorical hues
 - web-next's purple, teal and green, as a tile's tint and icon (`components/IconTile.tsx`), and its yellow for "Osäkert
@@ -111,8 +112,8 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Body** (400, 16 px, 1.5).
 - **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions. What has a consequence
   (the review's deadline and what to do, what Skapa dokument does to a recording, that a page closed during an upload
-  stops it) is body text in the secondary colour, never a footnote. Nothing read is set below 14 px; 11 px is the
-  speaker marks' numerals only. A field's words and every paragraph wrap with no word alone on their last line
+  stops it) is body text in the secondary colour, never a footnote. Nothing is set below 14 px, a speaker mark's letter
+  included: its disc grows with it at the reader's large text. A field's words and every paragraph wrap with no word alone on their last line
   (`text-wrap: pretty`, `styles/globals.css`).
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
@@ -126,7 +127,8 @@ Every size is in rem, so the text follows the reader's own size: the browser's s
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
 The result with its transcript and the speaker review widen with a large window, up to 1600 px; document prose keeps a 75ch reading measure, and a note across a wide card (a run's, the unsent recordings') about 75 characters, its lines balanced (`[data-measure]`, `styles/globals.css`).
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
-(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. Every view of the flow,
+(480 px high) puts the flow beside the stage, and beside a run's card (sending, progress, failure), in a column a third
+of the width up to 17 rem. Every view of the flow,
 the setup's form included, is as wide as its column, so each ends at the same edge; a document alone fills the page's
 column with its prose capped at the reading measure, and the text review keeps a reading column (672 px). From 1024 px the transcript's card of the result and the review stands
 beside the heading from the page's top, keeps to the window as the page scrolls and is as tall as the window below the
@@ -193,7 +195,7 @@ switches round. One-pixel borders are `var(--border-width)`.
 ### Navigation
 - The header has one persistent “Alla flöden” link in the navigation group. It names its destination; leaving unsent work uses the existing leave question.
 - The header is one line at every width and never holds the flow's name: a view without the flow's column names the flow right under its heading, in the secondary colour (the result's meta line with its date, the review's own line). A review says by when right under the flow's name, in view before anything is scrolled; what to do follows, set apart.
-- An organisation's logo always stands in the bar. Its name without a logo stands on one line below 640 px, and only where the bar has room for it beside the product's name (measured, `components/Brand.tsx`): otherwise it is left out with its divider and the bar reads “Tal till text” alone. From 640 px the name takes two lines at most. The brand link names the organisation whole either way, and so does the sign-in's line under its card.
+- An organisation's logo stands in the bar wherever the bar has room for it beside the product's name, which is every width at an ordinary text size; with the reader's largest text or a phone's 200 % zoom it is left out with its divider (measured, `components/Brand.tsx`). Its name without a logo stands on one line below 640 px, under the same measure: otherwise it is left out with its divider and the bar reads “Tal till text” alone. From 640 px the name takes two lines at most. The brand link names the organisation whole either way, and so does the sign-in's line under its card.
 - On a flow's page the brand stands in the bar from 768 px; on a phone the bar keeps its room for the way back and the account. While an upload is under way the page offers no way off it, and the brand alone fills the bar at every width, so the bar keeps its height and the organisation its place.
 - A pill that only says something ("Väntar på din granskning", "Senast använd", "Osäkert förslag") is as tall as its words, with a little room above and below them in its fill, at every pointer, so it never reads as a button beside one; only a removable chip is a control's height. A pill stands beside what it qualifies, never above a heading as a label: the review's state follows its heading on the same row from 640 px; on a phone the deadline under the heading says it, and the row has no pill. A card's heading says what is left to do on its own (the unsent recordings).
 
@@ -244,7 +246,10 @@ switches round. One-pixel borders are `var(--border-width)`.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it. There the live sheet's head is its log's first line: the Preliminär pill, and when the final text comes on a line of its own under it.
-- Pinned on a short screen, the controls' card stands a gutter above the window's edge. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
+- Pinned on a short screen, the controls' card stands a gutter above the window's edge. Where the reader's large text
+  makes what is pinned (the bar, or the stage and the controls) leave less than 6 rem for a warning, nothing is pinned:
+  it all stands in the page's flow, as a dock that tall does, and Pausa and Stoppa stand one above the other where they
+  have less than 5.5 rem each. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
 - From 768 px Pausa and Stoppa are the stage card's footer, at the middle of it (25 rem), with one hairline between the
   stage and them.
 
@@ -276,7 +281,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   are. Under 640 px the filter's list takes the word's place, and "Namnge talare" and the transcript's menu stand at its
   end as icons: one row for three. Where they cannot be named (a run waiting for its review, a failed run, a transcript
   that cannot be corrected) the chips stand alone, named "Visa talare". The speaker review's own view has no filter for
-  the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's "Ändra talare" offers
+  the word to name: there "Namnge talare" stands at the start of the transcript's Kopiera and Ladda ner below a laptop's
+  width, and alone at the end of a row above it from one; its tools for speaker suggestions show only while there is one
+  to decide or step through. A passage's "Ändra talare" offers
   "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's pause alike: it
   opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
@@ -299,7 +306,7 @@ switches round. One-pixel borders are `var(--border-width)`.
   own find does; while a query shows its count and arrows, the search takes the row under the chips.
 
 ### Transcript feedback
-- A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
+- A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight; every other match its tint and a dotted underline, so no match is marked by colour alone.
 
 ### Choice
 - Radio lists for one choice of a few, each a row without a box of its own, its radio on the content's edge and its
@@ -325,7 +332,7 @@ the secondary colour. A status stands still: the recording's red dot does not pu
 records. A page's loading spinner shows only after `--module-wait-delay` (300 ms), so an answer within it
 leaves no blink. A search hit is brought into view at once, as a browser's own find does. Hover styles apply only where
 a pointer hovers (`@media (hover: hover)`): on a touch screen a tapped control would keep them. With reduced motion
-nothing fades and spinners stand still.
+nothing fades, nothing turns (a chevron shows open or closed by where it ends) and spinners stand still. A scroll the page makes by itself over more than a window and a half jumps rather than glides.
 
 ## Do's and Don'ts
 

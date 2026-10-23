@@ -96,6 +96,29 @@ test("the dialog saves the names; the page's Godkänn och fortsätt then lets th
   expect(saved, "approving saves nothing again").toHaveLength(1);
 });
 
+test("Avbryt throws away the names typed; the dialog's × keeps them for when it opens again", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "on a phone's whole screen the title's × is the dialog's only way out");
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const talare2 = dialog.getByRole("combobox", { name: "Vem är Talare 2?" });
+  const was = await talare2.inputValue();
+  await talare2.fill("Sara Holm");
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await expect(dialog).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Namnge talarna" })).toBeVisible();
+  await expect(dialog, "nothing typed is kept to open it with").toBeHidden();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(talare2, "Avbryt threw the typed name away").toHaveValue(was);
+  await talare2.fill("Sara Holm");
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await dialog.getByRole("button", { name: "Stäng" }).first().click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(talare2, "the × keeps what was typed").toHaveValue("Sara Holm");
+});
+
 test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
   await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });

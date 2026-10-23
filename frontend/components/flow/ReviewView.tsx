@@ -563,7 +563,7 @@ export function ReviewView({
         {deadline}
       </VStack>
       {!(narrow && isSpeakerMapping && !SPEAKER_REVIEW_ENABLED) && (
-        <Text as="p" color="secondary" className={styles.description}>
+        <Text as="p" color="secondary" className={styles.description} data-measure>
           {isSpeakerMapping
             ? SPEAKER_REVIEW_ENABLED
               ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten."
@@ -773,7 +773,7 @@ export function ReviewView({
               ) : (
                 <>
                   <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
-                  <Button size="sm" variant="ghost" label="Släng din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+                  <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
                 </>
               )}
             </HStack>

@@ -1,5 +1,6 @@
 /* A speaker's round mark (SpeakerMark). Decorative: the name is always beside it. An unlabelled passage is a quiet "?",
-   a speaker has one of six colours, the same everywhere on the page. */
+   a speaker has one of six colours, the same everywhere on the page. The disc is its size's spacing step, and grows with
+   its letter where the reader's large text makes the letter larger than the disc (in em, its own font's size). */
 .mark {
   display: grid;
   flex-shrink: 0;
@@ -7,24 +8,25 @@
   user-select: none;
   border-radius: var(--radius-full);
   font-weight: var(--font-weight-semibold);
+  line-height: 1;
   background: var(--tint, var(--color-text-secondary));
   color: var(--color-background-surface);
 }
 
 .mark[data-size="sm"] {
-  inline-size: var(--spacing-6);
-  block-size: var(--spacing-6);
-  font-size: var(--font-size-xs);
+  inline-size: max(var(--spacing-6), 1.7em);
+  block-size: max(var(--spacing-6), 1.7em);
+  font-size: var(--font-size-sm);
 }
 
 .mark[data-size="md"] {
-  inline-size: var(--spacing-7);
-  block-size: var(--spacing-7);
+  inline-size: max(var(--spacing-7), 1.7em);
+  block-size: max(var(--spacing-7), 1.7em);
   font-size: var(--font-size-sm);
 }
 
 .mark[data-size="lg"] {
-  inline-size: var(--spacing-9);
-  block-size: var(--spacing-9);
+  inline-size: max(var(--spacing-9), 1.7em);
+  block-size: max(var(--spacing-9), 1.7em);
   font-size: var(--font-size-sm);
 }

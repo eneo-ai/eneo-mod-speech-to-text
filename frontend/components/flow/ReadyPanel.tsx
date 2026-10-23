@@ -262,8 +262,8 @@ export function ReadyPanel({
       {audio &&
         (create ? (
           // What the filled action does is read before it is pressed: at the body's size, at a reading measure.
-          <VStack maxWidth="65ch">
-            <Text as="p" color="secondary">
+          <VStack>
+            <Text as="p" color="secondary" data-measure>
               {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
               {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
               {persistent

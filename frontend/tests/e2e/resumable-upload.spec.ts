@@ -138,3 +138,18 @@ test("while a file goes up the tab's title says how far it has come, and stops s
   await page.waitForURL(/[?&]run=/);
   await expect.poll(() => page.title()).not.toMatch(/%/);
 });
+
+test("Försök nu from the keyboard leaves the focus in the card, not on the page's body, as the try begins", async ({ page }) => {
+  // Every send fails: the file's upload, or the run's start after it, waits to try again.
+  declare(page, [{ console: /net::ERR_FAILED/ }, { requestFailed: /net::ERR_FAILED/ }]);
+  await page.route(/\/api\/(uploads|eneo\/)/, (route) => (route.request().method() === "GET" ? route.fallback() : route.abort("failed")));
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "mote.wav", mimeType: "audio/wav", buffer: wav(2) });
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  const now = page.getByRole("button", { name: "Försök nu" });
+  await expect(now).toBeVisible({ timeout: 15_000 });
+  await now.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name: /skapas$/ }), "the card's heading, where the person reads on").toBeFocused();
+});

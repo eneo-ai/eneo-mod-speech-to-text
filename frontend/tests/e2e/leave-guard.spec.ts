@@ -283,6 +283,18 @@ test("Logga ut while recording asks first, and Stanna kvar keeps the recording a
   expect(logouts, "nothing signed out").toEqual([]);
 });
 
+test("Stanna kvar after Logga ut gives the focus back to the account's button, whose menu asked", async ({ page }) => {
+  await recordingInVisit(page);
+  const account = page.getByRole("button", { name: /^Öppna konto för/ });
+  await account.focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "Logga ut" }).focus();
+  await page.keyboard.press("Enter");
+  await asked(page);
+  await stay(page);
+  await expect(account, "not the page's body: the menu that asked is gone").toBeFocused();
+});
+
 test("Forward after Stanna kvar asks nothing and breaks nothing", async ({ page }) => {
   await recordingInVisit(page);
   await page.goBack();

@@ -86,7 +86,7 @@ export function RunFailure({
     if (!target) return;
     event.preventDefault();
     target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: "start" });
+    target.scrollIntoView({ block: "start", behavior: "instant" });
   }
 
   async function retry() {

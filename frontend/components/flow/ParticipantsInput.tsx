@@ -70,6 +70,7 @@ export function ParticipantsInput({
   const [announcement, setAnnouncement] = useState("");
   // How the last press in the chips was made. Read from the press itself: WebKit says a tap's click is a mouse's.
   const pressedWith = useRef("");
+  const namesList = useRef<HTMLElement>(null);
 
   function add(added: string[]) {
     const next = addNames(names, added);
@@ -188,7 +189,7 @@ export function ParticipantsInput({
       {/* Where the chips will be: last time's names in one press, which says what it added and leaves the focus in the
           field for the next name. */}
       {names.length === 0 && previous.length > 0 && (
-        <HStack>
+        <HStack onPointerDown={(event) => (pressedWith.current = event.pointerType)} onKeyDown={() => (pressedWith.current = "")}>
           <Button
             label={`Lägg till förra gångens namn (${previous.length})`}
             variant="ghost"
@@ -196,7 +197,10 @@ export function ParticipantsInput({
             className={styles.previous}
             onClick={() => {
               add([...previous]);
-              input.current?.focus();
+              // A finger would have the phone's keyboard open over half the screen: the focus goes to the first name's
+              // remove instead, once the names are drawn, so it is not lost with the button.
+              if (pressedWith.current !== "touch") input.current?.focus();
+              else requestAnimationFrame(() => namesList.current?.querySelector<HTMLElement>("button")?.focus());
             }}
           />
         </HStack>
@@ -204,6 +208,7 @@ export function ParticipantsInput({
       {names.length > 0 && (
         <HStack
           as="ul"
+          ref={namesList}
           aria-label="Tillagda namn"
           role="list"
           wrap="wrap"
@@ -221,8 +226,13 @@ export function ParticipantsInput({
                 color="blue"
                 icon={<Icon icon={User} size="sm" color="accent" />}
                 onRemove={() => {
+                  // With a finger the focus goes to the next name's remove, or the one before it, and not into the field,
+                  // which would open the phone's keyboard; the removed button has gone with its name.
+                  const removes = [...(namesList.current?.querySelectorAll<HTMLElement>("button") ?? [])];
+                  const at = names.indexOf(name);
                   remove(name);
                   if (pressedWith.current !== "touch") input.current?.focus();
+                  else (removes[at + 1] ?? removes[at - 1])?.focus();
                 }}
               />
             </li>

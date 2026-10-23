@@ -23,8 +23,8 @@
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
-/* Firefox stops on a box that scrolls on its own: the transcript's, from a laptop's width. Its own border carries the
-   ring, where the card does not clip it. */
+/* The transcript's box is a Tab stop only when nothing in it is (TranscriptPlayer.tsx): its own border carries the ring,
+   where the card does not clip it. */
 .scrollport:focus-visible {
   border-color: var(--focus-outline-color);
   outline: none;
@@ -112,10 +112,11 @@
   }
 }
 
-/* On a phone the list stands in the speakers' row, before their naming and the transcript's menu. */
+/* On a phone the list stands in the speakers' row, before their naming and the transcript's menu. It keeps 8 rem, so the
+   reader's large text or a phone's zoom puts the two icons under it rather than squeezing it to nothing. */
 .rowList {
-  flex: 1 1 0;
-  min-inline-size: 0;
+  flex: 1 1 8rem;
+  min-inline-size: min(8rem, 100%);
 }
 
 /* The search shares the filter's row where both fit, and takes the row under it where they do not. */
@@ -372,9 +373,11 @@
   margin-inline-end: auto;
 }
 
-/* "Följ uppspelningen" keeps its words on one line: where the row is short the line of keys wraps beside it instead. */
+/* "Följ uppspelningen" keeps its words on one line: where the row is short the line of keys wraps beside it instead. Only
+   where the reader's large text makes the words alone wider than the player do they wrap, inside it. */
 .follow {
   flex-shrink: 0;
+  max-inline-size: 100%;
 }
 
 /* The button that turns the letters off, and on again, ends the line as a link ends a sentence: in the line's type, on
@@ -412,7 +415,7 @@
   gap: var(--spacing-3);
   padding: var(--spacing-4) var(--spacing-2);
   border-radius: var(--radius-container);
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
   content-visibility: auto;
   contain-intrinsic-size: auto 5.25rem;
 }
@@ -560,13 +563,18 @@
   font-size: var(--font-size-base);
   line-height: 1.65;
   color: var(--color-text-primary);
+  /* A long word (a Swedish compound) that ends a line is hyphenated: with the reader's large text it was otherwise broken
+     mid-syllable ("kommunsty|relsen"). */
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  hyphenate-limit-chars: 10 4 4;
 }
 
 .sentence {
   border-radius: var(--radius-inner);
   box-decoration-break: clone;
   cursor: pointer;
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 /* The playhead's sentence and word are lit by useTranscriptPlayhead, as data attributes the list never renders. */
@@ -620,7 +628,7 @@
   border-radius: var(--radius-inner);
   box-decoration-break: clone;
   /* A word passed settles into the lighter tone of the words already said: short, and only its colour. */
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 /* Pressing the text plays from it: under a mouse, the word that would play shows it, or the sentence where words have no
@@ -655,9 +663,13 @@
   text-underline-offset: 3px;
 }
 
+/* Every match: its tint and a dotted line under it, so it is not marked by a colour of 1.2:1 alone (WCAG 1.4.1); the
+   current one has a solid line and its outline. */
 .match {
   background: var(--color-accent-muted);
   color: var(--color-text-primary);
+  text-decoration: underline dotted var(--color-accent);
+  text-underline-offset: var(--spacing-0-5);
 }
 
 .currentMatch {
@@ -736,7 +748,7 @@
   border: var(--border-width) solid var(--module-color-review);
   border-radius: var(--radius-full);
   color: var(--module-color-review);
-  transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .confirmMark svg {

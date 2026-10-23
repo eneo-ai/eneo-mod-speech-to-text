@@ -24,7 +24,8 @@ Ett namn utan logga visas som text. Från 640 px bredd står det på högst två
 tecken får plats, ett längre kortas med …. På en telefon står namnet på en rad, och bara om det ryms bredvid "Tal till
 text". Annars visas varken namnet eller strecket bredvid det, och sidhuvudet visar bara "Tal till text". Sidan mäter
 det i webbläsaren: på en telefon som är 390 px bred ryms ungefär 30 tecken, på den smalaste (320 px) ungefär 20, till
-exempel "Sundsvalls kommun". Hela namnet står alltid i länkens namn ("Tal till text – Umeå kommun") och under
+exempel "Sundsvalls kommun". Detsamma gäller loggan när läsaren har mycket stor text eller zoomar en telefon till
+200 %: ryms den inte bredvid "Tal till text" visas den inte. Hela namnet står alltid i länkens namn ("Tal till text – Umeå kommun") och under
 inloggningen. En organisation kan alltså byta enbart namn, enbart färg eller allt.
 
 ## Loggan

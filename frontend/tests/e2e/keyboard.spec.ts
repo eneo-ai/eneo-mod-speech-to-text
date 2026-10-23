@@ -182,6 +182,36 @@ test("Avbryt redigering with a change asks first: Fortsätt redigera gives the f
   await expect(page.getByRole("button", { name: "Redigera" }), "the control that took the edit's place").toBeFocused();
 });
 
+// From a laptop's width the transcript scrolls in its own box. Firefox makes a box that scrolls a Tab stop of its own, but
+// gives it no focus: the next Tab after the link before the passages landed on nothing (2.4.7). Its passages' controls are
+// the way through it.
+test("from the link before the transcript, Tab goes to its first passage's control", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "the transcript scrolls in its own box from a laptop's width");
+  await result(page);
+  await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+  await page.keyboard.press(tabKey(page));
+  const focused = await page.evaluate(() => {
+    const element = document.activeElement!;
+    return { tag: element.tagName, name: element.getAttribute("aria-label") ?? element.textContent };
+  });
+  expect(focused).toEqual({ tag: "BUTTON", name: "Talare 1, ändra talare" });
+});
+
+// A refused Skapa dokument moves the focus to the field to mend. Firefox and Safari scroll a focused field only to the
+// window's nearest edge, which left the sentence under it (what to mend) behind a phone's docked action.
+for (const [state, message] of [["setup-own-count-invalid", "Skriv ett heltal från 1, eller lämna fältet tomt."], ["setup-required-detail", "Fyll i det här för att skapa dokumentet."]] as const) {
+  test(`on a phone, the field ${state} moves the focus to has its sentence above the docked action`, async ({ page }, info) => {
+    test.skip(!isPhone(info), "the docked action is a phone's");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const sentence = (await page.getByRole("main").getByText(message).boundingBox())!;
+    const dock = await page.evaluate(() => {
+      const docked = [...document.querySelectorAll<HTMLElement>("*")].find((element) => getComputedStyle(element).position === "sticky" && element.getBoundingClientRect().bottom >= innerHeight - 1 && element.getBoundingClientRect().height > 0);
+      return docked ? docked.getBoundingClientRect().top : innerHeight;
+    });
+    expect(sentence.y + sentence.height, "the sentence ends above the dock").toBeLessThanOrEqual(dock + 0.5);
+  });
+}
+
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
   const { stops, left } = await tabWalk(page);

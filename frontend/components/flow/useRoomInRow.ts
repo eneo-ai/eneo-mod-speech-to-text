@@ -71,3 +71,26 @@ export function useRoomBeside(reserveRem: number) {
   }, [row, actions, reserveRem]);
   return { ref, actionsRef, beside };
 }
+
+/**
+ * Whether an element is narrower than `rem` of the page's root text: a row laid out for ordinary text that the reader's
+ * own large text (or a phone's zoom) leaves too narrow. Measured again whenever the element changes size, which larger
+ * text does too. `ref` goes on the element.
+ */
+export function useNarrowerThan(rem: number) {
+  const [element, ref] = useState<HTMLElement | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    if (!element) return;
+    const measure = () => {
+      const root = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setNarrow(element.getBoundingClientRect().width < rem * root);
+    };
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, rem]);
+  return { ref, narrow };
+}

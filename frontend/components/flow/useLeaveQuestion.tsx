@@ -15,6 +15,17 @@ export const LeaveContext = createContext<{
 
 const CORRECTIONS_LEAVE = "Du har rättningar som inte har sparats. De försvinner om du lämnar sidan.";
 
+/** The element the focus goes back to after a question: the focused one, or for an item of a menu, the menu's button. */
+function returnPoint(): HTMLElement | null {
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (!active) return null;
+  const owner = [...document.querySelectorAll<HTMLElement>("[aria-controls]")].find((trigger) => {
+    const controlled = document.getElementById(trigger.getAttribute("aria-controls") ?? "");
+    return controlled !== null && controlled !== active && controlled.contains(active);
+  });
+  return owner ?? active;
+}
+
 /**
  * While `active`, leaving the flow page asks first, in the page's own dialog. The router's blocker asks for every
  * departure it sees: a link, the brand, Back and Forward. A change of the address that keeps the page (the page writing
@@ -36,27 +47,22 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
   }, [guarded]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => guarded && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
   const [pendingAction, setPendingAction] = useState<(() => void | Promise<void>) | null>(null);
-  // Where the focus was when the question was asked, to give it back to when the person stays. The dialog gives it back
-  // itself, but not to what went while it was open: a menu's item (Logga ut) goes with its menu, and its button is
-  // then where the person was.
-  const returnTo = useRef<HTMLElement | null>(null);
-  const remember = () => {
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const menu = active?.closest<HTMLElement>('[role="menu"]');
-    returnTo.current = (menu?.id ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(menu.id)}"]`) : null) ?? active;
-  };
+  // What had the focus when an action asked, for Stanna kvar to give it back to. The design system's dialog gives it back
+  // to what had it, but a menu's item that asked (Logga ut) has gone with its menu: then it is the menu's own button.
+  const askedFrom = useRef<HTMLElement | null>(null);
 
   const stay = () => {
     setPendingAction(null);
     if (blocker.state === "blocked") blocker.reset();
-    // Once the dialog, closing, has given the focus back where it could: on the page's body, it goes to `returnTo`.
-    const back = returnTo.current;
-    returnTo.current = null;
+    // Once the dialog, closing, has given the focus back where it could: where it is lost (the page's body, or the item of
+    // a menu that has closed), it goes back to where the question was asked from.
+    const back = askedFrom.current;
+    askedFrom.current = null;
     const until = performance.now() + 1_000;
     const check = () => {
-      const active = document.activeElement;
-      if (!active || active === document.body) return void (back?.isConnected && back.focus());
-      if (active.closest("dialog") && performance.now() < until) requestAnimationFrame(check);
+      const now = document.activeElement;
+      if (!now || now === document.body || now.checkVisibility?.() === false) return void (back?.isConnected && back.focus());
+      if (now.closest("dialog") && performance.now() < until) requestAnimationFrame(check);
     };
     requestAnimationFrame(check);
   };
@@ -95,7 +101,7 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
   );
   const leaveFirst = (goOn: () => void | Promise<void>) => {
     if (!guarded) return void goOn();
-    remember();
+    askedFrom.current = returnPoint();
     setPendingAction(() => goOn);
   };
 

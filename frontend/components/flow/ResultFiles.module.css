@@ -94,6 +94,20 @@
   animation: viewer-wait-hidden 0s var(--module-wait-delay) backwards;
 }
 
+/* What a browser that cannot show the file here says, where the spinner was. */
+.viewerNote {
+  place-self: center;
+  max-inline-size: 55ch;
+  padding: var(--spacing-6);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Empty, it takes no room over the viewer, and stays a region a screen reader knows before it has words. */
+.viewerNote:empty {
+  padding: 0;
+}
+
 @keyframes viewer-wait-hidden {
   from {
     visibility: hidden;

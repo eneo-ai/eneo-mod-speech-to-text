@@ -184,6 +184,7 @@ export const eneoTheme = {
       "base": {
         "overflowWrap": "anywhere",
         "hyphens": "auto",
+        "hyphenateLimitChars": "8 3 3",
         "textWrap": "balance",
         ":focus-visible": {
           "outline": "none"
@@ -268,7 +269,8 @@ export const eneoTheme = {
     "field-label": {
       "base": {
         "fontWeight": "var(--font-weight-semibold)",
-        "color": "var(--color-text-primary)"
+        "color": "var(--color-text-primary)",
+        "flexWrap": "wrap"
       }
     },
     "text-input": {
@@ -308,7 +310,8 @@ export const eneoTheme = {
           "outlineOffset": "calc(var(--border-width) * -1)",
           "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
-        }
+        },
+        "lineHeight": "1.25rem"
       }
     },
     "typeahead": {
@@ -346,7 +349,9 @@ export const eneoTheme = {
     },
     "markdown": {
       "base": {
-        "overflowWrap": "anywhere"
+        "overflowWrap": "anywhere",
+        "hyphens": "auto",
+        "hyphenateLimitChars": "10 4 4"
       }
     },
     "table-header-cell": {
@@ -400,6 +405,25 @@ export const eneoTheme = {
         "borderRadius": "var(--radius-full)"
       }
     },
+    "tab-strip": {
+      "base": {
+        "flexWrap": "wrap"
+      }
+    },
+    "tab": {
+      "base": {
+        "whiteSpace": "normal",
+        "height": "auto",
+        "minHeight": "var(--size-element-md)",
+        "overflowWrap": "break-word",
+        "hyphens": "auto"
+      }
+    },
+    "slider-track": {
+      "base": {
+        "backgroundColor": "var(--color-border-emphasized)"
+      }
+    },
     "slider-control": {
       "base": {
         "minBlockSize": "24px"
@@ -444,6 +468,8 @@ export const eneoTheme = {
     "button": {
       "base": {
         "whiteSpace": "normal",
+        "overflowWrap": "break-word",
+        "hyphens": "auto",
         "height": "auto",
         "minHeight": "var(--size-element-md)",
         "paddingBlock": "var(--spacing-0-5)",

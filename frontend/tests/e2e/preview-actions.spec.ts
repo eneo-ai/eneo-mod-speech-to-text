@@ -115,3 +115,32 @@ test("the PDF dialog says the file is coming while the browser's viewer loads it
   await expect(loading).toHaveCount(0);
   await expect(dialog.locator("iframe")).toBeVisible();
 });
+
+test("a browser that cannot show a PDF here says so in the dialog, instead of a spinner that never ends", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "the PDF opens in a dialog with a mouse on a laptop");
+  // A browser with its PDF viewer off (a managed Firefox, Chrome told to download PDFs): nothing would draw the file.
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "pdfViewerEnabled", { get: () => false }));
+  await result(page);
+  await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Webbläsaren kan inte visa filen här. Välj Öppna i ny flik eller Ladda ner.")).toBeVisible();
+  await expect(dialog.getByLabel("Laddar filen")).toHaveCount(0);
+  await expect(dialog.getByRole("link", { name: "Öppna i ny flik" })).toBeVisible();
+});
+
+test("a viewer that has drawn nothing after a while says the browser cannot show the file here", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "the PDF opens in a dialog with a mouse on a laptop");
+  await page.clock.install();
+  // The file never arrives in the viewer: a browser that downloads it, or refuses it, fires no load.
+  await page.route("**/artifacts/**", async (route) => {
+    if (route.request().resourceType() === "document") return new Promise(() => undefined);
+    return route.fallback();
+  });
+  await result(page);
+  await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Laddar filen")).toBeVisible();
+  await page.clock.fastForward(10_000);
+  await expect(dialog.getByText("Webbläsaren kan inte visa filen här. Välj Öppna i ny flik eller Ladda ner.")).toBeVisible();
+  await expect(dialog.getByLabel("Laddar filen")).toHaveCount(0);
+});

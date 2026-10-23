@@ -14,6 +14,7 @@ import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContra
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
+import { useNarrowerThan } from "./useRoomInRow";
 import { useWorkspace } from "@/lib/workspace";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import { participantsOf } from "@/lib/participants";
@@ -27,6 +28,7 @@ import { ResultDocument } from "./ResultDocument";
 import { IconTile } from "@/components/IconTile";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { hasNamesDraft } from "@/components/SpeakerNamingDialog";
+import { browserDrafts } from "@/lib/drafts";
 import { correctionsNewerThanDocument, namesOnly, regenerationOffer, savedTranscriptCorrections } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
 import { LAPTOP, ResultFiles } from "./ResultFiles";
@@ -42,6 +44,27 @@ const PANELS: Record<View, { tab: string; panel: string }> = {
   document: { tab: "result-tab-document", panel: "result-panel-document" },
   transcript: { tab: "result-tab-transcript", panel: "result-panel-transcript" },
 };
+
+/** Where the result's tab chosen is kept for a run: this tab of the browser (sessionStorage), never another device. */
+const viewKey = (runId: string) => `tal-till-text:result-view:${runId}`;
+
+/** The tab last chosen for the run in this tab of the browser, else Dokument. */
+function keptView(runId: string): View {
+  try {
+    const kept = browserDrafts()?.getItem(viewKey(runId));
+    return kept === "transcript" ? "transcript" : "document";
+  } catch {
+    return "document";
+  }
+}
+
+function keepView(runId: string, view: View) {
+  try {
+    browserDrafts()?.setItem(viewKey(runId), view);
+  } catch {
+    // A browser that keeps nothing for the page: the next load starts on Dokument.
+  }
+}
 
 /**
  * A finished run: what the flow produced comes first, as a readable page with
@@ -132,6 +155,9 @@ export function RunResult({
   const participants = participantsField ? participantsOf(details[participantsField]) : [];
   const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument, participants } : undefined;
   const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
+  // Under 16 rem of the root's text (the reader's large text, a phone's zoom) two lines hold a word or two of them: there
+  // they are whole.
+  const headRoom = useNarrowerThan(16);
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaQuery(LAPTOP, true);
@@ -151,7 +177,9 @@ export function RunResult({
   // With the transcript beside the text it is a workspace, whose column grows with a wide window (lib/workspace.ts).
   useWorkspace(showTranscript);
   // Names typed and not saved bring their dialog back, open: on a phone it is in the transcript's tab.
-  const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : "document"));
+  // Below a laptop's width the tab chosen is kept for the run in this tab of the browser, through a reload and the
+  // reload a phone does to a page left in the background.
+  const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : keptView(run.id)));
   const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab, the tabs at the window's top,
   // so a phone shows the passages and not the head again. The page's first view starts at its top, with its heading.
@@ -160,6 +188,7 @@ export function RunResult({
   // A button of the tab being left (the docked player's) changes the tab: the focus goes to the tab it chose.
   const focusTab = useRef(false);
   const switchView = (next: View, { focus = false } = {}) => {
+    keepView(run.id, next);
     positions.current[view] = window.scrollY;
     switched.current = true;
     focusTab.current = focus;
@@ -211,7 +240,7 @@ export function RunResult({
     </HStack>
   );
   const head = (
-    <VStack gap={2}>
+    <VStack gap={2} ref={headRoom.ref}>
       {/* From 640 px "Ny inspelning" shares the title's row alone, centred on it, so the lines under it have the column's
           width. */}
       {metaStacked ? (
@@ -244,7 +273,7 @@ export function RunResult({
       )}
       {detailsLine && (
         // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
-        <Text as="p" color="secondary" maxLines={2}>
+        <Text as="p" color="secondary" maxLines={headRoom.narrow ? undefined : 2}>
           {detailsLine}
         </Text>
       )}
@@ -341,11 +370,9 @@ export function RunResult({
                     label={words.tab}
                     endContent={
                       regenerates && view === "transcript" ? (
-                        <StatusDot
-                          variant="accent"
-                          label="kan skapas igen med rättningarna"
-                          tooltip={`${words.tab} kan skapas igen med rättningarna`}
-                        />
+                        // No tooltip: it would stand in the tab strip, which owns only its tabs; the dot's words join the
+                        // tab's name, and the tabs are a touch screen's, where there is no hover to show one.
+                        <StatusDot variant="accent" label="kan skapas igen med rättningarna" />
                       ) : undefined
                     }
                   />

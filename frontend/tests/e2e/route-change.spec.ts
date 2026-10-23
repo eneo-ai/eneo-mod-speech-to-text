@@ -331,7 +331,8 @@ test("an earlier run opened from the setup is an entry of its own: Back goes to 
 test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   await page.goto(`/flows/${ids.flows.flow2}`);
-  const banner = page.getByRole("status").filter({ hasText: "En körning väntar på din granskning" });
+  // A note on the page; the page's status region says it (aria.spec.ts).
+  const banner = page.getByRole("note").filter({ hasText: "En körning väntar på din granskning" });
   await expect(banner).toBeVisible();
   await expect(banner).toContainText("Den avbryts om den inte granskas i tid.");
   await banner.getByRole("button", { name: /^Granska, körningen / }).click();
@@ -340,15 +341,12 @@ test("a run waiting for review is said above the setup, and Granska opens Vem ä
   await expect(heading).toBeFocused();
 });
 
-test("Gå till transkriberingen on a failed run brings the transcript's heading up the window, with the focus", async ({ page, sentinel }, info) => {
-  test.skip(info.project.name !== "laptop-1440-light", "on a laptop the transcript starts at the window's foot");
-  sentinel.expect(NO_CONFIRMED_WORDS);
-  await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.failed}`);
-  await page.getByRole("link", { name: "Gå till transkriberingen" }).click();
-  const heading = page.locator("#run-transcript");
-  await expect(heading).toBeFocused();
-  // As far up as the page scrolls: to its top, or where the page's end stops it (the transcript is its last part). Focus
-  // alone left it at the window's foot (y 844 of 900).
-  await expect.poll(async () => (await heading.boundingBox())?.y, { message: "in the window's upper quarter" }).toBeLessThan(900 / 4);
-  expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+test("a flow that must be published again says its heading once: the line under it says what to do", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// });
+  await page.goto(`/flows/${ids.flows.flow4}`);
+  const title = page.getByRole("heading", { level: 1 });
+  await expect(title).toHaveText("Flödet kan inte användas just nu.");
+  const line = title.locator("xpath=following-sibling::p[1]");
+  await expect(line).not.toContainText("Flödet kan inte användas just nu.");
+  await expect(line).toContainText("publicera det på nytt");
 });

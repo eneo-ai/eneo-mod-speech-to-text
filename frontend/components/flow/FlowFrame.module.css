@@ -164,6 +164,19 @@
   text-overflow: ellipsis;
 }
 
+/* Where the reader's large text (or a phone's zoom) leaves the row less than 15 rem of the root's text, a one-line
+   summary would show a word or two of "Så fungerar det 3 steg": there it wraps, whole. */
+.fold {
+  container-type: inline-size;
+}
+
+@container (width < 15rem) {
+  .fold > :global(.astryx-collapsible-trigger) > span {
+    overflow: visible;
+    white-space: normal;
+  }
+}
+
 .fold > :global(.astryx-collapsible-content) {
   padding-block-start: var(--spacing-4);
 }
@@ -181,6 +194,18 @@
   /* Always shown here, so it is no disclosure that opens: it stays as it is while the view beside it changes. */
   .fold > :global(.astryx-collapsible-content) > * {
     animation: none;
+  }
+}
+
+/* A run's state on a short, wide screen (a phone on its side): its card stands beside the flow's column, as a recording's
+   stage does, so its heading starts at the page's top and what it offers is in the first screen. The page scrolls as a
+   whole, as it does in a column. */
+@media (min-width: 560px) and (max-height: 480px) {
+  .run.columns {
+    display: grid;
+    grid-template-columns: clamp(8rem, 33%, 17rem) minmax(0, 1fr);
+    column-gap: var(--spacing-4);
+    align-items: start;
   }
 }
 
@@ -208,6 +233,7 @@
 .columnName {
   letter-spacing: -0.02em;
   hyphens: auto;
+  hyphenate-limit-chars: 8 3 3;
 }
 
 /* "Så fungerar det" (HowItWorks): the steps and tips as native lists whose words wrap; the reset takes the markers away,

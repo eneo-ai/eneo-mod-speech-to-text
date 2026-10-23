@@ -6,6 +6,7 @@ import { BackToFlows } from "@/components/flow/BackToFlows";
 import { HeaderBrand } from "@/components/HeaderBrand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import styles from "./FlowFrame.module.css";
+import { useNarrowerThan } from "./useRoomInRow";
 import { PRODUCT_NAME } from "@/lib/product";
 
 /**
@@ -20,6 +21,7 @@ import { PRODUCT_NAME } from "@/lib/product";
 export function FlowFrame({
   locked = false,
   fill = false,
+  run = false,
   aside,
   children,
 }: {
@@ -27,11 +29,16 @@ export function FlowFrame({
   locked?: boolean;
   /** The window's height, with panes that scroll on their own (a recording); otherwise the page grows. */
   fill?: boolean;
+  /** A run's state (sending, running, failed): on a short, wide screen its card stands beside the flow, as a stage does. */
+  run?: boolean;
   /** The flow, in a column beside `children` from a laptop's width and above them before it. */
   aside?: ReactNode;
   children: ReactNode;
 }) {
   const tablet = useMediaQuery("(min-width: 768px)");
+  // The bar's one line holds the way back's arrow and words, the account and, from a tablet's width, the brand: 12 and
+  // 20 rem of the root's text. Where the reader's large text leaves less, the way back is its arrow alone.
+  const room = useNarrowerThan(tablet ? 20 : 12);
   const heading = (
     // 8 px apart, as the controls a finger presses are.
     <HStack gap={2} vAlign="center">
@@ -39,7 +46,7 @@ export function FlowFrame({
           asks first while it would lose something, as the way back does; locked, neither leads off the page. On a
           phone the bar keeps its room for the way back and the account. */}
       {(tablet || locked) && <HeaderBrand linked={!locked} />}
-      {!locked && <BackToFlows variant="ghost" />}
+      {!locked && <BackToFlows variant="ghost" iconOnly={room.narrow} />}
     </HStack>
   );
   return (
@@ -49,7 +56,7 @@ export function FlowFrame({
       end={!locked && <AccountMenu />}
       height={fill ? "fill" : "auto"}
     >
-      <div className={[styles.page, aside && styles.columns, fill && styles.fill].filter(Boolean).join(" ")}>
+      <div ref={room.ref} className={[styles.page, aside && styles.columns, fill && styles.fill, run && styles.run].filter(Boolean).join(" ")}>
         {aside}
         {children}
       </div>

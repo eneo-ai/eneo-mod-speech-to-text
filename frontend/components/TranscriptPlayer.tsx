@@ -47,7 +47,7 @@ import { browserStorage } from "@/lib/browser-storage";
 import { downloadBlob } from "@/lib/download";
 import { letterKeysOn, setLetterKeysOn } from "@/lib/letter-keys";
 import { playbackRate, RATES, setPlaybackRate } from "@/lib/playback-rate";
-import { scrollBehavior } from "@/lib/motion";
+import { scrollBehaviorFor } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { useSignedOut } from "@/components/AuthGate";
 import { ActionRow } from "@/components/ActionRow";
@@ -276,7 +276,20 @@ function PlayerControls({
             </Button>
           </Text>
         )}
-        {!follow && <Button variant="ghost" size="sm" label="Följ uppspelningen" className={styles.follow} onClick={onFollow} />}
+        {/* It goes once pressed: from the keyboard the focus stays in the player, on its position, as the skips' does. */}
+        {!follow && (
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Följ uppspelningen"
+            className={styles.follow}
+            onClick={(event) => {
+              const focused = document.activeElement === event.currentTarget;
+              onFollow();
+              if (focused) dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+            }}
+          />
+        )}
       </div>
       )}
       <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined} compact={small}>
@@ -679,7 +692,11 @@ export function TranscriptPlayer(
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block || withinReadingZone(block, listRef.current)) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    // Far away it jumps: following the playhead back from the transcript's other end glided 1.5 s past the text.
+    const scrolls = listRef.current.scrollHeight > listRef.current.clientHeight;
+    const view = scrolls ? listRef.current.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+    const box = block.getBoundingClientRect();
+    block.scrollIntoView({ block: "center", behavior: scrollBehaviorFor(box.top + box.height / 2 - (view.top + view.height / 2), view.height) });
   }, []);
   // The review editor lights its own words; the playhead only keeps its place in view there.
   const playheadAt = useTranscriptPlayhead(listRef, playback, shown, keepInView, !reviewEnabled);
@@ -996,12 +1013,15 @@ export function TranscriptPlayer(
           )}
         </HStack>
       )}
+      {/* The review's view has no speakers' row: its naming shares the row of the page's actions for the transcript, so
+          no row holds it alone above the text; without those actions it has the row to itself. */}
       {actions && !actionsBySpeakers && (
         <HStack ref={actionsRow.ref} hAlign="end" vAlign="center" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3} className={styles.inset}>
+          {reviewEnabled && namingControl}
           {actions(actionsRow.fits)}
         </HStack>
       )}
-      {reviewEnabled && namingControl && (
+      {reviewEnabled && namingControl && !(actions && !actionsBySpeakers) && (
         <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2} className={join(styles.inset, styles.trailingButton)}>
           {namingControl}
         </HStack>
@@ -1015,7 +1035,7 @@ export function TranscriptPlayer(
               leaves its dialog, and a correction being written, as they are. The last ghost button ends its words on
               the content's edge. */}
           {labelled && canName && (
-            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap={phone ? "nowrap" : "wrap"} gap={2}>
+            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap="wrap" gap={2}>
               {phone ? speakerList(styles.rowList) : <Text type="label">Talare</Text>}
               <HStack gap={2} vAlign="center" className={actionsBySpeakers ? undefined : styles.trailing}>
                 {namingControl}
@@ -1170,12 +1190,16 @@ export function TranscriptPlayer(
       >
         Hoppa förbi transkriberingen
       </a>
-      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
+      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. Its passages' controls
+          are the keyboard's way through it, and the box is no Tab stop of its own: Firefox makes a box that scrolls one, and
+          gives it no focus, so a Tab landed on nothing. A transcript with no control in it (no audio, nothing to correct)
+          is a stop of its own, named, so the keyboard can scroll it. */}
       <div
         ref={listRef}
         onWheel={onUserScroll}
         onTouchMove={onUserScroll}
         className={join(styles.scrollport, !reviewEnabled && styles.padded)}
+        {...(reviewEnabled || hasAudio || canEdit ? { tabIndex: -1 } : { tabIndex: 0, role: "group", "aria-label": "Transkriberingen" })}
       >
         {reviewEnabled ? <ReviewEditorAtPlayhead playback={playback} raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}

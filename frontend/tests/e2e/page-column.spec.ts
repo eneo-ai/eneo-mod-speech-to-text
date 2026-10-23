@@ -43,3 +43,54 @@ test("the account button ends where the page's column does", async ({ page }) =>
     expect(Math.abs(accountBox.x + accountBox.width - columnEnd), `at ${width} px, the account under the column's end`).toBeLessThanOrEqual(3);
   }
 });
+
+/** How wide a paragraph is in its own font's "0"s: a line of 55ch holds about 75 characters of Figtree. */
+const measure = (paragraph: import("@playwright/test").Locator) =>
+  paragraph.evaluate((p) => {
+    const probe = document.createElement("span");
+    probe.textContent = "0".repeat(10);
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap";
+    p.append(probe);
+    const ch = probe.getBoundingClientRect().width / 10;
+    probe.remove();
+    return Math.round(p.getBoundingClientRect().width / ch);
+  });
+
+for (const [state, width, words] of [
+  ["setup", 820, /^Inspelningen sparas/],
+  ["setup", 1440, /^Inspelningen sparas/],
+  ["ready", 1440, /skickar inspelningen till Eneo/],
+  ["setup-speakers-blocked", 1440, /^Flödet behöver/],
+] as const) {
+  test(`a note across a wide card keeps a reading measure: ${state} at ${width} px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const { STATES } = await import("./screens");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const paragraph = page.getByRole("main").locator("p").filter({ hasText: words }).first();
+    await expect(paragraph).toBeVisible();
+    expect(await measure(paragraph), "the paragraph's width in ch (data-measure is 55)").toBeLessThanOrEqual(56);
+  });
+}
+
+// A phone on its side (844 x 390, 932 x 430): a run's card stands beside the flow, as the recording's stage does, so its
+// heading starts at the page's top and what it offers is in the first screen, not under a stacked flow column.
+for (const [state, heading, action] of [
+  ["run-progress", "Dokumentet skapas", null],
+  ["failure", /kunde inte skapas|Körningen/, "Försök igen"],
+] as const) {
+  for (const [width, height] of [[844, 390], [932, 430]] as const) {
+    test(`on a phone on its side (${width} x ${height}) ${state}'s card stands beside the flow, its heading${action ? ` and ${action}` : ""} in the first screen`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height });
+      const { STATES } = await import("./screens");
+      await STATES.find((s) => s.name === state)!.go(page, info);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const title = (await page.getByRole("heading", { level: 1, name: heading }).boundingBox())!;
+      const flowName = (await page.getByRole("main").getByText("Nämndmöte till rapport").first().boundingBox())!;
+      expect(title.x, "the card beside the flow's column").toBeGreaterThan(flowName.x + flowName.width - 1);
+      expect(title.y, "the card's heading at the page's top").toBeLessThan(height / 2);
+      if (!action) return;
+      const button = (await page.getByRole("button", { name: action }).first().boundingBox())!;
+      expect(button.y + button.height, `${action} in the first screen`).toBeLessThanOrEqual(height);
+    });
+  }
+}

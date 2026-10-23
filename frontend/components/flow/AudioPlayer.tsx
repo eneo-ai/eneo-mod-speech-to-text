@@ -52,24 +52,33 @@ export function usePlaybackFlags(playback: Playback): PlaybackFlags {
   return useSyncExternalStore(playback.subscribe, read, read);
 }
 
+/** The widest the position's track is drawn: a step of the thumb no smaller than a pixel of it. */
+const TRACK_PX = 800;
+/** The thumb is drawn at most 20 times a second. */
+const MIN_STEP_MS = 50;
+
 /**
  * Where the playhead is drawn: while the audio plays, read every frame, so it glides instead of stepping with the
  * audio's time updates (on a short recording, a second is a long jump across the slider). With reduced motion,
- * and whenever it is paused, it is the snapshot's.
+ * and whenever it is paused, it is the snapshot's. Read every frame but rounded to a step the thumb can show (a pixel of
+ * an 800 px track, 50 ms at least), so the player renders when the thumb moves and not on every frame: an hour's meeting
+ * moves it a pixel every 4.5 s, and a frame's render cost a fifth of a phone's main thread.
  */
 function useLivePosition(playback: Playback, state: PlaybackSnapshot): number {
   const [live, setLive] = useState<number | null>(null);
+  const step = Math.max(MIN_STEP_MS, state.totalMs / TRACK_PX);
   useEffect(() => {
     if (!state.playing || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     let frame = requestAnimationFrame(function draw() {
-      setLive(playback.liveAtMs());
+      // The same number again renders nothing.
+      setLive(Math.round(playback.liveAtMs() / step) * step);
       frame = requestAnimationFrame(draw);
     });
     return () => {
       cancelAnimationFrame(frame);
       setLive(null);
     };
-  }, [playback, state.playing]);
+  }, [playback, state.playing, step]);
   return live ?? state.atMs;
 }
 

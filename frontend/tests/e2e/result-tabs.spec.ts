@@ -3,7 +3,8 @@
  * each tab keeps. Both are behaviour the design system's tab strip and layout must not change.
  */
 import { expect, test } from "./gate";
-import { isLaptop, result } from "./screens";
+import { isLaptop, result, run } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(isLaptop(info) || info.project.name === "reduced-motion", "the tabs are below a laptop's width"));
 
@@ -103,4 +104,24 @@ test("the head's lines: the flow's name and when it was made on one line from 36
   }
   const details = page.getByRole("main").locator("p", { hasText: /^Deltagare: / }).first();
   expect(await details.evaluate((line) => getComputedStyle(line).webkitLineClamp), "two lines at most").toBe("2");
+});
+
+test("the tab strip owns only its tabs, also while the document can be made again with the corrections", async ({ page }) => {
+  await run(page, ids.runs.corrected);
+  await expect(page.getByText("Dokumentet skapades före dina ändringar")).toBeVisible();
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  const strip = page.getByRole("tablist");
+  await expect(strip.getByRole("tab", { name: /kan skapas igen/ })).toBeVisible();
+  const owned = await strip.evaluate((list) => [...list.querySelectorAll("*")].filter((element) => element.getAttribute("role") === "tooltip").length);
+  expect(owned, "no tooltip in the tab strip").toBe(0);
+});
+
+test("the tab chosen is kept for the run through a reload, as a phone's browser does to a tab in the background", async ({ page }) => {
+  await result(page);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Transkribering" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Dokument" }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Dokument" })).toHaveAttribute("aria-selected", "true");
 });

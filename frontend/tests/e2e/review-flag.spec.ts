@@ -108,3 +108,15 @@ test("the editor's code that cannot be fetched leaves the transcript with the pe
   expect(served, "the editor's code was fetched once, by the new page").toBe(1);
   expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage), "the page was reloaded").toBeUndefined();
 });
+
+test("below a laptop's width, Namnge talare shares the row of the transcript's own actions: no row holds it alone", async ({ page }, info) => {
+  test.skip(isLaptop(info), "from a laptop's width the actions stand in the transcript's heading row");
+  const { id, finish } = await startedRun(page);
+  await finish();
+  await run(page, id);
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const naming = (await page.getByRole("button", { name: "Namnge talare" }).boundingBox())!;
+  const copy = (await page.getByRole("button", { name: /^Kopiera transkriberingen|^Fler alternativ för transkriberingen/ }).first().boundingBox())!;
+  expect(Math.abs(naming.y + naming.height / 2 - (copy.y + copy.height / 2)), "one row").toBeLessThanOrEqual(4);
+});

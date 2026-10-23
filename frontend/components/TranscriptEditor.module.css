@@ -200,9 +200,15 @@
 
 /* ---- The text ---- */
 
+/* The text has the keyboard's focus as one box: its ring is drawn inside its edge, with its label above lit too. */
 .text {
   padding: var(--spacing-5);
   outline: none;
+}
+
+.text:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
 /* From the player's 31 rem (TranscriptPlayer.module.css), not the window's: a laptop's column beside the text is a
@@ -315,6 +321,24 @@
   .speakerName {
     min-block-size: var(--size-element-md);
     min-inline-size: var(--size-element-md);
+  }
+
+  /* A finger's 44 px targets stacked in the side column made a one-line passage 107 px: on a touch screen the time and
+     the speaker share one line above the text at every width, as on a phone. */
+  @container (width >= 31rem) {
+    .turn {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--spacing-1);
+    }
+
+    .side {
+      display: flex;
+      padding-block-start: 0;
+    }
+
+    .speakerName {
+      margin-block-start: 0;
+    }
   }
 }
 

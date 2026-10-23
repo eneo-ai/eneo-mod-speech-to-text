@@ -115,3 +115,14 @@ async function expectReadingMeasure(article: Locator) {
   expect(width, "a line of the text holds 72 to 80 characters").toBeGreaterThanOrEqual(least);
   expect(width).toBeLessThanOrEqual(most);
 }
+
+test("on a failed run, Gå till transkriberingen brings the transcript's heading to the window's top", async ({ page }, info) => {
+  await STATES.find((state) => state.name === "failure")!.go(page, info);
+  await page.getByRole("link", { name: "Gå till transkriberingen" }).click();
+  const heading = page.locator("#run-transcript");
+  await expect(heading).toBeFocused();
+  // At the window's top, or as near it as the page's end lets it come: in its upper third, the text under it in view.
+  const { top, third } = await heading.evaluate((element) => ({ top: element.getBoundingClientRect().top, third: innerHeight / 3 }));
+  expect(top, "not under the window's top edge").toBeGreaterThanOrEqual(0);
+  expect(top, "in the window's upper third, not at its bottom edge").toBeLessThanOrEqual(third);
+});

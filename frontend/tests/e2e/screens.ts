@@ -958,6 +958,8 @@ export const STATES: State[] = [
     go: async (page) => {
       await setup(page);
       await record(page, "Strömma");
+      // Well past 2 s, which the ready view calls very short (its actions then swap places): the live text can come sooner.
+      await page.waitForTimeout(2_000);
       await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
       await stop(page);
       await expect(page.getByRole("region", { name: "Preliminär text" })).toContainText("Välkomna");

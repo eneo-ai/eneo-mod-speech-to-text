@@ -62,12 +62,23 @@ function detailControl(name: string): HTMLElement | null {
   return marked?.matches(control) ? marked : (marked?.querySelector<HTMLElement>(control) ?? null);
 }
 
+/**
+ * Moves the focus to a detail's control and brings the whole field into view, its sentence under it (what to mend)
+ * included: a browser scrolls a focused control only as far as its nearest edge, and Firefox and Safari then left the
+ * sentence behind a phone's docked action. The field is brought to the nearest edge too, above the dock's scroll padding.
+ */
+function focusDetail(control: HTMLElement | null) {
+  if (!control) return;
+  control.focus({ preventScroll: true });
+  (control.closest<HTMLElement>(".astryx-field") ?? control).scrollIntoView({ block: "nearest" });
+}
+
 /** "Skapa dokument"; when a required detail is missing, focus goes to it. */
 export async function createDocument(session: FlowSession): Promise<void> {
   if (await session.createDocument()) return;
   const [first] = session.getSnapshot().invalid;
   // After the next paint, so details folded into one line have opened.
-  if (first) requestAnimationFrame(() => detailControl(first)?.focus());
+  if (first) requestAnimationFrame(() => focusDetail(detailControl(first)));
 }
 
 function options(field: FormField): string[] {
@@ -222,7 +233,7 @@ export function DetailsForm({
 const SPEAKER_COUNT_ID = "antal-talare";
 
 /** Moves focus to "Antal talare". The design system's field owns its id, so it is found by its name. */
-export const focusSpeakerCount = () => detailControl(SPEAKER_COUNT_ID)?.focus();
+export const focusSpeakerCount = () => focusDetail(detailControl(SPEAKER_COUNT_ID));
 
 /** Said of a speaker count the names filled in, until the person edits it: this module's field and the flow's own. */
 export const COUNT_FROM_NAMES = "Ifyllt från antalet deltagare, ändra om fler talar.";
