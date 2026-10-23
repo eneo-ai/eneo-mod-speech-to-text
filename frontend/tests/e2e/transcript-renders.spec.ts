@@ -4,10 +4,9 @@
  * change that hands every passage a new prop or closure turns each interaction back into 2,000 renders (450-950 ms on a phone).
  */
 import type { Page, TestInfo } from "@playwright/test";
-import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
 import { countRenders } from "./react-renders";
-import { isLaptop, pick, result, run } from "./screens";
+import { chooseSpeaker, isLaptop, longTranscript, result } from "./screens";
 import { REAL } from "./sentinel";
 
 // One laptop and one phone: the renders are the same on every project, and the long run is not worth 20 copies. The built
@@ -31,10 +30,7 @@ const passagesWith = (page: Page, pattern: string) =>
 /** The long run's transcript on screen, every passage mounted and rendering stopped; `mounted` is the renders it took. */
 async function openLong(page: Page, info: TestInfo) {
   const turns = await countRenders(page, "TurnBlock");
-  await run(page, ids.runs.long);
-  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
-  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-  await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBeGreaterThanOrEqual(1_500);
+  await longTranscript(page, info);
   const mounted = await turns.settled();
   await turns.reset();
   return { turns, mounted, total: await passages(page).count() };
@@ -86,36 +82,48 @@ test("choosing a speaker and then everyone renders no passage: each stays in the
   // Each passage's element, known again after the round: one taken out and built again is a new element.
   await page.evaluate(() => document.querySelectorAll("[data-turn-index]").forEach((passage) => passage.setAttribute("data-was-here", "")));
 
-  // Chips from 640 px; on a phone the list in the speakers' row.
-  const phone = info.project.use.viewport!.width < 640;
-  const choose = (speaker: string) =>
-    phone ? pick(page.getByRole("combobox", { name: "Talare" }), speaker === "Alla" ? "Alla talare" : speaker) : page.getByRole("button", { name: speaker, exact: true }).click();
-  await choose("Talare 1");
+  await chooseSpeaker(page, info, "Talare 1");
   await expect.poll(shown, { timeout: 30_000 }).toBe(first);
   // The others are hidden; none appears, and those that stay are not rendered again.
   expect(await turns.settled(), "passages rendered while the others were hidden").toBeLessThanOrEqual(SLACK);
   await turns.reset();
 
-  await choose("Alla");
+  await chooseSpeaker(page, info, "Alla");
   await expect.poll(shown, { timeout: 30_000 }).toBe(total);
   // Shown again, not built again: an hour's meeting taken out and put back was one long frame each way.
   expect(await turns.settled(), `passages rendered for the ${total - first} shown again`).toBeLessThanOrEqual(SLACK);
   expect(await page.evaluate(() => document.querySelectorAll("[data-turn-index]:not([data-was-here])").length), "passages built again").toBe(0);
 });
 
-test("a long transcript far from the window is skipped a group of passages at a time, so a frame looks at a few dozen groups and not at every passage", async ({ page }, info) => {
-  const { total } = await openLong(page, info);
-  // A passage the browser looks at for being near the window on every frame that scrolls or plays: one that is not inside
-  // something skipped (content-visibility: auto). Each passage alone, it was all two thousand.
-  const looked = await page.evaluate(
-    () =>
-      [...document.querySelectorAll<HTMLElement & { checkVisibility(options: object): boolean }>("[data-turn-index]")].filter((passage) =>
-        passage.checkVisibility({ contentVisibilityAuto: true }),
-      ).length,
+test("after quick changes of speaker the list shows the last one chosen, and stays with it", async ({ page }, info) => {
+  await longTranscript(page, info);
+  // A choice's passages follow once its chip has been drawn. Talare 1, Talare 2, Alla and Talare 3 are chosen each in a
+  // task of its own, none waiting for a frame, so each lands while the one before it is still on its way.
+  const phone = info.project.use.viewport!.width < 640;
+  const list = phone ? await page.getByRole("combobox", { name: "Talare" }).elementHandle() : null;
+  await page.evaluate(
+    async ({ list, speakers }) => {
+      const task = () => new Promise((resolve) => setTimeout(resolve));
+      for (const speaker of speakers) {
+        if (list) {
+          // On a phone the speakers' list: opened, and the speaker's option pressed once it is there.
+          (list as HTMLElement).click();
+          const option = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent!.trim().endsWith(speaker === "Alla" ? "Alla talare" : speaker));
+          while (!option()) await task();
+          option()!.click();
+        } else document.querySelector<HTMLElement>(`button[aria-label="${speaker}"]`)!.click();
+        await task();
+      }
+    },
+    { list, speakers: ["Talare 1", "Talare 2", "Alla", "Talare 3"] },
   );
-  // The groups near the window (50 passages each) and the list's last group, whose passages go one by one.
-  expect(looked, `passages looked at of ${total}`).toBeLessThanOrEqual(4 * 50);
-  expect(looked, "and those in view are").toBeGreaterThan(0);
+  const theirs = await page.locator('[data-turn-index][aria-label^="Talare 3,"]').count();
+  const shown = page.locator("[data-turn-index]:not([hidden])");
+  await expect(shown, "the last speaker's passages are shown").toHaveCount(theirs, { timeout: 30_000 });
+  // A choice still on its way would come within a frame, a task and a frame.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(() => requestAnimationFrame(resolve)))));
+  expect(await shown.count(), "and stay shown").toBe(theirs);
+  expect(await page.locator('[data-turn-index]:not([hidden]):not([aria-label^="Talare 3,"])').count(), "with no other speaker's").toBe(0);
 });
 
 test("a search with its count and arrows keeps a field to read what was typed in, under the chips it shared a row with", async ({ page }, info) => {

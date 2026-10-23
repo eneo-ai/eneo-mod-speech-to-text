@@ -453,6 +453,26 @@ export async function result(page: Page) {
   await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
 }
 
+/**
+ * The long run's transcript on screen, every passage in the page: a meeting of about two hours, whose passage `i` is
+ * Talare `i % 3 + 1`'s and starts at 3.6 s × `i` (the stub's `long`). Below a laptop's width it waits in its tab.
+ */
+export async function longTranscript(page: Page, info: TestInfo) {
+  await run(page, ids.runs.long);
+  await heading(page, "Dokumentet är klart");
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await expect(page.locator("[data-turn-index]")).toHaveCount(2_000, { timeout: 30_000 });
+}
+
+/** Where the browser skips a long transcript's passages a group at a time, and finds, focuses and shows them its own way. */
+export const GROUP_ENGINES = ["laptop-1440-light", "phone-390-light", "laptop-1440-firefox", "phone-390-webkit"];
+
+/** Shows one speaker's passages, or everyone's ("Alla"): chips from 640 px, on a phone the list in the speakers' row. */
+export const chooseSpeaker = (page: Page, info: TestInfo, speaker: string) =>
+  info.project.use.viewport!.width < 640
+    ? pick(page.getByRole("combobox", { name: "Talare" }), speaker === "Alla" ? "Alla talare" : speaker)
+    : page.getByRole("button", { name: speaker, exact: true }).click();
+
 /** A text result whose full content is in a file, with its preview on the page. */
 export async function fileBackedText(page: Page) {
   await run(page, ids.runs.fileText);
