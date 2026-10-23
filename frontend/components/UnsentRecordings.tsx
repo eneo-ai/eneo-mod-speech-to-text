@@ -24,14 +24,16 @@ import {
   hasAudio,
   IN_USE_ELSEWHERE,
   recordingStore,
+  type DeviceRefusal,
   type StoredRecording,
 } from "@/lib/recording-store";
 
 /**
  * An unsent recording as listed: `exportOnly` when this tab may only save it as a file, `elsewhere` while another tab
- * holds it (records, shows or sends it), when this one can do nothing with it.
+ * holds it (records, shows or sends it), when this one can do nothing with it, and `refused` when the device stopped
+ * keeping it partway (the latest of it is then only in this tab).
  */
-export type UnsentRecording = StoredRecording & { exportOnly?: boolean; elsewhere?: boolean };
+export type UnsentRecording = StoredRecording & { exportOnly?: boolean; elsewhere?: boolean; refused?: DeviceRefusal | null };
 
 /** The user's unsent recordings as read from the device; `unreadable` when the device's store could not be read. */
 export type UnsentList = { recordings: UnsentRecording[]; unreadable: boolean; retry: () => void };
@@ -54,7 +56,7 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentLis
             setUnreadable(false);
             setRecordings(
               [
-                ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id) })),
+                ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id), refused: store.refused(r.id) })),
                 ...elsewhere.map((r) => ({ ...r, elsewhere: true })),
               ]
                 .filter((r) => !flowId || r.flowId === flowId)
@@ -215,7 +217,7 @@ export function UnsentRecordings({
   return (
     <Card role="region" aria-labelledby={headingId} padding={folded ? (narrow ? 4 : 6) : laptop ? 8 : tablet ? 6 : 4}>
       <VStack gap={4}>
-        {row(lead, head, <DeviceSentence cutOff={cutOff} count={recordings.length} evictable={evictable} sendable={sendable} />)}
+        {row(lead, head, <DeviceSentence cutOff={cutOff} count={recordings.length} evictable={evictable} sendable={sendable} refused={lead.refused ?? null} />)}
         {rest.length > 0 &&
           (folded ? (
             <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
@@ -229,11 +231,16 @@ export function UnsentRecordings({
   );
 }
 
-/** The device sentence under the heading: where the recordings are kept, and for how long. */
-function DeviceSentence({ cutOff, count, evictable, sendable }: { cutOff: boolean; count: number; evictable: boolean; sendable: boolean }) {
+/**
+ * The device sentence under the heading: where the recordings are kept, and for how long. A recording the device stopped
+ * keeping (`refused`, in this tab) is not said to be on the device: closing the tab on that word would lose its latest part.
+ */
+function DeviceSentence({ cutOff, count, evictable, sendable, refused }: { cutOff: boolean; count: number; evictable: boolean; sendable: boolean; refused: DeviceRefusal | null }) {
   return (
         <Text as="p" type="supporting" color="secondary" data-measure>
-          {cutOff
+          {refused
+            ? `${refused === "full" ? "Enheten är full, så det senaste" : "Det senaste"} av inspelningen finns bara i den här fliken. Stäng inte fliken.`
+            : cutOff
             ? `Den fortsätter i samma inspelning när du väljer Fortsätt spela in.${sendable ? " När den har skickats till Eneo går det inte att fortsätta." : ""}`
             : count === 1
               ? evictable

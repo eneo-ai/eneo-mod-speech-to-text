@@ -108,6 +108,17 @@ test("where the browser may delete the recordings the list does not promise they
   assert.match(two.container.textContent!, /De finns på den här enheten\. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem till Eneo\./);
 });
 
+test("a recording the device stopped keeping does not say it is on the device: the latest of it is only in this tab", async () => {
+  // The device filled up while it was recorded; the person left the flow page for the list in the same tab.
+  const full = await render({ recordings: [{ ...recording("a", 12_000, at(23, 10, 12)), refused: "full" }], evictable: true });
+  const said = full.container.textContent!;
+  assert.doesNotMatch(said, /finns på den här enheten|finns kvar på den här enheten/, "no word that would make the person close the tab");
+  assert.match(said, /Enheten är full, så det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./);
+  await full.unmount();
+  const refused = await render({ recordings: [{ ...recording("a", 12_000, at(23, 10, 12)), refused: "failed" }] });
+  assert.match(refused.container.textContent!, /Det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./);
+});
+
 test("each unsent recording offers Skapa dokument, Spara ljudfil and Ta bort, described by its summary", async () => {
   const { container } = await render({
     recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 120_000, at(23, 9, 0))],
