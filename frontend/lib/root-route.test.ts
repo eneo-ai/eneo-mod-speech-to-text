@@ -47,7 +47,8 @@ test("a page whose code cannot be loaded is replaced by a message inside the fra
   const reload = [...container.querySelectorAll("button")].find((button) => button.textContent === "Ladda om sidan");
   assert.ok(reload, "a button that reloads, when a person presses it");
   const home = [...container.querySelectorAll("a")].find((link) => link.textContent === "Till startsidan");
-  assert.equal(home?.getAttribute("href"), "/", "a link to the start page");
+  // The flow list: a signed-in person goes straight there, and one who is not is asked to sign in and brought back to it.
+  assert.equal(home?.getAttribute("href"), "/flows", "a link to the start page");
   assert.ok(container.querySelector("nav[aria-label='Tal till text']"), "the bar is still there");
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
   assert.ok(

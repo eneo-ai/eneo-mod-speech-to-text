@@ -136,7 +136,7 @@ const CODES: Record<string, string> = {
 
 // A refusal whose reason (Eneo's `context.reason`) says more than its code: the reason's sentence comes first.
 const REASONS: Record<string, string> = {
-  unknown_speaker_label: "En talare som fick ett namn finns inte längre i transkriberingen. Läs in sidan igen och försök på nytt.",
+  unknown_speaker_label: "En talare som fick ett namn finns inte längre i transkriberingen. Ladda om sidan och försök på nytt.",
   run_not_completed: "Namnen kan bara ändras när körningen är klar.",
 };
 

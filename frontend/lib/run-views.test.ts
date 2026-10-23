@@ -728,7 +728,7 @@ test("the transcript is not copied or downloaded while its saved corrections cou
   assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
-  const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
+  const unread = render("Kunde inte läsa sparade rättningar. Ladda om sidan innan du redigerar eller godkänner.");
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.ok(names(unread).includes("Läs in igen"));
@@ -851,7 +851,7 @@ test("words the flow's service could not time are said quietly, only where there
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
-  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner." });
+  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Ladda om sidan innan du godkänner." });
   assert.match(html, /Kunde inte läsa transkriberingens underlag/);
   assert.deepEqual(names(html), ["Läs in igen"]);
   const empty = transcriptView({ segments: [] });

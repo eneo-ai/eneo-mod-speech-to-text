@@ -226,7 +226,7 @@ test("a refused name says why in its reason: a speaker the transcript no longer 
   t.mock.method(console, "warn", () => undefined);
   const refused = (reason: string) =>
     friendlyError(new ApiError(400, "x", { code: "flow_transcript_corrections_invalid_speaker_edit", context: { reason } }, "flow_transcript_corrections_invalid_speaker_edit"));
-  assert.equal(refused("unknown_speaker_label"), "En talare som fick ett namn finns inte längre i transkriberingen. Läs in sidan igen och försök på nytt.");
+  assert.equal(refused("unknown_speaker_label"), "En talare som fick ett namn finns inte längre i transkriberingen. Ladda om sidan och försök på nytt.");
   assert.equal(refused("run_not_completed"), "Namnen kan bara ändras när körningen är klar.");
   // Any other reason is the code's own sentence.
   assert.equal(refused("speaker_unchanged"), "Talarbytet kunde inte sparas. Ladda om sidan och försök igen.");

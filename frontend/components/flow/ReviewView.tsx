@@ -134,7 +134,8 @@ export function ReviewView({
       ? "Granska transkriberingen"
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
-  const heading = usePhaseHeading(title);
+  // The tab names the flow too, as the run's other states do (progress, result, failure).
+  const heading = usePhaseHeading(`${title} · ${flowName}`);
   const announce = useAnnounce();
   const narrow = useMediaQuery(STACKED);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window

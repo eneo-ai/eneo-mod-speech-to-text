@@ -103,7 +103,7 @@ export function RouteError() {
     // What a reload gives back, said where the person decides: what the device keeps is not lost by it.
     <StandIn heading="Sidan kunde inte visas." text="Tal till text kan ha uppdaterats sedan sidan öppnades. Ladda om sidan. Inspelningar som finns på enheten ligger kvar.">
       <Button label="Ladda om sidan" variant="primary" onClick={() => window.location.reload()} />
-      <Button label="Till startsidan" variant="secondary" href="/" />
+      <Button label="Till startsidan" variant="secondary" href="/flows" />
     </StandIn>
   );
 }
@@ -112,7 +112,7 @@ export function RouteError() {
 export function NotFound() {
   return (
     <StandIn heading="Sidan finns inte." text="Kontrollera adressen, eller gå till startsidan.">
-      <Button label="Till startsidan" variant="primary" href="/" />
+      <Button label="Till startsidan" variant="primary" href="/flows" />
     </StandIn>
   );
 }
