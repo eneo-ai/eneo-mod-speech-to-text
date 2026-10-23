@@ -102,6 +102,8 @@ const CODES: Record<string, string> = {
   insufficient_resource_permission: MODULE_ACCESS,
   invalid_api_key: "Tal till text kan inte ansluta till Eneo just nu. Kontakta den som ansvarar för Tal till text.",
   upstream_unreachable: "Eneo gick inte att nå just nu. Försök igen om en stund.",
+  // The module's disk for uploads under way is full; it has room again once uploads before this one have gone on.
+  module_storage_full: "Servern har inte plats för filen just nu. Försök igen om en stund.",
   invalid_json_response: "Servern svarade med något som inte gick att läsa. Försök igen om en stund.",
   // Review pauses (among them, confirming who is who).
   flow_review_stale_revision:
@@ -151,6 +153,7 @@ const RETRY_CODES = new Set([
   "flow_dispatch_failed",
   "upstream_unreachable",
   "invalid_json_response",
+  "module_storage_full",
 ]);
 
 // Errors this app's own upload client makes; their words are already Swedish.
