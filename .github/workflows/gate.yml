@@ -85,9 +85,11 @@ jobs:
           - { suite: scan, shard: 7, total: 8 }
           - { suite: scan, shard: 8, total: 8 }
           # The module in accents at the edge of what backend/app/accent.py accepts: an orange as light as light mode allows
-          # with the darkest dark mode allows, and a red near the error colour (accepted, with a warning).
-          - { suite: accent, shard: 1, total: 2, accent: "#AE5C09", accent_dark: "#D06E0B" }
-          - { suite: accent, shard: 2, total: 2, accent: "#B4232A", accent_dark: "" }
+          # with the darkest dark mode allows, a red near the error colour (accepted, with a warning), and white, the lightest
+          # dark accent, under which the transcript's tints are mixed thinner.
+          - { suite: accent, shard: 1, total: 3, accent: "#AE5C09", accent_dark: "#D06E0B" }
+          - { suite: accent, shard: 2, total: 3, accent: "#B4232A", accent_dark: "" }
+          - { suite: accent, shard: 3, total: 3, accent: "#146E41", accent_dark: "#FFFFFF" }
     defaults:
       run:
         working-directory: frontend
