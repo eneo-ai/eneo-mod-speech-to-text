@@ -319,11 +319,12 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
 });
 
-test("Esc, Stäng and Avbryt only close: the typed names are there when the dialog opens again", async (t) => {
-  // JD-02: one click beside the dialog, to look at the transcript, lost every typed name.
+test("Esc and Stäng only close, with the typed names there when the dialog opens again; Avbryt throws them away", async (t) => {
+  // JD-02: one click beside the dialog, to look at the transcript, lost every typed name. Avbryt says what it does.
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-3" };
   const { view, trigger, field } = await dialog({ draftKey });
+  const before = field("Talare 2").value;
   const shut = () => !document.querySelector("dialog[open]");
   const escape = (target: Element) => view.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await view.act(async () => type(field("Talare 2"), "Bertil Eklund"));
@@ -338,10 +339,10 @@ test("Esc, Stäng and Avbryt only close: the typed names are there when the dial
   await view.act(async () => button(document.body, "Avbryt")!.click());
   assert.ok(shut(), "Avbryt closes");
   await view.act(async () => trigger.click());
-  assert.equal(field("Talare 2").value, "Bertil Eklund", "kept through Avbryt: every way out does the same");
+  assert.equal(field("Talare 2").value, before, "thrown away by Avbryt: the dialog opens as it was");
 });
 
-test("names typed but not saved come back after a reload, in the open dialog, also after Avbryt; Spara namnen ends them", async (t) => {
+test("names typed but not saved come back after a reload, in the open dialog, until Avbryt; Spara namnen ends them", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-1" };
   const first = await dialog({ draftKey });
@@ -370,7 +371,7 @@ test("names typed but not saved come back after a reload, in the open dialog, al
   await again.act(async () => button(document.body, "Avbryt")!.click());
   await again.unmount();
   const cancelled = await reloaded();
-  assert.equal(field("Talare 2")?.value, "Erik Lund", "Avbryt only closed: open again after a reload, with the name");
+  assert.equal(field("Talare 2"), null, "Avbryt threw the draft away: after a reload the dialog does not open by itself");
   await cancelled.unmount();
 
   const typed = await dialog({ draftKey });
