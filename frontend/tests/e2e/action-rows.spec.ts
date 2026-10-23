@@ -92,13 +92,15 @@ test("an unsent recording on the setup: its send keeps one line on the narrowest
   expect(lines, "its words on one line").toBe(1);
 });
 
-test("an unsent recording's way on stands across its card on a phone, Spara ljudfil and Ta bort share the row under it with Ta bort at its own width at its end, and all in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
+test("a stopped unsent recording's send is its one filled way on, across its card on a phone, Fortsätt spela in and Spara ljudfil share the row under it and Ta bort ends that row at its own width, and all in one row wider, Ta bort last; its delete question is a decision", async ({ page }, info) => {
   await page.goto("/flows");
   await keptRecording(page, 1_000);
   await page.reload();
   const card = page.getByRole("region", { name: "En inspelning har inte skickats" });
   const actions = card.getByRole("button");
-  await expect(actions).toHaveText(["Skapa dokument", "Spara ljudfil", "Ta bort"]);
+  // Sending a stopped recording is likelier than recording on in it (one a reload cut off leads with Fortsätt spela in).
+  await expect(actions).toHaveText(["Skapa dokument", "Fortsätt spela in", "Spara ljudfil", "Ta bort"]);
+  await expect(card.locator('button[data-variant="primary"]'), "one filled way on").toHaveText(["Skapa dokument"]);
   const boxes = await actions.evaluateAll((buttons) =>
     buttons.map((button) => {
       const { left, right, top, bottom } = button.getBoundingClientRect();
@@ -111,18 +113,20 @@ test("an unsent recording's way on stands across its card on a phone, Spara ljud
         range.selectNodeContents(node);
         words = range.getBoundingClientRect().right;
       }
-      return { left: Math.round(left), right: Math.round(right), top: Math.round(top), middle: Math.round((top + bottom) / 2), words: Math.round(words) };
+      return { left: Math.round(left), right: Math.round(right), top: Math.round(top), bottom: Math.round(bottom), middle: Math.round((top + bottom) / 2), words: Math.round(words) };
     }),
   );
   const stacked = info.project.use.viewport!.width <= 640;
-  const [send, save, remove] = boxes;
+  const [send, resume, save, remove] = boxes;
   const seen = stacked
     ? {
-        // Skapa dokument across the card; Spara ljudfil under it from its edge, and Ta bort on the same row at its own
-        // width, its words on the card's content edge (a ghost button's padding stands outside it).
-        quietUnder: save.top > send.top && remove.middle === save.middle,
-        fromTheEdges: save.left === send.left && Math.abs(remove.words - send.right) <= 2,
-        ownWidths: remove.left > save.right && remove.right - remove.left < save.right - save.left,
+        // Skapa dokument across the card; Fortsätt spela in and Spara ljudfil share the row under it from its edges, and
+        // Ta bort ends their row (or the line under it, where the row has no room) at its own width, its words on the
+        // card's content edge (a ghost button's padding stands outside it).
+        quietUnder: resume.top >= send.bottom && save.middle === resume.middle,
+        fromTheEdges: resume.left === send.left && save.right <= send.right && Math.abs(remove.words - send.right) <= 2,
+        deleteLast: remove.top >= save.top && remove.left > resume.right,
+        ownWidth: remove.right - remove.left < save.right - save.left,
       }
     : {
         // One line through their middles: the filled one is the page's own size, the quiet ones the middle size.
@@ -130,7 +134,7 @@ test("an unsent recording's way on stands across its card on a phone, Spara ljud
         inOrder: boxes.every((box, i) => i === 0 || box.left > boxes[i - 1].right),
       };
   expect(seen, JSON.stringify(boxes)).toEqual(
-    stacked ? { quietUnder: true, fromTheEdges: true, ownWidths: true } : { oneRow: true, inOrder: true },
+    stacked ? { quietUnder: true, fromTheEdges: true, deleteLast: true, ownWidth: true } : { oneRow: true, inOrder: true },
   );
 
   await card.getByRole("button", { name: "Ta bort" }).click();
