@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import { openRecordingStore, type NewRecording } from "./recording-store";
-import { markKeyframes, withKeyframes } from "./webm-keyframes";
+import { keyframeMarker, markKeyframes, withKeyframes } from "./webm-keyframes";
 
 const hex = (text: string) => Uint8Array.from(text.match(/../g) ?? [], (byte) => parseInt(byte, 16));
 
@@ -122,4 +122,46 @@ test("a Safari part leaves the device with every block a keyframe", async () => 
     assert.equal(blocks.length, 5);
     assert.ok(blocks.every((i) => bytes[i + 8] & 0x80), "every block flagged");
   }
+});
+
+test("marked as the chunks come, a batch at a time, a part's bytes are those of marking it whole, wherever the chunks and batches are cut", async () => {
+  const whole = safariWebm();
+  markKeyframes([whole]);
+  // One byte a chunk cuts every element everywhere; a batch of one to five of them cuts the walk between any two bytes.
+  for (const size of [1, 2, 3, 5]) {
+    const chunks = cut(safariWebm(), [...safariWebm().keys()].slice(1));
+    const mark = keyframeMarker("audio/webm;codecs=opus");
+    const out: (Blob | ArrayBuffer | Uint8Array)[] = [];
+    for (let at = 0; at < chunks.length; at += size) out.push(...(await mark(chunks.slice(at, at + size))));
+    out.push(...(await mark([], true)));
+    assert.deepEqual(await asBytes(out), whole, `batches of ${size}`);
+  }
+});
+
+test("a Safari part of hours is read from the device a batch at a time, every block a keyframe, and never whole", async () => {
+  const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  // The header and its first Cluster, then 600 chunks of a block each.
+  const blocks = Array.from({ length: 600 }, (_, i) => block((i % 256).toString(16).padStart(2, "0") + "00"));
+  await store.append(recording.id, 0, new Blob([hex(SAFARI_HEADER + cluster("06"))]), 2_000);
+  for (const [i, each] of blocks.entries()) await store.append(recording.id, 0, new Blob([hex(each)]), 2_000 * (i + 2));
+  const getAll = IDBObjectStore.prototype.getAll;
+  const reads: number[] = [];
+  IDBObjectStore.prototype.getAll = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["getAll"]>) {
+    const request = getAll.apply(this, args);
+    if (this.name === "chunks") request.addEventListener("success", () => reads.push((request.result as unknown[]).length));
+    return request;
+  };
+  let bytes: Uint8Array;
+  try {
+    const [file] = await store.readParts(recording.id);
+    bytes = new Uint8Array(await file.blob.arrayBuffer());
+  } finally {
+    IDBObjectStore.prototype.getAll = getAll;
+  }
+  const flags = [...bytes.keys()].filter((i) => bytes[i] === 0xa3 && bytes[i + 1] === 0x10 && bytes[i + 5] === 0x82).map((i) => bytes[i + 8]);
+  assert.equal(flags.length, 600);
+  assert.ok(flags.every((flag) => flag & 0x80), "every block flagged");
+  assert.ok(Math.max(...reads) < 601, `read in batches, never whole: ${reads.join(", ")}`);
 });
