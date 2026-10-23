@@ -56,6 +56,7 @@ Hela gaten är timmar på en dator. Kör lokalt det en ändring rör (`npm run t
 |---|---|
 | axe | Varje WCAG-överträdelse stoppar, oavsett allvarlighet; övriga regler när de är allvarliga eller kritiska. |
 | Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. Mäts i Chromium, vars träd gaten kan läsa; i WebKit och Firefox är det axe som hittar ett saknat namn. |
+| Text som axe inte kan avgöra | Text där axe lämnar kontrasten åt en människa (en toning bakom, något som ligger över eller under) mäts på skärmens pixlar: texten görs osynlig ett ögonblick, medianen av det som syns bakom är bakgrunden, och kravet är 4,5:1 (3:1 för stor text). Text bakom en öppen modal dialog, text utan färg och glyfer från ett ikontypsnitt mäts inte. |
 | Platshållartext | Kontrast 4,5:1. |
 | Målstorlek | 24 px med mus, 44 px med finger (`pointer: coarse`). |
 | Reflow och textavstånd | Ingen text eller kontroll utanför fönstrets kant och inget avklippt av en ruta som klipper, i varje läge på varje bredd gaten har (också 1000 px, strax under laptopens två kolumner); ökat radavstånd, teckenavstånd och ordavstånd klipper inget, och en rubrik kapas inte. |
@@ -230,6 +231,7 @@ CI delar kontrollernas tester i fem delar och övriga tester mot utvecklingsserv
 |---|---|---|
 | `targets under 44 px on a coarse pointer (house bar)` | Ett pekmål är för litet | Rätta storleken i temat, inte på ett enskilt ställe. |
 | `axe: WCAG violations …` med regel-id och selektor | En axe-överträdelse | `findings.json` för testet har alla noder och förklaringen. |
+| `text whose contrast axe left undecided …` | Text under sitt kontrastkrav, mätt på pixlarna | Raden anger selektorn, axe:s skäl, kvoten och de två färgerna. Se läget med `SHOTS=1` och rätta färgen i temat. |
 | `content past the edge or cut off` | Reflow- eller textavståndsfel | Kör läget i projektet som felade (`npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=<projekt>`) och se det i alla storlekar med `npm run ux:shots -- -g "<läge>"`; leta efter en minsta bredd, en fast kolumn eller text som inte får brytas, och kontrollera långa svenska ord. |
 | `<sida> loads X KB of JS, the budget is Y KB` | Sidan blev tyngre än budgeten | Hitta importen som växte; höj budgeten bara med skäl. |
 | `a <style data-astryx-theme*> means the theme is built in the browser` | Temat byggs i webbläsaren | Importera det byggda temat, `kit/theme/built/eneo`. |

@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { type AddressInfo } from "node:net";
 import { type Page, type TestInfo } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axe, blocking, focusStop, movingAnimations, settle, stopProblems, tabKey, tabWalk, targetSizes } from "./checks";
+import { axe, blocking, focusStop, movingAnimations, settle, stopProblems, tabKey, tabWalk, targetSizes, undecidedContrast } from "./checks";
 import { sweep } from "./controls";
 import { STATES, type State } from "./screens";
 
@@ -78,6 +78,44 @@ test("colours are measured once a colour change has ended, not halfway through i
   await page.waitForFunction(() => document.getAnimations().length > 0);
   const scan = await axe(page);
   expect(scan.violations.map((v) => v.id)).not.toContain("color-contrast");
+});
+
+test("text that axe cannot decide (over a gradient) is measured on the screen's pixels: too faint fails, clear passes", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      body { margin: 0; font: 16px/1.5 sans-serif; }
+      .ground { padding: 16px; background: linear-gradient(90deg, #ffffff, #f2f2f2); }
+    </style>
+    <main><h1>Prov</h1>
+      <div class="ground"><p id="faint" style="color: #959595">Svag text</p><p id="clear" style="color: #333333">Tydlig text</p><p id="none" style="color: transparent">Ingen färg</p></div>
+    </main>`);
+  const scan = await axe(page);
+  const targets = scan.undecidedText.map((item) => item.target);
+  expect(targets, "axe leaves both to a person").toEqual(expect.arrayContaining(["#faint", "#clear"]));
+  const measured = await undecidedContrast(page, scan.undecidedText);
+  const ratio = (target: string) => measured.find((item) => item.target === target)!;
+  expect(ratio("#faint").ratio).toBeLessThan(ratio("#faint").needed);
+  expect(ratio("#clear").ratio).toBeGreaterThanOrEqual(7);
+  expect(await page.locator("[data-contrast-probe]").count(), "the page is left as it was").toBe(0);
+  // Drawn in no colour (a field whose value another layer shows): no text a person reads there, not measured.
+  expect(await undecidedContrast(page, [{ target: "#none", reason: "bgGradient" }])).toEqual([]);
+  // Covered by a layer of its own colour (a popover over the page): not text a person reads, not measured.
+  await page.evaluate(() => {
+    const cover = Object.assign(document.createElement("div"), { style: "position: fixed; inset: 0; background: #959595" });
+    document.body.append(cover);
+  });
+  expect(await undecidedContrast(page, [{ target: "#faint", reason: "bgOverlap" }])).toEqual([]);
+  expect(await page.evaluate(() => getComputedStyle(document.getElementById("clear")!).color)).toBe("rgb(51, 51, 51)");
+});
+
+test("text behind an open modal dialog is out of reach, so its contrast is not measured; the dialog's own is", async ({ page }) => {
+  await page.setContent(`
+    <style>body { margin: 0; font: 16px/1.5 sans-serif; } dialog { inset-block-start: 60vh; } dialog::backdrop { background: rgb(0 0 0 / 0.6); }</style>
+    <main><h1>Prov</h1><p id="behind" style="color: #333333">Bakom dialogen</p><p id="inert" inert style="color: #333333">Inert</p></main>
+    <dialog><p id="inside" style="color: #959595">I dialogen</p></dialog>`);
+  await page.evaluate(() => document.querySelector("dialog")!.showModal());
+  const reasons = ["#behind", "#inert", "#inside"].map((target) => ({ target, reason: "bgOverlap" }));
+  expect((await undecidedContrast(page, reasons)).map((item) => item.target)).toEqual(["#inside"]);
 });
 
 test("with reduced motion, what moves on screen is caught and a fade is not", async ({ page }) => {
