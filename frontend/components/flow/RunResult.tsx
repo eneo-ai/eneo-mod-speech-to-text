@@ -345,11 +345,9 @@ export function RunResult({
                     label={words.tab}
                     endContent={
                       regenerates && view === "transcript" ? (
-                        <StatusDot
-                          variant="accent"
-                          label="kan skapas igen med rättningarna"
-                          tooltip={`${words.tab} kan skapas igen med rättningarna`}
-                        />
+                        // No tooltip: it would stand in the tab strip, which owns only its tabs; the dot's words join the
+                        // tab's name, and the tabs are a touch screen's, where there is no hover to show one.
+                        <StatusDot variant="accent" label="kan skapas igen med rättningarna" />
                       ) : undefined
                     }
                   />
