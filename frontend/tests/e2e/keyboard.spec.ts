@@ -44,6 +44,7 @@ const WALKS = [
   "result-transcript-tab",
   "result-regenerate",
   "failure",
+  "failure-cancelled",
   "review",
   "review-reject",
   "review-text-edit",

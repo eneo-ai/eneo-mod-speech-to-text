@@ -339,3 +339,16 @@ test("a run waiting for review is said above the setup, and Granska opens Vem ä
   await expect(heading).toBeVisible();
   await expect(heading).toBeFocused();
 });
+
+test("Gå till transkriberingen on a failed run brings the transcript's heading up the window, with the focus", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "on a laptop the transcript starts at the window's foot");
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.failed}`);
+  await page.getByRole("link", { name: "Gå till transkriberingen" }).click();
+  const heading = page.locator("#run-transcript");
+  await expect(heading).toBeFocused();
+  // As far up as the page scrolls: to its top, or where the page's end stops it (the transcript is its last part). Focus
+  // alone left it at the window's foot (y 844 of 900).
+  await expect.poll(async () => (await heading.boundingBox())?.y, { message: "in the window's upper quarter" }).toBeLessThan(900 / 4);
+  expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+});

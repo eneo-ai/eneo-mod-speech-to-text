@@ -656,6 +656,19 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelledHtml, /data-status="info"/);
   assert.doesNotMatch(cancelledHtml, /data-status="error"/);
   assert.equal([...cancelledHtml.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1);
+  // The person stopped it: no word that it could not be finished, and a way back to a new recording or file beside the
+  // new run, which stays the one filled action.
+  assert.doesNotMatch(text(cancelledHtml), /kunde inte slutföras/);
+  const backToSetup = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onStartAgain: () => undefined, onChooseInput: () => undefined }),
+  );
+  assert.match(text(backToSetup), /Välj nytt ljud/);
+  assert.deepEqual([...backToSetup.matchAll(/<button[^>]*data-variant="primary"[^>]*>/g)].length, 1, "one filled action");
+  assert.doesNotMatch(backToSetup, /<button[^>]*data-variant="primary"[^>]*aria-label="Välj nytt ljud"/);
+  const onlyBack = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onChooseInput: () => undefined }),
+  );
+  assert.match(text(onlyBack), /Välj nytt ljud/, "a run that cannot be started again still has the way back");
 });
 
 /**

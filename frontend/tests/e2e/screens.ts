@@ -1252,6 +1252,19 @@ export const STATES: State[] = [
     },
   },
   {
+    // A run the person stopped (Avbryt körningen), as Eneo answers it: cancelled, with no error. Its way on is a new run of
+    // the same audio, or back to a new recording or file.
+    name: "failure-cancelled",
+    go: async (page) => {
+      await page.route(new RegExp(`/runs/${ids.runs.failed}/(status/)?$`), async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ response, json: { ...(await response.json()), status: "cancelled", error: null } });
+      });
+      await run(page, ids.runs.failed);
+      await heading(page, "Körningen avbröts");
+    },
+  },
+  {
     name: "review",
     go: async (page) => {
       await run(page, ids.runs.review, ids.flows.flow2);
