@@ -13,7 +13,7 @@ import unicodedata
 from collections.abc import AsyncGenerator, AsyncIterator
 from email.message import Message
 from email.utils import collapse_rfc2231_value
-from typing import Literal, NamedTuple
+from typing import BinaryIO, Literal, NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from uuid import UUID
 
@@ -633,10 +633,13 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                         await entry.file.write(chunk)
                 if received != length:
                     raise HTTPException(400, "The part is incomplete")
+                # In the file, not only in its buffer, before the offset counts it: a full disk refuses it here.
+                await anyio.to_thread.run_sync(entry.file.file.flush)
             except BaseException as error:
                 with anyio.CancelScope(shield=True):
-                    await entry.file.seek(entry.offset)
-                    await anyio.to_thread.run_sync(entry.file.file.truncate, entry.offset)
+                    if not await anyio.to_thread.run_sync(_rewind, entry.file.file, entry.offset):
+                        # What the spool holds is not known: its receipt goes, and the next PUT makes the upload again.
+                        await app.state.uploads.remove(upload_id, entry)
                 if isinstance(error, TimeoutError):
                     raise HTTPException(408, "The upload part timed out") from None
                 if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT):
@@ -646,6 +649,17 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
             entry.offset += received
             entry.touch()
             return entry.status()
+
+
+def _rewind(file: BinaryIO, offset: int) -> bool:
+    """The spool back at its last whole part, bytes and position; False when the disk refuses that. Going back writes
+    what is still buffered first, which a full disk can refuse again, and those bytes would then land on a retry."""
+    try:
+        file.seek(offset)
+        file.truncate(offset)
+    except OSError:
+        return False
+    return file.tell() == offset
 
 
 @app.post("/api/uploads/{flow_id}/{step_id}/{upload_id}/complete", dependencies=_SESSION_ORIGIN_AND_USER)
