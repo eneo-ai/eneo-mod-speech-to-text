@@ -104,6 +104,9 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-chromium webkit firefox
       - run: npm ci
+      # apt gives up on a stalled download and tries it again (.github/apt.conf).
+      - name: Let apt retry a stalled download
+        run: sudo cp ${{ github.workspace }}/.github/apt.conf /etc/apt/apt.conf.d/99-ci
       # A shard can hold any engine's projects.
       - name: Install the browsers' system libraries
         timeout-minutes: 10
