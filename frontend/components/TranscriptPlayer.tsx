@@ -1015,7 +1015,7 @@ export function TranscriptPlayer(
               leaves its dialog, and a correction being written, as they are. The last ghost button ends its words on
               the content's edge. */}
           {labelled && canName && (
-            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap={phone ? "nowrap" : "wrap"} gap={2}>
+            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap="wrap" gap={2}>
               {phone ? speakerList(styles.rowList) : <Text type="label">Talare</Text>}
               <HStack gap={2} vAlign="center" className={actionsBySpeakers ? undefined : styles.trailing}>
                 {namingControl}

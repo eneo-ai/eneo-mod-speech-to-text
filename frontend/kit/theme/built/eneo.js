@@ -308,7 +308,8 @@ export const eneoTheme = {
           "outlineOffset": "calc(var(--border-width) * -1)",
           "outlineWidth": "calc(var(--focus-outline-width) + var(--border-width))",
           "boxShadow": "none"
-        }
+        },
+        "lineHeight": "1.25rem"
       }
     },
     "typeahead": {

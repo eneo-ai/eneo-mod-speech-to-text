@@ -168,7 +168,9 @@ export const eneoTheme = defineTheme({
     'text-input': {base: {':focus-within': fieldFocusRing}},
     'text-area': {base: {':focus-within': fieldFocusRing}},
     'number-input': {base: {':focus-within': fieldFocusRing}},
-    selector: {base: {':focus-within': fieldFocusRing}},
+    // The value's line is the design system's --spacing-5 (20 px) at the default root, in rem: in px it cut the value's
+    // words in half at the reader's own large text (iOS's accessibility sizes, WCAG 1.4.4).
+    selector: {base: {':focus-within': fieldFocusRing, lineHeight: '1.25rem'}},
     typeahead: {base: {':focus-within': fieldFocusRing}},
     tokenizer: {base: {':focus-within': fieldFocusRing}},
     // The radio rows of a menu show no focus at all (a plain row tints, a radio row does not).

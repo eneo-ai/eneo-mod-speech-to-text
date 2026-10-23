@@ -48,3 +48,13 @@ for (const size of [AX2, AX5, ZOOM]) {
     expect(await cut(runs)).toEqual([]);
   });
 }
+
+for (const size of [AX5, ZOOM]) {
+  test(`the transcript's speaker filter keeps its words at ${name(size)}`, async ({ page }) => {
+    await at(page, "result-transcript-tab", size);
+    const filter = page.getByRole("combobox", { name: "Talare" });
+    await expect(filter).toBeVisible();
+    expect((await filter.boundingBox())!.width, "the filter is not squeezed to nothing").toBeGreaterThanOrEqual(80);
+    expect(await cut(filter)).toEqual([]);
+  });
+}

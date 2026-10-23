@@ -112,10 +112,11 @@
   }
 }
 
-/* On a phone the list stands in the speakers' row, before their naming and the transcript's menu. */
+/* On a phone the list stands in the speakers' row, before their naming and the transcript's menu. It keeps 8 rem, so the
+   reader's large text or a phone's zoom puts the two icons under it rather than squeezing it to nothing. */
 .rowList {
-  flex: 1 1 0;
-  min-inline-size: 0;
+  flex: 1 1 8rem;
+  min-inline-size: min(8rem, 100%);
 }
 
 /* The search shares the filter's row where both fit, and takes the row under it where they do not. */

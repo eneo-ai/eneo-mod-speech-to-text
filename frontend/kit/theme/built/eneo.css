@@ -436,6 +436,10 @@
     box-shadow: none;
   }
 
+  .astryx-selector {
+    line-height: 1.25rem;
+  }
+
   .astryx-selector:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
     outline-offset: calc(var(--border-width) * -1);
