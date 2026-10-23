@@ -74,7 +74,9 @@
   margin-inline-start: calc(-1 * var(--spacing-3));
 }
 
-/* From 640 px it stands at the head's end beside the heading, its words on one line: the heading wraps first. */
+/* From 640 px it stands at the head's end beside the heading, its words on one line: the heading wraps first. A finger's
+   44 px button is laid over the row's edges, so the row is the tile's 40 px and the heading's top is the transcript's. */
 .quietEnd {
   flex-shrink: 0;
+  margin-block: calc((var(--spacing-10) - var(--size-element-md)) / 2);
 }

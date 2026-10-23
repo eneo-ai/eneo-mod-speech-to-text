@@ -180,6 +180,18 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   const back = page.getByRole("button", { name: "Bakåt 10 sekunder" });
   const forward = page.getByRole("button", { name: "Framåt 10 sekunder" });
   const position = page.getByRole("slider", { name: "Position i inspelningen" });
+  // The skips stand in the player's row where the player has 31 rem (TranscriptPlayer.module.css), not by the window's
+  // width: a laptop's transcript beside the document can be narrower, and there the slider keeps the room instead.
+  const room = await page
+    .getByRole("region", { name: "Inspelning och transkribering" })
+    .evaluate((player) => player.getBoundingClientRect().width / Number.parseFloat(getComputedStyle(document.documentElement).fontSize));
+  if (room < 31) {
+    await expect(back).toBeHidden();
+    await expect(forward).toBeHidden();
+    const track = await position.evaluate((thumb) => thumb.closest(".astryx-slider-control")!.getBoundingClientRect().width);
+    expect(track, "the slider keeps its room").toBeGreaterThanOrEqual(120);
+    return;
+  }
   await expect(back).toBeDisabled();
   await expect(forward).toBeEnabled();
   await expect(position).toHaveAttribute("aria-valuemax", "20");
