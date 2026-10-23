@@ -545,3 +545,32 @@ test("every player says when its audio cannot be played, beside its controls, an
   assert.equal(playback.getSnapshot().unavailable, false, "the part is loaded again");
   assert.equal(view.container.querySelector('[role="alert"]'), null);
 });
+
+test("in a tab out of view the player renders nothing as the audio plays on, and shows where it is when the tab is back", async () => {
+  const { usePlaybackState } = await import("../components/flow/AudioPlayer");
+  const { playback, media } = started();
+  let renders = 0;
+  let shown = -1;
+  function Time() {
+    renders += 1;
+    shown = usePlaybackState(playback).atMs;
+    return null;
+  }
+  let visibility: DocumentVisibilityState = "visible";
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+  const view = await mount(createElement(Time));
+  try {
+    await view.act(async () => playTo(playback, media, 1));
+    assert.equal(shown, 1_000, "in view, it follows the audio");
+    visibility = "hidden";
+    await view.act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    const hidden = renders;
+    for (const seconds of [2, 3, 3.5]) await view.act(async () => playTo(playback, media, seconds));
+    assert.equal(renders, hidden, "nothing rendered for a time update nobody sees");
+    visibility = "visible";
+    await view.act(async () => void document.dispatchEvent(new window.Event("visibilitychange")));
+    assert.equal(shown, 3_500, "back in view, where the audio is now");
+  } finally {
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  }
+});

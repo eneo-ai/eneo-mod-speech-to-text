@@ -18,8 +18,29 @@ export function usePlayback(sources: readonly PlayerSource[]): Playback {
   return playback;
 }
 
+/**
+ * Playback as it stands, for what shows it. In a tab out of view the snapshot seen last stands until the tab is shown
+ * again: playing audio renders nothing there for each of its time updates, which nobody sees.
+ */
 export function usePlaybackState(playback: Playback): PlaybackSnapshot {
-  return useSyncExternalStore(playback.subscribe, playback.getSnapshot, playback.getSnapshot);
+  const seen = useRef<{ playback: Playback; snapshot: PlaybackSnapshot } | null>(null);
+  const subscribe = useCallback(
+    (change: () => void) => {
+      const stop = playback.subscribe(change);
+      document.addEventListener("visibilitychange", change);
+      return () => {
+        stop();
+        document.removeEventListener("visibilitychange", change);
+      };
+    },
+    [playback],
+  );
+  const read = useCallback(() => {
+    if (seen.current?.playback === playback && document.visibilityState === "hidden") return seen.current.snapshot;
+    seen.current = { playback, snapshot: playback.getSnapshot() };
+    return seen.current.snapshot;
+  }, [playback]);
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 /** What a view around the player shows of playback, without the position, which changes a few times a second. */
