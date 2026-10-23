@@ -121,6 +121,13 @@ export async function mount(element: import("react").ReactElement) {
 /** Takes down whatever a test left mounted, also when an assertion stopped it early (use with afterEach). */
 export async function cleanup(): Promise<void> {
   for (const unmount of [...mounted]) await unmount();
+  // Each test is a tab of its own: what one kept in the tab (drafts, corrections not yet saved) is not the next one's. A
+  // test that blocks the storage (a private window) kept nothing in it.
+  try {
+    if (typeof window !== "undefined") window.sessionStorage.clear();
+  } catch {
+    // blocked
+  }
 }
 
 /** Static markup as a document of its own (no globals installed), for assertions on structure, names and attributes. */
