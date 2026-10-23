@@ -586,8 +586,9 @@ export class RecordingStore {
   }
 
   /**
-   * One part as a file, whole or as far as it survived. The device's chunks are read a batch at a time, and each batch
-   * goes to the browser as a Blob before the next is read: a meeting of hours is never in the tab whole.
+   * One part as a file, whole or as far as it survived. The device's chunks are read a batch at a time, and every batch
+   * of chunks, the device's and those only this tab holds alike, goes to the browser as a Blob before the next is taken:
+   * a meeting of hours is never in the tab whole, nor copied whole when the device refused all of it.
    */
   private async readPart(recording: StoredRecording, part: RecordingPart): Promise<RecordingFile & { whole: boolean }> {
     const type = baseMimetype(recording.mimeType);
@@ -603,12 +604,6 @@ export class RecordingStore {
     let inOrder = true;
     let held: Array<Chunk["data"]> = [];
     const files: Blob[] = [];
-    const take = (chunk: Chunk) => {
-      inOrder &&= chunk.seq === count;
-      count += 1;
-      bytes += chunk.data instanceof Blob ? chunk.data.size : chunk.data.byteLength;
-      held.push(chunk.data);
-    };
     // Safari's WebM is made seekable in Chromium as it goes.
     const keyframes = keyframeMarker(type);
     const handOver = async (last = false) => {
@@ -619,17 +614,23 @@ export class RecordingStore {
       if (files.length === 0) data[0] = await withRecordedDuration(data[0], part.durationMs, type);
       files.push(new Blob(data));
     };
+    const take = async (chunk: Chunk) => {
+      inOrder &&= chunk.seq === count;
+      count += 1;
+      bytes += chunk.data instanceof Blob ? chunk.data.size : chunk.data.byteLength;
+      held.push(chunk.data);
+      if (held.length === READ_BATCH) await handOver();
+    };
     for (;;) {
       for (const chunk of stored) {
-        while (next < here.length && here[next].seq < chunk.seq) take(here[next++]);
+        while (next < here.length && here[next].seq < chunk.seq) await take(here[next++]);
         if (next < here.length && here[next].seq === chunk.seq) next += 1;
-        take(chunk);
+        await take(chunk);
       }
-      await handOver();
       if (stored.length < READ_BATCH) break;
       stored = await this.backend.chunks(recording.id, part.index, stored[stored.length - 1].seq + 1, READ_BATCH);
     }
-    while (next < here.length) take(here[next++]);
+    while (next < here.length) await take(here[next++]);
     await handOver(true);
     const whole = count === part.chunks && inOrder && bytes === part.bytes;
     return { index: part.index, blob: new Blob(files, { type }), filename: recordingFilename(recording, part.index), whole };

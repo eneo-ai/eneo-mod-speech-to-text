@@ -87,8 +87,8 @@ async function copyOf(chunk: ChunkData): Promise<Uint8Array<ArrayBuffer> | null>
  * `last` it gives back the rest. A part that needs nothing (its first block flagged, another format, a file this does
  * not recognise, a chunk unread before its first block) goes through as it was, its very chunks; one that does goes as
  * marked copies, and the chunks given are never changed. It holds only the chunks not yet known to be done: until the
- * first block, and the few an element still to be read reaches into. A chunk that cannot be read in time ends the
- * marking: the chunks before it go marked, it and those after it as they were.
+ * first block, read a chunk at a time, and the few an element still to be read reaches into. A chunk that cannot be
+ * read in time ends the marking: the chunks before it go marked, it and those after it as they were.
  */
 export function keyframeMarker(mimeType: string): (chunks: readonly ChunkData[], last?: boolean) => Promise<ChunkData[]> {
   // Undefined until the walk reaches the first block.
@@ -128,6 +128,8 @@ export function keyframeMarker(mimeType: string): (chunks: readonly ChunkData[],
         break;
       }
       held.push(copy);
+      // Looked at before the next is read: a part whose first block says it needs nothing is read no further.
+      if (needs === undefined) mark(true);
     }
     const stopped = rest.length > 0;
     mark(!last && !stopped);
