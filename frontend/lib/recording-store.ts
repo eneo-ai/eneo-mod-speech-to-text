@@ -265,9 +265,17 @@ export function sealed(recording: StoredRecording): boolean {
   return recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
 }
 
-/** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
-export function continuable(recording: StoredRecording): boolean {
+/** Its capture ended without a stop (a reload, a killed tab). */
+export function cutOff(recording: StoredRecording): boolean {
   return recording.state === "recording" || recording.state === "paused";
+}
+
+/**
+ * "Fortsätt spela in" adds a part: to a capture that was cut off, and to one the person stopped, also after leaving the
+ * page it was stopped on, until a send of it has begun (it is then sealed).
+ */
+export function continuable(recording: StoredRecording): boolean {
+  return cutOff(recording) || recording.state === "stopped";
 }
 
 /** A recording's files: its parts with audio. */

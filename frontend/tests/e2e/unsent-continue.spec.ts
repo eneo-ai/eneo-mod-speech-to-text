@@ -42,6 +42,32 @@ test("from the flow list, Fortsätt spela in records on in the cut-off recording
   await expect(tab.getByRole("heading", { name: "En inspelning har inte skickats" }), "one recording: the meeting went on in it").toBeVisible();
 });
 
+test("a recording the person stopped and left is recorded on in from the flow list, in the same recording", async ({ page }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  await page.waitForTimeout(2_500); // a chunk on the device
+  await stop(page);
+  await backLink(page).click();
+  await page.getByRole("alertdialog", { name: "Lämna sidan?" }).getByRole("button", { name: "Lämna sidan" }).click();
+  const card = page.getByRole("region", { name: "En inspelning har inte skickats" });
+  // How long it is, as the card says it ("· 3 s", a no-break space before the unit).
+  const seconds = async () => {
+    await expect(card).toContainText(/· \d+\ss/);
+    return Number(/· (\d+)\ss/.exec((await card.textContent()) ?? "")?.[1]);
+  };
+  const before = await seconds();
+
+  await card.getByRole("button", { name: "Fortsätt spela in" }).click();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(`/flows/${ids.flows.flow1}`);
+  await page.waitForTimeout(2_000); // more of the meeting, past the controls' first moment
+  await stop(page);
+  await backLink(page).click();
+  await page.getByRole("alertdialog", { name: "Lämna sidan?" }).getByRole("button", { name: "Lämna sidan" }).click();
+  await expect(card, "one recording: the meeting went on in it").toBeVisible();
+  expect(await seconds(), "longer than before").toBeGreaterThan(before);
+});
+
 test("with three unsent recordings the flow list keeps its flows in view: the one a reload cut off stands first, the rest folded", async ({ page }) => {
   await page.goto("/flows");
   await keptRecording(page, 1_000);

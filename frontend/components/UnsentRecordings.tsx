@@ -20,6 +20,7 @@ import { moveFocusToHeading } from "@/routes/RouteEffects";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
   continuable,
+  cutOff,
   filesIn,
   hasAudio,
   IN_USE_ELSEWHERE,
@@ -110,9 +111,12 @@ export function recordingDetails(
   return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)].join(" · ");
 }
 
-/** The recording a reload cut off that this tab can record on in, the first when there are more. */
+/**
+ * The recording a reload cut off that this tab can record on in, the first when there are more: going on with it is the
+ * likely next step. A stopped one can be recorded on in too (its row offers it), but sending it is the likelier.
+ */
 export function resumableRecording(recordings: UnsentRecording[]): UnsentRecording | undefined {
-  return recordings.find((recording) => !recording.exportOnly && !recording.elsewhere && continuable(recording));
+  return recordings.find((recording) => !recording.exportOnly && !recording.elsewhere && cutOff(recording));
 }
 
 /**

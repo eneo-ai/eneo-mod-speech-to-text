@@ -146,7 +146,8 @@ test("the actions call back with their recording, and Fortsätt spela in only wh
   });
   const [first, second] = rowsOf(container);
   assert.deepEqual(labels(first), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"]);
-  assert.deepEqual(labels(second), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
+  // A recording the person stopped is recorded on in too, as one a reload cut off (until a send of it has begun).
+  assert.deepEqual(labels(second), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"]);
   await act(async () => button(first, "Fortsätt spela in")!.click());
   await act(async () => button(second, "Skapa dokument")!.click());
   assert.deepEqual([continued, sent], [["a"], ["b"]]);
@@ -164,7 +165,7 @@ test("a recording with no audio says so plainly, and offers neither a document n
   const [cutOff, stopped] = rowsOf(container);
   for (const row of [cutOff, stopped]) assert.match(row.textContent!, /Inget ljud sparades i den här inspelningen\./);
   assert.deepEqual(labels(cutOff), ["Fortsätt spela in", "Ta bort"]);
-  assert.deepEqual(labels(stopped), ["Ta bort"]);
+  assert.deepEqual(labels(stopped), ["Fortsätt spela in", "Ta bort"]);
   const { container: elsewhere } = await render({ recordings: [{ ...silent("c", "stopped"), exportOnly: true }] });
   assert.deepEqual(labels(rowsOf(elsewhere)[0]), [], "another tab's: nothing to save either");
 });
@@ -176,7 +177,7 @@ test("without Web Locks, another tab's recording is offered only as a file to sa
   assert.deepEqual(labels(first), ["Spara ljudfil"]);
   assert.match(first.textContent!, /I den här webbläsaren kan den bara sparas som fil\./);
   assert.equal(summaryOf(first).textContent?.startsWith("Inspelning"), true, "the one action is still described by the summary");
-  assert.deepEqual(labels(second), ["Skapa dokument", "Spara ljudfil", "Ta bort"], "a recording this tab may change keeps every action");
+  assert.deepEqual(labels(second), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"], "a recording this tab may change keeps every action");
 });
 
 test("a recording a reload cut off says so and how to go on, with Fortsätt spela in the one filled action", async () => {
@@ -206,6 +207,17 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   const stopped = await render({ recordings: [recording("c", 60_000, at(23, 9, 0))], onContinue: () => {} });
   assert.deepEqual(filled(stopped.container), [], "the setup's own action stays the filled one");
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");
+});
+
+test("a recording the person stopped can be recorded on in from the list too, beside sending it, which stays the likelier", async () => {
+  const stopped = recording("a", 60_000, at(23, 10, 12));
+  const { container } = await render({ recordings: [stopped], onContinue: () => {} });
+  assert.equal(container.querySelector("h2")?.textContent, "En inspelning har inte skickats", "it was not cut off");
+  assert.ok(button(rowsOf(container)[0], "Fortsätt spela in"));
+  assert.deepEqual(filled(container), [], "the setup's own action stays the filled one");
+  assert.equal(resumableRecording([stopped]), undefined);
+  const { container: sent } = await render({ recordings: [{ ...stopped, state: "uploading" }], onContinue: () => {} });
+  assert.equal(button(sent, "Fortsätt spela in"), null, "once a send has begun, nothing more is recorded in it");
 });
 
 test("folded, the list shows one recording, the latest a reload cut off before the newest, and the rest under a closed fold", async () => {
@@ -340,7 +352,7 @@ test("a recording another tab holds is listed with why nothing can be done with 
     const [held, own] = rowsOf(container);
     assert.match(held.textContent!, /Inspelningen används i en annan flik\./);
     assert.deepEqual(labels(held), [], "nothing here that the other tab would have to undo");
-    assert.deepEqual(labels(own), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
+    assert.deepEqual(labels(own), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"]);
 
     // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
     elsewhere = [];

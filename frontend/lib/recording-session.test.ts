@@ -649,12 +649,38 @@ test("a recording cut off by a reload records on at once in a new part of the sa
   assert.deepEqual(await texts(await store.readParts(id)), ["a", "b."], "the earlier part is unchanged");
 });
 
-test("only an interrupted recording that no other tab holds, and that the flow takes another file for, can be continued", async () => {
+test("a recording the person stopped, on a page since left, records on in a new part of the same recording", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  let before = 0;
+  const first = await setup({ store: await openRecordingStore(device), now: () => before });
+  await first.capture.start(meeting);
+  before = 2_000;
+  first.recorders[0].emit("a");
+  const stoppedFirst = await first.capture.stop();
+  assert.equal(stoppedFirst?.state, "stopped");
+  // The person leaves the page (Alla flöden): the page lets the recording go, kept on the device.
+  first.capture.dispose();
+
+  let now = 90_000;
+  const store = await openRecordingStore(device);
+  const { capture, recorders } = await setup({ store, now: () => now });
+  await capture.adopt(stoppedFirst!.id);
+  assert.equal(capture.getSnapshot().status, "recording", "Fortsätt spela in, as for a recording a reload cut off");
+  assert.equal(capture.getSnapshot().recording?.id, stoppedFirst!.id);
+  assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
+  now = 91_000;
+  recorders[0].emit("b");
+  const stopped = await capture.stop();
+  assert.equal(stopped?.id, stoppedFirst!.id, "one recording, so one run");
+  assert.deepEqual(await texts(await store.readParts(stoppedFirst!.id)), ["a.", "b."], "the earlier part is unchanged");
+});
+
+test("only a recording no send has begun of, that no other tab holds, and that the flow takes another file for, can be continued", async () => {
   const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
   const otherTab = await openRecordingStore(device);
   const held = await otherTab.create(meeting);
   const finished = await otherTab.create(meeting);
-  await otherTab.setState(finished.id, "stopped");
+  await otherTab.setState(finished.id, "uploading");
   otherTab.release(finished.id);
   const full = await otherTab.create(meeting);
   await otherTab.startPart(full.id);
