@@ -402,3 +402,15 @@ test("a recording Safari wrote plays and seeks in Chromium once every block is a
   expect(played.marked).toMatchObject({ seek: "seeked", error: null });
   expect(played.marked.time, "and it plays on from where it was sought").toBeGreaterThan(1.7);
 });
+
+test("Följ uppspelningen pressed from the keyboard leaves the focus in the player, on its position", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await page.locator("[data-turn-index]").first().dispatchEvent("wheel");
+  const follow = page.getByRole("button", { name: "Följ uppspelningen" });
+  await follow.focus();
+  await page.keyboard.press("Enter");
+  await expect(follow).toHaveCount(0);
+  await expect(page.getByRole("slider", { name: "Position i inspelningen" }), "not the page's body").toBeFocused();
+});

@@ -276,7 +276,20 @@ function PlayerControls({
             </Button>
           </Text>
         )}
-        {!follow && <Button variant="ghost" size="sm" label="Följ uppspelningen" className={styles.follow} onClick={onFollow} />}
+        {/* It goes once pressed: from the keyboard the focus stays in the player, on its position, as the skips' does. */}
+        {!follow && (
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Följ uppspelningen"
+            className={styles.follow}
+            onClick={(event) => {
+              const focused = document.activeElement === event.currentTarget;
+              onFollow();
+              if (focused) dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+            }}
+          />
+        )}
       </div>
       )}
       <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined} compact={small}>
