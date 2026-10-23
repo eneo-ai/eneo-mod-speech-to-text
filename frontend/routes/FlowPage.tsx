@@ -270,8 +270,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
       : UNSTORED_LEAVE,
     leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
   );
+  // The browser's own question (a reload, a closed tab) is not asked for a stopped recording the device keeps: it waits
+  // among the unsent recordings and can be continued there, as the page's own question says. It is asked while the
+  // recording runs, is being finished, or is held only in this tab.
+  const keptOnDevice =
+    snapshot.phase === "ready" && input.persistent === true && !input.capture.refused && !snapshot.finishing && !snapshot.finishQueued;
   useEffect(() => {
-    const shouldWarn = holdsAudio || submitting || unstored;
+    const shouldWarn = (holdsAudio && !keptOnDevice) || submitting || unstored;
     if (!shouldWarn) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -280,7 +285,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [holdsAudio, submitting, unstored]);
+  }, [holdsAudio, keptOnDevice, submitting, unstored]);
 
   // A file dropped outside Ladda upp's zone would make the browser open it and leave the page (and a recording). The zone's
   // own handlers run first (React's root listeners are below window) and mark their event handled, so only a drop that
