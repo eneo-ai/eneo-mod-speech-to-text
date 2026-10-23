@@ -1009,12 +1009,15 @@ export function TranscriptPlayer(
           )}
         </HStack>
       )}
+      {/* The review's view has no speakers' row: its naming shares the row of the page's actions for the transcript, so
+          no row holds it alone above the text; without those actions it has the row to itself. */}
       {actions && !actionsBySpeakers && (
         <HStack ref={actionsRow.ref} hAlign="end" vAlign="center" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3} className={styles.inset}>
+          {reviewEnabled && namingControl}
           {actions(actionsRow.fits)}
         </HStack>
       )}
-      {reviewEnabled && namingControl && (
+      {reviewEnabled && namingControl && !(actions && !actionsBySpeakers) && (
         <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2} className={join(styles.inset, styles.trailingButton)}>
           {namingControl}
         </HStack>

@@ -281,7 +281,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   are. Under 640 px the filter's list takes the word's place, and "Namnge talare" and the transcript's menu stand at its
   end as icons: one row for three. Where they cannot be named (a run waiting for its review, a failed run, a transcript
   that cannot be corrected) the chips stand alone, named "Visa talare". The speaker review's own view has no filter for
-  the word to name: there "Namnge talare" stands alone at the end of a row above it. A passage's "Ändra talare" offers
+  the word to name: there "Namnge talare" stands at the start of the transcript's Kopiera and Ladda ner below a laptop's
+  width, and alone at the end of a row above it from one; its tools for speaker suggestions show only while there is one
+  to decide or step through. A passage's "Ändra talare" offers
   "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's pause alike: it
   opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
