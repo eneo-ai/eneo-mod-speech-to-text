@@ -476,41 +476,35 @@ function UnsentRecordingRow({
     );
     // The buttons stand beside the words; a sentence in their place (another tab has it, it can only be saved) under them.
     const buttons = recording.elsewhere || recording.exportOnly ? null : actions;
+    const text = (
+      <VStack gap={1} className={stacked ? undefined : styles.text}>
+        {head}
+        {words}
+        {note}
+      </VStack>
+    );
     // The card's head: the tile at the heading's line, the heading with what the recording is and where it is kept, and
     // the actions at the card's end where the line has room for both, under the words from their edge where it has not.
-    // On a phone there is no tile: the heading, the words and the actions under it share the card's one edge.
+    // On a phone there is no tile: the heading, the words and the actions under it share the card's one edge. What the
+    // actions ask and answer (the delete question, a problem) has one place under them at every width, so an open question
+    // keeps its focus when the window crosses 640 px.
     return (
-      <VStack gap={4} data-recording="">
-        {stacked ? (
-          <>
-            <VStack gap={1}>
-              {head}
-              {words}
-              {note}
-            </VStack>
-            {actions}
-            {question}
-            {problem && <Banner status="error" title={problem} collapsible={false} />}
-          </>
-        ) : (
-          <HStack gap={4} vAlign="start">
-            <IconTile icon={Mic} size="lg" />
-            <VStack gap={4} className={styles.lead}>
-              <HStack gap={4} vAlign="center" hAlign="between" wrap="wrap">
-                <VStack gap={1} className={styles.text}>
-                  {head}
-                  {words}
-                  {note}
-                </VStack>
-                {buttons}
-              </HStack>
-              {!buttons && actions}
-              {question}
-              {problem && <Banner status="error" title={problem} collapsible={false} />}
-            </VStack>
-          </HStack>
-        )}
-      </VStack>
+      <HStack gap={4} vAlign="start" data-recording="">
+        {!stacked && <IconTile icon={Mic} size="lg" />}
+        <VStack gap={4} className={styles.lead}>
+          {stacked ? (
+            text
+          ) : (
+            <HStack gap={4} vAlign="center" hAlign="between" wrap="wrap">
+              {text}
+              {buttons}
+            </HStack>
+          )}
+          {(stacked || !buttons) && actions}
+          {question}
+          {problem && <Banner status="error" title={problem} collapsible={false} />}
+        </VStack>
+      </HStack>
     );
   }
 

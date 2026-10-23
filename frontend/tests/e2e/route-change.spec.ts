@@ -2,7 +2,8 @@
  * What a person is given when the page changes: the title at once, and, when the new page has its content, one
  * announcement, the focus in the page's heading and the scroll (to the top for a link, back where it was for Back). A
  * page behind AuthGate is a spinner until the session answers, so RouteEffects waits for the page to say it has its
- * content. A change of the address's query alone is the page's own state: nothing happens.
+ * content. A change of the address's query alone is the page's own state: nothing happens. Back from a run to the setup
+ * leaves the run's actions behind: what Eneo answers to them later does not take the setup's place.
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
@@ -350,6 +351,67 @@ test("an earlier run opened from the setup is an entry of its own: Back goes to 
   await page.waitForTimeout(1_000);
   expect(new URL(page.url()).searchParams.has("run"), "the setup's address keeps no run").toBe(false);
   await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toHaveCount(0);
+});
+
+// An action on an earlier run opened from the setup, and Back to the setup before Eneo answers it: Eneo keeps what it did,
+// and the answer takes neither the setup's address nor the place of a recording started there meanwhile.
+for (const action of ["Försök igen", "Avbryt körningen"] as const) {
+  test(`Back to the setup while ${action} waits for Eneo: the late answer leaves the setup and a new recording where they are`, async ({ page, sentinel }, info) => {
+    test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width");
+    sentinel.expect(NO_CONFIRMED_WORDS);
+    const retry = action === "Försök igen";
+    if (!retry) {
+      // A run still going among the earlier ones, which the person follows from the list.
+      await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow1}/runs/\\?`), async (route) => {
+        const response = await route.fetch();
+        const { items, ...list } = await response.json();
+        const going = { id: ids.runs.running, flow_id: ids.flows.flow1, status: "running", created_at: "2026-09-24T09:00:00Z" };
+        await route.fulfill({ response, json: { ...list, items: [going, ...items] } });
+      });
+    }
+    let release = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let held = false;
+    await page.route(retry ? "**/retry/" : "**/cancel/", async (route) => {
+      held = true;
+      await released;
+      // The stub has no cancel: Eneo's answer to one is the run, stopping.
+      await (retry ? route.fallback() : route.fulfill({ json: { id: ids.runs.running, flow_id: ids.flows.flow1, status: "cancelled" } })).catch(
+        () => undefined,
+      );
+    });
+    await setup(page);
+    await page.getByRole("listitem").filter({ hasText: retry ? "Misslyckades" : "Pågår" }).getByRole("button").click();
+    if (retry) {
+      await page.getByRole("button", { name: "Försök igen" }).click();
+    } else {
+      await page.getByRole("button", { name: "Avbryt körningen" }).click();
+      await page.getByRole("alertdialog", { name: "Avbryta körningen?" }).getByRole("button", { name: "Avbryt körningen" }).click();
+    }
+    await expect.poll(() => held, { message: `${action} is on its way to Eneo` }).toBe(true);
+
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+    await record(page, "Spela in");
+    const answered = page.waitForResponse(retry ? "**/retry/" : "**/cancel/");
+    release();
+    await answered;
+    // Time for what the answer would start: the address, the run's view, its first status read.
+    await page.waitForTimeout(1_500);
+    expect(new URL(page.url()).searchParams.has("run"), "the setup's address names no run").toBe(false);
+    await expect(page.getByRole("toolbar", { name: "Inspelningen" }).getByRole("button", { name: "Stoppa" }), "the recording's controls stay").toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Spelar in." })).toBeAttached();
+  });
+}
+
+test("Försök igen answered while the failed run is still shown opens the run Eneo continues it in", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width");
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await setup(page);
+  await page.getByRole("listitem").filter({ hasText: "Misslyckades" }).getByRole("button").click();
+  await page.getByRole("button", { name: "Försök igen" }).click();
+  await expect(page.getByRole("heading", { name: "Dokumentet skapas", level: 1 })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("run"), "the address names the new run").not.toBe(ids.runs.failed);
 });
 
 test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {

@@ -1,4 +1,3 @@
-import { correctionWriteProblem } from "./transcript-corrections";
 // Every request goes to same-origin /api/*: the Vite dev server proxies it to the backend, and in production the backend
 // serves the page and the API. The backend proxies /api/eneo/* to Eneo with the module's service key and, in Eneo SSO
 // mode, the short-lived module-user token from its HttpOnly session.
@@ -1263,6 +1262,8 @@ export async function saveTranscriptCorrections(
   stepId: string,
   body: TranscriptCorrectionsEditRequest,
 ) {
+  // Loaded where corrections are saved, not with every page: the transcript that saves them has already loaded it.
+  const { correctionWriteProblem } = await import("./transcript-corrections");
   const problem = correctionWriteProblem({ ...body, schemaVersion: body.schema_version, segmentsHash: body.segments_hash, revision: body.expected_revision, speakerNames: body.speaker_names });
   if (problem) throw new Error(problem);
   return request<TranscriptCorrectionsPublic>(
