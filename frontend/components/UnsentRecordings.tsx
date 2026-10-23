@@ -189,6 +189,9 @@ export function UnsentRecordings({
   // The card leads with one recording; the rest follow it, folded away on the flow list.
   const lead = folded ? (resumable ?? recordings[0]) : recordings[0];
   const rest = recordings.filter((recording) => recording !== lead);
+  // Never folded away: one whose latest audio is only in this tab, which closing the tab would lose.
+  const foldedAway = folded ? rest.filter((recording) => !recording.refused) : [];
+  const inView = rest.filter((recording) => !foldedAway.includes(recording));
   // Where a send goes, said only where a row has one (UnsentRecordingRow): not for a recording another tab holds, one this
   // browser may only save as a file, or one without audio.
   const sendable = onSend !== undefined && recordings.some((recording) => hasAudio(recording) && !recording.exportOnly && !recording.elsewhere);
@@ -221,29 +224,58 @@ export function UnsentRecordings({
   return (
     <Card role="region" aria-labelledby={headingId} padding={folded ? (narrow ? 4 : 6) : laptop ? 8 : tablet ? 6 : 4}>
       <VStack gap={4}>
-        {row(lead, head, <DeviceSentence cutOff={cutOff} count={recordings.length} evictable={evictable} sendable={sendable} refused={lead.refused ?? null} />)}
-        {rest.length > 0 &&
-          (folded ? (
-            <Collapsible trigger={rest.length === 1 ? "En inspelning till" : `${rest.length} inspelningar till`} defaultIsOpen={false}>
-              <List hasDividers>{rest.map((recording) => row(recording))}</List>
-            </Collapsible>
-          ) : (
-            <List hasDividers>{rest.map((recording) => row(recording))}</List>
-          ))}
+        {row(
+          lead,
+          head,
+          <DeviceSentence
+            cutOff={cutOff}
+            count={recordings.length}
+            evictable={evictable}
+            sendable={sendable}
+            refused={lead.refused ?? null}
+            allKept={recordings.every((recording) => !recording.refused)}
+          />,
+        )}
+        {inView.length > 0 && <List hasDividers>{inView.map((recording) => row(recording))}</List>}
+        {foldedAway.length > 0 && (
+          <Collapsible trigger={foldedAway.length === 1 ? "En inspelning till" : `${foldedAway.length} inspelningar till`} defaultIsOpen={false}>
+            <List hasDividers>{foldedAway.map((recording) => row(recording))}</List>
+          </Collapsible>
+        )}
       </VStack>
     </Card>
   );
 }
 
+/** What a recording the device stopped keeping partway says: the latest of it is in this tab only. */
+const tabOnly = (refused: DeviceRefusal) =>
+  `${refused === "full" ? "Enheten är full, så det senaste" : "Det senaste"} av inspelningen finns bara i den här fliken. Stäng inte fliken.`;
+
 /**
  * The device sentence under the heading: where the recordings are kept, and for how long. A recording the device stopped
  * keeping (`refused`, in this tab) is not said to be on the device: closing the tab on that word would lose its latest part.
+ * Of several, they are said to be on the device only when all are (`allKept`); one that is not says so in its own row.
  */
-function DeviceSentence({ cutOff, count, evictable, sendable, refused }: { cutOff: boolean; count: number; evictable: boolean; sendable: boolean; refused: DeviceRefusal | null }) {
+function DeviceSentence({
+  cutOff,
+  count,
+  evictable,
+  sendable,
+  refused,
+  allKept,
+}: {
+  cutOff: boolean;
+  count: number;
+  evictable: boolean;
+  sendable: boolean;
+  refused: DeviceRefusal | null;
+  allKept: boolean;
+}) {
+  if (!refused && count > 1 && !allKept) return null;
   return (
         <Text as="p" type="supporting" color="secondary" data-measure>
           {refused
-            ? `${refused === "full" ? "Enheten är full, så det senaste" : "Det senaste"} av inspelningen finns bara i den här fliken. Stäng inte fliken.`
+            ? tabOnly(refused)
             : cutOff
             ? `Den fortsätter i samma inspelning när du väljer Fortsätt spela in.${sendable ? " När den har skickats till Eneo går det inte att fortsätta." : ""}`
             : count === 1
@@ -498,6 +530,7 @@ function UnsentRecordingRow({
                 {recordingDetails(recording, { withFlowName })}
               </Text>
               {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
+              {recording.refused && <Text as="p">{tabOnly(recording.refused)}</Text>}
             </VStack>
           </HStack>
           {actions}
