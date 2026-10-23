@@ -1,7 +1,6 @@
 - main:
-  - paragraph: Intervju till sammanfattning · Väntar på din granskning
   - heading "Vem är vem?" [level=1]
-  - paragraph: Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter.
+  - paragraph: Intervju till sammanfattning
   - paragraph: /Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
   - group "Talare":
     - heading "Talare" [level=2]
@@ -12,31 +11,19 @@
       - listitem: Anna Berg Talare 1
       - listitem: Erik Lund Talare 2 Osäkert förslag
       - listitem: Talare 3 Inget namn
-    - paragraph: Talare utan namn behåller sin etikett i transkriberingen.
   - button "Godkänn och fortsätt":
     - text: ""
     - status
   - button "Avvisa körningen":
     - text: ""
     - status
+  - paragraph: Talare utan namn behåller sin etikett i transkriberingen.
   - region "Inspelning och transkribering":
     - heading "Transkribering" [level=2]
     - button "Ladda ner granskad transkribering":
       - text: ""
       - status
-    - group "Visa talare":
-      - button "Alla" [pressed]:
-        - text: ""
-        - status
-      - button "Anna Berg":
-        - text: ""
-        - status
-      - button "Erik Lund":
-        - text: ""
-        - status
-      - button "Talare 3":
-        - text: ""
-        - status
+    - combobox "Filtrera talare": Alla talare
     - text: Sök i transkriberingen
     - textbox "Sök i transkriberingen"
     - status
@@ -77,12 +64,12 @@
         - button /Spela från 0:\d+ i del 2/
         - button /Rätta repliken från 0:\d+ i del 2/
         - text: Nya turer börjar gälla efter höstlovet.
-    - button "Hastighet 1×":
-      - text: ""
-      - status
     - 'group "Uppspelning: Inspelningen"':
       - button "Spela upp":
         - status
       - text: Position i inspelningen
       - slider "Position i inspelningen"
-      - text: /0:\d+ \/ 0:\d+/
+      - text: /^0:\d+$/
+      - button "Hastighet 1×":
+        - text: 1×
+        - status

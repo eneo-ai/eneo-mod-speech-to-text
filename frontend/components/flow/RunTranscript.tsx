@@ -1,4 +1,5 @@
 import { Download, RotateCcw } from "lucide-react";
+import type { ReactNode } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -8,6 +9,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
@@ -90,10 +92,14 @@ export function RunTranscriptView({
   playback,
   naming,
   ownerId,
+  headingHidden = false,
 }: {
   flowId: string;
   runId: string;
   fileName: string;
+  /** Under the result's tabs (below a laptop's width): the tab "Transkribering" names the card, so its heading is only
+   *  heard, and its copy and download join the player's first row. */
+  headingHidden?: boolean;
   /** The page's playback, when it shows the recording's controls elsewhere too. */
   playback?: Playback;
   transcript: TranscriptContext;
@@ -125,7 +131,7 @@ export function RunTranscriptView({
     // transcript stands (its tab, its column), not left as an empty panel.
     return (
       <VStack as="section" aria-labelledby="run-transcript" gap={3} hAlign="start">
-        <Heading level={2} id="run-transcript">
+        <Heading level={2} id="run-transcript" tabIndex={-1}>
           Transkribering
         </Heading>
         {transcript.correctionProblem ? (
@@ -146,21 +152,32 @@ export function RunTranscriptView({
   // Unread or unreadable saved corrections, or only the start of a longer transcript: an export now
   // would silently drop the corrections or pass the start off as the whole.
   const unread = Boolean(transcript.correctionProblem) || transcript.textPreview;
+  const download = () => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName);
+  const actions = (fits: boolean) => <TranscriptActions plain={plain} unread={unread} onDownload={download} fits={fits} />;
 
   return (
     // From a laptop's width the card keeps to the window and its text scrolls inside it, the player docked below.
     <Card padding={0} role="region" aria-labelledby="run-transcript" className={styles.card}>
-      <TranscriptHeader plain={plain} unread={unread} fileName={fileName} />
+      {/* Under the result's tabs the tab names the card, so its heading is only heard, and its copy and download join the
+          player's first row (the speakers' row where they can be named) rather than take a row of their own. The heading
+          takes the focus when a link leads to it (a failed run's "Gå till transkriberingen"). */}
+      {headingHidden ? (
+        <VisuallyHidden as="h2" id="run-transcript" tabIndex={-1}>
+          Transkribering
+        </VisuallyHidden>
+      ) : (
+        <TranscriptHeader actions={actions} />
+      )}
       {/* Quiet, since the transcript is whole: only the click on a word cannot find its moment. */}
       {transcript.wordTimingFailed && transcript.fileIds.length > 0 && !unread && (
-        <HStack paddingInline={3} paddingBlockEnd={2}>
+        <HStack paddingInline={3} paddingBlockEnd={2} className={styles.inset}>
           <Text as="p" type="supporting">
             Ordtiderna kunde inte tas fram den här gången. Ett klick i texten spelar från början av avsnittet.
           </Text>
         </HStack>
       )}
       {(unread || localError || saveState === "error" || hasDropped) && (
-        <VStack gap={2} hAlign="start" paddingInline={3} paddingBlockEnd={3}>
+        <VStack gap={2} hAlign="start" paddingInline={3} paddingBlockEnd={3} className={styles.inset}>
           {unread && (
             <HStack wrap="wrap" vAlign="center" gap={3}>
               <Text color="secondary">
@@ -198,6 +215,7 @@ export function RunTranscriptView({
         playback={playback}
         naming={naming && { description: namingDescription(naming), draftKey: naming.draftKey, save: saveNow, participants: naming.participants }}
         ownerId={ownerId}
+        actions={headingHidden ? actions : undefined}
       />
     </Card>
   );
@@ -218,35 +236,41 @@ function namingDescription({ thing, delivered, hasDocument }: { thing: string; d
 }
 
 /**
- * The transcript's heading with its copy and download: beside it where the header has room, in one menu where it has
- * not (the column of a narrow laptop, a phone), as the document's own actions fold.
+ * The transcript's heading with its copy and download beside it, where the header has room, else folded into one menu
+ * (the column of a narrow laptop), as the document's own actions fold. The heading takes the focus when a link leads to
+ * it (a failed run's "Gå till transkriberingen").
  */
-function TranscriptHeader({ plain, unread, fileName }: { plain: string; unread: boolean; fileName: string }) {
+function TranscriptHeader({ actions }: { actions: (fits: boolean) => ReactNode }) {
   const room = useRoomInRow();
-  const download = () => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName);
   return (
-    <HStack ref={room.ref} hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3}>
-      <Heading level={2} id="run-transcript">
+    <HStack ref={room.ref} hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={3} className={styles.inset}>
+      <Heading level={2} id="run-transcript" tabIndex={-1}>
         Transkribering
       </Heading>
-      {room.fits ? (
-        <HStack wrap="wrap" gap={2}>
-          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
-          <Button
-            variant="ghost"
-            size="sm"
-            isDisabled={unread}
-            icon={<Icon icon={Download} />}
-            label="Ladda ner som text, transkriberingen"
-            onClick={download}
-          >
-            Ladda ner som text
-          </Button>
-        </HStack>
-      ) : (
-        <TranscriptMenu plain={plain} unread={unread} onDownload={download} />
-      )}
+      {actions(room.fits)}
     </HStack>
+  );
+}
+
+/** Kopiera and Ladda ner som text: one line where its row has room for it (`fits`), else the menu. The two never wrap under
+ *  each other, so the row measures what one line needs. */
+function TranscriptActions({ plain, unread, onDownload, fits }: { plain: string; unread: boolean; onDownload: () => void; fits: boolean }) {
+  return fits ? (
+    <HStack gap={2} className={styles.trailing}>
+      <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
+      <Button
+        variant="ghost"
+        size="sm"
+        isDisabled={unread}
+        icon={<Icon icon={Download} />}
+        label="Ladda ner som text, transkriberingen"
+        onClick={onDownload}
+      >
+        Ladda ner som text
+      </Button>
+    </HStack>
+  ) : (
+    <TranscriptMenu plain={plain} unread={unread} onDownload={onDownload} />
   );
 }
 

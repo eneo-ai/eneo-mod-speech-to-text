@@ -17,6 +17,7 @@
     - status
     - heading "Inspelning" [level=2]
     - text: /Spelar in 0:\d+/
+    - status: "Lås inte skärmen och byt inte app: ljud kan saknas."
     - toolbar "Inspelningen":
       - button "Pausa":
         - text: ""
@@ -24,6 +25,5 @@
       - button "Stoppa":
         - text: ""
         - status
-    - status:
-      - paragraph: "Lås inte skärmen och byt inte app: ljud kan saknas."
+    - status
     - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.

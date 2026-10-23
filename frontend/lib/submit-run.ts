@@ -241,6 +241,16 @@ const askRun = <T>(op: () => Promise<T>, opts: RetryOptions) => withRetry(op, { 
  * and so is a part's unfinished upload in parts, which the next send continues
  * where the module has it; the local copy is deleted once Eneo has accepted the run.
  */
+/**
+ * A recording of a minute or more with under a kilobyte a minute holds no sound: Opus spends more than that on silence.
+ * A microphone that gave nothing (one that ended under the recorder, a simulator's) leaves a few bytes for a whole
+ * meeting, which Eneo could only fail to transcribe.
+ */
+function soundless(files: readonly { blob: Blob }[], parts: readonly { durationMs: number }[]) {
+  const minutes = parts.reduce((sum, part) => sum + part.durationMs, 0) / 60_000;
+  return minutes >= 1 && files.reduce((sum, file) => sum + file.blob.size, 0) < 1024 * minutes;
+}
+
 export async function submitRecording(
   store: RecordingStore,
   id: string,
@@ -346,7 +356,7 @@ async function sendLeased(
       }
       // Every chunk of every part, or the integrity error: before the recording is sealed, so it stays as it is.
       const files = await store.readPartsToSend(id);
-      if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
+      if (files.length === 0 || soundless(files, recording.parts)) throw new Error("Inspelningen innehåller inget ljud.");
       // Sealed from here on: see `sealed`.
       await store.setState(id, "uploading");
       run = await submitRun(

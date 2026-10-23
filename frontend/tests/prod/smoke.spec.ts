@@ -16,7 +16,7 @@ test("the design system is styled, themed and working in the built app @fixture"
   const primary = page.getByRole("button", { name: "Primär" });
   // A lost cascade layer shows as a button without padding; a theme that did not load, as another accent.
   expect(await primary.evaluate((button) => getComputedStyle(button).paddingInline)).not.toBe("0px");
-  expect(await primary.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe("rgb(0, 69, 149)");
+  expect(await primary.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe("rgb(21, 99, 188)"); // #1563BC
   await page.getByRole("button", { name: "Konto" }).click();
   await expect(page.getByRole("menuitem", { name: "Logga ut" })).toBeVisible();
   await page.keyboard.press("Escape");

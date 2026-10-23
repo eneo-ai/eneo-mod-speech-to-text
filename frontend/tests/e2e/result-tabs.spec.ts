@@ -3,7 +3,8 @@
  * each tab keeps. Both are behaviour the design system's tab strip and layout must not change.
  */
 import { expect, test } from "./gate";
-import { isLaptop, result } from "./screens";
+import { isLaptop, result, run } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(isLaptop(info) || info.project.name === "reduced-motion", "the tabs are below a laptop's width"));
 
@@ -58,8 +59,9 @@ test("Visa i transkriberingen on the docked player takes the person to the trans
 });
 
 test("a copy from the transcript's menu that the clipboard refuses says so beside the menu, and the next one is copied", async ({ page }) => {
-  // A phone's column: the transcript's copy and download fold into its menu there.
-  await page.setViewportSize({ width: 390, height: 844 });
+  // The narrowest phone: the transcript's copy and download fold into its menu there. On a wider phone they stand in the
+  // row, which under the tabs holds no heading of its own.
+  await page.setViewportSize({ width: 320, height: 568 });
   // A clipboard that refuses until it is let through, as a page without the permission and then with it.
   await page.addInitScript(() => {
     const state = window as unknown as { clipboardRefuses: boolean };
@@ -85,4 +87,41 @@ test("a copy from the transcript's menu that the clipboard refuses says so besid
   await menu.click();
   await page.getByRole("menuitem", { name: "Kopiera transkriberingen" }).click();
   await expect(failed).toBeHidden();
+});
+
+test("the head's lines: the flow's name and when it was made on one line from 360 px, each on its own under it, and the details in two lines at most", async ({ page }, info) => {
+  test.skip(!info.project.name.startsWith("phone"), "a phone's widths, the narrowest and the common one");
+  await result(page);
+  const flow = page.getByRole("main").locator("p", { hasText: /^Nämndmöte till rapport$/ }).first();
+  const made = page.getByRole("main").locator("p", { hasText: /^Skapad / }).first();
+  const [a, b] = [await flow.boundingBox(), await made.boundingBox()];
+  const narrowest = info.project.use.viewport!.width < 360;
+  if (narrowest) {
+    expect(b!.y, "when it was made, under the flow's name").toBeGreaterThanOrEqual(a!.y + a!.height - 1);
+    await expect(page.getByRole("main").getByText("・", { exact: true }), "no dot left at the end of a line").toHaveCount(0);
+  } else {
+    expect(Math.abs(b!.y - a!.y), "beside each other").toBeLessThan(4);
+  }
+  const details = page.getByRole("main").locator("p", { hasText: /^Deltagare: / }).first();
+  expect(await details.evaluate((line) => getComputedStyle(line).webkitLineClamp), "two lines at most").toBe("2");
+});
+
+test("the tab strip owns only its tabs, also while the document can be made again with the corrections", async ({ page }) => {
+  await run(page, ids.runs.corrected);
+  await expect(page.getByText("Dokumentet skapades före dina ändringar")).toBeVisible();
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  const strip = page.getByRole("tablist");
+  await expect(strip.getByRole("tab", { name: /kan skapas igen/ })).toBeVisible();
+  const owned = await strip.evaluate((list) => [...list.querySelectorAll("*")].filter((element) => element.getAttribute("role") === "tooltip").length);
+  expect(owned, "no tooltip in the tab strip").toBe(0);
+});
+
+test("the tab chosen is kept for the run through a reload, as a phone's browser does to a tab in the background", async ({ page }) => {
+  await result(page);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Transkribering" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Dokument" }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Dokument" })).toHaveAttribute("aria-selected", "true");
 });

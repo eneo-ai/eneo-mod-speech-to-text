@@ -8,12 +8,12 @@ web (responsive: phone, tablet, laptop, wide desktop)
 
 React 19, Vite, react-router, Astryx 0.6.3 (pinned) with the module's theme `kit/theme/eneo.theme.ts`. CSS Modules with
 Astryx tokens only for the bespoke surfaces (transcript text, level meter, docked player, the flow page's frame). No
-Tailwind, no StyleX authoring. Served by the module's FastAPI backend under a strict CSP: no fonts or scripts from other
-origins.
+Tailwind, no StyleX authoring. Figtree (Eneo's face) is bundled from `@fontsource-variable/figtree`. Served by the
+module's FastAPI backend under a strict CSP: no fonts or scripts from other origins.
 
 ## Users
 
-Municipal employees (Sundsvalls kommun and other Eneo deployments): secretaries, case officers and managers who record
+Municipal employees of Eneo deployments (for example Sundsvalls kommun): secretaries, case officers and managers who record
 meetings and interviews, or upload a recording, and need a transcript or a finished document (minutes, a report). Most
 are not technical. They work on a laptop at a desk, on a phone in a meeting room, and sometimes on a tablet.
 
@@ -39,7 +39,8 @@ copies and downloads the result.
 ## Brand Commitments
 
 The deployment's own name, logo and accent colour (`docs/branding.md`); the accent must reach 4.5:1. The default is
-Sundsvalls kommun with the Eneo blue.
+Eneo: its wordmark (a light and a dark file), its blue and its mark as the tab's icon. A deployment's own name is also
+credited under the sign-in ("{name} använder Eneo.").
 
 ## Product Principles
 

@@ -319,11 +319,12 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
 });
 
-test("Esc, Stäng and Avbryt only close: the typed names are there when the dialog opens again", async (t) => {
-  // JD-02: one click beside the dialog, to look at the transcript, lost every typed name.
+test("Esc and Stäng only close, with the typed names there when the dialog opens again; Avbryt throws them away", async (t) => {
+  // JD-02: one click beside the dialog, to look at the transcript, lost every typed name. Avbryt says what it does.
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-3" };
   const { view, trigger, field } = await dialog({ draftKey });
+  const before = field("Talare 2").value;
   const shut = () => !document.querySelector("dialog[open]");
   const escape = (target: Element) => view.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await view.act(async () => type(field("Talare 2"), "Bertil Eklund"));
@@ -338,10 +339,10 @@ test("Esc, Stäng and Avbryt only close: the typed names are there when the dial
   await view.act(async () => button(document.body, "Avbryt")!.click());
   assert.ok(shut(), "Avbryt closes");
   await view.act(async () => trigger.click());
-  assert.equal(field("Talare 2").value, "Bertil Eklund", "kept through Avbryt: every way out does the same");
+  assert.equal(field("Talare 2").value, before, "thrown away by Avbryt: the dialog opens as it was");
 });
 
-test("names typed but not saved come back after a reload, in the open dialog, also after Avbryt; Spara namnen ends them", async (t) => {
+test("names typed but not saved come back after a reload, in the open dialog, until Avbryt; Spara namnen ends them", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-1" };
   const first = await dialog({ draftKey });
@@ -370,7 +371,7 @@ test("names typed but not saved come back after a reload, in the open dialog, al
   await again.act(async () => button(document.body, "Avbryt")!.click());
   await again.unmount();
   const cancelled = await reloaded();
-  assert.equal(field("Talare 2")?.value, "Erik Lund", "Avbryt only closed: open again after a reload, with the name");
+  assert.equal(field("Talare 2"), null, "Avbryt threw the draft away: after a reload the dialog does not open by itself");
   await cancelled.unmount();
 
   const typed = await dialog({ draftKey });
@@ -509,4 +510,36 @@ test("names kept through a reload come back only as a list of speakers with thei
   assert.equal(fieldNamed("Vem är Talare 2?")?.value, "Erik Lund", "and open the dialog with them");
   assert.equal(fieldNamed("Vem är Talare 1?")?.value, "Anna Berg", "a speaker the draft has no row for keeps the review's name");
   await view.unmount();
+});
+
+test("a run started without participants offers the names this person gave before, and a save remembers the names given", async (t) => {
+  const key = "tal-till-text:user-1:recent-names";
+  t.after(() => window.localStorage.removeItem(key));
+  window.localStorage.setItem(key, JSON.stringify(["Karin Ek", "Agne Lind"]));
+  const offered = (label: string) =>
+    [...document.querySelectorAll<HTMLElement>(`[aria-label="Förslag: Vem är ${label}?"] [role="option"]`)].map((o) => o.textContent);
+
+  const withParticipants = await dialog({ draftKey: { ownerId: "user-1", name: "names:run-2" } });
+  await withParticipants.view.act(async () => withParticipants.field("Talare 2").click());
+  assert.ok(!offered("Talare 2").includes("Karin Ek"), "the run's own participants, not the names of other meetings");
+  await withParticipants.view.unmount();
+
+  const without = await dialog({ participants: [], draftKey: { ownerId: "user-1", name: "names:run-3" } });
+  await without.view.act(async () => without.field("Talare 2").click());
+  assert.ok(offered("Talare 2").includes("Karin Ek") && offered("Talare 2").includes("Agne Lind"), "the names given before");
+  assert.ok(offered("Talare 2").some((name) => name?.startsWith("Anna Berg")), "and the names in the dialog");
+  await without.view.act(async () => type(without.field("Talare 2"), "Sara Holm"));
+  await without.view.act(async () => button(document.body, "Spara namnen")!.click());
+  const remembered = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+  assert.deepEqual(remembered.slice(0, 2).sort(), ["Anna Berg", "Sara Holm"], "the names given, first");
+  assert.ok(remembered.includes("Karin Ek"), "the earlier ones kept after them");
+});
+
+test("a refused save remembers no names", async (t) => {
+  const key = "tal-till-text:user-1:recent-names";
+  t.after(() => window.localStorage.removeItem(key));
+  const view = await dialog({ participants: [], draftKey: { ownerId: "user-1", name: "names:run-4" }, onSave: async () => "Namnen kunde inte sparas." });
+  await view.view.act(async () => type(view.field("Talare 2"), "Sara Holm"));
+  await view.view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.equal(window.localStorage.getItem(key), null);
 });

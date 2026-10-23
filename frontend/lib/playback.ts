@@ -37,6 +37,8 @@ export interface PlaybackSnapshot {
   playing: boolean;
   /** A start waits for the part's audio to load; toggle() and pause() cancel it. */
   starting: boolean;
+  /** Playing, the audio has stopped for want of data (a slow or dropping network) until it has more. */
+  buffering: boolean;
   /** Playback has started or been moved; until then the position is only where it begins. */
   started: boolean;
   rate: number;
@@ -97,6 +99,7 @@ export class Playback {
   private part = 0;
   private withinMs = 0;
   private playing = false;
+  private buffering = false;
   private started = false;
   private rate = 1;
   private unavailable = false;
@@ -293,6 +296,21 @@ export class Playback {
 
   onPause = (): void => {
     this.playing = false;
+    this.buffering = false;
+    this.emit();
+  };
+
+  /** The element stopped for want of data. Only while it plays: a paused element that loads keeps nobody waiting. */
+  onWaiting = (): void => {
+    if (!this.playing || this.buffering) return;
+    this.buffering = true;
+    this.emit();
+  };
+
+  /** The element plays on with data again. */
+  onPlaying = (): void => {
+    if (!this.buffering) return;
+    this.buffering = false;
     this.emit();
   };
 
@@ -338,12 +356,14 @@ export class Playback {
       this.playing = false;
       this.withinMs = this.lengths()[this.part] ?? this.withinMs;
     }
+    this.buffering = false;
     this.emit();
   };
 
   onError = (): void => {
     this.unavailable = true;
     this.playing = false;
+    this.buffering = false;
     // Nothing is waiting for audio that has failed: no spinner for a press it answered. A retry comes back to this place.
     this.pending = null;
     this.stopAt = null;
@@ -480,6 +500,7 @@ export class Playback {
       atEnd: this.part === this.sources.length - 1 && this.atPartEnd(),
       playing: this.playing,
       starting: this.pending?.play === true,
+      buffering: this.buffering,
       started: this.started,
       rate: this.rate,
       unavailable: this.unavailable,

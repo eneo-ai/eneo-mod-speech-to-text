@@ -1,13 +1,14 @@
-import { Download, FileText, Trash2 } from "lucide-react";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { Download, FileText, Mic, Trash2 } from "lucide-react";
+import { type RefObject, type UIEvent, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { ActionRow } from "@/components/ActionRow";
+import { ActionRow, STACKED } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
@@ -15,7 +16,7 @@ import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { StoppedWhileSignedOut } from "@/components/flow/Recorder";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { StateCard } from "@/components/flow/StateCard";
+import { StateCard, StateHead } from "@/components/flow/StateCard";
 import { useSaveRecording } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import type { LiveSession, Problem } from "@/lib/flow-session";
@@ -64,10 +65,47 @@ function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; 
   return { sources, unreadable };
 }
 
+/** Where the draft is being read: the paragraph at its top, how far into that paragraph, at what width, and its focus. */
+type DraftReading = { paragraph: number; within: number; width: number; focused: boolean };
+
+/** The paragraph at the top of the draft's box and how far into it: the lines wrap anew at another width, paragraphs do not. */
+function readingOf(region: HTMLElement) {
+  const top = region.getBoundingClientRect().top;
+  const boxes = [...region.querySelectorAll(":scope > p")].map((p) => p.getBoundingClientRect());
+  const paragraph = Math.max(0, boxes.findIndex((box) => box.bottom > top));
+  const box = boxes[paragraph];
+  return { paragraph, within: box?.height ? (top - box.top) / box.height : 0, width: region.clientWidth };
+}
+
 /** Strömma's live text after Stoppa, to read and copy until the document brings the final text. */
-function LiveDraft({ live, makesText }: { live: LiveSession; makesText: boolean }) {
+function LiveDraft({ live, makesText, reading }: { live: LiveSession; makesText: boolean; reading: RefObject<DraftReading | null> }) {
   const { pieces } = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
+  // The panel has the draft in one of two places, and a window crossing the phone's width puts it in the other: a new
+  // element, which goes on where the last one was read, with its focus.
+  const keepReading = useCallback(
+    (region: HTMLElement | null) => {
+      if (!region) return;
+      const was = reading.current;
+      if (was) {
+        const anchor = region.querySelectorAll(":scope > p")[was.paragraph]?.getBoundingClientRect();
+        if (anchor) region.scrollTop += anchor.top - region.getBoundingClientRect().top + was.within * anchor.height;
+        if (was.focused) region.focus();
+      }
+      reading.current = { ...readingOf(region), focused: was?.focused ?? false };
+      return () => {
+        reading.current!.focused = document.activeElement === region;
+      };
+    },
+    [reading],
+  );
+  // Kept as it is read, since by the time the element is replaced the browser has already wrapped its text at the new width
+  // and cut its scroll to fit. That cut is a scroll too, at another width than the last one read: not the reader's.
+  const read = (event: UIEvent<HTMLElement>) => {
+    const region = event.currentTarget;
+    const was = reading.current!;
+    reading.current = region.clientWidth === was.width ? { ...readingOf(region), focused: was.focused } : { ...was, width: region.clientWidth };
+  };
   const texts = paragraphs(pieces).map((group) => group.map((piece) => piece.text).join(" "));
   if (texts.length === 0) return null;
   return (
@@ -84,7 +122,7 @@ function LiveDraft({ live, makesText }: { live: LiveSession; makesText: boolean 
         <CopyButton text={texts.join("\n\n")} label="Kopiera" />
       </HStack>
       {/* Scrolls on its own, by keyboard too, so a long meeting's draft keeps the actions in reach. */}
-      <VStack role="region" aria-labelledby={headingId} tabIndex={0} isScrollable gap={3} className={styles.draft}>
+      <VStack ref={keepReading} onScroll={read} role="region" aria-labelledby={headingId} tabIndex={0} isScrollable gap={3} className={styles.draft}>
         {texts.map((text, index) => (
           <Text as="p" key={index}>
             {text}
@@ -108,8 +146,9 @@ export function ReadyPanel({
   finishQueued = false,
   makesText = false,
   forwarded = null,
+  awaitingDevice = false,
   onCreate,
-  onContinue,
+  onContinue: continueStopped,
   onDiscard,
   earlierRuns,
   onOpenRun,
@@ -128,6 +167,11 @@ export function ReadyPanel({
   makesText?: boolean;
   /** Where the result goes on to a receiver: said above the action that sends it (`forwardedLine`). */
   forwarded?: string | null;
+  /**
+   * Stoppa ended before the device answered: the recording is not yet as the device holds it, so its length and audio are
+   * not known. Neither is said, and the ways on with it wait, until the stored one is here.
+   */
+  awaitingDevice?: boolean;
   /** Absent while the flow cannot run: the recording is then saved as a file or deleted, under the reason (`problem`). */
   onCreate?: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
@@ -157,11 +201,15 @@ export function ReadyPanel({
     wasConfirming.current = confirming;
   }, [confirming]);
   const name = recordingName(recording.startedAt);
+  // The player's time says the length once each part's is known, in whole seconds as its clock counts them.
+  const lengthPlayed = sources.length > 0 && sources.every((source) => (source.durationMs ?? 0) >= 1_000);
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
-  // No audio reached the device: nothing to make or save, only going on and deleting.
-  const audio = hasAudio(recording);
-  const awaitingStop = recording.parts.some((part) => part.endConfirmed === false);
+  // No audio reached the device: nothing to make or save, only going on and deleting. Not known while it has not answered.
+  const audio = !awaitingDevice && hasAudio(recording);
+  const empty = !awaitingDevice && !audio;
+  const awaitingStop = !awaitingDevice && recording.parts.some((part) => part.endConfirmed === false);
   const create = audio && !awaitingStop ? onCreate : undefined;
+  const onContinue = awaitingDevice ? undefined : continueStopped;
   // Stopped a moment after it started, most likely by mistake, or with nothing kept: going on is the likely next step.
   const moment = onContinue !== undefined && (recording.durationMs < 2_000 || !audio);
   const createButton = create && (
@@ -189,6 +237,36 @@ export function ReadyPanel({
     />
   );
 
+  const stacked = useMediaQuery(STACKED);
+  const draftReading = useRef<DraftReading | null>(null);
+  // The quiet ways: keeping the audio as a file and deleting it. A ghost button's own padding would set its icon in from
+  // the card's content edge, where the words above start: the group stands out by that much.
+  const quiet = (
+    <HStack gap={2} wrap="wrap" className={audio || !sent ? styles.quiet : undefined}>
+      {audio && (
+        <Button
+          label={saving.label}
+          variant="ghost"
+          icon={<Icon icon={Download} size="sm" />}
+          isLoading={saving.busy}
+          isInterruptible
+          onClick={() => void save()}
+        />
+      )}
+      <Button
+        ref={trigger}
+        label={sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
+        variant={sent ? "secondary" : "ghost"}
+        icon={<Icon icon={Trash2} size="sm" />}
+        onClick={() => setConfirming(true)}
+      />
+    </HStack>
+  );
+  // Which one is main follows the recording: a very short one was most likely stopped by mistake.
+  const decision = (create || onContinue) && (
+    <ActionRow>{(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}</ActionRow>
+  );
+
   async function save() {
     setSaveProblem(null);
     if (!(await saving.save())) setSaveProblem({ title: "Inspelningen kunde inte sparas som fil.", detail: "Försök igen." });
@@ -197,33 +275,27 @@ export function ReadyPanel({
   return (
     <StateCard>
       <StoppedWhileSignedOut />
+      {/* The same head as the sending and the run that follow it in this card: a tile beside the heading. An h2 at its
+          level's size: the flow's name beside it is the page's heading. */}
       <VStack gap={1}>
-        <Heading level={2} data-phase-heading tabIndex={-1}>
-          Inspelningen är klar
-        </Heading>
+        <StateHead icon={Mic}>
+          <Heading level={2} data-phase-heading tabIndex={-1}>
+            Inspelningen är klar
+          </Heading>
+        </StateHead>
+        {/* Its length where the player under it does not say it, once the device has given it. */}
         <Text as="p" color="secondary">
-          {name} · {formatDuration(recording.durationMs)}
+          {lengthPlayed || awaitingDevice ? name : `${name} · ${formatDuration(recording.durationMs)}`}
         </Text>
       </VStack>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
       {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
-      {live && <LiveDraft live={live} makesText={makesText} />}
+      {/* The draft to read and copy: under the player, and on a phone under the decision, which it would push off the
+          first screen. */}
+      {live && !stacked && <LiveDraft live={live} makesText={makesText} reading={draftReading} />}
 
-      {audio ? (
-        <HStack>
-          <Button
-            label={saving.label}
-            variant="secondary"
-            icon={<Icon icon={Download} size="sm" />}
-            isLoading={saving.busy}
-            isInterruptible
-            onClick={() => void save()}
-          />
-        </HStack>
-      ) : (
-        <Text as="p">Inget ljud sparades i den här inspelningen.</Text>
-      )}
+      {empty && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {awaitingStop && <ProblemAlert problem={{ title: "Webbläsaren har inte bekräftat inspelningens stopp.", detail: "Spara ljudet som fil för att behålla det. Du kan sedan ladda upp filen i en ny inspelning." }} />}
@@ -235,14 +307,17 @@ export function ReadyPanel({
           device, and nothing more can be recorded on it), then where the recording is until the result is made. */}
       {audio &&
         (create ? (
-          <Text as="p" type="supporting">
-            {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
-            {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
-            {persistent
-              ? ` Den finns kvar på enheten tills ${made}.`
-              : ` Den finns bara i den här fliken, så stäng inte fliken innan ${made}.`}
-            {forwarded ? ` ${forwarded}` : ""}
-          </Text>
+          // What the filled action does is read before it is pressed: at the body's size, at a reading measure.
+          <VStack>
+            <Text as="p" color="secondary" data-measure>
+              {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
+              {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
+              {persistent
+                ? ` Den finns kvar på enheten tills ${made}.`
+                : ` Den finns bara i den här fliken, så stäng inte fliken innan ${made}.`}
+              {forwarded ? ` ${forwarded}` : ""}
+            </Text>
+          </VStack>
         ) : (
           <Text as="p" type="supporting">
             {persistent
@@ -250,28 +325,28 @@ export function ReadyPanel({
               : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
           </Text>
         ))}
-      {(create || onContinue) && (
-        <VStack gap={0}>
-          {/* Which one is main follows the recording: a very short one was most likely stopped by mistake. */}
-          <ActionRow>
-            {(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}
-          </ActionRow>
-          {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
+      {/* One footer: the quiet ways at its start and the decision at its end; on a phone the decision on top, its main
+          action first, and the quiet ways under it at their own widths. */}
+      <VStack gap={0}>
+        {stacked ? (
+          <VStack gap={2}>
+            {decision}
+            {quiet}
+          </VStack>
+        ) : (
+          <HStack hAlign="between" vAlign="center" gap={2} wrap="wrap">
+            {quiet}
+            {decision}
+          </HStack>
+        )}
+        {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
+        {(create || onContinue) && (
           <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
             {finishing ? (finishQueued ? "Slutför texten… Det skapas så snart den är klar." : "Slutför texten…") : ""}
           </Text>
-        </VStack>
-      )}
-
-      <HStack hAlign="start">
-        <Button
-          ref={trigger}
-          label={sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
-          variant={sent ? "secondary" : "ghost"}
-          icon={<Icon icon={Trash2} size="sm" />}
-          onClick={() => setConfirming(true)}
-        />
-      </HStack>
+        )}
+      </VStack>
+      {live && stacked && <LiveDraft live={live} makesText={makesText} reading={draftReading} />}
       <AlertDialog
         isOpen={confirming && !signedOut}
         onOpenChange={setConfirming}

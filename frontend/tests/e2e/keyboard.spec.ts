@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabKey, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, chooseMode, isLaptop, isPhone, needsRecording, pdfInDialog, result, run, setup, STATES } from "./screens";
+import { backLink, chooseMode, chooseSpeaker, GROUP_ENGINES, isLaptop, isPhone, longTranscript, needsRecording, pdfInDialog, result, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
@@ -33,6 +33,7 @@ const WALKS = [
   "setup-participants",
   "setup-microphone-check",
   "setup-required-detail",
+  "setup-review-waiting",
   "upload-chosen-file",
   "recording",
   "recording-details-open",
@@ -43,6 +44,7 @@ const WALKS = [
   "result-transcript-tab",
   "result-regenerate",
   "failure",
+  "failure-cancelled",
   "review",
   "review-reject",
   "review-text-edit",
@@ -84,6 +86,19 @@ test("K plays and pauses from anywhere on the page, before the player is clicked
   await search.press("k");
   await expect(search).toHaveValue("k");
   await expect(play, "typed, not played").toBeVisible();
+});
+
+test("Escape empties the transcript's search and leaves the focus in it", async ({ page }, info) => {
+  test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "a laptop's keyboard, and a phone's own");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const search = page.getByRole("searchbox", { name: "Sök i transkriberingen" }).or(page.getByRole("textbox", { name: "Sök i transkriberingen" }));
+  await search.fill("budget");
+  await expect(page.getByRole("button", { name: "Nästa träff" })).toBeVisible();
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(search, "the focus stays to type another").toBeFocused();
+  await expect(page.getByRole("button", { name: "Nästa träff" }), "the count and the arrows go with the query").toHaveCount(0);
 });
 
 test("K, J and L are turned off from the line that says them, stay off after a reload, and come back with Slå på", async ({ page }, info) => {
@@ -166,6 +181,109 @@ test("Avbryt redigering with a change asks first: Fortsätt redigera gives the f
   await expect(page.getByRole("main").locator("textarea")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Redigera" }), "the control that took the edit's place").toBeFocused();
 });
+
+// From a laptop's width the transcript scrolls in its own box. Firefox makes a box that scrolls a Tab stop of its own, but
+// gives it no focus: the next Tab after the link before the passages landed on nothing (2.4.7). Its passages' controls are
+// the way through it.
+test("from the link before the transcript, Tab goes to its first passage's control", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "the transcript scrolls in its own box from a laptop's width");
+  await result(page);
+  await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+  await page.keyboard.press(tabKey(page));
+  const focused = await page.evaluate(() => {
+    const element = document.activeElement!;
+    return { tag: element.tagName, name: element.getAttribute("aria-label") ?? element.textContent };
+  });
+  expect(focused).toEqual({ tag: "BUTTON", name: "Talare 1, ändra talare" });
+});
+
+// The browser skips a long transcript's passages while they are far from the window (content-visibility: auto,
+// TranscriptPlayer.module.css). What is in them is still the page's: found by the browser's find, reached by Tab, and
+// shown once it is. Each engine does this its own way.
+test.describe("a long transcript's passages far from the window", () => {
+  test.beforeEach(({}, info) => test.skip(!GROUP_ENGINES.includes(info.project.name), "a laptop and a phone in each engine"));
+
+  /** Whether the browser lays out what the passage shows, or skips it. */
+  const rendered = (passage: Locator) =>
+    passage
+      .locator("button")
+      .first()
+      .evaluate((control) => (control as HTMLElement & { checkVisibility(options: object): boolean }).checkVisibility({ contentVisibilityAuto: true }));
+  /** The passage the focus, or the selection, is in. */
+  const passageOf = (page: Page, of: "focus" | "selection") =>
+    page.evaluate((of) => {
+      const node = of === "focus" ? document.activeElement : getSelection()?.anchorNode;
+      return (node instanceof Element ? node : node?.parentElement)?.closest("[data-turn-index]")?.getAttribute("data-turn-index") ?? null;
+    }, of);
+
+  test("the browser's find reaches a passage it skips, selects the words there and shows them", async ({ page, browserName }, info) => {
+    await longTranscript(page, info);
+    // Passage 1,500 starts at 1:30:00, a time no other passage shows, a meeting's hour and a half below the window.
+    const far = page.locator('[data-turn-index="1500"]');
+    expect(await rendered(far), "the passage is skipped before the find").toBe(false);
+    // The browser's own find in the page, as its find bar (Ctrl+F) runs it.
+    expect(await page.evaluate(() => (window as unknown as { find(text: string): boolean }).find("1:30:00")), "found").toBe(true);
+    await settle(page);
+    expect(await passageOf(page, "selection"), "the selection is in the passage").toBe("1500");
+    expect(await rendered(far), "the passage is laid out").toBe(true);
+    // Chromium's window.find scrolls the page but no box in it, on a plain page as here (its find bar scrolls both, and
+    // has no automation): where the transcript scrolls in its own box, Chromium's find is the selection and the layout.
+    if (browserName === "chromium" && isLaptop(info)) return;
+    const seen = await page.evaluate(() => {
+      const box = getSelection()!.getRangeAt(0).getBoundingClientRect();
+      return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest("[data-turn-index]")?.getAttribute("data-turn-index") ?? null;
+    });
+    expect(seen, "what was found is in the window, under nothing").toBe("1500");
+  });
+
+  test("Tab from the link before a transcript read at its end goes to its first passage, which was skipped, and shows it focused", async ({ page }, info) => {
+    await longTranscript(page, info);
+    const first = page.locator('[data-turn-index="0"]');
+    await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+    // Read at its end with the focus left on the link: from a laptop's width the transcript's box scrolls, on a phone the page.
+    await page.locator('[data-turn-index="1999"]').evaluate((passage) => passage.scrollIntoView({ block: "end" }));
+    await settle(page);
+    expect(await rendered(first), "the first passage is skipped before the Tab").toBe(false);
+    await page.keyboard.press(tabKey(page));
+    expect(await passageOf(page, "focus"), "the focus is in the first passage").toBe("0");
+    const stop = await focusStop(page);
+    expect(stopProblems([stop!]), "its control is in the window with its focus seen").toEqual([]);
+    expect(await rendered(first), "the passage is laid out").toBe(true);
+  });
+
+  test("with one speaker chosen, Tab goes from one of theirs to the next and passes the others' passages", async ({ page }, info) => {
+    await longTranscript(page, info);
+    await chooseSpeaker(page, info, "Talare 2");
+    const theirs = await page.locator('[data-turn-index][aria-label^="Talare 2,"]').count();
+    await expect(page.locator("[data-turn-index]:not([hidden])")).toHaveCount(theirs, { timeout: 30_000 });
+    await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+    const passed: string[] = [];
+    for (let stop = 1; stop <= 12; stop++) {
+      await page.keyboard.press(tabKey(page));
+      const at = await passageOf(page, "focus");
+      expect(at, `Tab ${stop} is in a passage`).not.toBeNull();
+      if (passed.at(-1) !== at) passed.push(at!);
+    }
+    // Talare 2 says passages 1, 4, 7, 10: those of Talare 1 and 3 between them are passed.
+    expect(passed.length, "passages Tab went through").toBeGreaterThanOrEqual(3);
+    expect(passed).toEqual(["1", "4", "7", "10"].slice(0, passed.length));
+  });
+});
+
+// A refused Skapa dokument moves the focus to the field to mend. Firefox and Safari scroll a focused field only to the
+// window's nearest edge, which left the sentence under it (what to mend) behind a phone's docked action.
+for (const [state, message] of [["setup-own-count-invalid", "Skriv ett heltal från 1, eller lämna fältet tomt."], ["setup-required-detail", "Fyll i det här för att skapa dokumentet."]] as const) {
+  test(`on a phone, the field ${state} moves the focus to has its sentence above the docked action`, async ({ page }, info) => {
+    test.skip(!isPhone(info), "the docked action is a phone's");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const sentence = (await page.getByRole("main").getByText(message).boundingBox())!;
+    const dock = await page.evaluate(() => {
+      const docked = [...document.querySelectorAll<HTMLElement>("*")].find((element) => getComputedStyle(element).position === "sticky" && element.getBoundingClientRect().bottom >= innerHeight - 1 && element.getBoundingClientRect().height > 0);
+      return docked ? docked.getBoundingClientRect().top : innerHeight;
+    });
+    expect(sentence.y + sentence.height, "the sentence ends above the dock").toBeLessThanOrEqual(dock + 0.5);
+  });
+}
 
 test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
@@ -261,9 +379,22 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
   await holdsFocus(page, page.getByRole("button", { name: "Avbryt körningen" }), page.getByRole("alertdialog", { name: "Avbryta körningen?" }));
 });
 
+test("a cancel Eneo refuses gives the focus back to Avbryt körningen, under the refusal", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "focus after a refusal, at one width");
+  sentinel.expect({ console: /status of 409.*\/cancel\// });
+  await page.route("**/cancel/", (route) => route.fulfill({ status: 409, json: { code: "flow_run_not_cancellable" } }));
+  await run(page, ids.runs.running);
+  const trigger = page.getByRole("button", { name: "Avbryt körningen" });
+  await trigger.click();
+  await page.getByRole("alertdialog", { name: "Avbryta körningen?" }).getByRole("button", { name: "Avbryt körningen" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(trigger, "the button that asked, not the page's body").toBeFocused();
+});
+
 // A page cannot hear Escape while focus is inside the browser's PDF viewer. The viewer either is no Tab stop (its
 // content is a link away, in a tab of its own), or Tab leads out of it back to the dialog's own controls (WCAG
-// 2.1.2). From those controls, Escape closes the dialog.
+// 2.1.2); a browser without a viewer of its own gets none, and a sentence in its place. From the dialog's controls,
+// Escape closes the dialog.
 test("the PDF preview holds focus, never traps it in the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
   test.skip(!pdfInDialog(info), "below a laptop's width, and on a touch screen, the PDF opens in a new tab");
   await run(page, ids.runs.done);
@@ -320,7 +451,13 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
     expect.soft(ring, "the viewer's frame shows focus (WCAG 2.4.7)").toBeGreaterThanOrEqual(frame.perimeter);
   } else {
     expect(cycled, "Tab goes round the dialog's controls").toBe(true);
-    await expect(dialog.locator("iframe"), "the viewer is taken out of the Tab order").toHaveAttribute("tabindex", "-1");
+    // A browser with no PDF viewer of its own (Firefox under test) gets no viewer: the dialog says so in its place.
+    if (await page.evaluate(() => navigator.pdfViewerEnabled)) {
+      await expect(dialog.locator("iframe"), "the viewer is taken out of the Tab order").toHaveAttribute("tabindex", "-1");
+    } else {
+      await expect(dialog.locator("iframe"), "no viewer to draw nothing").toHaveCount(0);
+      await expect(dialog.getByText("Webbläsaren kan inte visa filen här. Välj Öppna i ny flik eller Ladda ner.")).toBeVisible();
+    }
     await expect(dialog.getByRole("link", { name: /ny flik/ }), "the file is a link away, in a tab of its own").toHaveAttribute("target", "_blank");
   }
   // The walk can end on a control whose tooltip is up (the close button, where Tab has nowhere to go on to, as in
@@ -463,6 +600,8 @@ test("the microphone picker is operated with the keyboard and gives the focus ba
   });
   await setup(page);
   await chooseMode(page, "Spela in");
+  // The pointer off where the list opens: an option under it is the active one, which the keyboard would then start from.
+  await page.mouse.move(0, 0);
   const picker = page.getByRole("combobox", { name: "Mikrofon" });
   await picker.focus();
   await page.keyboard.press("Enter");

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Outlet, useLocation, useRouteError } from "react-router";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -11,6 +11,7 @@ import { Brand, BrandingProvider } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import { keepFocusThroughBusy } from "@/lib/focus-keeper";
+import { onlineStatus } from "@/lib/online-status";
 import { readBranding } from "@/lib/read-branding";
 import { RouteEffects, useRouteReady } from "@/routes/RouteEffects";
 import { documentTitle, PRODUCT_NAME } from "@/lib/product";
@@ -99,11 +100,15 @@ function StandIn({ heading, text, children }: { heading: string; text: string; c
 export function RouteError() {
   const error = useRouteError();
   useEffect(() => console.error("A page could not be shown:", error), [error]);
+  // Without a network the code could not be fetched, and a reload would leave only the browser's own error page: the
+  // reload waits for the network.
+  const offline = useSyncExternalStore(onlineStatus.subscribe, () => onlineStatus.connection === "offline");
+  const why = offline ? "Ingen anslutning. Ladda om sidan när anslutningen är tillbaka." : "Tal till text kan ha uppdaterats sedan sidan öppnades. Ladda om sidan.";
   return (
     // What a reload gives back, said where the person decides: what the device keeps is not lost by it.
-    <StandIn heading="Sidan kunde inte visas." text="Tal till text kan ha uppdaterats sedan sidan öppnades. Ladda om sidan. Inspelningar som finns på enheten ligger kvar.">
-      <Button label="Ladda om sidan" variant="primary" onClick={() => window.location.reload()} />
-      <Button label="Till startsidan" variant="secondary" href="/" />
+    <StandIn heading="Sidan kunde inte visas." text={`${why} Inspelningar som finns på enheten ligger kvar.`}>
+      <Button label="Ladda om sidan" variant="primary" isDisabled={offline} onClick={() => window.location.reload()} />
+      <Button label="Till startsidan" variant="secondary" href="/flows" />
     </StandIn>
   );
 }
@@ -112,7 +117,7 @@ export function RouteError() {
 export function NotFound() {
   return (
     <StandIn heading="Sidan finns inte." text="Kontrollera adressen, eller gå till startsidan.">
-      <Button label="Till startsidan" variant="primary" href="/" />
+      <Button label="Till startsidan" variant="primary" href="/flows" />
     </StandIn>
   );
 }

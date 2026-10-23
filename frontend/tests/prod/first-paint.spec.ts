@@ -26,8 +26,13 @@ type Painted = { frames: Frame[] };
 /** Runs before any script of the page, in every frame of the navigation. */
 function sampleFrames() {
   const painted: Painted = ((window as unknown as { painted: Painted }).painted = { frames: [] });
+  // Through a canvas: a mix computes to color(srgb …), whose 0–1 channels a pattern for rgb() reads as black.
+  const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
   const modeOf = (colour: string): Frame["mode"] => {
-    const [r, g, b, alpha = 1] = (colour.match(/[\d.]+/g) ?? []).map(Number);
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = colour;
+    paint.fillRect(0, 0, 1, 1);
+    const [r, g, b, alpha] = paint.getImageData(0, 0, 1, 1).data;
     if (alpha === 0) return "unstyled";
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5 ? "dark" : "light";
   };
@@ -156,7 +161,8 @@ test("the first frame the app draws has the organisation's mark, and nothing ask
 
   const drawn = frames.filter((frame) => frame.app);
   expect(drawn.length).toBeGreaterThan(0);
-  for (const frame of drawn) expect(frame.marks, "the bundled mark of the default organisation").toEqual(["default"]);
+  // Eneo's bundled wordmark is a pair, one for each mode (components/Brand.tsx): the light one in a light first frame.
+  for (const frame of drawn) expect(frame.marks, "the bundled mark of the default organisation").toEqual(["light"]);
   expect(requests.filter((path) => /^\/api\/branding\/?$/.test(path)), "it was in the page").toEqual([]);
 });
 

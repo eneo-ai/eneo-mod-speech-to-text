@@ -123,8 +123,11 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     // Left mid-recording, it is offered to go on with, on the list as on its flow's page.
     await expect(page.getByRole("heading", { name: "Inspelningen avbröts" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Fortsätt spela in/ }).first()).toBeVisible();
-    // The duration's space does not break (lib/format.ts): \s is any space.
-    const seconds = Number((await page.getByText(/Nämndmöte till rapport · \d+\ss/).textContent())!.match(/· (\d+)\ss/)![1]);
+    // The duration's space and the one before the dot do not break (lib/format.ts, UnsentRecordings): \s is any space.
+    // Waited for as an expectation, so a line that never comes fails here with what was looked for, not at the test's end.
+    const duration = page.getByText(/Nämndmöte till rapport\s·\s\d+\ss/);
+    await expect(duration).toBeVisible();
+    const seconds = Number((await duration.textContent())!.match(/·\s(\d+)\ss/)![1]);
     expect(seconds, "what was recorded up to the leave, not only the audio that had been handed over before it").toBeGreaterThanOrEqual(3);
     const saved = await savedFile(page);
     expect(saved.bytes.length, "nothing the device held before the leave is missing from the file").toBeGreaterThanOrEqual(stored);

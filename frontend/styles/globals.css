@@ -1,10 +1,8 @@
-/* The module's own tokens. Motion is on the transitions.dev scale, namespaced: the design system declares
-   --duration-fast (175 ms) in a layer above this one, and a token here without the prefix would be overridden by it. A colour is
-   one declaration for both colour modes, and lib/accessibility.test.ts asserts its contrast against the design system's
-   surfaces. */
+/* The module's own tokens, namespaced: the design system declares its own in a layer above this one, and a token here
+   without the prefix would be overridden by it. Motion is the design system's (--duration-fast with --ease-standard).
+   A colour is one declaration for both colour modes, and lib/accessibility.test.ts asserts its contrast against the
+   design system's surfaces. */
 :root {
-  --module-duration-quick: 150ms;
-  --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* How long a wait goes on before its spinner shows: an answer within it leaves no blink of a spinner. */
   --module-wait-delay: 300ms;
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
@@ -15,22 +13,41 @@
   /* The recording dot, for CSS Modules: 3:1 on the card and the muted surface. */
   --module-color-record: light-dark(#dc2828, #dd2c2c);
 
-  /* The transcript's speakers and the review marks. The first speaker is never the brand's blue, so a name is not read as a link. */
-  --module-speaker-0: light-dark(hsl(262 46% 48%), hsl(262 62% 74%));
-  --module-speaker-1: light-dark(hsl(152 48% 30%), hsl(152 52% 62%));
-  --module-speaker-2: light-dark(hsl(28 78% 34%), hsl(32 88% 66%));
-  --module-speaker-3: light-dark(hsl(330 52% 42%), hsl(330 62% 72%));
-  --module-speaker-4: light-dark(hsl(190 58% 33%), hsl(190 62% 62%));
-  --module-speaker-5: light-dark(hsl(70 45% 28%), hsl(70 45% 60%));
+  /* The transcript's speakers and the review marks: web-next's categorical purple, teal, amber, rose and green, then
+     olive. None is the brand's blue, so a name is not read as a link. In dark mode each keeps its lightness with a fifth
+     less chroma, so a name in it reads as a calm tint on the near-black card, not as a glow. */
+  --module-speaker-0: light-dark(#6D46B8, #B69FE7);
+  --module-speaker-1: light-dark(#0B6E69, #70CDC4);
+  --module-speaker-2: light-dark(#94590A, #E8B775);
+  --module-speaker-3: light-dark(#B03A5B, #E99DB6);
+  --module-speaker-4: light-dark(#1E7A32, #7CBF8B);
+  --module-speaker-5: light-dark(#5D6827, #B9C57E);
   --module-color-review: light-dark(hsl(42 95% 28%), hsl(47 92% 58%));
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
-/* A workspace (`data-workspace`: a result with its transcript beside it, the speakers' review): the page's column grows
-   with a wide window, from 1180 px at a 1686 px window to 1600 px, so the transcript beside the text has room. The bar
-   reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
-:root:has([data-workspace]) {
+/* Greys with Eneo's blue in them, as the theme's are: a deployment's accent gives them its own hue
+   (backend/app/accent.py NEUTRALS) in a stylesheet that must win over these, so they carry no weight of their own. */
+:where(:root) {
+  /* A phone's dock (the setup's action, the recording's controls) lifts off the page it stands over: a soft shadow in
+     light mode, and in dark mode, where a shadow does not show, the dock's own top edge instead (edge or shadow). */
+  --module-shadow-dock: 0 -8px 24px -16px light-dark(rgba(16, 40, 80, 0.18), transparent);
+}
+
+/* A workspace (`data-workspace` on <html>, lib/workspace.ts: a result with its transcript beside it, the speakers'
+   review): the page's column grows with a wide window, from 1180 px at a 1686 px window to 1600 px, so the transcript
+   beside the text has room. The bar reads the same width, so it follows; the text keeps its reading measure (Markdown's). */
+:root[data-workspace] {
   --module-page-width: clamp(1180px, 70vw, 1600px);
+}
+
+/* A note read across a wide card (a run's, the unsent recordings') keeps a reading measure where the card is wider:
+   about 75 characters a line, which is 55ch in Figtree, whose figures are wider than its average letter. A document's
+   prose has its own (Markdown.module.css). Its lines are balanced: at the full measure a note's last line can hold two
+   words alone ("inte om."). */
+[data-measure] {
+  max-inline-size: 55ch;
+  text-wrap: balance;
 }
 
 /* A speaker's colour as the stylesheets read it: data-speaker-color is the speaker's index, from lib/transcript. */
@@ -63,8 +80,9 @@
     background: var(--color-background-body);
     color: var(--color-text-primary);
     /* The theme's own stack (kit/theme/eneo.theme.ts): the document is outside its root, where the font tokens are defined.
-       No font is fetched. The size is the reader's own: every size in the theme is in rem. */
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+       Figtree is bundled (main.tsx); nothing is fetched from another origin. The size is the reader's own: every size in
+       the theme is in rem. */
+    font-family: "Figtree Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -81,24 +99,32 @@
     display: flex;
     flex-direction: column;
   }
+
+  /* A paragraph's last line keeps more than one word, and so does a banner's description, which is no paragraph. Below
+     the design system's layers, so a text that sets its own wrapping (nowrap, balance) keeps it. */
+  p,
+  .astryx-banner-description {
+    text-wrap: pretty;
+  }
 }
 
 /* What is docked at the bottom of a phone's screen (the setup's primary action, a player) never hides what has the
    keyboard focus (WCAG 2.4.11): focus scrolls stop above it. The height is the dock's own, kept in --dock-block-size by
    lib/dock.ts, so a longer note or the text spacing a reader sets cannot outgrow it; with no dock stuck to the window's
-   edge (a laptop, a short screen) the variable is unset and only the margin is left. */
+   edge (a laptop, a short screen) the variable is unset and only the margin is left. lib/dock.ts says in `data-dock`
+   which edges a dock is shown at. */
 /* A dock that would cover more than a third of the window (large text) stands at the page's end instead (lib/dock.ts). */
 :root [data-dock-too-tall] {
   position: static;
 }
 
-html:has([data-docked-action], [data-docked-player]:not([data-dock-edge="top"])) {
+html[data-dock~="bottom"] {
   /* Focus can sit on a field's inner control while its ring surrounds the padded field. Keep that whole edge clear. */
   scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 
 /* A player docked above the text (components/TranscriptPlayer.tsx) covers the window's top edge instead. */
-html:has([data-docked-player][data-dock-edge="top"]) {
+html[data-dock~="top"] {
   scroll-padding-top: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 
@@ -121,6 +147,9 @@ html:has([data-docked-player][data-dock-edge="top"]) {
   *, *::before, *::after { scroll-behavior: auto !important; }
   /* Loading spinners stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
   .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
+  /* A chevron that turns to show open or closed shows it by its end position: no turn on the way (the design system's
+     icon keeps its transform transition, the module's own chevrons have none). */
+  .astryx-icon { transition: none; }
 }
 
 /* A heading takes the focus when its state appears, so a screen reader starts there; it is not a control, and a ring
@@ -134,6 +163,38 @@ a.astryx-top-nav-heading:focus-visible,
 .astryx-slider-thumb:focus-visible {
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
+}
+
+/* A button's icon slot is a fixed 16 or 20 px while its icon is sized in rem: with the reader's large text the icon
+   outgrew its slot and was drawn over the button's words. The slot is as wide as its icon. (The slot is the first child
+   of the button's content, which has no class of its own; without an icon that is the label, which is auto already.) */
+.astryx-button > span > span:first-child {
+  inline-size: auto;
+  block-size: auto;
+}
+
+/* A token (a pill, a name's chip) keeps its words on one line and cuts the rest with an ellipsis; with the reader's large
+   text, or a long name, they wrap inside it instead (its height already gives way, kit/theme/eneo.theme.ts). */
+.astryx-token > span:not(.astryx-icon) {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* The design system's alert dialog pins its buttons under its words: in a window as low as 400 % zoom (320 x 200) its words
+   were a strip of 46 px over them, a scroller with no Tab stop. Below 480 px of height the dialog scrolls as a whole, as
+   the sign-in dialog does: its words, then its buttons. (Its layout's wrappers have no class of their own.) */
+@media (max-height: 479.98px) {
+  dialog.astryx-dialog[role="alertdialog"] > div,
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout-content {
+    overflow: visible;
+  }
+
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout,
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout > div,
+  dialog.astryx-dialog[role="alertdialog"] .astryx-layout > div > div {
+    flex: none;
+    block-size: auto;
+  }
 }
 
 /* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
@@ -163,19 +224,60 @@ a.astryx-top-nav-heading:focus-visible,
   .astryx-progress-bar-fill { background: Highlight; }
 }
 
+/* An icon tile (components/IconTile.tsx): 40 px, 32 (sm) or 48 (lg), radii concentric with the card it stands in, and a
+   hue as a tint with its icon colour (web-next's categorical tokens; the accent's own for "accent"). */
+[data-icon-tile] {
+  flex-shrink: 0;
+  inline-size: var(--spacing-10);
+  block-size: var(--spacing-10);
+  border-radius: var(--radius-element);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+[data-icon-tile][data-size="sm"] {
+  inline-size: var(--spacing-8);
+  block-size: var(--spacing-8);
+  border-radius: var(--radius-inner);
+}
+[data-icon-tile][data-size="lg"] {
+  inline-size: var(--spacing-12);
+  block-size: var(--spacing-12);
+}
+[data-icon-tile="neutral"] { color: var(--color-text-secondary); background: var(--color-background-muted); }
+[data-icon-tile="purple"] { color: var(--color-icon-purple); background: var(--color-background-purple); }
+[data-icon-tile="teal"] { color: var(--color-icon-teal); background: var(--color-background-teal); }
+[data-icon-tile="green"] { color: var(--color-icon-green); background: var(--color-background-green); }
+@media (forced-colors: active) {
+  [data-icon-tile] { border: var(--border-width) solid CanvasText; color: CanvasText; }
+}
+
 /* The brand lockup's mark (components/Brand.tsx). Any organisation's logo has the same height and a wide one
-   scales down inside a bounded width; a name without a logo wraps inside the same bounds. A logo made for one colour
-   mode stays out of the other, and the bundled default's black mark turns white in the dark one. */
-[data-brand-logo]:not([data-brand-logo="default"]) {
+   scales down inside a bounded width. A name without a logo stands on one line below 640 px, where the lockup leaves it
+   out when the bar has no room for it, and takes two lines at most inside wider bounds from there. A logo made for
+   one colour mode stays out of the other: Eneo's own wordmark is such a pair. A near-square mark is a step lower: at the
+   full height it outweighs the product's name beside it. A logo for both modes (no ORGANIZATION_LOGO_DARK) stands on a
+   white plate in dark mode, where a dark logo would vanish on the bar; the plate is drawn outside its box. */
+img[data-brand-logo] {
   display: block;
   max-inline-size: 6.5rem;
-  overflow-wrap: anywhere;
-}
-img[data-brand-logo] {
   block-size: var(--spacing-10);
   inline-size: auto;
   object-fit: contain;
   object-position: left;
+}
+img[data-compact] { block-size: var(--spacing-8); }
+img[data-brand-logo="plain"] {
+  border-radius: var(--radius-inner);
+  background: light-dark(transparent, white);
+  box-shadow: 0 0 0 var(--spacing-1) light-dark(transparent, white);
+}
+/* A wordmark (Eneo's, 3.8:1) is set by its letters, not by a logo's box: 24 px high on a phone and 28 px from a tablet,
+   91 and 106 px wide, inside the caps. */
+img[data-brand-logo][data-wordmark] {
+  block-size: var(--spacing-6);
+}
+@media (min-width: 768px) {
+  img[data-brand-logo][data-wordmark] { block-size: var(--spacing-7); }
 }
 /* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller (and stands closer to
    its divider, components/Brand.tsx) to leave the account button room, also with the text spacing WCAG 1.4.12 lets a
@@ -184,8 +286,8 @@ img[data-brand-logo] {
   img[data-brand-logo] { block-size: var(--spacing-6); }
 }
 @media (min-width: 640px) {
-  [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
-  [data-brand-logo="name"] { max-inline-size: 12rem; }
+  img[data-brand-logo] { max-inline-size: 10rem; }
+  [data-brand-logo="name"] { max-inline-size: 20rem; }
 }
 /* While the colour mode changes (kit/ColorModeProvider marks <html> for the frames that apply it) nothing fades: the
    surfaces and the text change at once, and a control that faded behind them would look late. */
@@ -197,11 +299,9 @@ img[data-brand-logo] {
    (public/color-mode.js sets it before the first paint, the design system's <Theme> keeps it). A logo made for one mode
    stays out of the other; the dark one shows for a dark choice, and for no choice on a dark system. */
 :root [data-brand-logo="dark"] { display: none; }
-:root[data-theme="dark"] [data-brand-logo="default"] { filter: invert(1); }
 :root[data-theme="dark"] [data-brand-logo="light"] { display: none; }
 :root[data-theme="dark"] [data-brand-logo="dark"] { display: block; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) [data-brand-logo="default"] { filter: invert(1); }
   :root:not([data-theme]) [data-brand-logo="light"] { display: none; }
   :root:not([data-theme]) [data-brand-logo="dark"] { display: block; }
 }
@@ -220,12 +320,10 @@ img[data-brand-logo] {
 
 /* The bar's content stands in the page's column (--module-page-width, in the shell's 16 px gutter), so the brand or
    the way back starts where the page's content does and the account ends where it ends, at every width. The heading
-   slot at the start adds its own 8 px, so that side takes 8 px less; the account at the end has no such slot. From a
-   laptop's width a hairline closes the bar. */
+   slot at the start adds its own 8 px, so that side takes 8 px less; the account at the end has no such slot. A hairline
+   closes the white bar over the tinted ground. */
 .astryx-top-nav {
   padding-inline-start: max(var(--spacing-2), calc((100% - var(--module-page-width)) / 2 - var(--spacing-2)));
   padding-inline-end: max(var(--spacing-2), calc((100% - var(--module-page-width)) / 2));
 }
-@media (min-width: 1024px) {
-  .astryx-app-shell-header { border-block-end: var(--border-width) solid var(--color-border); }
-}
+.astryx-app-shell-header { border-block-end: var(--border-width) solid var(--color-border); }

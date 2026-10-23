@@ -1,5 +1,5 @@
 import { Minimize2, Presentation } from "lucide-react";
-import { memo, type RefObject, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, type RefObject, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -8,6 +8,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
@@ -26,14 +27,36 @@ export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   return out;
 }
 
-// A paragraph renders again only when one of its pieces is another (a new one, or the relay's final text in place of a
+const samePieces = (before: LivePiece[], after: LivePiece[]) => before.length === after.length && before.every((piece, i) => piece === after[i]);
+
+// A paragraph's pieces render again only when one of them is another (a new one, or the relay's final text in place of a
 // session's), not with every word still arriving.
 const Pieces = memo(
   function Pieces({ pieces }: { pieces: LivePiece[] }) {
     return pieces.map((piece, i) => <span key={i}>{(i > 0 ? " " : "") + piece.text}</span>);
   },
-  (before, after) => before.pieces.length === after.pieces.length && before.pieces.every((piece, i) => piece === after.pieces[i]),
+  (before, after) => samePieces(before.pieces, after.pieces),
 );
+
+// A paragraph renders again only when its pieces or the words still arriving at its end change: a word renders the last
+// paragraph, never the hours of them before it.
+const Paragraph = memo(
+  function Paragraph({ pieces, pending, forRoom }: { pieces: LivePiece[]; pending: string; forRoom: boolean }) {
+    return (
+      <Text as="p" {...(forRoom ? ({ type: "inherit" } as const) : ({ size: "lg" } as const))}>
+        <Pieces pieces={pieces} />
+        {pending && (
+          <Text type="inherit" color="secondary" aria-hidden>
+            {" " + pending.trim()}
+          </Text>
+        )}
+      </Text>
+    );
+  },
+  (before, after) => before.pending === after.pending && before.forRoom === after.forRoom && samePieces(before.pieces, after.pieces),
+);
+
+const TABLET = "(min-width: 768px)";
 
 /**
  * Where "Visa i helskärm" is offered: from a tablet's width (on a phone its button would take a line of the text's
@@ -41,7 +64,7 @@ const Pieces = memo(
  * Strömma says so where it is.
  */
 export function useRoomViewOffered(): boolean {
-  const wide = useMediaQuery("(min-width: 768px)", true);
+  const wide = useMediaQuery(TABLET, true);
   return wide && typeof document !== "undefined" && document.fullscreenEnabled === true;
 }
 
@@ -70,6 +93,9 @@ export function LiveSheet({
   room?: RefObject<HTMLElement | null>;
 }) {
   const offered = useRoomViewOffered();
+  // From a tablet's width the head stays over the text; on a phone it is the text's first line, and scrolls away with it
+  // once the text fills the sheet, which follows the newest line.
+  const pinned = useMediaQuery(TABLET, true);
   const snapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
   const scroller = useRef<HTMLElement>(null);
@@ -78,7 +104,7 @@ export function LiveSheet({
   const fullscreen = useFullscreen(room ?? noRoom);
   const forRoom = fullscreen.active;
   const status = liveStatusLine(useSettledLiveStatus(snapshot.status), snapshot.started, recorder, forRoom);
-  const groups = paragraphs(snapshot.pieces);
+  const groups = useMemo(() => paragraphs(snapshot.pieces), [snapshot.pieces]);
   const noText = groups.length === 0 && !snapshot.pending;
   // A failure replaces the placeholder; the persistent status region announces it once.
   const empty = noText && (status !== null || snapshot.status !== "unavailable");
@@ -106,15 +132,22 @@ export function LiveSheet({
     element.focus();
   }
 
-  return (
-    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
+  const head = (
       <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} className={styles.head}>
         <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
-          {forRoom
-            ? "Preliminär text, kan innehålla fel"
-            : speakers
-              ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
-              : "Preliminär text, den slutliga skapas när du är klar"}
+          {forRoom ? (
+            "Preliminär text, kan innehålla fel"
+          ) : (
+            // What the text is, as a pill, and when the final one comes, as the line beside it, or under it on a phone
+            // (LiveSheet.module.css). Read as one sentence: "Preliminär text. …".
+            <>
+              <Token size="sm" label="Preliminär" className={styles.pill} />
+              <VisuallyHidden> text.</VisuallyHidden>{" "}
+              <span className={styles.when}>
+                {speakers ? "Talare och den slutliga texten kommer när du är klar." : "Den slutliga texten skapas när du är klar."}
+              </span>
+            </>
+          )}
         </Heading>
         {room && offered && (
           <Button
@@ -127,6 +160,11 @@ export function LiveSheet({
           />
         )}
       </HStack>
+  );
+
+  return (
+    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
+      {pinned && head}
       <div className={styles.logArea}>
         {/* The log is the scroll area: named, focusable for keyboard scrolling, heard once per piece. */}
         <StackItem
@@ -139,6 +177,7 @@ export function LiveSheet({
           onScroll={(event) => setFollowing(atBottom(event.currentTarget))}
           className={styles.log}
         >
+          {!pinned && head}
           {empty && (
             <Text as="p" color="secondary" {...size} aria-hidden={status ? true : undefined}>
               {status ?? (forRoom ? "Texten visas här när någon börjar prata." : "Texten visas här när du börjar prata.")}
@@ -146,14 +185,7 @@ export function LiveSheet({
           )}
           <VStack gap={4} maxWidth="68ch" className={styles.text}>
             {groups.map((group, index) => (
-              <Text as="p" {...size} key={index}>
-                <Pieces pieces={group} />
-                {index === groups.length - 1 && snapshot.pending && (
-                  <Text type="inherit" color="secondary" aria-hidden>
-                    {" " + snapshot.pending.trim()}
-                  </Text>
-                )}
-              </Text>
+              <Paragraph key={index} pieces={group} pending={index === groups.length - 1 ? snapshot.pending : ""} forRoom={forRoom} />
             ))}
             {groups.length === 0 && snapshot.pending && (
               <Text as="p" {...size} color="secondary" aria-hidden>

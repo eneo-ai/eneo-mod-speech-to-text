@@ -16,12 +16,31 @@
   padding: var(--spacing-4) var(--spacing-5) 0;
 }
 
+/* Below 768 px the head is the log's first line, in the log's own padding. */
+.log > .head {
+  padding: 0 0 var(--room-before);
+}
+
 .roomButton {
   margin-inline-start: auto;
 }
 
 .heading {
   font-size: var(--font-size-sm);
+}
+
+/* The "Preliminär" pill stands in the heading's line at every width, its words running on beside it. */
+.pill {
+  vertical-align: middle;
+  margin-inline-end: var(--spacing-1);
+}
+
+/* Below 768 px, where the head is the log's first line and its words would wrap back under the pill, they start a line of
+   their own under it: two clean lines in place of one ragged wrap. */
+@media (max-width: 767.98px) {
+  .when {
+    display: block;
+  }
 }
 
 /* The log is the scroll area: its ring is drawn inside it, the sheet clips an outside one. */

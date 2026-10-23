@@ -36,6 +36,7 @@ export default defineConfig({
       snippets: { operation: false },
     }])],
     sidebar: [
+      { label: 'Kom igång', link: '/kom-igang/' },
       { label: 'Om modulen', items: [{ label: 'Start', link: '/' }] },
       { label: 'Driftsättning', items: [
         { label: 'Drift', link: '/operations/' },

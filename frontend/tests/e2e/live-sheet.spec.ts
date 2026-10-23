@@ -4,11 +4,12 @@
  * while the reader is at the end, and "Visa senaste" brings it back after a scroll up. A stage that grows with its text
  * pushes the newest line out of the window and the bar's controls with it, which only a long text shows.
  */
-import { type Page } from "@playwright/test";
+import { type Page, type WebSocketRoute } from "@playwright/test";
 import { TEXT_SPACING } from "./checks";
 import { expect, test } from "./gate";
 import { longLiveText, WORDS } from "./live-relay";
-import { record, setup } from "./screens";
+import { countRenders } from "./react-renders";
+import { record, setup, stop } from "./screens";
 
 // The narrow windows are where the stage is the page's own height; one laptop is the control.
 test.beforeEach(({}, info) =>
@@ -50,6 +51,32 @@ test("long live text scrolls inside its sheet above the recording bar, follows t
   await latest.click();
   await expect.poll(async () => (await geometry(page)).fromEnd, { message: "Visa senaste shows the newest line" }).toBeLessThan(4);
   await expect(latest).toBeHidden();
+});
+
+test("a word of live text renders the paragraph it joins, not the meeting's paragraphs before it", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "counts renders on the dev profile, on a phone and a laptop");
+  const texts = await countRenders(page, "Text");
+  let relay: WebSocketRoute | null = null;
+  await page.routeWebSocket(/\/api\/live\//, (ws) => {
+    relay = ws;
+    ws.send(JSON.stringify({ type: "ready", sample_rate: 16000, max_seconds: 18000 }));
+  });
+  const say = (text: string) => relay!.send(JSON.stringify({ type: "transcript.delta", text }));
+  await setup(page);
+  await record(page, "Strömma");
+  await expect.poll(() => relay !== null).toBe(true);
+  // Five sentences make a paragraph: twenty of them, as some twenty minutes of a meeting.
+  for (let sentence = 0; sentence < 120; sentence += 1) say(`${sentence ? " " : ""}Mening ${sentence + 1} är sagd.`);
+  const paragraphs = () => page.getByRole("log", { name: "Preliminär text" }).locator("p").count();
+  await expect.poll(paragraphs, { timeout: 30_000 }).toBeGreaterThanOrEqual(20);
+  await texts.settled();
+  await texts.reset();
+
+  say(" Nästa");
+  await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Nästa");
+  // The paragraph the word joins (its text and the words still arriving) and the sheet's own lines; every paragraph
+  // before it rendered again was twenty more.
+  expect(await texts.settled(), `Text rendered for one word, with ${await paragraphs()} paragraphs`).toBeLessThanOrEqual(6);
 });
 
 test("with the flow's details unfolded the page is taller than the window: the region scrolls to the bar, whose controls are then in reach", async ({ page }, info) => {
@@ -147,7 +174,8 @@ test("live text that cannot start says why where the promise of text was, and th
   await setup(page);
   await record(page, "Strömma");
   const sentence = "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.";
-  await expect(page.getByRole("log", { name: "Preliminär text" })).toHaveText(sentence, { timeout: 30_000 });
+  // The log's own line (on a phone the sheet's head is the log's first line, and scrolls away with the text).
+  await expect(page.getByRole("log", { name: "Preliminär text" }).locator(":scope > p")).toHaveText(sentence, { timeout: 30_000 });
   await expect(page.getByText("Texten visas här när du börjar prata.")).toHaveCount(0);
   // One sentence in the page's reading order, and one in the status region that announces it.
   await expect(page.getByRole("status").filter({ hasText: sentence })).toHaveCount(1);
@@ -207,4 +235,52 @@ test("on a phone the room view is not offered: its button would take a line of t
   await record(page, "Strömma");
   await expect(page.getByRole("log", { name: "Preliminär text" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Visa i helskärm" })).toHaveCount(0);
+});
+
+test("on a phone the sheet's head says Preliminär on its first line and when the final text comes on a line of its own under it", async ({ page }, info) => {
+  await setup(page);
+  await record(page, "Strömma");
+  const heading = page.getByRole("heading", { name: /^Preliminär text\./ });
+  await expect(heading).toBeVisible();
+  const { pill, sentence } = await heading.evaluate((element) => {
+    const words = [...element.querySelectorAll("span")].find((span) => /^(Den slutliga|Talare och)/.test(span.textContent ?? ""))!;
+    const range = document.createRange();
+    range.selectNodeContents(words);
+    const first = range.getClientRects()[0];
+    const token = element.firstElementChild!.getBoundingClientRect();
+    return { pill: { left: token.left, bottom: token.bottom }, sentence: { left: first.left, top: first.top } };
+  });
+  if (info.project.use.viewport!.width < 768) {
+    expect(sentence.top, "the sentence starts under the pill").toBeGreaterThanOrEqual(pill.bottom - 1);
+    expect(Math.abs(sentence.left - pill.left), "from the same edge").toBeLessThan(2);
+  } else {
+    expect(sentence.left, "beside the pill").toBeGreaterThan(pill.left + 20);
+  }
+});
+
+test("after Stoppa, the draft keeps its reading position and the focus when the window crosses the phone's width, either way", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone turned on its side and back");
+  await longLiveText(page);
+  await setup(page);
+  await record(page, "Strömma");
+  await expect.poll(async () => (await geometry(page)).words, { timeout: 30_000 }).toBeGreaterThanOrEqual(WORDS - 5);
+  await stop(page);
+  const draft = page.getByRole("region", { name: "Preliminär text" });
+  // How far into the text the box's top line is, as a share of the text: the lines wrap anew at another width.
+  const reading = () =>
+    draft.evaluate((element) => ({
+      share: Math.round((element.scrollTop / element.scrollHeight) * 100) / 100,
+      focused: document.activeElement === element,
+    }));
+  await draft.focus();
+  await draft.evaluate((element) => void (element.scrollTop = (element.scrollHeight - element.clientHeight) / 2));
+  const read = await reading();
+  expect(read.share, "the draft scrolls, and is read in its middle").toBeGreaterThan(0.3);
+
+  for (const width of [844, 390]) {
+    await page.setViewportSize({ width, height: 390 });
+    await expect.poll(reading, { message: `the same place in the text and the focus at ${width} px` }).toEqual(
+      expect.objectContaining({ focused: true, share: expect.closeTo(read.share, 1) }),
+    );
+  }
 });

@@ -1,13 +1,13 @@
 - region "Ljudet":
   - status
   - heading "Inspelningen är klar" [level=2]
-  - paragraph: /Inspelning \d+ [a-zåäö]+ \d+:\d+ · \d+ s/
+  - paragraph: /^Inspelning \d+ [a-zåäö]+ \d+:\d+$/
   - 'group /Uppspelning: Inspelning \d+ [a-zåäö]+ \d+:\d+/':
     - button "Spela upp"
     - slider "Position i inspelningen"
     - text: /0:\d+ \/ 0:\d+/
-  - button "Spara ljudfil"
   - paragraph: Skapa dokument skickar inspelningen till Eneo. Efteråt kan du inte fortsätta spela in. Den finns kvar på enheten tills dokumentet är skapat.
+  - button "Spara ljudfil"
+  - button "Ta bort"
   - button "Fortsätt spela in"
   - button "Skapa dokument"
-  - button "Ta bort"

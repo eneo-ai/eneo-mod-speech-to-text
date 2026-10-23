@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import limits, serve as launcher
+from app import config, limits, serve as launcher
 
 BACKEND = Path(__file__).resolve().parents[1]
 # What the launcher needs to read Settings, which is where STATIC_DIR is read (and nowhere else).
@@ -139,6 +139,25 @@ class BuiltUiTests(unittest.TestCase):
             launcher.serve("app.main:app")
 
         run.assert_called_once_with("app.main:app", **FIXED)
+
+    def test_the_launchers_own_read_of_the_settings_is_quiet_so_the_app_says_each_problem_once(self) -> None:
+        # The app reads the settings again when it starts, and logs there, in its own format.
+        logo = {"ORGANIZATION_NAME": "Umeå kommun", "ORGANIZATION_LOGO": "/nowhere/logo.svg"}
+        with built_ui() as folder, patch.dict(os.environ, {**CONFIGURATION, **logo, "STATIC_DIR": folder}, clear=True), patch("uvicorn.run"):
+            with self.assertNoLogs("eneo_config"):
+                launcher.serve("app.main:app")
+
+    def test_a_build_record_that_cannot_be_used_is_said_once_by_the_app_after_the_quiet_launcher(self) -> None:
+        with built_ui() as folder, tempfile.TemporaryDirectory() as records:
+            record = Path(records) / "build_record.json"
+            record.write_text("not json")
+            # What uvicorn does in the same process: it imports the app, which reads the settings again.
+            app_starts = patch("uvicorn.run", side_effect=lambda *args, **kwargs: config.load_settings())
+            with patch.dict(os.environ, {**CONFIGURATION, "STATIC_DIR": folder}, clear=True), patch.object(config, "BUILD_RECORD", record), app_starts:
+                with self.assertLogs("eneo_config", level="WARNING") as logs:
+                    launcher.serve("app.main:app")
+
+        self.assertEqual([line for line in logs.output if str(record) in line], [logs.output[0]], "said once")
 
     def test_api_only_starts_with_no_ui_and_reads_no_settings(self) -> None:
         with patch.dict(os.environ, {}, clear=True), patch("uvicorn.run") as run:

@@ -164,9 +164,15 @@ const PROFILES = {
 const click = (role, text, options) => (page) => page.getByRole(role, { name: text, ...options }).first().click();
 // A speaker chip, found inside its group: a role query over the whole long transcript names thousands of buttons, which
 // on CI's throttled phone outlasts the click's timeout. What is measured is the click, not the finding. The group is
-// named Talare, by the word above it, where the speakers can be named, and Visa talare where they cannot.
-const chip = (text) => (page) =>
-  page.getByRole("group", { name: /^(Talare|Visa talare)$/ }).getByRole("button", { name: text, exact: true }).click();
+// named Talare, by the word above it, where the speakers can be named, and Visa talare where they cannot. Where the filter
+// is a list instead (a phone, a large meeting: TranscriptPlayer's speakerList), the speaker is chosen from it; "Alla" is
+// the list's "Alla talare".
+const chip = (text) => async (page) => {
+  const group = page.getByRole("group", { name: /^(Talare|Visa talare)$/ });
+  if (await group.count()) return group.getByRole("button", { name: text, exact: true }).click();
+  await page.getByRole("combobox", { name: /^(Talare|Filtrera talare)$/ }).click();
+  await page.getByRole("option", { name: text === "Alla" ? "Alla talare" : text, exact: true }).click();
+};
 const type = (text, label) => (page) => page.getByRole("textbox", { name: label }).first().pressSequentially(text, { delay: 60 });
 // The page folds its columns into tabs below a laptop's width (1024 px): there the tab must be there and is pressed (a
 // tab that is gone fails the step); on a laptop the columns stand side by side and there is nothing to press.

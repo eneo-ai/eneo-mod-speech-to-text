@@ -6,6 +6,7 @@ import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { Token } from "@astryxdesign/core/Token";
@@ -15,7 +16,9 @@ import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
 import { SpeakerMark } from "@/components/SpeakerMark";
+import { browserStorage } from "@/lib/browser-storage";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { recentNames, rememberNames } from "@/lib/participants";
 import { isRecord } from "@/lib/is-record";
 import { isUnsureProposal, type SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { speakerDisplayLabel, speakerNameProblem } from "@/lib/transcript";
@@ -98,7 +101,10 @@ export function SpeakerNamingDialog({
   rows: readonly SpeakerMappingRow[];
   /** What the mapping step proposed for each speaker: its name, how sure it was and why. */
   proposals?: readonly SpeakerMappingRow[];
-  /** The names entered before the run: suggestions, never assumed. */
+  /**
+   * The names entered before the run: suggestions, never assumed. A run started without any offers the names this person
+   * gave before (lib/participants.ts recentNames), and a save adds the names given to them.
+   */
   participants: readonly string[];
   /** How many passages a speaker has in the transcript. */
   passages: (label: string) => number;
@@ -123,8 +129,8 @@ export function SpeakerNamingDialog({
   /** The button that opens the dialog; focus returns to it on close. */
   children: Trigger;
 }) {
-  // Names typed but not saved: kept through closing the dialog, by any of its ways out, and through a reload (it opens
-  // again with them); saving them ends them.
+  // Names typed but not saved: kept through closing the dialog by Esc or its ×, and through a reload (it opens again
+  // with them); saving them ends them, and so does Avbryt, which says it.
   const [typed, setTyped] = useState<TypedName[] | null>(() =>
     draftKey ? readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) : null,
   );
@@ -167,12 +173,12 @@ export function SpeakerNamingDialog({
   // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
   const narrow = useMediaQuery("(max-width: 479.98px)");
 
-  // Esc, Stäng, Avbryt or the ×: what was typed is there when it opens again.
+  // Esc, Stäng or the ×: what was typed is there when it opens again.
   const close = () => {
     setOpen(false);
     onStopListening?.();
   };
-  /** A save that went through: the dialog closes and what was typed is done with. */
+  /** A save that went through, or Avbryt: the dialog closes and what was typed is done with. */
   const end = () => {
     close();
     setTyped(null);
@@ -211,7 +217,9 @@ export function SpeakerNamingDialog({
     const other = draft.find((row) => row.label !== label && row.name?.trim() === name.trim());
     return other ? `Redan kopplad till ${speakerDisplayLabel(other.label)}` : null;
   };
-  const names = [...new Set([...participants, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
+  const ownerId = draftKey?.ownerId;
+  const offered = participants.length > 0 || !ownerId ? participants : recentNames(browserStorage(), ownerId);
+  const names = [...new Set([...offered, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
 
   /** Checks each name, then saves; a refusal keeps the dialog and the names as they are. */
   async function submit() {
@@ -227,8 +235,9 @@ export function SpeakerNamingDialog({
     const rows = draft.map((row) => ({ ...row, name: row.name?.trim() ? row.name.trim() : null }));
     const refused = await onSave(rows);
     setSaving(false);
-    if (refused) setRefusal(refused);
-    else end();
+    if (refused) return setRefusal(refused);
+    if (ownerId) rememberNames(browserStorage(), ownerId, rows.flatMap((row) => (row.name ? [row.name] : [])));
+    end();
   }
 
   return (
@@ -279,7 +288,8 @@ export function SpeakerNamingDialog({
                     return (
                       <li key={row.label} className={styles.row} data-speaker={row.label}>
                         <div className={styles.who}>
-                          <SpeakerMark label={row.label} name={speakerDisplayLabel(row.label)} size="lg" />
+                          {/* The mark the page has for this person: their initial once a name is chosen, as it is chosen. */}
+                          <SpeakerMark label={row.label} name={row.name || speakerDisplayLabel(row.label)} size="lg" />
                           <VStack gap={1} hAlign="start" className={styles.said}>
                             <Text as="p">
                               <Text weight="medium">{speakerDisplayLabel(row.label)}</Text>
@@ -324,11 +334,16 @@ export function SpeakerNamingDialog({
                           {/* A status, as on the page's list; the field says it to a screen reader. */}
                           {unsure && (
                             <HStack aria-hidden>
-                              <Token size="sm" color="yellow" label="Osäkert förslag" />
+                              <Token size="sm" color="yellow" label="Osäkert förslag" icon={<Icon icon="warning" size="sm" />} />
                             </HStack>
                           )}
                           {proposal?.evidence && (
-                            <Collapsible defaultIsOpen={false} chevronPosition="start" trigger={<Text type="supporting" weight="medium">Varför?</Text>}>
+                            <Collapsible
+                              className={styles.why}
+                              defaultIsOpen={false}
+                              chevronPosition="start"
+                              trigger={<Text type="supporting" weight="medium">Varför?</Text>}
+                            >
                               <Text as="p" type="supporting">{proposal.evidence}</Text>
                             </Collapsible>
                           )}
@@ -345,8 +360,10 @@ export function SpeakerNamingDialog({
               <VStack gap={3}>
                 {refusal && <Banner status="error" title={refusal} collapsible={false} />}
                 {decided && <Text as="p" color="secondary">Namnen är redan sparade.</Text>}
+                {/* On a phone's whole screen the title's × is the way out: the footer keeps to Spara namnen, and the
+                    speakers have its room. */}
                 <ActionRow>
-                  {!decided && <Button variant="ghost" label="Avbryt" onClick={close} />}
+                  {!decided && !narrow && <Button variant="ghost" label="Avbryt" onClick={end} />}
                   {decided ? (
                     <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (

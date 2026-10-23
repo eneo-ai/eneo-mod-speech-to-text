@@ -1,5 +1,7 @@
+import { User } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
 import { InputGroup } from "@astryxdesign/core/InputGroup";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -19,14 +21,16 @@ const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter", spellCheck: "false" } as Record<string, string>;
 
 /**
- * A `list` field as chips. "Lägg till" stands beside the input, off until a
- * name is typed, so a tap adds it on any device and the input keeps its width;
+ * A `list` field as chips. "Lägg till" stands beside the input, one piece with
+ * it, off until a name is typed, so a tap adds it on any device and the input
+ * keeps its width;
  * Enter (a phone's return key) or a comma adds it too, a pasted list is split
  * on commas, semicolons and line breaks,
  * Backspace in the empty input removes the last chip, and each chip has its
  * own remove button, which hands the focus back to the input, except after a
  * finger's press: there that would open the phone's keyboard for nothing.
- * Earlier names are offered as the browser's own suggestions. Text left in
+ * Earlier names are offered as the browser's own suggestions, and an empty
+ * field offers the names it was last sent with in one press. Text left in
  * the input becomes a chip when the field loses focus, so a typed name is
  * never lost.
  */
@@ -35,6 +39,7 @@ export function ParticipantsInput({
   names,
   onChange,
   suggestions,
+  previous = [],
   onAdded,
   description,
   error,
@@ -46,6 +51,8 @@ export function ParticipantsInput({
   names: string[];
   onChange: (names: string[]) => void;
   suggestions: string[];
+  /** The names the field was last sent with on this flow (lib/participants lastNames). */
+  previous?: readonly string[];
   /** Names the user just added, to offer them again next time. */
   onAdded?: (names: string[]) => void;
   /** Under the label, before the field. */
@@ -63,6 +70,7 @@ export function ParticipantsInput({
   const [announcement, setAnnouncement] = useState("");
   // How the last press in the chips was made. Read from the press itself: WebKit says a tap's click is a mouse's.
   const pressedWith = useRef("");
+  const namesList = useRef<HTMLElement>(null);
 
   function add(added: string[]) {
     const next = addNames(names, added);
@@ -178,9 +186,29 @@ export function ParticipantsInput({
           />
         </InputGroup>
       </VStack>
+      {/* Where the chips will be: last time's names in one press, which says what it added and leaves the focus in the
+          field for the next name. */}
+      {names.length === 0 && previous.length > 0 && (
+        <HStack onPointerDown={(event) => (pressedWith.current = event.pointerType)} onKeyDown={() => (pressedWith.current = "")}>
+          <Button
+            label={`Lägg till förra gångens namn (${previous.length})`}
+            variant="ghost"
+            size="sm"
+            className={styles.previous}
+            onClick={() => {
+              add([...previous]);
+              // A finger would have the phone's keyboard open over half the screen: the focus goes to the first name's
+              // remove instead, once the names are drawn, so it is not lost with the button.
+              if (pressedWith.current !== "touch") input.current?.focus();
+              else requestAnimationFrame(() => namesList.current?.querySelector<HTMLElement>("button")?.focus());
+            }}
+          />
+        </HStack>
+      )}
       {names.length > 0 && (
         <HStack
           as="ul"
+          ref={namesList}
           aria-label="Tillagda namn"
           role="list"
           wrap="wrap"
@@ -191,11 +219,20 @@ export function ParticipantsInput({
         >
           {names.map((name) => (
             <li key={name}>
+              {/* A person, not yet a speaker: a chip in the deployment's tint with a person icon in its colour, rather than
+                  a speaker's colour, which only the review maps. */}
               <Token
                 label={name}
+                color="blue"
+                icon={<Icon icon={User} size="sm" color="accent" />}
                 onRemove={() => {
+                  // With a finger the focus goes to the next name's remove, or the one before it, and not into the field,
+                  // which would open the phone's keyboard; the removed button has gone with its name.
+                  const removes = [...(namesList.current?.querySelectorAll<HTMLElement>("button") ?? [])];
+                  const at = names.indexOf(name);
                   remove(name);
                   if (pressedWith.current !== "touch") input.current?.focus();
+                  else (removes[at + 1] ?? removes[at - 1])?.focus();
                 }}
               />
             </li>

@@ -34,8 +34,11 @@ async function player(segments: TranscriptSegment[], props: Record<string, unkno
   );
 }
 
+// The passages shown: one the speaker filter hides stays in the page, hidden.
 const passages = (within: ParentNode) =>
-  [...within.querySelectorAll<HTMLLIElement>("li[data-turn-index]")].map((li) => li.getAttribute("aria-label"));
+  [...within.querySelectorAll<HTMLLIElement>("li[data-turn-index]:not([hidden])")].map((li) => li.getAttribute("aria-label"));
+// The filter's passages follow once the chip has been drawn: a frame, and the task after it.
+const drawn = (view: { act: (work: () => Promise<void>) => Promise<void> }) => view.act(() => new Promise((done) => setTimeout(done, 50)));
 // The count is the paragraph that says it: the design system's buttons hold live regions of their own.
 const status = (within: ParentNode) => within.querySelector('p[role="status"]')?.textContent ?? "";
 const chip = (within: ParentNode, words: string) =>
@@ -79,6 +82,7 @@ test("the speaker row filters and does nothing else; the search follows the filt
   assert.equal(computeAccessibleName(chip(view.container, "Talare 1")), "Talare 1", "named by the name, no count");
   assert.ok(chip(view.container, "Talare 1").querySelector("[data-speaker-color]"), "with the speaker's mark");
   await view.act(async () => chip(view.container, "Talare 2").click());
+  await drawn(view);
   assert.deepEqual(passages(view.container), ["Talare 2, 0:02", "Talare 2, 0:06"]);
   assert.ok(!picker(), "a chip opens nothing");
 
@@ -87,6 +91,7 @@ test("the speaker row filters and does nothing else; the search follows the filt
   assert.equal(status(view.container), "Träff 1 av 2", "only the passages shown are searched");
 
   await view.act(async () => chip(view.container, "Alla").click());
+  await drawn(view);
   assert.equal(passages(view.container).length, 4);
   assert.equal(status(view.container), "Träff 1 av 4");
 });
@@ -142,8 +147,10 @@ test("an uncertain passage keeps Eneo's words in the name slot, and one action: 
   assert.equal(computeAccessibleName(toDo), "Osäkra (1)");
   assert.equal(toDo.previousElementSibling?.getAttribute("data-orientation"), "vertical", "after a divider");
   await view.act(async () => toDo.click());
+  await drawn(view);
   assert.deepEqual(passages(view.container), ["Överlappande tal – osäker talare, 0:02"]);
   await view.act(async () => chip(view.container, "Alla").click());
+  await drawn(view);
 
   await view.act(async () => button(view.container, "Ändra talare")!.click());
   const options = speakerRadios().map((input) => computeAccessibleName(input));
@@ -395,15 +402,18 @@ const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
   fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
 }));
 
-test("more than five speakers: chips from a laptop's width, a list to pick one below it", async () => {
+test("more than five speakers: chips from a laptop's width, a list to pick one below it; two speakers a list only on the narrowest phones", async () => {
+  const listIn = (view: Awaited<ReturnType<typeof player>>) =>
+    [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
   const view = await player(six);
-  assert.ok(view.container.querySelector("[data-many]"), "the chips know there are many, so a narrow screen hides them");
-  const list = [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
-  assert.ok(list, "a list to pick a speaker from");
+  assert.equal(view.container.querySelector("[data-fold]")?.getAttribute("data-fold"), "many", "the chips know there are many, so a narrow screen hides them");
+  assert.ok(listIn(view), "a list to pick a speaker from");
   const few = await player(meeting);
-  assert.equal(few.container.querySelector("[data-many]"), null, "with few speakers the chips are always shown");
-  const none = [...few.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
-  assert.equal(none, undefined, "and there is no list");
+  assert.equal(few.container.querySelector("[data-fold]")?.getAttribute("data-fold"), "two", "two speakers: chips, but for the narrowest phones");
+  assert.ok(listIn(few), "with the list for those");
+  const one = await player(meeting.filter((segment) => segment.speaker === "SPEAKER_00"));
+  assert.equal(one.container.querySelector("[data-fold]"), null, "one speaker: the chips always fit");
+  assert.equal(listIn(one), undefined, "and there is no list");
 });
 
 test("a filter whose speaker has gone shows everyone again", async () => {
@@ -417,8 +427,10 @@ test("a filter whose speaker has gone shows everyone again", async () => {
   }
   const view = await mount(createElement(Review));
   await view.act(async () => chip(view.container, "Talare 2").click());
+  await drawn(view);
   assert.deepEqual(passages(view.container), ["Talare 2, 0:02", "Talare 2, 0:06"]);
   await view.act(async () => drop());
+  await drawn(view);
   // Their two passages are one now, with no one between them: Talare 2 has none left, so all are shown.
   assert.deepEqual(passages(view.container), ["Talare 1, 0:00"]);
   assert.equal(chip(view.container, "Alla").getAttribute("aria-pressed"), "true");
@@ -491,7 +503,8 @@ function speakersPart(within: ParentNode) {
   const naming = button(within, "Namnge talare");
   return {
     order: [label && "Talare", naming && precedes(naming) && "Namnge talare", `group ${computeAccessibleName(group)}`].filter(Boolean),
-    oneRow: Boolean(label && naming && label.parentElement === naming.parentElement && !label.parentElement!.contains(group)),
+    // The word's row holds the naming (at its end, with the page's actions after it where they are given), not the filter.
+    oneRow: Boolean(label && naming && label.parentElement!.contains(naming) && !label.parentElement!.contains(group)),
     variant: naming?.getAttribute("data-variant") ?? null,
   };
 }

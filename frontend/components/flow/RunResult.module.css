@@ -26,6 +26,11 @@
   }
 }
 
+/* The tabs stand 8 px apart, as the controls a finger presses do. */
+.tabs {
+  column-gap: var(--spacing-2);
+}
+
 /* Below a laptop's width the transcript is the second tab's panel, in the span after the tabs' own: as far from them
    as the first. */
 .afterTabs {
@@ -61,4 +66,17 @@
   margin-block-start: var(--spacing-2);
   padding-block-start: var(--spacing-4);
   border-block-start: var(--border-width) solid var(--color-border);
+}
+
+/* "Ny inspelning" at the end of a phone's document: a ghost button's own padding would set its icon in from the edge the
+   document's parts share. */
+.quietStart {
+  margin-inline-start: calc(-1 * var(--spacing-3));
+}
+
+/* From 640 px it stands at the head's end beside the heading, its words on one line: the heading wraps first. A finger's
+   44 px button is laid over the row's edges, so the row is the tile's 40 px and the heading's top is the transcript's. */
+.quietEnd {
+  flex-shrink: 0;
+  margin-block: calc((var(--spacing-10) - var(--size-element-md)) / 2);
 }

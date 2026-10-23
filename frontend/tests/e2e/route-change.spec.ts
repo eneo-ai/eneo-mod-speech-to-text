@@ -298,4 +298,79 @@ test("a run that no longer exists leaves the address and says so above a new sta
   await expect(page.getByRole("alert").filter({ hasText: "Körningen finns inte längre. Du kan starta en ny här." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   expect(new URL(page.url()).searchParams.has("run")).toBe(false);
+  // The run the person meant is likely among the flow's earlier runs: they are listed under the setup as usual.
+  await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+});
+
+test("the word that a linked run is gone does not follow the person into the recording", async ({ page, sentinel }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "behaviour, at one width");
+  sentinel.expect({ console: /status of 404.*\/runs\/00000000-0000-4000-8000-00000000dead\// });
+  await page.goto(`/flows/${ids.flows.flow1}?run=00000000-0000-4000-8000-00000000dead`);
+  const gone = page.getByRole("alert").filter({ hasText: "Körningen finns inte längre" });
+  await expect(gone).toBeVisible();
+  await record(page, "Spela in");
+  await expect(gone).toHaveCount(0);
+});
+
+test("an earlier run opened from the setup is an entry of its own: Back goes to the setup and its list, Forward to the run", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await setup(page);
+  await page.getByRole("button", { name: /^Öppna, körningen / }).first().click();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(`/flows/${ids.flows.flow1}`);
+  expect(new URL(page.url()).searchParams.has("run")).toBe(false);
+
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+
+  // The run's entry loaded again, and Back to the setup while the flow is still being read: the setup stays, and its
+  // address names no run, when the reads come in.
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let held = 0;
+  await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow1}/(published|run-contract)/`), async (route) => {
+    held += 1;
+    await released;
+    await route.fallback().catch(() => undefined);
+  });
+  await page.reload({ waitUntil: "commit" });
+  await expect.poll(() => held, { message: "the flow and its contract are being read" }).toBeGreaterThanOrEqual(2);
+  await page.evaluate(() => ((window as unknown as { loaded: boolean }).loaded = true));
+  await page.goBack({ waitUntil: "commit" });
+  expect(new URL(page.url()).searchParams.has("run")).toBe(false);
+  // The same page, still reading: Back loaded nothing anew.
+  expect(await page.evaluate(() => (window as unknown as { loaded?: boolean }).loaded)).toBe(true);
+  release();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+  await page.waitForTimeout(1_000);
+  expect(new URL(page.url()).searchParams.has("run"), "the setup's address keeps no run").toBe(false);
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toHaveCount(0);
+});
+
+test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await page.goto(`/flows/${ids.flows.flow2}`);
+  // A note on the page; the page's status region says it (aria.spec.ts).
+  const banner = page.getByRole("note").filter({ hasText: "En körning väntar på din granskning" });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("Den avbryts om den inte granskas i tid.");
+  await banner.getByRole("button", { name: /^Granska, körningen / }).click();
+  const heading = page.getByRole("heading", { name: "Vem är vem?", level: 1 });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+});
+
+test("a flow that must be published again says its heading once: the line under it says what to do", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// });
+  await page.goto(`/flows/${ids.flows.flow4}`);
+  const title = page.getByRole("heading", { level: 1 });
+  await expect(title).toHaveText("Flödet kan inte användas just nu.");
+  const line = title.locator("xpath=following-sibling::p[1]");
+  await expect(line).not.toContainText("Flödet kan inte användas just nu.");
+  await expect(line).toContainText("publicera det på nytt");
 });

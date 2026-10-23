@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
-import { useBlocker } from "react-router";
+import { useBlocker, type Location } from "react-router";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 
 /**
@@ -15,13 +15,25 @@ export const LeaveContext = createContext<{
 
 const CORRECTIONS_LEAVE = "Du har rättningar som inte har sparats. De försvinner om du lämnar sidan.";
 
+/** The element the focus goes back to after a question: the focused one, or for an item of a menu, the menu's button. */
+function returnPoint(): HTMLElement | null {
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (!active) return null;
+  const owner = [...document.querySelectorAll<HTMLElement>("[aria-controls]")].find((trigger) => {
+    const controlled = document.getElementById(trigger.getAttribute("aria-controls") ?? "");
+    return controlled !== null && controlled !== active && controlled.contains(active);
+  });
+  return owner ?? active;
+}
+
 /**
  * While `active`, leaving the flow page asks first, in the page's own dialog. The router's blocker asks for every
  * departure it sees: a link, the brand, Back and Forward. A change of the address that keeps the page (the page writing
- * `?run=`) is no departure. The browser's own question (beforeunload, by the page) covers what no navigation reaches:
+ * `?run=`) is no departure, but Back or Forward to an entry of the page whose view takes the place of the one shown
+ * (`replacesView`) is. The browser's own question (beforeunload, by the page) covers what no navigation reaches:
  * a reload, closing the tab, and Back from the first page of a visit.
  */
-export function useLeaveQuestion(active: boolean, warning: string, keepsWork = false) {
+export function useLeaveQuestion(active: boolean, warning: string, keepsWork = false, replacesView: (next: Location) => boolean = () => false) {
   const [correctionsHeld, setCorrectionsHeld] = useState(0);
   const holdUnsavedCorrections = useCallback(() => {
     setCorrectionsHeld((count) => count + 1);
@@ -34,12 +46,31 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
   useEffect(() => {
     allowed.current = false;
   }, [guarded]);
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => guarded && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation, historyAction }) =>
+      guarded &&
+      !allowed.current &&
+      (currentLocation.pathname !== nextLocation.pathname || (historyAction === "POP" && replacesView(nextLocation))),
+  );
   const [pendingAction, setPendingAction] = useState<(() => void | Promise<void>) | null>(null);
+  // What had the focus when an action asked, for Stanna kvar to give it back to. The design system's dialog gives it back
+  // to what had it, but a menu's item that asked (Logga ut) has gone with its menu: then it is the menu's own button.
+  const askedFrom = useRef<HTMLElement | null>(null);
 
   const stay = () => {
     setPendingAction(null);
     if (blocker.state === "blocked") blocker.reset();
+    // Once the dialog, closing, has given the focus back where it could: where it is lost (the page's body, or the item of
+    // a menu that has closed), it goes back to where the question was asked from.
+    const back = askedFrom.current;
+    askedFrom.current = null;
+    const until = performance.now() + 1_000;
+    const check = () => {
+      const now = document.activeElement;
+      if (!now || now === document.body || now.checkVisibility?.() === false) return void (back?.isConnected && back.focus());
+      if (now.closest("dialog") && performance.now() < until) requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
   };
   const leave = () => {
     const goOn = pendingAction;
@@ -74,7 +105,11 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
       onAction={leave}
     />
   );
-  const leaveFirst = (goOn: () => void | Promise<void>) => (guarded ? setPendingAction(() => goOn) : void goOn());
+  const leaveFirst = (goOn: () => void | Promise<void>) => {
+    if (!guarded) return void goOn();
+    askedFrom.current = returnPoint();
+    setPendingAction(() => goOn);
+  };
 
   return { leaveFirst, holdUnsavedCorrections, question };
 }

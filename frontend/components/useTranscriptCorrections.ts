@@ -1,20 +1,28 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import type { TranscriptContext } from "@/lib/transcript-context";
 import type { CorrectionsSaveState } from "./TranscriptPlayer";
+import { AuthenticatedUserContext } from "./AuthGate";
 import { ApiError, saveTranscriptCorrections } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
+import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { friendlyError } from "@/lib/errors";
+import { onlineStatus, type OnlineStatus } from "@/lib/online-status";
 import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, withPrunedNames, type CorrectionSet, type SpeakerNames } from "@/lib/transcript-corrections";
 import { LeaveContext } from "./flow/useLeaveQuestion";
 
 const STALE_REVISION = "flow_transcript_corrections_stale_revision";
 const READ_AGAIN = "Transkriberingen har lästs in igen, så ändringen sparades inte. Den senaste versionen visas nu. Gör om ändringen där.";
 
+/** The corrections being saved, kept in the tab (lib/drafts) with the revision they were made on, until Eneo has them. */
+type KeptCorrections = { revision: number | null; set: CorrectionSet };
+const isKept = (value: unknown): value is KeptCorrections =>
+  typeof value === "object" && value !== null && "set" in value && typeof (value as KeptCorrections).set === "object" && (value as KeptCorrections).set !== null;
+
 /**
  * `reload` reads the transcript and its saved corrections again; the page asks for that through `readAgain`, which owns
  * what a read does to the corrections being saved.
  */
-export function useTranscriptCorrections(flowId: string, runId: string, transcript: TranscriptContext, reload: () => void) {
+export function useTranscriptCorrections(flowId: string, runId: string, transcript: TranscriptContext, reload: () => void, online: OnlineStatus = onlineStatus) {
   const [corrections, setCorrections] = useState<CorrectionSet>(EMPTY_CORRECTIONS);
   const [saveState, setSaveState] = useState<CorrectionsSaveState>("idle");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -29,6 +37,16 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   // The corrections a read took from the screen before Eneo had them: the person's own. Kept for the person to take with
   // them (`downloadDropped`) until they have, or another save succeeds.
   const [dropped, setDropped] = useState<CorrectionSet | null>(null);
+  // While a save has not gone through, the corrections are kept in the tab too: a page the browser discards or reloads
+  // (a phone that put the tab away, a crash) has no leave question, and gives them back from there (below, once the
+  // transcript, whose step names them, is read).
+  const ownerId = useContext(AuthenticatedUserContext)?.id ?? null;
+  const keptName = transcript.stepId ? `corrections:${runId}:${transcript.stepId}` : null;
+  const keep = (set: CorrectionSet, revision: number | null) => {
+    if (ownerId && keptName) writeDraft(browserDrafts(), ownerId, keptName, { revision, set } satisfies KeptCorrections);
+  };
+  // Whether the last save failed for want of a network (no answer at all): it is sent again when the connection is back.
+  const noAnswer = useRef(false);
 
   // What is not saved is lost with the page: closing it asks first.
   const unsaved = saveState === "saving" || saveState === "error" || dropped !== null;
@@ -36,6 +54,15 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   useEffect(() => {
     if (unsaved) return holdUnsavedCorrections();
   }, [unsaved, holdUnsavedCorrections]);
+  // Saved (or taken away by the person): nothing is kept in the tab any more.
+  const wasUnsaved = useRef(false);
+  useEffect(() => {
+    if (unsaved) wasUnsaved.current = true;
+    else if (wasUnsaved.current && ownerId && keptName) {
+      wasUnsaved.current = false;
+      clearDraft(browserDrafts(), ownerId, keptName);
+    }
+  }, [unsaved, ownerId, keptName]);
   useEffect(() => {
     if (!unsaved) return;
     const ask = (event: BeforeUnloadEvent) => {
@@ -58,6 +85,50 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     revisionRef.current = transcript.corrections.revision;
     draft.current = transcript.corrections;
   }, [transcript.pending, transcript.corrections]);
+  // Whether corrections were made on the source of the transcript read, and whether they are what Eneo has on it.
+  const sameSource = (set: CorrectionSet) => (set.segmentsHash ?? null) === (transcript.corrections.segmentsHash ?? null);
+  const isSaved = (set: CorrectionSet) => sameSource(set) && sameCorrections(set, transcript.corrections);
+  // Corrections a page before this one kept in the tab, once a read they can be saved on has landed (one that failed in
+  // part leaves them kept until Läs in igen reads it whole): Eneo has them already (the answer was lost), or they were
+  // made on what Eneo still has and are saved now. Made on another source of the transcript, or saved over since, they
+  // are the person's to take, as after any refused save.
+  const restored = useRef(false);
+  const savable = !transcript.pending && transcript.stepId !== null && !transcript.correctionProblem;
+  useEffect(() => {
+    if (!savable || restored.current) return;
+    restored.current = true;
+    const kept = ownerId && keptName ? readDraft(browserDrafts(), ownerId, keptName, isKept) : null;
+    if (!kept || !ownerId || !keptName) return;
+    if (isSaved(kept.set)) {
+      clearDraft(browserDrafts(), ownerId, keptName);
+    } else if (sameSource(kept.set) && kept.revision === transcript.corrections.revision) {
+      void save(kept.set, false);
+    } else {
+      setDropped(kept.set);
+      setLocalError(sameSource(kept.set) ? friendlyError(new ApiError(409, "", null, STALE_REVISION)) : READ_AGAIN);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savable]);
+  // Corrections a read took from the screen that are what Eneo has after all (a save whose answer was lost, sent again
+  // and refused as stale): nothing was lost, and nothing is said to be.
+  useEffect(() => {
+    if (!dropped || transcript.pending || !isSaved(dropped)) return;
+    setDropped(null);
+    setLocalError(null);
+    setSaveState("saved");
+  }, [dropped, transcript.pending, transcript.corrections]);
+  // A save that got no answer goes again by itself when the device, which lost its network, has it back: what a phone on
+  // a meeting room's Wi-Fi does. A module that did not answer is left to Försök spara igen: with a network, sending
+  // again by itself could repeat a request that keeps failing.
+  const latestSaveNow = useRef<() => Promise<string | null>>(() => Promise.resolve(null));
+  useEffect(() => {
+    if (saveState !== "error" || !noAnswer.current) return;
+    let wasOffline = online.connection === "offline";
+    return online.subscribe((isOnline) => {
+      if (!isOnline) wasOffline ||= online.connection === "offline";
+      else if (wasOffline) void latestSaveNow.current();
+    });
+  }, [saveState, online]);
 
   /**
    * Reads the transcript again, and the page's corrections with it. The new read starts here, not when it lands: no save
@@ -104,6 +175,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
       setCorrections(next);
       generation.current++;
       setSaveState("saving");
+      keep(next, revisionRef.current);
     }
     const requestGeneration = generation.current;
     const madeOn = read.current;
@@ -139,10 +211,14 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         if (draft.current === next) draft.current = landed;
         setCorrections((shown) => (shown === next ? landed : shown));
         if (requestGeneration === generation.current) { setSaveState("saved"); setLocalError(null); }
+        // A newer change still to save is kept on the revision this one made.
+        else keep(draft.current, saved.revision);
         setDropped(null);
+        noAnswer.current = false;
         return true;
       } catch (err) {
         refusal = friendlyError(err);
+        noAnswer.current = err instanceof TypeError;
         if (madeOn !== read.current) return false;
         if (err instanceof ApiError && err.code === STALE_REVISION) {
           // Someone else saved first: their corrections are read again and replace these, which could never be saved.
@@ -166,6 +242,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
   function saveNow(names?: SpeakerNames): Promise<string | null> {
     return save(names ? { ...draft.current, speakerNames: names } : draft.current, true);
   }
+  latestSaveNow.current = () => saveNow();
   async function retryCorrections() {
     await saveNow();
   }

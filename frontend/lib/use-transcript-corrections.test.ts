@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 
-import { cleanup, installDom, mount } from "./test-dom";
+import { asPerson, cleanup, installDom, mount } from "./test-dom";
 import { INITIAL_TRANSCRIPT, type TranscriptContext } from "./transcript-context";
 import { occurrencesForLine, withLineCorrection, withSpeakerDecision, type CorrectionSet } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
@@ -53,38 +53,63 @@ const asksBeforeLeaving = () => {
  * useTranscriptContext reads it: the hook's `reload` puts a read under way (`reloads()` counts them), and `landed` is its
  * answer.
  */
-async function correcting(t: TestContext) {
+async function correcting(
+  t: TestContext,
+  { tabKept = false, first = transcript, online }: { tabKept?: boolean; first?: TranscriptContext; online?: import("./online-status").OnlineStatus } = {},
+) {
   const { createElement, useState } = await import("react");
   const { useTranscriptCorrections } = await import("../components/useTranscriptCorrections");
+  const { onlineStatus } = await import("./online-status");
   const original = globalThis.fetch;
-  t.after(() => void (globalThis.fetch = original));
-  const requests: { body: Record<string, unknown>; answer: (response: Response) => void }[] = [];
+  t.after(() => {
+    globalThis.fetch = original;
+    onlineStatus.reportReachable();
+  });
+  // The tab's own storage, as a new page in it finds it (`tabKept`), or empty, as a new tab's.
+  if (!tabKept) window.sessionStorage.clear();
+  const requests: { body: Record<string, unknown>; answer: (response: Response) => void; drop: () => void }[] = [];
   let open = 0;
   let most = 0;
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
     most = Math.max(most, ++open);
-    return new Promise<Response>((resolve) => {
-      requests.push({ body: JSON.parse(String(init?.body)), answer: (response) => (open--, resolve(response)) });
+    return new Promise<Response>((resolve, reject) => {
+      requests.push({
+        body: JSON.parse(String(init?.body)),
+        answer: (response) => (open--, resolve(response)),
+        // No answer: the network went (the request may or may not have reached Eneo).
+        drop: () => (open--, reject(new TypeError("Failed to fetch"))),
+      });
     });
   }) as typeof fetch;
   let editing!: ReturnType<typeof useTranscriptCorrections>;
   let land!: (read: TranscriptContext) => void;
   let reloads = 0;
   function Probe() {
-    const [read, setRead] = useState(transcript);
+    const [read, setRead] = useState(first);
     land = setRead;
-    editing = useTranscriptCorrections("flow-1", "run-1", read, () => {
-      reloads++;
-      setRead(INITIAL_TRANSCRIPT);
-    });
+    editing = useTranscriptCorrections(
+      "flow-1",
+      "run-1",
+      read,
+      () => {
+        reloads++;
+        setRead(INITIAL_TRANSCRIPT);
+      },
+      online,
+    );
     return null;
   }
-  const view = await mount(createElement(Probe));
+  const view = await mount(await asPerson(createElement(Probe)));
   /** What a save sets going runs on: its request goes out, or an answer is read and the next save starts. */
   const settle = () => view.act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
   /** Eneo answers request `index` (takes it, by default). */
   const answer = async (index: number, response: (body: Record<string, unknown>) => Response = taken) => {
     requests[index].answer(response(requests[index].body));
+    await settle();
+  };
+  /** Request `index` gets no answer: the network went. */
+  const drop = async (index: number) => {
+    requests[index].drop();
     await settle();
   };
   /** The read under way lands: Eneo has `corrections`. */
@@ -102,7 +127,7 @@ async function correcting(t: TestContext) {
     await view.act(async () => editing.downloadDropped());
     return JSON.parse(await files[0].text()) as CorrectionSet;
   };
-  return { view, requests, most: () => most, reloads: () => reloads, settle, answer, landed, reread, takeDropped, editing: () => editing };
+  return { view, requests, most: () => most, reloads: () => reloads, settle, answer, drop, landed, reread, takeDropped, editing: () => editing };
 }
 
 test("Spara namnen during a save waits for it, and a correction made meanwhile waits for the names: one request at a time", async (t) => {
@@ -296,4 +321,137 @@ test("Spara namnen with the names a save under way sends answers, once it lands,
   assert.equal(requests.length, 1, "and nothing more is sent");
   assert.equal(editing().localError, null, "nothing is said to be lost");
   assert.equal(editing().hasDropped, false);
+});
+
+test("a correction whose save did not go through is kept in the tab: a page the browser reloads or discards saves it again", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  assert.equal(first.editing().saveState, "error");
+  await first.view.unmount();
+
+  // The same tab, a new page (a reload, or a tab the phone put away and brought back): Eneo still has what it had.
+  const again = await correcting(t, { tabKept: true });
+  await again.settle();
+  assert.deepEqual(again.editing().corrections.occurrences, corrected(transcript.corrections).occurrences, "the correction is shown again");
+  assert.equal(again.requests.length, 1, "and saved again");
+  assert.deepEqual(again.requests[0].body.occurrences, first.requests[0].body.occurrences);
+  await again.answer(0);
+  assert.equal(again.editing().saveState, "saved");
+  await again.view.unmount();
+
+  // Saved, it is gone from the tab: the next page has nothing to give back.
+  const third = await correcting(t, { tabKept: true });
+  await third.settle();
+  assert.equal(third.requests.length, 0);
+});
+
+test("a correction kept in the tab that Eneo already has, its answer lost, is not saved again or said to be lost", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  await first.view.unmount();
+  // The page's first read shows the correction: the save had reached Eneo.
+  const again = await correcting(t, { tabKept: true, first: { ...transcript, corrections: { ...corrected(transcript.corrections), revision: 1 } } });
+  await again.settle();
+  assert.equal(again.requests.length, 0);
+  assert.equal(again.editing().localError, null);
+  assert.equal(again.editing().hasDropped, false);
+});
+
+test("a correction kept in the tab waits for a read it can be saved on: after the word times failed to load, Läs in igen shows it and saves it once", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  await first.view.unmount();
+  // The next page's first read could not read the word times: nothing can be saved on it.
+  const problem = "Kunde inte läsa transkriberingens ordtider. Ladda om sidan innan du redigerar eller godkänner.";
+  const again = await correcting(t, { tabKept: true, first: { ...transcript, correctionProblem: problem } });
+  await again.settle();
+  assert.equal(again.requests.length, 0, "nothing is sent on a read that cannot be saved on");
+  // Läs in igen, and the read is whole this time.
+  await again.reread(transcript.corrections);
+  await again.settle();
+  assert.deepEqual(again.editing().corrections.occurrences, corrected(transcript.corrections).occurrences, "the correction is shown again");
+  assert.equal(again.requests.length, 1, "and saved");
+  assert.deepEqual(again.requests[0].body.occurrences, first.requests[0].body.occurrences);
+  await again.answer(0);
+  assert.equal(again.editing().saveState, "saved");
+  assert.equal(again.requests.length, 1, "exactly once");
+});
+
+test("a correction kept in the tab that was made on another source of the transcript is not sent, and is the person's to take", async (t) => {
+  const first = await correcting(t);
+  await first.view.act(async () => void first.editing().onCorrectionsChange(corrected(first.editing().corrections)));
+  await first.drop(0);
+  await first.view.unmount();
+  // The next page reads a transcript whose source is not the one the correction was made on.
+  const replaced = { ...transcript, corrections: { ...transcript.corrections, segmentsHash: "b".repeat(64) } };
+  const again = await correcting(t, { tabKept: true, first: replaced });
+  await again.settle();
+  assert.equal(again.requests.length, 0, "nothing is sent over the other source");
+  assert.equal(again.editing().hasDropped, true, "the correction is offered to take");
+  assert.equal(again.editing().localError, READ_AGAIN, "and the page says it was not saved");
+  assert.equal(asksBeforeLeaving(), true, "closing the page asks first");
+  await again.view.unmount();
+  // Not taken yet: the tab still has it.
+  const third = await correcting(t, { tabKept: true, first: replaced });
+  await third.settle();
+  assert.equal(third.editing().hasDropped, true, "the next page offers it again");
+  const kept = await third.takeDropped();
+  assert.deepEqual(kept.occurrences, corrected(transcript.corrections).occurrences, "the correction, to take with them");
+  assert.equal(kept.segmentsHash, transcript.corrections.segmentsHash, "with the source it was made on");
+});
+
+/** A browser window whose network the test switches, for the page's connection status. */
+async function device() {
+  const { createOnlineStatus } = await import("./online-status");
+  const heard: Partial<Record<"online" | "offline", () => void>> = {};
+  const target = { navigator: { onLine: true }, addEventListener: (type: "online" | "offline", listener: () => void) => void (heard[type] = listener) };
+  const go = (online: boolean) => {
+    target.navigator.onLine = online;
+    heard[online ? "online" : "offline"]?.();
+  };
+  return { status: createOnlineStatus(target), go };
+}
+
+test("a save that failed when the device lost its network is sent again by itself when the network is back", async (t) => {
+  const { status, go } = await device();
+  const { view, requests, drop, answer, settle, editing } = await correcting(t, { online: status });
+  await view.act(async () => void editing().onCorrectionsChange(moved(editing().corrections)));
+  await view.act(async () => go(false));
+  await drop(0);
+  assert.equal(editing().saveState, "error");
+  await view.act(async () => go(true));
+  await settle();
+  assert.equal(requests.length, 2, "sent again without a press on Försök spara igen");
+  await answer(1);
+  assert.equal(editing().saveState, "saved");
+});
+
+test("a save the module did not answer, on a device with its network, waits for Försök spara igen", async (t) => {
+  const { status } = await device();
+  const { view, requests, drop, settle, editing } = await correcting(t, { online: status });
+  await view.act(async () => void editing().onCorrectionsChange(moved(editing().corrections)));
+  await view.act(async () => status.reportNetworkFailure());
+  await drop(0);
+  await view.act(async () => status.reportReachable());
+  await settle();
+  assert.equal(requests.length, 1, "nothing sent by itself");
+  assert.equal(editing().saveState, "error");
+});
+
+test("a save whose answer was lost, sent again and refused as stale, is not reported as someone else's change when Eneo has it", async (t) => {
+  const { view, requests, drop, answer, landed, editing } = await correcting(t);
+  await view.act(async () => void editing().onCorrectionsChange(corrected(editing().corrections)));
+  // Eneo stored it, and the answer did not reach the page.
+  await drop(0);
+  await view.act(async () => void editing().saveNow());
+  await answer(1, stale);
+  // The page reads the transcript again: Eneo has the person's correction.
+  await landed({ ...corrected(transcript.corrections), revision: 1 });
+  assert.equal(editing().hasDropped, false, "nothing to take away: Eneo has it");
+  assert.equal(editing().localError, null, "and no word of someone else's change");
+  assert.equal(editing().saveState, "saved");
+  assert.equal(requests.length, 2);
 });

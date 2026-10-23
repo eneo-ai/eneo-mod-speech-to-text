@@ -48,7 +48,8 @@ test("the sending view is a page with a heading that takes focus, a named progre
   const bar = page.getByRole("progressbar", { name: "Uppladdning" });
   await expect(bar).toHaveAttribute("aria-valuenow", /^\d+$/);
   await expect(page.getByRole("status").filter({ hasText: "Eneo tar emot filen…" })).toBeAttached();
-  await expect(page).toHaveTitle("Dokumentet skapas · Tal till text");
+  // The tab says how far the upload has come, before the state: every byte is up while Eneo takes the file.
+  await expect(page).toHaveTitle(/^100\s%\s·\sDokumentet skapas · Tal till text$/);
 });
 
 test("a run opened while it runs keeps the flow's page: the way back, and the details it was started with", async ({ page }, info) => {
@@ -93,6 +94,29 @@ test("the dialog saves the names; the page's Godkänn och fortsätt then lets th
   await page.getByRole("button", { name: "Godkänn och fortsätt" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   expect(saved, "approving saves nothing again").toHaveLength(1);
+});
+
+test("Avbryt throws away the names typed; the dialog's × keeps them for when it opens again", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "on a phone's whole screen the title's × is the dialog's only way out");
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const talare2 = dialog.getByRole("combobox", { name: "Vem är Talare 2?" });
+  const was = await talare2.inputValue();
+  await talare2.fill("Sara Holm");
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await expect(dialog).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Namnge talarna" })).toBeVisible();
+  await expect(dialog, "nothing typed is kept to open it with").toBeHidden();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(talare2, "Avbryt threw the typed name away").toHaveValue(was);
+  await talare2.fill("Sara Holm");
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await dialog.getByRole("button", { name: "Stäng" }).first().click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(talare2, "the × keeps what was typed").toHaveValue("Sara Holm");
 });
 
 test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
@@ -148,7 +172,7 @@ test("a correction that cannot be saved says so, and offers another try and the 
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 });
 
-test("in the review, Byt namn på in a passage's Ändra talare opens Namnge talarna at that speaker, and Avbryt gives the focus back to the passage", async ({ page }, info) => {
+test("in the review, Byt namn på in a passage's Ändra talare opens Namnge talarna at that speaker, and Avbryt (on a phone's whole screen the title's Stäng) gives the focus back to the passage", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review")!.go(page, info);
   const passage = page.getByRole("button", { name: "Erik Lund, ändra talare" }).first();
   await passage.click();
@@ -156,25 +180,30 @@ test("in the review, Byt namn på in a passage's Ändra talare opens Namnge tala
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeFocused();
   await expect(page.getByRole("dialog", { name: "Ändra talare" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await dialog.getByRole("button", { name: info.project.use.viewport!.width < 480 ? "Stäng" : "Avbryt", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(passage).toBeFocused();
 });
 
-test("the player's row keeps the position slider a usable width on a phone, with Följ shown", async ({ page }, info) => {
+test("the player's row keeps the position slider a usable width on a phone, with Följ uppspelningen shown", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);
-  // Looking for a word stops the transcript following the playback: Följ is offered.
+  // Looking for a word stops the transcript following the playback: Följ uppspelningen is offered.
   await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("punkten");
-  await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
-  const slider = await page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
-    const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
-    return track.getBoundingClientRect().width;
-  });
-  expect(slider, "the track of the position slider").toBeGreaterThanOrEqual(120);
+  await expect(page.getByRole("button", { name: "Följ uppspelningen" })).toBeVisible();
+  const track = () =>
+    page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
+      const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
+      return track.getBoundingClientRect().width;
+    });
+  expect(await track(), "the track of the position slider").toBeGreaterThanOrEqual(120);
+  // The narrowest phone too, where the row keeps its speed and the position's time alone.
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect.poll(track, { message: "the track of the position slider at 320 px" }).toBeGreaterThanOrEqual(120);
+  await page.setViewportSize(info.project.use.viewport!);
   const player = await page.getByRole("region", { name: "Inspelning och transkribering" }).boundingBox();
-  const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
-  expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
+  const follow = await page.getByRole("button", { name: "Följ uppspelningen" }).boundingBox();
+  expect(follow!.x + follow!.width, "Följ uppspelningen stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
 });
 
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
@@ -297,8 +326,9 @@ for (const [state, title] of [
   ["signin-sso", "Logga in · Tal till text"],
   ["flow-list", "Välj ett flöde · Tal till text"],
   ["flow-gone", "Flödet är inte längre tillgängligt · Tal till text"],
-  ["review", "Vem är vem? · Tal till text"],
-  ["review-text-edit", "Sammanfattning · Tal till text"],
+  // A review names its flow, as the run's other states do: two tabs with a review each are told apart.
+  ["review", "Vem är vem? · Intervju till sammanfattning · Tal till text"],
+  ["review-text-edit", "Sammanfattning · Nämndmöte till rapport · Tal till text"],
 ]) {
   test(`the ${state} page's title says what it is`, async ({ page }, info) => {
     await STATES.find((s) => s.name === state)!.go(page, info);
@@ -405,7 +435,7 @@ test("below a laptop's width, and on a touch screen, the document's PDF opens in
   await expect(link).toHaveAttribute("href", /disposition=inline/);
 });
 
-test("a review says it waits for the person and, on a line of its own, when it must be done by, with the time, in the next year too", async ({ page }, info) => {
+test("a review says it waits for the person and when it must be done by, with the time, in the next year too", async ({ page }, info) => {
   for (const [state, now, deadline] of [
     ["review", "2026-09-24T12:00:00+02:00", "8 okt 11:01"],
     ["review-text-edit", "2026-12-28T12:00:00+01:00", "3 jan 2027 09:01"],
@@ -413,7 +443,10 @@ test("a review says it waits for the person and, on a line of its own, when it m
     await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
     const main = page.getByRole("main");
-    await expect.soft(main.getByText(/ · Väntar på din granskning$/, { exact: true })).toBeVisible();
+    // A pill beside the heading from 640 px; on a phone the deadline under the heading says that the review waits.
+    const pill = main.getByText("Väntar på din granskning", { exact: true });
+    if (info.project.use.viewport!.width > 640) await expect.soft(pill).toBeVisible();
+    else await expect.soft(pill).toHaveCount(0);
     await expect.soft(main.getByText(`Granska senast ${deadline}. Därefter avbryts körningen.`, { exact: true })).toBeVisible();
   }
 });

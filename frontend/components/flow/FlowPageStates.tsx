@@ -62,7 +62,9 @@ export function unavailableCopy(error: unknown): { title: string; detail: string
     };
   }
   const { message, retry, ownerMustFix } = errorAdvice(error);
-  return { title: ownerMustFix ? "Flödet kan inte användas just nu." : "Flödet kunde inte laddas.", detail: message, retry };
+  const title = ownerMustFix ? "Flödet kan inte användas just nu." : "Flödet kunde inte laddas.";
+  // A message that starts with the title's sentence (REPUBLISH) says the rest under it, not the heading twice.
+  return { title, detail: message.startsWith(title) ? message.slice(title.length).trimStart() : message, retry };
 }
 
 /**

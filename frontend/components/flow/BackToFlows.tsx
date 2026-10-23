@@ -10,13 +10,19 @@ import { RouterLink } from "@/kit/RouterLink";
 export function BackToFlows({
   variant = "secondary",
   size = "sm",
+  iconOnly = false,
   className,
 }: {
   /** The filled one is the page's main action; the bar's is ghost. */
   variant?: "primary" | "secondary" | "ghost";
   size?: "sm" | "md";
+  /** Its arrow alone, named and with its tooltip: the bar's, where the reader's large text leaves no room for its words. */
+  iconOnly?: boolean;
   className?: string;
 }) {
+  if (iconOnly) {
+    return <Button as={RouterLink} href="/flows" label="Alla flöden" tooltip="Alla flöden" icon={<Icon icon={ArrowLeft} />} isIconOnly variant={variant} size={size} className={className} />;
+  }
   return (
     <Button
       as={RouterLink}

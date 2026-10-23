@@ -836,6 +836,29 @@ test("a recording's parts are read one at a time, so a long recording's audio is
   assert.equal(most, 1, "the next part is read once the one before is a file");
 });
 
+test("a long part is read from the device a batch of chunks at a time, so hours of audio are never in the tab at once", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  // A part of 1,000 chunks: about half an hour of a recorder's 2-second chunks.
+  const sent = Array.from({ length: 1_000 }, (_, seq) => String(seq % 10));
+  for (const [seq, text] of sent.entries()) await store.append(recording.id, 0, new Blob([text]), (seq + 1) * 2_000);
+  const getAll = IDBObjectStore.prototype.getAll;
+  const reads: number[] = [];
+  IDBObjectStore.prototype.getAll = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["getAll"]>) {
+    const request = getAll.apply(this, args);
+    if (this.name === "chunks") request.addEventListener("success", () => reads.push((request.result as unknown[]).length));
+    return request;
+  };
+  try {
+    assert.deepEqual(await texts(await store.readParts(recording.id)), [sent.join("")], "all of it, in order");
+    assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), [sent.join("")], "and whole, to send");
+  } finally {
+    IDBObjectStore.prototype.getAll = getAll;
+  }
+  assert.ok(Math.max(...reads) < 1_000, `the part read in batches, never whole: ${reads.join(", ")}`);
+});
+
 test("a device cleared in the middle of a recording: the recording goes on in this tab, and what is kept saves as a file and can be sent", async () => {
   const { env, closeConnections, wipe } = closable();
   const store = await openRecordingStore(env);
@@ -1047,6 +1070,10 @@ test("the store learns from the browser whether it may delete the device's recor
   assert.equal(calls.persist, 0, "opening asks for nothing");
   await refused.requestPersistence();
   assert.equal(refused.evictable, true, "and still, once refused");
+  // Firefox asks the person in a bar over the page each time: one ask a page, not one at each recording's start.
+  const asked = calls.persist;
+  await refused.requestPersistence();
+  assert.equal(calls.persist, asked, "a page asks once");
 
   const granted = await openRecordingStore(device({ storage: browser(false, true) }));
   let heard = 0;

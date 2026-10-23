@@ -138,6 +138,28 @@ async function mountEditableTranscript(onChange: (next: unknown) => void) {
   return { view, editor };
 }
 
+test("transcript: while one of its text fields has the focus the player says so, so a touch screen's dock stays in the text", async () => {
+  const { view, editor } = await mountEditableTranscript(() => undefined);
+  const player = view.container.querySelector<HTMLElement>('section[aria-label="Inspelning och transkribering"]')!;
+  assert.ok(player.hasAttribute("data-typing"), "a line's editor");
+  await view.act(async () => button(view.container, "Avbryt")!.focus());
+  assert.ok(!player.hasAttribute("data-typing"), "the editor's own button types nothing");
+  await view.act(async () => editor.focus());
+  await view.act(async () => void editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  assert.equal(view.container.querySelector("textarea"), null, "closed from inside");
+  assert.ok(!player.hasAttribute("data-typing"), "the focus is back on the passage's Rätta");
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const search = [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
+  await view.act(async () => search.focus());
+  assert.ok(player.hasAttribute("data-typing"), "the search");
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  await view.act(async () => outside.focus());
+  assert.ok(!player.hasAttribute("data-typing"), "the focus left the player");
+  await view.unmount();
+  outside.remove();
+});
+
 test("transcript: Tab to Avbryt and activate it leaves the text as it was", async () => {
   const changes: unknown[] = [];
   const { view } = await mountEditableTranscript((next) => changes.push(next));
@@ -693,14 +715,20 @@ test("a flow that sends its result on says so beside the action that sends, not 
 
 test("a flow that requires speaker labels Eneo cannot make now says so in place of every way in, and keeps an earlier recording to save", async () => {
   const usable = await mountAudioSetup({ selectable: false, required: true, default: true });
-  const usual = { ways: usable.offered(), details: usable.details() };
+  const usual = {
+    ways: usable.offered(),
+    details: usable.details(),
+    docked: usable.view.container.querySelector("[data-docked-action]")?.textContent ?? "",
+  };
   await usable.view.unmount();
-  // In one column the flow's details follow the way in, before the file and the action (FlowInput, choiceFirst).
+  // In one column the flow's details follow the way in, before the file (FlowInput, choiceFirst); "Så fungerar det" follows
+  // the work, and the action is docked at the page's bottom.
   assert.deepEqual(
     usual.ways,
-    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Välj ljudfil"],
+    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Så fungerar det 3 steg"],
     "the flow as it is when the labels can be made",
   );
+  assert.ok(usual.docked.includes("Välj ljudfil"), "its action docked");
   assert.ok(usual.details.includes("arende"), "with the details it asks for");
 
   const { view, audio, offered, details } = await mountAudioSetup({ selectable: false, required: true, default: true, unavailable_reason: "picked_unavailable" });
@@ -754,12 +782,12 @@ test("a recording that was ready when the flow became blocked keeps Spara ljudfi
   try {
     await view.act(async () => makeReady());
     const before = offered();
-    assert.deepEqual(before, ["Spara ljudfil", "Fortsätt spela in", "Skapa dokument", "Ta bort"], "ready, while the labels can be made");
+    assert.deepEqual(before, ["Spara ljudfil", "Ta bort", "Fortsätt spela in", "Skapa dokument"], "ready, while the labels can be made: the quiet ways, then the decision");
 
     await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
     // Neither press could do anything: the session takes no run and no new part of a flow that cannot run.
-    assert.deepEqual(offered(), ["Spara ljudfil", "Alla flöden", "Ta bort"], "saved or deleted, or on to another flow");
+    assert.deepEqual(offered(), ["Alla flöden", "Spara ljudfil", "Ta bort"], "on to another flow, or saved or deleted");
     const reasons = [...audio.querySelectorAll('[role="alert"]')].filter((alert) => alert.textContent?.includes("Flödet kan inte användas just nu."));
     assert.equal(reasons.length, 1, "the reason, as the answer to the flow's change");
     assert.match(reasons[0].textContent ?? "", /tjänsten som gör det går inte att använda\. Kontakta den som ansvarar för flödet\./);
@@ -832,7 +860,7 @@ test("a recording a reload cut off stands first on the page in one column, under
         if (twoColumns) assert.ok(audio.contains(recovery), "in the work, beside the flow");
         else {
           assert.ok(!audio.contains(recovery) && recovery.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING, "above the details, under the flow's name");
-          assert.equal(recovery.previousElementSibling?.tagName, "H1");
+          assert.equal(recovery.previousElementSibling?.firstElementChild?.tagName, "H1", "right after the flow's name and its description");
         }
       } finally {
         await view.unmount();
@@ -858,8 +886,8 @@ test("a recording the flow takes no further part of offers no Fortsätt spela in
   const part = { index: 0, startedAt: 0, durationMs: 60_000, bytes: 1_000, chunks: 30, fileId: null };
   try {
     for (const [maxFiles, expected] of [
-      [1, ["Spara ljudfil", "Skapa dokument", "Ta bort"]],
-      [2, ["Spara ljudfil", "Fortsätt spela in", "Skapa dokument", "Ta bort"]],
+      [1, ["Spara ljudfil", "Ta bort", "Skapa dokument"]],
+      [2, ["Spara ljudfil", "Ta bort", "Fortsätt spela in", "Skapa dokument"]],
     ] as const) {
       const { view, offered, makeReady } = await mountAudioSetup(labels, { step: { max_files: maxFiles }, parts: [part] });
       try {
@@ -940,10 +968,17 @@ test("the cancel question: Kör vidare leaves the run alone, Avbryt körningen c
   await view.unmount();
 });
 
-test("a cancel that is on its way keeps its button off until Eneo has answered, and a refusal shows once as an alert", async () => {
+test("a cancel that is on its way takes no second press until Eneo has answered, and a refusal shows once as an alert", async () => {
   let answer: () => void = () => undefined;
   const pending = new Promise<void>((resolve) => (answer = resolve));
-  const { view, question, ask } = await mountRunning(() => pending, { error: "Körningen kunde inte avbrytas just nu." });
+  let cancels = 0;
+  const { view, question, ask } = await mountRunning(
+    () => {
+      cancels += 1;
+      return pending;
+    },
+    { error: "Körningen kunde inte avbrytas just nu." },
+  );
   const trigger = () => button(view.container, "Avbryt körningen")!;
   assert.equal(view.container.querySelectorAll('[role="alert"]').length, 1);
   assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /Körningen kunde inte avbrytas just nu\./);
@@ -951,10 +986,15 @@ test("a cancel that is on its way keeps its button off until Eneo has answered, 
 
   await ask();
   await view.act(async () => button(question(), "Avbryt körningen")!.click());
-  assert.equal(trigger().disabled, true, "pressed twice, cancelled once");
+  // Busy, not disabled, so the focus a refusal gives back stays on it; a press meanwhile asks nothing.
   assert.equal(trigger().getAttribute("aria-busy"), "true");
+  await ask();
+  assert.equal(question().hasAttribute("open"), false, "pressed twice, asked once");
+  assert.equal(cancels, 1, "cancelled once");
   await view.act(async () => answer());
-  assert.equal(trigger().disabled, false, "free again once it is settled");
+  assert.notEqual(trigger().getAttribute("aria-busy"), "true", "free again once it is settled");
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
   await view.unmount();
 });
 
@@ -1055,9 +1095,14 @@ test("upload under way: the header offers no way off the page, which would abort
   await view.unmount();
 });
 
-test("every state of the flow's page keeps the same bar: the way back, the brand and the account (signing out asks first while something would be lost)", async () => {
+test("every state of the flow's page keeps the same bar: the way back, the brand from a tablet's width and the account (signing out asks first while something would be lost)", async (t) => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
+  const phone = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
+  assert.deepEqual(exits(phone.container), { links: 1, account: 1 }, "a phone's bar keeps its room for the way back and the account");
+  await phone.unmount();
+  const media = window.matchMedia;
+  t.mock.method(window, "matchMedia", (query: string) => ({ ...media(query), matches: query === "(min-width: 768px)" }));
   const view = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
   assert.deepEqual(exits(view.container), { links: 2, account: 1 });
   await view.unmount();
@@ -1547,6 +1592,32 @@ test("the level meter goes quiet when the stream ends, whichever way it is drawn
       if (variant === "wave") assert.ok(bars.every((bar) => bar.style.transform === "scaleY(0.12)"), "wave: every bar at its rest height");
       await view.unmount();
     }
+  } finally {
+    restore();
+  }
+});
+
+test("a stream is read once for the meter and the silence watch that listen to it: one audio context, closed with the last", async (t) => {
+  const { createElement, Fragment } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  const { useSilence } = await import("../components/flow/recording-hooks");
+  const { restore, contexts } = listening(t, { value: 0.5 });
+  const microphone = {} as MediaStream;
+  function Watch() {
+    useSilence(microphone, true);
+    return null;
+  }
+  try {
+    // Spela in's bar: the meter and the watch for a muted microphone, on the one stream being recorded.
+    const view = await mount(createElement(Fragment, null, createElement(LevelMeter, { stream: microphone, bars: 8, variant: "steps" }), createElement(Watch)));
+    await view.act(async () => t.mock.timers.tick(66));
+    assert.equal(contexts.length, 1, "one audio context for the stream, not one for each that listens");
+    assert.ok([...view.container.querySelectorAll<HTMLElement>("span")].some((bar) => bar.dataset.lit === "true"), "and the meter hears it");
+    // Paused: the meter lets the stream go, the watch keeps it.
+    await view.act(async () => view.rerender(createElement(Fragment, null, createElement(LevelMeter, { stream: null, bars: 8, variant: "steps" }), createElement(Watch))));
+    assert.equal(contexts[0].state, "running", "still read for the watch");
+    await view.unmount();
+    assert.equal(contexts[0].state, "closed", "closed with the last that listened");
   } finally {
     restore();
   }

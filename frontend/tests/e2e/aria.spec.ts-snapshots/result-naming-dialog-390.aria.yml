@@ -27,6 +27,3 @@
   - button "Spara namnen":
     - text: ""
     - status
-  - button "Avbryt":
-    - text: ""
-    - status

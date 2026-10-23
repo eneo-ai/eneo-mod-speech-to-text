@@ -33,7 +33,7 @@ const SKIPPED: Record<string, string> = {};
 const EXPECTS: Record<string, { reason: string; expects: Expectation[] }> = {};
 
 // The flow that must be republished answers 409 to the page that opens it (the state flow-republish-required declares the same).
-for (const state of ["flow-list", "branding-custom-flow-list", "branding-name-flow-list", "version", "version-commit-only", "version-nothing-known", "unsent-recordings", "unsent-recording-delete-question"]) {
+for (const state of ["flow-list", "branding-custom-flow-list", "branding-name-flow-list", "version", "version-commit-only", "version-nothing-known", "unsent-recordings", "unsent-recordings-long-flow-name", "unsent-recording-delete-question"]) {
   EXPECTS[`${state} | link "Nämndmöte till strukturerat protokoll med beslut, reservatio"`] = {
     reason: "its flow must be republished: Eneo answers 409 to the page that opens it, and the page says so",
     expects: [{ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// }],
@@ -47,7 +47,7 @@ const NO_RESPONSE: Record<string, string> = {
   'review-editor-speakers | button "Markera stycket: programledare/intervjuare"': "the passage is marked already: the state is reached by pressing it",
   'review-editor-speakers | button "Flytta uppspelningen till 0:00"': "the recording is paused at 0:00 already: it moves to where it is",
 };
-for (const state of ["result", "result-file-backed-text", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "result-word-selected", "result-search-and-playhead", "result-correction-open", "file-missing", "failure", "review", "review-reject"]) {
+for (const state of ["result", "result-file-backed-text", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "result-word-selected", "result-search-and-playhead", "result-correction-open", "file-missing", "failure", "failure-cancelled", "review", "review-reject"]) {
   NO_RESPONSE[`${state} | button "Alla"`] = "the speaker filter's chosen value: pressed again, it stays";
   NO_RESPONSE[`${state} | button "Spela från 0:00 i del 1"`] = "the recording is paused at 0:00 already: it moves to where it is";
 }

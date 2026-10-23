@@ -17,7 +17,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { needsRecording, STATES } from "./screens";
+import { chooseSpeaker, GROUP_ENGINES, longTranscript, needsRecording, STATES } from "./screens";
 
 // Dates the page shows are read against this time, so the snapshots stay put.
 const NOW = new Date("2026-09-24T12:00:00+02:00");
@@ -78,6 +78,59 @@ for (const { state, region, fixedTime, waysIn } of SNAPSHOTS) {
     await expect(region(page)).toMatchAriaSnapshot({ name });
   });
 }
+
+/**
+ * The roles and names directly in the transcript's list in Chromium's own tree, the one a screen reader is given: each
+ * of them has the list for its parent there. Chromium only.
+ */
+async function listChildren(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Accessibility.enable");
+    const { root } = await cdp.send("DOM.getDocument", { depth: 0 });
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: 'ol[aria-label="Transkriberingen"]' });
+    const [list] = (await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false })).nodes;
+    const { nodes } = (await cdp.send("Accessibility.getChildAXNodes", { id: list.nodeId })) as { nodes: { ignored: boolean; role?: { value: string }; name?: { value: string } }[] };
+    return nodes.filter((node) => !node.ignored).map((node) => `${node.role?.value} "${node.name?.value}"`);
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The browser skips a long transcript's passages while they are far from the window (content-visibility: auto,
+// TranscriptPlayer.module.css), and the speaker filter hides the other speakers' passages in the page. A screen reader is
+// given the list and its items, those far from the window among them, nothing between, and with a speaker chosen theirs
+// alone.
+test("a long transcript is one list of all its passages, those far from the window too, and with a speaker chosen of theirs only", async ({ page, browserName }, info) => {
+  test.skip(!GROUP_ENGINES.includes(info.project.name), "a laptop and a phone in each engine");
+  await longTranscript(page, info);
+  const list = page.getByRole("list", { name: "Transkriberingen" });
+  // The list and what is directly in it, as Playwright reads the page's markup: one line each.
+  const items = async () => (await list.ariaSnapshot({ depth: 1 })).split("\n").slice(1).map((line) => line.trim());
+  const passage = /^- listitem "Talare [123], [\d:]+"$/;
+  const all = await items();
+  expect(all, "every passage is an item of the list").toHaveLength(2_000);
+  expect(all.filter((line) => !passage.test(line)), "and nothing else is").toEqual([]);
+  if (browserName === "chromium") {
+    // Chromium leaves out of its tree what is inside a box it skips: a passage far from the window must be such a box
+    // itself, so that it is still an item, named, whose words come in as it nears the window.
+    const tree = await listChildren(page);
+    expect(tree, "Chromium gives the list every passage").toHaveLength(2_000);
+    expect(tree.filter((child) => !/^listitem "Talare [123], [\d:]+"$/.test(child)), "as its items, nothing between").toEqual([]);
+  }
+
+  await chooseSpeaker(page, info, "Talare 2");
+  const theirs = await page.locator('[data-turn-index][aria-label^="Talare 2,"]').count();
+  await expect(page.locator("[data-turn-index]:not([hidden])")).toHaveCount(theirs, { timeout: 30_000 });
+  const chosen = await items();
+  expect(chosen, "the list holds the speaker's passages").toHaveLength(theirs);
+  expect(chosen.filter((line) => !line.startsWith('- listitem "Talare 2, ')), "and no other's").toEqual([]);
+  if (browserName === "chromium") {
+    const tree = await listChildren(page);
+    expect(tree, "in Chromium's tree as well").toHaveLength(theirs);
+    expect(tree.filter((child) => !child.startsWith('listitem "Talare 2, ')), "no other speaker's").toEqual([]);
+  }
+});
 
 /** Records each change of a live region's text (aria-hidden parts left out), in order. */
 function listen() {
@@ -168,4 +221,55 @@ test("a lost microphone reaches a live region's text once", async ({ page }, inf
   await page.waitForTimeout(500);
   const said = (await heard(page)).filter((s) => s.text.includes("mikrofonen försvann"));
   expect(said, "the sentence reaches a live region exactly once").toHaveLength(1);
+});
+
+/**
+ * Records each live region that is added to the page with its words already in it: a region that arrives with its text
+ * is not reliably read out (NVDA, JAWS and VoiceOver differ). A region must be there first, empty, and receive them.
+ */
+function arrivals() {
+  const added: string[] = [];
+  const live = '[aria-live]:not([aria-live="off"]), [role="status"], [role="log"]';
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        for (const region of [node, ...node.querySelectorAll(live)].filter((element) => element.matches(live))) {
+          if (region.hasAttribute("data-astryx-live-region")) continue;
+          const text = (region.textContent ?? "").replace(/\s+/g, " ").trim();
+          if (text) added.push(text);
+        }
+      }
+    }
+  }).observe(document, { subtree: true, childList: true });
+  (window as unknown as { added: string[] }).added = added;
+}
+const arrived = (page: Page) => page.evaluate(() => (window as unknown as { added: string[] }).added);
+
+test("a run waiting for the person's review is said from a region that was there before it", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "one width is enough");
+  await page.addInitScript(arrivals);
+  await page.addInitScript(listen);
+  // The earlier runs answer a moment after the page has its heading, as a real Eneo can.
+  await page.route("**/runs/?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.continue();
+  });
+  await STATES.find((s) => s.name === "setup-review-waiting")!.go(page, info);
+  await page.waitForTimeout(300);
+  expect((await arrived(page)).filter((text) => /väntar på din granskning/.test(text)), "no region arrives with the notice in it").toEqual([]);
+  expect((await heard(page)).filter((s) => /väntar på din granskning/.test(s.text)), "the notice reaches a live region once").toHaveLength(1);
+});
+
+test("on a phone the caution against locking the screen is said from a region that was there before it", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "the caution is a touch screen's");
+  await page.addInitScript(arrivals);
+  await page.addInitScript(listen);
+  await STATES.find((s) => s.name === "setup")!.go(page, info);
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await page.getByRole("button", { name: "Starta inspelning" }).click();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
+  await page.waitForTimeout(1_000);
+  expect((await arrived(page)).filter((text) => /Lås inte skärmen/.test(text)), "no region arrives with the caution in it").toEqual([]);
+  expect((await heard(page)).filter((s) => /Lås inte skärmen/.test(s.text)), "the caution reaches a live region once").toHaveLength(1);
 });

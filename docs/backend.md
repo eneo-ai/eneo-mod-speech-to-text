@@ -42,7 +42,7 @@ Varje rutt, med metod, om den kräver session och origin, svar och felkoder, st�
 
 Alla fyra fälten finns alltid. Ett värde som inte är känt är `null`; inget annat värde sätts i dess ställe.
 
-- **`revision` och `build_date`** är imagens egna. `Dockerfile` skriver byggposten `backend/app/build_record.json` ur byggargumenten `SOURCE_REVISION` och `BUILD_DATE`, samma argument som ger etiketterna `org.opencontainers.image.revision` och `org.opencontainers.image.created`, så de två säger samma sak. Backenden läser posten en gång vid start. Ett bygge utan argumenten skriver `null` för båda och lämnar de två etiketterna tomma, och en start ur en utcheckning har ingen post. En post som saknas eller inte går att använda loggas med en rad och ger `null` för båda; den stoppar aldrig starten.
+- **`revision` och `build_date`** är imagens egna. `Dockerfile` skriver byggposten `backend/app/build_record.json` ur byggargumenten `SOURCE_REVISION` och `BUILD_DATE`, samma argument som ger etiketterna `org.opencontainers.image.revision` och `org.opencontainers.image.created`, så de två säger samma sak. Backenden läser posten vid start. Ett bygge utan argumenten skriver `null` för båda och lämnar de två etiketterna tomma, och en start ur en utcheckning har ingen post. En post som saknas eller inte går att använda loggas med en rad och ger `null` för båda; den stoppar aldrig starten.
 - **`release`** är driftsättningens: `MODULE_VERSION` när värdet är en versionstagg (`vX.Y.Z`), annars `null`. En utgåva taggar en redan testad image utan att bygga om den, så utgåvan kan inte stå i imagen.
 
 Läsningen och reglerna finns i `backend/app/config.py`. Hur den som driftsätter läser svaret: [Drift](operations.md#vilken-version-som-körs).

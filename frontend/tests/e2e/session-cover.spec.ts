@@ -5,7 +5,8 @@
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { chooseMode, endLogin, isLaptop, limitAudio, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
+import { chooseMode, endLogin, isLaptop, limitAudio, record, result, run, sessionWarning, setup, setupFromList, STATES, stop } from "./screens";
+import { axe } from "./checks";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
@@ -462,6 +463,32 @@ for (const height of [256, 200]) {
       expect(rect.height, `${name} is as high as ever`).toBeGreaterThanOrEqual(24);
     }
   });
+}
+
+// The page's own questions (the design system's alert dialog, its buttons pinned under its words) at the same zoom: what
+// does not fit scrolls as a whole, as the sign-in dialog does, and not as a strip of words over the buttons.
+for (const [state, name] of [["stop-question", "Stoppa inspelningen?"], ["ready-delete-dialog", "Ta bort inspelningen?"], ["leave-dialog", "Lämna sidan?"]] as const) {
+  for (const height of [256, 200]) {
+    test(`at 320 x ${height} "${name}" scrolls as a whole, its words and its buttons each in reach`, async ({ page }, info) => {
+      test.skip(info.project.name !== "laptop-1440-light", "a desktop window zoomed in: the window is set here");
+      await STATES.find((s) => s.name === state)!.go(page, info);
+      await page.setViewportSize({ width: 320, height });
+      const dialog = page.getByRole("alertdialog", { name });
+      await expect(dialog).toBeVisible();
+      const strips = await dialog.evaluate((element) =>
+        [element, ...element.querySelectorAll<HTMLElement>("*")]
+          .filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY))
+          .map((e) => e.clientHeight),
+      );
+      for (const shown of strips) expect(shown, `a scroller that shows ${shown} px of a ${height} px screen`).toBeGreaterThanOrEqual(height * 0.6);
+      const violations = (await axe(page)).violations.filter((violation) => violation.id === "scrollable-region-focusable");
+      expect(violations, "a region that scrolls can be reached with the keyboard").toEqual([]);
+      for (const button of await dialog.getByRole("button").all()) {
+        await button.focus();
+        await expect(button).toBeInViewport({ ratio: 1 });
+      }
+    });
+  }
 }
 
 // Every dialog of the page that exists today, with what must be as it was when it comes back: the login ends under it,

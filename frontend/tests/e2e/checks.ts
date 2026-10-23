@@ -3,6 +3,7 @@
  * motion, and where keyboard focus lands. Each returns data; the specs decide
  * what fails.
  */
+import { inflateSync } from "node:zlib";
 import AxeBuilder from "@axe-core/playwright";
 import type { Locator, Page } from "@playwright/test";
 
@@ -42,21 +43,67 @@ export async function addStyles(page: Page, css: string) {
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
-/** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
+/**
+ * Waits for opening animations (a dialog fading in), colour transitions and smooth scrolls to end, so colours are
+ * measured at rest and targets where they stay.
+ */
 export async function settle(page: Page) {
   // Animations and transitions both: a colour fading to its end would be measured halfway. A live page keeps
   // starting new ones (a recording's level and timer), so only those running now are waited for, a few seconds
   // at most.
-  await page.evaluate(() =>
-    Promise.race([
-      Promise.all(
-        document
-          .getAnimations()
-          .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)
-          .map((a) => a.finished.catch(() => undefined)),
-      ),
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
-    ]),
+  await Promise.all([
+    page.evaluate(() =>
+      Promise.race([
+        Promise.all(
+          document
+            .getAnimations()
+            .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)
+            .map((a) => a.finished.catch(() => undefined)),
+        ),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ]),
+    ),
+    scrollsAtRest(page),
+  ]);
+}
+
+/**
+ * Waits until three frames in a row see the page's scrolling boxes where they were, and no scroll that has begun is
+ * still on its way, a few seconds at most. A smooth scroll (a step to the next passage, an engine's own reveal of what
+ * Tab focused) carries what it scrolls past a pinned bar: measured on its way, a target is measured under the bar, and a
+ * focused control outside the window. A smooth scroll starts a frame after it is asked for, hence three frames; and
+ * Firefox reports a scroll position in whole pixels while its scroll eases on by less than one a frame, so a scroll
+ * that has begun has ended only at its `scrollend`.
+ */
+export function scrollsAtRest(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const boxes = [document.scrollingElement, ...document.querySelectorAll("*")].filter(
+          (el): el is Element => el !== null && (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth),
+        );
+        const at = () => boxes.map((el) => `${el.scrollLeft},${el.scrollTop}`).join(";");
+        const end = performance.now() + 5_000;
+        let last = at();
+        let still = 0;
+        // A box's scroll and scrollend do not bubble; listened for on the way down, they are heard from every box.
+        let moving = false;
+        const scrolled = () => void (moving = "onscrollend" in window);
+        const ended = () => void (moving = false);
+        addEventListener("scroll", scrolled, true);
+        addEventListener("scrollend", ended, true);
+        const frame = () => {
+          const now = at();
+          still = now === last ? still + 1 : 0;
+          last = now;
+          if ((still >= 3 && !moving) || performance.now() > end) {
+            removeEventListener("scroll", scrolled, true);
+            removeEventListener("scrollend", ended, true);
+            resolve();
+          } else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
   );
 }
 
@@ -72,7 +119,144 @@ export async function axe(page: Page) {
       nodes: v.nodes.map((n) => ({ target: n.target.join(" "), summary: n.failureSummary ?? "" })),
     })),
     incomplete: result.incomplete.map((v) => ({ id: v.id, help: v.help, nodes: v.nodes.length })),
+    // Text whose contrast axe could not decide (a gradient behind it, something over or under it), with its reason:
+    // measured on the screen's pixels instead (undecidedContrast). A target inside a frame or a shadow root is not.
+    undecidedText: (result.incomplete.find((v) => v.id === "color-contrast")?.nodes ?? []).flatMap((n) =>
+      n.target.length === 1 && typeof n.target[0] === "string"
+        ? [{ target: n.target[0], reason: String((n.any[0]?.data as { messageKey?: string } | null)?.messageKey ?? "") }]
+        : [],
+    ),
   };
+}
+
+/** axe's reasons for an undecided text colour that are no text to read: a glyph from an icon font (outside the BMP). */
+const NOT_TEXT = new Set(["nonBmp"]);
+
+/** A PNG screenshot's pixels, RGBA: Playwright's are 8-bit, RGB or RGBA, not interlaced. */
+function pixelsOf(png: Buffer) {
+  let at = 8;
+  let width = 0;
+  let height = 0;
+  let channels = 4;
+  const data: Buffer[] = [];
+  while (at < png.length) {
+    const length = png.readUInt32BE(at);
+    const kind = png.toString("ascii", at + 4, at + 8);
+    const chunk = png.subarray(at + 8, at + 8 + length);
+    if (kind === "IHDR") {
+      [width, height] = [chunk.readUInt32BE(0), chunk.readUInt32BE(4)];
+      if (chunk[8] !== 8 || chunk[12] !== 0 || (chunk[9] !== 2 && chunk[9] !== 6)) throw new Error("not an 8-bit, non-interlaced RGB(A) PNG");
+      channels = chunk[9] === 6 ? 4 : 3;
+    }
+    if (kind === "IDAT") data.push(chunk);
+    at += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(data));
+  const stride = width * channels;
+  const rgba = new Uint8Array(width * height * 4);
+  let above = new Uint8Array(stride);
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)];
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    const row = new Uint8Array(stride);
+    for (let x = 0; x < stride; x += 1) {
+      const left = x >= channels ? row[x - channels] : 0;
+      const up = above[x];
+      const corner = x >= channels ? above[x - channels] : 0;
+      const p = left + up - corner;
+      const [pa, pb, pc] = [Math.abs(p - left), Math.abs(p - up), Math.abs(p - corner)];
+      const predicted = [0, left, up, (left + up) >> 1, pa <= pb && pa <= pc ? left : pb <= pc ? up : corner][filter];
+      row[x] = (line[x] + predicted) & 0xff;
+    }
+    for (let x = 0; x < width; x += 1) rgba.set([row[x * channels], row[x * channels + 1], row[x * channels + 2], channels === 4 ? row[x * channels + 3] : 255], (y * width + x) * 4);
+    above = row;
+  }
+  return { width, height, rgba };
+}
+
+const luminance = ([r, g, b]: readonly number[]) => {
+  const channel = (v: number) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+};
+
+/**
+ * The text axe left undecided, measured as a person sees it: its box captured three times, the text drawn in black, in
+ * white and in no colour. Where a letter stands the black and the white differ, whatever is behind it; what the box shows
+ * there without the text is the background behind the text (WCAG 1.4.3), and the worst of it against the text's own
+ * colour is the ratio. The rest of the box decides nothing, so text whose letters partly stand on a ground of their own
+ * colour fails however much of the box is clear. Words inside it in a colour of their own are their own text and keep
+ * it. Each with the ratio it needs (4.5:1, or 3:1 for large text: 24 px, or 18.66 px bold). A glyph is not measured, nor
+ * text that something else covers where it stands or that is drawn in no colour.
+ */
+export async function undecidedContrast(page: Page, undecided: { target: string; reason: string }[]) {
+  const measured: { target: string; reason: string; ratio: number; needed: number; text: number[]; behind: number[] }[] = [];
+  const remove = await addStyles(
+    page,
+    `[data-contrast-probe] { text-shadow: none !important; text-decoration-color: transparent !important; }
+     [data-contrast-probe="dark"] { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+     [data-contrast-probe="light"] { color: #fff !important; -webkit-text-fill-color: #fff !important; }
+     [data-contrast-probe="none"] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+     [data-contrast-probe] * { -webkit-text-fill-color: currentcolor !important; }
+     [data-contrast-probe], [data-contrast-probe] * { transition: none !important; }`,
+  );
+  try {
+    for (const { target, reason } of undecided.filter((item) => !NOT_TEXT.has(item.reason))) {
+      const element = page.locator(target).first();
+      const seen = await element
+        .evaluate((node) => {
+          const style = getComputedStyle(node);
+          const box = node.getBoundingClientRect();
+          const left = Math.max(0, box.left);
+          const top = Math.max(0, box.top);
+          const right = Math.min(innerWidth, box.right);
+          const bottom = Math.min(innerHeight, box.bottom);
+          if (right - left < 1 || bottom - top < 1 || style.visibility === "hidden") return null;
+          // Behind an open modal dialog, or inert: out of reach while the dialog is open, as targetSizes counts it.
+          const modal = document.querySelector("dialog:modal");
+          if ((modal && !modal.contains(node)) || (node.closest("[inert]") && !node.closest("dialog:modal"))) return null;
+          // Under something else at its middle (a popover over the page): no text to read there, so nothing to measure.
+          const stack = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2);
+          const at = stack.findIndex((element) => element === node || node.contains(element));
+          if (at > 0 && stack.slice(0, at).some((element) => !element.contains(node))) return null;
+          const context = document.createElement("canvas").getContext("2d")!;
+          context.fillStyle = style.color;
+          context.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+          // Text drawn in no colour (a field whose value another layer shows, as the design system's date field's): none to read.
+          if (a === 0) return null;
+          const size = parseFloat(style.fontSize);
+          return { clip: { x: left, y: top, width: right - left, height: bottom - top }, text: [r, g, b, a / 255], large: size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700) };
+        })
+        .catch(() => null);
+      if (!seen) continue;
+      try {
+        const shot = async (probe: string) => {
+          await element.evaluate((node, probe) => node.setAttribute("data-contrast-probe", probe), probe);
+          return pixelsOf(await page.screenshot({ clip: seen.clip, animations: "disabled", caret: "hide" })).rgba;
+        };
+        const [dark, light, bare] = [await shot("dark"), await shot("light"), await shot("none")];
+        // A letter's pixel: black and white text differ there by more than 8 of 255 (its edge's faintest shade aside).
+        const letters = Array.from({ length: bare.length / 4 }, (_, i) => i).filter((i) => Math.abs(dark[i * 4] - light[i * 4]) > 8);
+        // No letter drawn in the box (covered, or cut off): no text to read.
+        if (!letters.length) continue;
+        const [r, g, b, a] = seen.text;
+        let worst = { ratio: Infinity, text: [] as number[], behind: [] as number[] };
+        for (const i of letters) {
+          const behind = [bare[i * 4], bare[i * 4 + 1], bare[i * 4 + 2]];
+          const text = [r * a + behind[0] * (1 - a), g * a + behind[1] * (1 - a), b * a + behind[2] * (1 - a)].map(Math.round);
+          const [hi, lo] = [luminance(text), luminance(behind)].sort((p, q) => q - p);
+          const ratio = (hi + 0.05) / (lo + 0.05);
+          if (ratio < worst.ratio) worst = { ratio, text, behind };
+        }
+        measured.push({ target, reason, ratio: Math.round(worst.ratio * 100) / 100, needed: seen.large ? 3 : 4.5, text: worst.text, behind: worst.behind });
+      } finally {
+        await element.evaluate((node) => node.removeAttribute("data-contrast-probe")).catch(() => undefined);
+      }
+    }
+  } finally {
+    await remove();
+  }
+  return measured;
 }
 
 /** What fails the gate: every WCAG violation whatever its impact, and best practice when serious or critical. */
@@ -269,9 +453,15 @@ export function reflow(page: Page) {
 export function placeholderContrast(page: Page) {
   return page.evaluate(() => {
     type Rgba = [number, number, number, number];
+    // A computed colour as the browser paints it: a mix or an alpha token computes to color(srgb …), whose 0–1 channels a
+    // pattern for rgb() would read as near-black.
+    const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
     const rgba = (color: string): Rgba => {
-      const n = (color.match(/[\d.]+/g) ?? []).map(Number);
-      return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
+      paint.clearRect(0, 0, 1, 1);
+      paint.fillStyle = color;
+      paint.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
     const luminance = ([r, g, b]: Rgba) =>
@@ -303,6 +493,29 @@ export function endlessAnimations(page: Page) {
         return `${(a as CSSAnimation).animationName ?? "animation"} on ${target?.tagName.toLowerCase()}.${(target?.getAttribute("class") ?? "").split(" ").slice(0, 3).join(".")}`;
       }),
   );
+}
+
+/**
+ * Animations and transitions running now that move something: its place, its scale or its turn. With reduced motion the
+ * page may still change a colour, an opacity or a bar's length, never move what is on screen (WCAG 2.3.3, the house bar).
+ */
+export function movingAnimations(page: Page) {
+  return page.evaluate(() => {
+    const moves = /^(transform|translate|scale|rotate|top|left|right|bottom|inset|margin)/;
+    const kebab = (name: string) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    return document
+      .getAnimations()
+      .filter((animation) => animation.playState === "running")
+      .flatMap((animation) => {
+        const effect = animation.effect as KeyframeEffect | null;
+        const properties =
+          animation instanceof CSSTransition ? [animation.transitionProperty] : (effect?.getKeyframes() ?? []).flatMap((frame) => Object.keys(frame).map(kebab));
+        const moving = [...new Set(properties.filter((property) => moves.test(property)))];
+        if (!moving.length) return [];
+        const target = effect?.target as Element | null;
+        return [`${moving.join(", ")} on ${target?.tagName.toLowerCase()}.${(target?.getAttribute("class") ?? "").split(" ").slice(0, 3).join(".")}`];
+      });
+  });
 }
 
 export interface FocusStop {
@@ -343,9 +556,18 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
   // A page that moves while its ring is photographed (a live status line, a level meter, a list arriving) puts part of
   // the ring outside the clip: a measurement counts only when the owner stood still through both screenshots, and is
   // taken again from a fresh probe when it did not.
+  let waited = false;
   for (let attempt = 1; ; attempt++) {
     const stop = await probeFocus(page);
     if (!stop) return null;
+    // An engine can bring what Tab focused into the window with a scroll of its own that is still on its way (WebKit on a
+    // loaded Linux runner): a control outside the window is probed again once the page stands still. One that the
+    // engine never brings in is still outside then.
+    if (stop.offscreen && !waited) {
+      waited = true;
+      await scrollsAtRest(page);
+      continue;
+    }
     const { owner, perimeter, ...rest } = stop;
     let area = owner === null ? 0 : await seenChange(page);
     // Firefox can take two identical screenshots of a ring its styles show, so a miss is measured once more: a ring
@@ -452,9 +674,15 @@ function probeFocus(page: Page) {
     document.querySelectorAll("[data-a11y-current]").forEach((e) => e.removeAttribute("data-a11y-current"));
     el.setAttribute("data-a11y-current", "");
     type Rgba = [number, number, number, number];
+    // A computed colour as the browser paints it: a mix or an alpha token computes to color(srgb …), whose 0–1 channels a
+    // pattern for rgb() would read as near-black.
+    const paint = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
     const rgba = (color: string): Rgba => {
-      const n = (color.match(/[\d.]+/g) ?? []).map(Number);
-      return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
+      paint.clearRect(0, 0, 1, 1);
+      paint.fillStyle = color;
+      paint.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
     // The colour a box shows: its own background over those behind it.

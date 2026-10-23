@@ -1,5 +1,5 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Mic, Pause, Play, Plus } from "lucide-react";
+import { CheckCircle2, Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -14,6 +14,8 @@ import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContra
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
+import { useNarrowerThan } from "./useRoomInRow";
+import { useWorkspace } from "@/lib/workspace";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import { participantsOf } from "@/lib/participants";
 import { detailRows, detailsSummary } from "@/lib/recording-view";
@@ -23,8 +25,10 @@ import { fileText, runFileName, transcriptFileName, type ResultFileView } from "
 import { ofContractVersion, type StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
+import { IconTile } from "@/components/IconTile";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { hasNamesDraft } from "@/components/SpeakerNamingDialog";
+import { browserDrafts } from "@/lib/drafts";
 import { correctionsNewerThanDocument, namesOnly, regenerationOffer, savedTranscriptCorrections } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
 import { LAPTOP, ResultFiles } from "./ResultFiles";
@@ -40,6 +44,27 @@ const PANELS: Record<View, { tab: string; panel: string }> = {
   document: { tab: "result-tab-document", panel: "result-panel-document" },
   transcript: { tab: "result-tab-transcript", panel: "result-panel-transcript" },
 };
+
+/** Where the result's tab chosen is kept for a run: this tab of the browser (sessionStorage), never another device. */
+const viewKey = (runId: string) => `tal-till-text:result-view:${runId}`;
+
+/** The tab last chosen for the run in this tab of the browser, else Dokument. */
+function keptView(runId: string): View {
+  try {
+    const kept = browserDrafts()?.getItem(viewKey(runId));
+    return kept === "transcript" ? "transcript" : "document";
+  } catch {
+    return "document";
+  }
+}
+
+function keepView(runId: string, view: View) {
+  try {
+    browserDrafts()?.setItem(viewKey(runId), view);
+  } catch {
+    // A browser that keeps nothing for the page: the next load starts on Dokument.
+  }
+}
 
 /**
  * A finished run: what the flow produced comes first, as a readable page with
@@ -130,9 +155,15 @@ export function RunResult({
   const participants = participantsField ? participantsOf(details[participantsField]) : [];
   const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument, participants } : undefined;
   const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
+  // Under 16 rem of the root's text (the reader's large text, a phone's zoom) two lines hold a word or two of them: there
+  // they are whole.
+  const headRoom = useNarrowerThan(16);
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaQuery(LAPTOP, true);
+  const metaStacked = useMediaQuery("(max-width: 639.98px)");
+  // The narrowest phones: the flow's name and when it was made each take a line, where the two would break after the dot.
+  const tiny = useMediaQuery("(max-width: 359.98px)");
   // One playback for the page: the transcript's player, and the pause beside the document on a phone.
   const sources = useMemo(
     () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
@@ -143,15 +174,23 @@ export function RunResult({
   useEffect(() => (sources.length ? rememberPosition(playback, run.id, browserStorage()) : undefined), [playback, run.id, sources]);
   const tabs = !wide && showTranscript;
   const sideBySide = wide && showTranscript;
+  // With the transcript beside the text it is a workspace, whose column grows with a wide window (lib/workspace.ts).
+  useWorkspace(showTranscript);
   // Names typed and not saved bring their dialog back, open: on a phone it is in the transcript's tab.
-  const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : "document"));
+  // Below a laptop's width the tab chosen is kept for the run in this tab of the browser, through a reload and the
+  // reload a phone does to a page left in the background.
+  const [view, setView] = useState<View>(() => (naming && hasNamesDraft(namesDraft) ? "transcript" : keptView(run.id)));
   const tabList = useRef<HTMLElement | null>(null);
-  // Each tab keeps its own reading position; the first visit starts at the top of the tab.
+  // Each tab keeps its own reading position; the first visit starts at the top of the tab, the tabs at the window's top,
+  // so a phone shows the passages and not the head again. The page's first view starts at its top, with its heading.
   const positions = useRef<Partial<Record<View, number>>>({});
+  const switched = useRef(false);
   // A button of the tab being left (the docked player's) changes the tab: the focus goes to the tab it chose.
   const focusTab = useRef(false);
   const switchView = (next: View, { focus = false } = {}) => {
+    keepView(run.id, next);
     positions.current[view] = window.scrollY;
+    switched.current = true;
     focusTab.current = focus;
     setView(next);
   };
@@ -159,11 +198,87 @@ export function RunResult({
     if (!tabs) return;
     const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
     const saved = positions.current[view];
-    window.scrollTo({ top: saved ?? Math.min(window.scrollY, top) });
+    window.scrollTo({ top: saved ?? (switched.current ? top : Math.min(window.scrollY, top)) });
     if (focusTab.current) document.getElementById(PANELS[view].tab)?.focus({ preventScroll: true });
     focusTab.current = false;
   }, [view, tabs]);
 
+  // Starting over is the page's quiet way, the least likely next step: a ghost button at the end of the title's row from
+  // 640 px; on a phone at the end of the document, its icon on the edge the document's parts share, where it costs the
+  // first screen nothing.
+  const newRun = (
+    <Button
+      variant="ghost"
+      icon={<Icon icon={audio ? Mic : Plus} />}
+      label={audio ? "Ny inspelning" : "Ny körning"}
+      className={metaStacked ? styles.quietStart : styles.quietEnd}
+      onClick={() => leaveFirst(onNewRecording)}
+    />
+  );
+
+  // Only what the run has: the flow's name at every width (the top bar holds none) and when it was made, beside each other
+  // where the line has room, then the details it was started with on a line of their own, so their length never breaks
+  // the first line. Each a paragraph, so they are read apart.
+  const flow = (
+    <Text as="p" color="secondary">
+      {flowName}
+    </Text>
+  );
+  const made = finished && (
+    <Text as="p" color="secondary" hasTabularNumbers>
+      Skapad {formatRelativeDate(finished)}
+      {fromReviewed && " från den rättade transkriberingen"}
+    </Text>
+  );
+  // The heading says the state in words; from 640 px its tile stands beside it, on a phone the heading has the line.
+  const title = (
+    <HStack gap={3} vAlign="center">
+      {!empty && !metaStacked && <IconTile icon={CheckCircle2} hue="green" />}
+      <Heading level={1} ref={heading} tabIndex={-1}>
+        {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
+      </Heading>
+    </HStack>
+  );
+  const head = (
+    <VStack gap={2} ref={headRoom.ref}>
+      {/* From 640 px "Ny inspelning" shares the title's row alone, centred on it, so the lines under it have the column's
+          width. */}
+      {metaStacked ? (
+        title
+      ) : (
+        <HStack hAlign="between" vAlign="center" gap={3}>
+          {title}
+          {newRun}
+        </HStack>
+      )}
+      {/* The dot stays with the flow's name, so a line too short for both breaks after it, as a recording's name does. Under
+          360 px, where it would end the first line alone, each has a line of its own and there is no dot. */}
+      {tiny ? (
+        <VStack gap={0.5}>
+          {flow}
+          {made}
+        </VStack>
+      ) : (
+        <HStack gap={1} vAlign="start" wrap="wrap">
+          <HStack gap={1} vAlign="end">
+            {flow}
+            {made && (
+              <Text color="secondary" aria-hidden>
+                ・
+              </Text>
+            )}
+          </HStack>
+          {made}
+        </HStack>
+      )}
+      {detailsLine && (
+        // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
+        <Text as="p" color="secondary" maxLines={headRoom.narrow ? undefined : 2}>
+          {detailsLine}
+        </Text>
+      )}
+    </VStack>
+  );
   const documentColumn = (
     <>
       {note && <Text as="p">{note}</Text>}
@@ -192,6 +307,7 @@ export function RunResult({
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
+      {metaStacked && <HStack>{newRun}</HStack>}
       <StepDetails steps={steps} version={run.flow_version} className={styles.steps} />
     </>
   );
@@ -207,6 +323,7 @@ export function RunResult({
       playback={playback}
       naming={naming}
       ownerId={user.id}
+      headingHidden={tabs}
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side
@@ -232,37 +349,16 @@ export function RunResult({
     // heading and the document 7 columns of 13 and the transcript 6 beside them, from the page's top, so that it ends in
     // the window before the page is scrolled. Below it a hidden panel is an empty span, which takes no room between
     // rows because the grid has no row gap.
-    <VStack paddingBlockStart={2} data-workspace={showTranscript || undefined}>
+    <VStack paddingBlockStart={2}>
       <Grid columns={sideBySide ? 13 : 1} columnGap={8} className={styles.columns}>
         <GridSpan columns={sideBySide ? 7 : "full"}>
-          <VStack gap={6}>
-            <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
-              <VStack gap={1}>
-                <Heading level={1} ref={heading} tabIndex={-1}>
-                  {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
-                </Heading>
-                {finished && (
-                  <Text as="p" type="supporting">
-                    {/* The flow's name at every width: the top bar holds no name. */}
-                    {flowName} ·{" "}
-                    Skapad {formatRelativeDate(finished)}
-                    {fromReviewed && " från den rättade transkriberingen"}
-                  </Text>
-                )}
-                {detailsLine && (
-                  // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
-                  <Text as="p" type="supporting" maxLines={2}>
-                    {detailsLine}
-                  </Text>
-                )}
-              </VStack>
-              <HStack vAlign="center" gap={2}>
-                <Button variant="ghost" icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
-              </HStack>
-            </HStack>
+          {/* Below a laptop's width the tabs stand 12 px under the head, whose views they are; beside the transcript the
+              document stands 24 px under it. */}
+          <VStack gap={tabs ? 3 : 6}>
+            {head}
             <VStack gap={4}>
               {tabs && (
-                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
+                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)} className={styles.tabs}>
                   {/* The notice that the document can be made again is in this panel: while the other tab is chosen it is
                       out of sight, and this tab carries a dot whose words go on from the tab's own ("Dokument kan
                       skapas igen med rättningarna", the notice's own verb), and say so on hover too. With this tab chosen
@@ -274,11 +370,9 @@ export function RunResult({
                     label={words.tab}
                     endContent={
                       regenerates && view === "transcript" ? (
-                        <StatusDot
-                          variant="accent"
-                          label="kan skapas igen med rättningarna"
-                          tooltip={`${words.tab} kan skapas igen med rättningarna`}
-                        />
+                        // No tooltip: it would stand in the tab strip, which owns only its tabs; the dot's words join the
+                        // tab's name, and the tabs are a touch screen's, where there is no hover to show one.
+                        <StatusDot variant="accent" label="kan skapas igen med rättningarna" />
                       ) : undefined
                     }
                   />

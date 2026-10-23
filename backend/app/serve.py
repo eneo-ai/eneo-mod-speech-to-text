@@ -19,6 +19,7 @@ Without ``--api-only`` the launcher serves the built UI, and refuses to start un
 from __future__ import annotations
 
 import argparse
+import logging
 from collections.abc import Sequence
 
 import uvicorn
@@ -35,8 +36,13 @@ PORT = 3001
 
 def _refuse_without_a_built_ui() -> None:
     # Settings is the one reader of STATIC_DIR, so the launcher and the app cannot disagree about the folder (and a
-    # missing or wrong setting stops the launch here, before the app is imported, as any other bad setting does).
-    folder = load_settings().static_dir
+    # missing or wrong setting stops the launch here, before the app is imported, as any other bad setting does). What
+    # reading them logs (a logo that cannot be used) the app's own read logs, once and in its format: this one is quiet.
+    logging.disable(logging.ERROR)
+    try:
+        folder = load_settings().static_dir
+    finally:
+        logging.disable(logging.NOTSET)
     if folder is None:
         raise SystemExit(
             "STATIC_DIR is not set: it must name the folder with the built UI (its index.html). "

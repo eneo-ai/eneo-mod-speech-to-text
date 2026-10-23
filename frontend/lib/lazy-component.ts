@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { onlineStatus, type OnlineStatus } from "@/lib/online-status";
 
 /** One piece of code that a page fetches when it first needs it: kept once it has arrived, so the next use has it at once. */
 export interface Loader<T> {
@@ -6,12 +7,28 @@ export interface Loader<T> {
   readonly loaded: T | null;
   /**
    * Gets it. Pages that ask while it is on its way share the one request. A failure is kept too: a browser keeps a failed
-   * fetch of a module per address, so asking again could not fetch it.
+   * fetch of a module per address, so asking again could not fetch it. That is also why nothing is fetched while the
+   * device has no network: the one fetch the page gets waits until the network is back.
    */
   load(): Promise<T>;
 }
 
-export function lazyLoader<T>(get: () => Promise<T>): Loader<T> {
+/**
+ * Resolves at once, or when the device has a network again: what a page awaits before it imports code it has not loaded,
+ * since an import that fails offline fails for the rest of the page's life.
+ */
+export function whenConnected(online: Pick<OnlineStatus, "connection" | "subscribe"> = onlineStatus) {
+  if (online.connection !== "offline") return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const stop = online.subscribe(() => {
+      if (online.connection === "offline") return;
+      stop();
+      resolve();
+    });
+  });
+}
+
+export function lazyLoader<T>(get: () => Promise<T>, online: Pick<OnlineStatus, "connection" | "subscribe"> = onlineStatus): Loader<T> {
   let loaded: T | null = null;
   let pending: Promise<T> | null = null;
   return {
@@ -19,7 +36,9 @@ export function lazyLoader<T>(get: () => Promise<T>): Loader<T> {
       return loaded;
     },
     load() {
-      pending ??= get().then((code) => (loaded = code));
+      pending ??= whenConnected(online)
+        .then(get)
+        .then((code) => (loaded = code));
       return pending;
     },
   };

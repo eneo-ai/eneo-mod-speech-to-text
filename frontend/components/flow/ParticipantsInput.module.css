@@ -12,3 +12,9 @@
 .names :global(.astryx-token) > button {
   flex-shrink: 0;
 }
+
+/* Last time's names, where the chips will be: a ghost button's padding stands outside the column, so its words start on
+   the field's edge. */
+.previous {
+  margin-inline-start: calc(-1 * var(--spacing-3));
+}

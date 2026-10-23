@@ -12,7 +12,7 @@
 import type { Json, UploadHandle } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withRecordedDuration } from "./webm-duration";
-import { withKeyframes } from "./webm-keyframes";
+import { keyframeMarker } from "./webm-keyframes";
 
 type RecordingState =
   | "recording"
@@ -103,6 +103,8 @@ const CHUNKS = "chunks";
 const LOW_SPACE_BYTES = 100 * 1024 * 1024;
 // How often a device that refused audio (full, or failing) is tried again.
 const RETRY_MS = 20_000;
+// How many of a part's chunks are read from the device at a time: about 2 MB of a recorder's 2-second chunks.
+const READ_BATCH = 256;
 
 interface Chunk {
   recordingId: string;
@@ -116,7 +118,8 @@ interface Backend {
   put(recording: StoredRecording, chunks?: Chunk[]): Promise<void>;
   get(id: string): Promise<StoredRecording | undefined>;
   list(): Promise<StoredRecording[]>;
-  chunks(id: string, part: number): Promise<Chunk[]>;
+  /** The part's chunks in order, from sequence number `from` on, at most `count` of them. */
+  chunks(id: string, part: number, from?: number, count?: number): Promise<Chunk[]>;
   delete(id: string): Promise<void>;
 }
 
@@ -204,13 +207,13 @@ function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: 
     },
     get: (id) => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).get(id))),
     list: () => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).getAll())),
-    chunks: (id, part) =>
+    chunks: (id, part, from = 0, count) =>
       use(async (db) =>
         result(
           db
             .transaction(CHUNKS)
             .objectStore(CHUNKS)
-            .getAll(keyRange.bound([id, part, 0], [id, part, Infinity])),
+            .getAll(keyRange.bound([id, part, from], [id, part, Infinity]), count),
         ),
       ),
     delete: (id) =>
@@ -238,7 +241,11 @@ export function memoryBackend(): Backend {
     },
     get: async (id) => recordings.get(id),
     list: async () => [...recordings.values()],
-    chunks: async (id, part) => (chunks.get(id) ?? []).filter((c) => c.part === part),
+    chunks: async (id, part, from = 0, count) =>
+      (chunks.get(id) ?? [])
+        .filter((c) => c.part === part && c.seq >= from)
+        .sort((a, b) => a.seq - b.seq)
+        .slice(0, count),
     async delete(id) {
       recordings.delete(id);
       chunks.delete(id);
@@ -265,9 +272,17 @@ export function sealed(recording: StoredRecording): boolean {
   return recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
 }
 
-/** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
-export function continuable(recording: StoredRecording): boolean {
+/** Its capture ended without a stop (a reload, a killed tab). */
+export function cutOff(recording: StoredRecording): boolean {
   return recording.state === "recording" || recording.state === "paused";
+}
+
+/**
+ * "Fortsätt spela in" adds a part: to a capture that was cut off, and to one the person stopped, also after leaving the
+ * page it was stopped on, until a send of it has begun (it is then sealed).
+ */
+export function continuable(recording: StoredRecording): boolean {
+  return cutOff(recording) || recording.state === "stopped";
 }
 
 /** A recording's files: its parts with audio. */
@@ -326,6 +341,7 @@ export class RecordingStore {
   private heads = new Map<string, { part: number; data: Blob }>();
   // What the browser says of keeping this device's storage: true when it will not delete it; null until it has said.
   private kept: boolean | null = null;
+  private askedToKeep = false;
 
   constructor(
     private backend: Backend,
@@ -569,26 +585,55 @@ export class RecordingStore {
     return files;
   }
 
-  /** One part as a file, whole or as far as it survived. */
+  /**
+   * One part as a file, whole or as far as it survived. The device's chunks are read a batch at a time, and every batch
+   * of chunks, the device's and those only this tab holds alike, goes to the browser as a Blob before the next is taken:
+   * a meeting of hours is never in the tab whole, nor copied whole when the device refused all of it.
+   */
   private async readPart(recording: StoredRecording, part: RecordingPart): Promise<RecordingFile & { whole: boolean }> {
     const type = baseMimetype(recording.mimeType);
     // What this tab holds follows what the database has (it goes back onto the device only whole). The database's
     // are read first and an unreadable database is the read's failure: audio held in this tab is never taken for all
     // there is, and both copies stay.
-    const stored = await this.backend.chunks(recording.id, part.index);
-    const here = await this.overflow.chunks(recording.id, part.index);
+    let stored = await this.backend.chunks(recording.id, part.index, 0, READ_BATCH);
     // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
-    const bySeq = new Map<number, Chunk>();
-    for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
-    const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
-    const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
-    const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
-    // Safari's WebM is made seekable in Chromium; a WebM file's first chunk holds its whole header; MP4 carries its own duration.
-    const data = await withKeyframes(chunks.map((chunk) => chunk.data), type);
-    if (data.length > 0) {
-      data[0] = await withRecordedDuration(data[0], part.durationMs, type);
+    const here = [...new Map((await this.overflow.chunks(recording.id, part.index)).map((chunk) => [chunk.seq, chunk])).values()];
+    let next = 0;
+    let count = 0;
+    let bytes = 0;
+    let inOrder = true;
+    let held: Array<Chunk["data"]> = [];
+    const files: Blob[] = [];
+    // Safari's WebM is made seekable in Chromium as it goes.
+    const keyframes = keyframeMarker(type);
+    const handOver = async (last = false) => {
+      const data = await keyframes(held, last);
+      held = [];
+      if (data.length === 0) return;
+      // A WebM file's first chunk holds its whole header, where its recorded duration goes; MP4 carries its own.
+      if (files.length === 0) data[0] = await withRecordedDuration(data[0], part.durationMs, type);
+      files.push(new Blob(data));
+    };
+    const take = async (chunk: Chunk) => {
+      inOrder &&= chunk.seq === count;
+      count += 1;
+      bytes += chunk.data instanceof Blob ? chunk.data.size : chunk.data.byteLength;
+      held.push(chunk.data);
+      if (held.length === READ_BATCH) await handOver();
+    };
+    for (;;) {
+      for (const chunk of stored) {
+        while (next < here.length && here[next].seq < chunk.seq) await take(here[next++]);
+        if (next < here.length && here[next].seq === chunk.seq) next += 1;
+        await take(chunk);
+      }
+      if (stored.length < READ_BATCH) break;
+      stored = await this.backend.chunks(recording.id, part.index, stored[stored.length - 1].seq + 1, READ_BATCH);
     }
-    return { index: part.index, blob: new Blob(data, { type }), filename: recordingFilename(recording, part.index), whole };
+    while (next < here.length) await take(here[next++]);
+    await handOver(true);
+    const whole = count === part.chunks && inOrder && bytes === part.bytes;
+    return { index: part.index, blob: new Blob(files, { type }), filename: recordingFilename(recording, part.index), whole };
   }
 
   /** Eneo accepted the run: the local copy is no longer needed. */
@@ -730,7 +775,9 @@ export class RecordingStore {
   }
 
   async requestPersistence(): Promise<void> {
-    if (this.kept) return;
+    // Once a page: Firefox asks the person in a bar over the page each time, and a refusal stands for the page.
+    if (this.kept || this.askedToKeep) return;
+    this.askedToKeep = true;
     try {
       const granted = await this.env.storage?.persist();
       if (granted === undefined || granted === this.kept) return;

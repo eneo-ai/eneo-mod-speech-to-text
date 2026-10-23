@@ -7,10 +7,17 @@
 .dot {
   display: block;
   flex-shrink: 0;
+  box-sizing: border-box;
   inline-size: 0.625rem;
   block-size: 0.625rem;
   border-radius: var(--radius-full);
   background: var(--module-color-record);
+}
+
+/* The dot stands still: the clock and the level beside it show that the recording goes on. Paused it is a hollow ring. */
+.dot[data-paused] {
+  background: transparent;
+  border: calc(2 * var(--border-width)) solid var(--color-text-secondary);
 }
 
 /* Backgrounds are replaced in forced colours: the dot keeps a colour that is not the page's. */
@@ -43,9 +50,27 @@
   }
 }
 
-@media (min-width: 1024px) {
+/* From a tablet's width the controls are the stage card's footer: the card's lower corners are the bar's, and the stage's
+   own lower edge is the one hairline between them. The two are one card, so the footer carries the card's edge or its
+   drop as the stage does (the card's theme rule): a drop under the whole card in light mode, the edge around it in dark
+   mode. The page keeps its bottom gutter under the card. */
+@media (min-width: 768px) {
+  .stage:has(+ .bar) {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+    border-block-end-color: var(--color-border);
+  }
+
   .stage + .bar {
-    margin-block-start: 0;
+    margin-block: calc(-1 * var(--spacing-4)) var(--spacing-8);
+    margin-inline: 0;
+    border: var(--border-width) solid light-dark(transparent, var(--color-border));
+    border-block-start: 0;
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+    border-end-start-radius: var(--radius-container);
+    border-end-end-radius: var(--radius-container);
+    box-shadow: var(--shadow-low);
   }
 }
 
@@ -57,8 +82,9 @@
 .timer {
   font-size: calc(var(--font-size-5xl) * 4 / 3);
   font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 @media (min-width: 640px) {
@@ -73,11 +99,25 @@
   }
 }
 
+/* The stage's level: 4 px bars 4 px apart with round ends, up to 28 rem across. */
 .stageMeter {
   inline-size: 100%;
-  max-inline-size: 20rem;
-  block-size: 4rem;
+  max-inline-size: 28rem;
+  block-size: 3.5rem;
   justify-content: center;
+  gap: var(--spacing-1);
+}
+
+.stageMeter > * {
+  inline-size: var(--spacing-1);
+}
+
+/* Forty bars and their gaps are wider than a small phone's stage: every other one gives way, so the level keeps clear of
+   the card's edges. */
+@media (max-width: 399.98px) {
+  .stageMeter > :nth-child(even) {
+    display: none;
+  }
 }
 
 /* Short screens need room for warnings as well as the timer, in either orientation. */
@@ -133,8 +173,10 @@
   margin-block-start: auto;
   flex-shrink: 0;
   padding: var(--spacing-3) var(--bar-gutter) max(var(--spacing-3), env(safe-area-inset-bottom));
-  border-block-start: var(--border-width) solid var(--color-border);
+  /* Edge or shadow: the dock's shadow in light mode, its top edge in dark mode (--module-shadow-dock). */
+  border-block-start: var(--border-width) solid light-dark(transparent, var(--color-border));
   background: var(--color-background-card);
+  box-shadow: var(--module-shadow-dock);
 }
 
 @media (min-width: 768px) {
@@ -147,8 +189,9 @@
   .bar {
     margin-inline: 0;
     padding: var(--spacing-3) var(--spacing-5);
-    border: var(--border-width) solid var(--color-border);
+    border: var(--border-width) solid light-dark(transparent, var(--color-border));
     border-radius: var(--radius-container);
+    box-shadow: var(--shadow-low);
   }
 }
 
@@ -181,7 +224,8 @@
   margin-inline-start: auto;
 }
 
-/* On a phone: the status over the timer and the level, so the buttons keep the same row. */
+/* On a phone: the status over the timer and the level, so the buttons keep the same row; under 400 px, where the buttons
+   have a row of their own below, the status, the timer and the level share one, so the dock takes less of the text. */
 .readout {
   display: flex;
   flex-direction: column;
@@ -199,7 +243,7 @@
   block-size: 1.5rem;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 640px), (max-width: 399.98px) {
   .readout {
     flex-direction: row;
     align-items: center;
@@ -215,12 +259,20 @@
   }
 }
 
-/* Wide enough for "Fortsätt", so pausing moves nothing. */
+/* Wide enough for "Fortsätt", so pausing moves nothing. From a tablet's width, in the stage card's footer, they keep to
+   the middle at a laptop's width rather than stretch across the card. Side by side while each has 5.5 rem, as at every
+   ordinary text size; one above the other where the reader's large text leaves less, so Stoppa never reaches past the
+   window. */
+.actions,
+.statusActions {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr));
+}
+
 .actions {
   inline-size: 100%;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   .actions {
     max-inline-size: 25rem;
     margin-inline: auto;
@@ -228,9 +280,21 @@
 }
 
 /* With the status beside them, the two controls keep to the line's end, as wide as the longer of Pausa and Fortsätt makes
-   them (so pausing moves nothing) and no wider. */
+   them (so pausing moves nothing) and no wider. On the narrowest phones they go under the status, across the card in two
+   halves from its edge, as the recording's dock has them. */
 .statusActions {
   min-inline-size: 12.5rem;
+}
+
+@media (max-width: 399.98px) {
+  .toolbar [role="toolbar"][data-status] > :nth-child(2) {
+    flex: 1 1 100%;
+    margin-inline-start: 0;
+  }
+
+  .statusActions {
+    inline-size: 100%;
+  }
 }
 
 @media (min-width: 640px) {
@@ -239,37 +303,47 @@
   }
 }
 
+/* The lines above and under the controls follow them: centred under Spela in's, which are the stage's; from the bar's
+   start in Strömma, the edge its status starts on. */
+.cautions,
 .notes {
   text-align: center;
 }
 
-/* Strömma shown to a room (the recording's section on the whole screen): the bar keeps its controls and its warnings,
-   and leaves out its calm lines to the presenter (the lock note, Stoppa's line), which are not the room's to read. */
-:fullscreen .notes {
-  display: none;
-}
-
-/* A note of two lines breaks them evenly, never one word alone on the second. */
-.notes p {
-  text-wrap: balance;
-}
-
+.cautions[data-status],
 .notes[data-status] {
   text-align: start;
 }
 
-@media (min-width: 640px) {
-  .notes[data-status] {
-    text-align: end;
-  }
+/* Strömma shown to a room (the recording's section on the whole screen): the bar keeps its controls and its warnings,
+   and leaves out its calm lines to the presenter (the lock note, Stoppa's line), which are not the room's to read. */
+:fullscreen :is(.cautions, .notes) {
+  display: none;
 }
 
-/* In Strömma on a short screen, the room goes to the live text; the warnings above stay. */
-@media (max-height: 480px) {
+/* A note of two lines breaks them evenly, never one word alone on the second, at a reading measure (55ch, about 75
+   characters) across a laptop's bar, centred under Spela in's controls and from the bar's start in Strömma. */
+.cautions p,
+.notes p {
+  max-inline-size: 55ch;
+  margin-inline: auto;
+  text-wrap: balance;
+}
+
+.cautions[data-status] p,
+.notes[data-status] p {
+  margin-inline: 0;
+}
+
+/* In Strömma on a short screen, a phone or a tablet upright, the room goes to the live text; the warnings above stay.
+   Stoppa says what it does, and after it the person can go on recording or is asked first where that cannot be. */
+@media (max-height: 480px), (max-width: 767.98px) {
   .notes[data-status] .stopLine {
     display: none;
   }
+}
 
+@media (max-height: 480px) {
   /* After the row's own rules above, which they would otherwise lose to. */
   .toolbar [role="toolbar"] {
     column-gap: var(--spacing-2);
@@ -317,15 +391,33 @@
     margin-block-start: 0;
   }
 
+  /* Pinned a gutter above the window's edge, so its card is whole. */
   .controls {
     position: sticky;
-    inset-block-end: 0;
+    inset-block-end: var(--spacing-2);
+    margin-block-end: var(--spacing-2);
     z-index: 1;
     gap: var(--spacing-1);
     padding: var(--spacing-2) var(--spacing-3);
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-container);
     background: var(--color-background-card);
+  }
+}
+
+/* What the reader's large text makes too tall to leave a warning room beside it (`data-crowded`, Recorder.tsx) is not
+   pinned: it would cover the warnings, or the timer. It stands in the page's flow, as a dock that tall does. */
+.bar[data-crowded],
+.bar[data-crowded] .controls,
+.stage:has(+ .bar[data-crowded]) {
+  position: static;
+}
+
+/* Strömma in a window this low and narrow (a laptop at 400 % zoom): its controls stay in the page's flow, so they never
+   cover the live text that has the focus (WCAG 2.4.11). Spela in keeps them pinned: it has no text to cover. */
+@media (max-width: 559.98px) and (max-height: 340px) {
+  .bar[data-status] .controls {
+    position: static;
   }
 }
 

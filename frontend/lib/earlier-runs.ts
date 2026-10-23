@@ -8,6 +8,14 @@ import { listOwnRuns, type FlowRunSummary } from "./api";
 
 const EARLIER_RUNS_PAGE = 10;
 
+/**
+ * The runs among `runs` that wait for this person's review, in the list's order (the newest first). A test run started
+ * from Eneo's editor is not this person's to review.
+ */
+export function pendingReviews(runs: readonly FlowRunSummary[]): FlowRunSummary[] {
+  return runs.filter((run) => run.status === "awaiting_review" && run.purpose !== "test");
+}
+
 export interface EarlierRunsSnapshot {
   runs: readonly FlowRunSummary[];
   /** Eneo has more of them than are shown. */

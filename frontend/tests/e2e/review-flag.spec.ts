@@ -33,16 +33,35 @@ test("names typed but not saved come back as a dialog you can see and reach", as
   await expect(dialog).toBeHidden();
 });
 
-test("a finished run's speakers are named on its result: Namnge talare stands above the review's view, which shows the names at once", async ({ page }, info) => {
+test("a finished run's speakers are named on its result: Namnge talare stands above the review's view, which shows the names at once", async ({ page }) => {
   const { id, finish } = await startedRun(page);
   await finish();
   await run(page, id);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
-  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  // Just below a laptop's width, where the transcript's own actions share the naming's row.
+  const own = page.viewportSize()!;
+  await page.setViewportSize({ width: 1023, height: own.height });
+  await page.getByRole("tab", { name: "Transkribering" }).click();
 
   const naming = page.getByRole("button", { name: "Namnge talare" });
   await naming.click();
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  // The window crosses a laptop's width (a tablet turned, a window made wider) while a name is being typed: the transcript's
+  // actions leave the naming's row for the transcript's heading and come back. The same dialog stays open, and its field
+  // keeps the focus and what is selected in it.
+  const first = dialog.getByRole("combobox", { name: "Vem är Talare 1?" });
+  await first.fill("Anna");
+  await first.evaluate((field: HTMLInputElement) => field.setSelectionRange(1, 3));
+  await dialog.evaluate((element) => element.setAttribute("data-same-dialog", ""));
+  for (const width of [1024, 1023]) {
+    await page.setViewportSize({ width, height: own.height });
+    // The page has taken the new width: the tabs go from a laptop's width and are back under it.
+    await expect(page.locator('[role="tab"]')).toHaveCount(width < 1024 ? 2 : 0);
+    await expect(page.locator("dialog[data-same-dialog]"), `the same dialog at ${width} px`).toBeVisible();
+    await expect(first).toBeFocused();
+    expect(await first.evaluate((field: HTMLInputElement) => [field.value, field.selectionStart, field.selectionEnd])).toEqual(["Anna", 1, 3]);
+  }
+  await page.setViewportSize(own);
   for (const [speaker, name] of [["Talare 1", "Anna Berg"], ["Talare 2", "Erik Lund"]]) {
     await dialog.getByRole("combobox", { name: `Vem är ${speaker}?` }).fill(name);
     // Typing opens the name list over what is below the field; a press outside it closes it first.
@@ -107,4 +126,16 @@ test("the editor's code that cannot be fetched leaves the transcript with the pe
   await expect(problem).toHaveCount(0);
   expect(served, "the editor's code was fetched once, by the new page").toBe(1);
   expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage), "the page was reloaded").toBeUndefined();
+});
+
+test("below a laptop's width, Namnge talare shares the row of the transcript's own actions: no row holds it alone", async ({ page }, info) => {
+  test.skip(isLaptop(info), "from a laptop's width the actions stand in the transcript's heading row");
+  const { id, finish } = await startedRun(page);
+  await finish();
+  await run(page, id);
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const naming = (await page.getByRole("button", { name: "Namnge talare" }).boundingBox())!;
+  const copy = (await page.getByRole("button", { name: /^Kopiera transkriberingen|^Fler alternativ för transkriberingen/ }).first().boundingBox())!;
+  expect(Math.abs(naming.y + naming.height / 2 - (copy.y + copy.height / 2)), "one row").toBeLessThanOrEqual(4);
 });

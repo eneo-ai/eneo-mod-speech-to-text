@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import enum
 import json
 import logging
@@ -12,7 +13,7 @@ import unicodedata
 from collections.abc import AsyncGenerator, AsyncIterator
 from email.message import Message
 from email.utils import collapse_rfc2231_value
-from typing import Literal, NamedTuple
+from typing import BinaryIO, Literal, NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from uuid import UUID
 
@@ -183,7 +184,7 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
 
 @app.get("/api/branding/theme.css")
 async def get_branding_theme(request: Request) -> Response:
-    """The accent override the page links after its built theme; empty (a comment) without ORGANIZATION_ACCENT."""
+    """The accent override the page links after its built theme; without ORGANIZATION_ACCENT only the transcript's tint."""
     css = theme_css(settings.accent)
     headers = {
         "Cache-Control": "public, max-age=300",
@@ -258,6 +259,16 @@ def _upstream_redirect() -> JSONResponse:
             "error": "upstream_redirect",
             "detail": "Eneo answered with a redirect, which the module does not follow.",
         },
+    )
+
+
+def _spool_full() -> JSONResponse:
+    """The disk the module keeps uploads on while they arrive (the spool) is full: nothing of the part is kept, and the
+    same part goes through once uploads before it have gone on to Eneo and left room."""
+    return JSONResponse(
+        status_code=507,
+        content={"error": "module_storage_full", "detail": "The module has no room for the upload now."},
+        headers={"Retry-After": "30"},
     )
 
 
@@ -622,16 +633,33 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                         await entry.file.write(chunk)
                 if received != length:
                     raise HTTPException(400, "The part is incomplete")
+                # In the file, not only in its buffer, before the offset counts it: a full disk refuses it here.
+                await anyio.to_thread.run_sync(entry.file.file.flush)
             except BaseException as error:
                 with anyio.CancelScope(shield=True):
-                    await entry.file.seek(entry.offset)
-                    await anyio.to_thread.run_sync(entry.file.file.truncate, entry.offset)
+                    if not await anyio.to_thread.run_sync(_rewind, entry.file.file, entry.offset):
+                        # What the spool holds is not known: its receipt goes, and the next PUT makes the upload again.
+                        await app.state.uploads.remove(upload_id, entry)
                 if isinstance(error, TimeoutError):
                     raise HTTPException(408, "The upload part timed out") from None
+                if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT):
+                    logger.error("The upload spool is full: a part of %s bytes was refused", length)
+                    return _spool_full()
                 raise
             entry.offset += received
             entry.touch()
             return entry.status()
+
+
+def _rewind(file: BinaryIO, offset: int) -> bool:
+    """The spool back at its last whole part, bytes and position; False when the disk refuses that. Going back writes
+    what is still buffered first, which a full disk can refuse again, and those bytes would then land on a retry."""
+    try:
+        file.seek(offset)
+        file.truncate(offset)
+    except OSError:
+        return False
+    return file.tell() == offset
 
 
 @app.post("/api/uploads/{flow_id}/{step_id}/{upload_id}/complete", dependencies=_SESSION_ORIGIN_AND_USER)

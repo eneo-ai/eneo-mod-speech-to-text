@@ -1,8 +1,9 @@
 - main:
-  - paragraph: Intervju till sammanfattning · Väntar på din granskning
   - heading "Vem är vem?" [level=1]
-  - paragraph: Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter.
+  - text: Väntar på din granskning
+  - paragraph: Intervju till sammanfattning
   - paragraph: /Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
+  - paragraph: Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter.
   - group "Talare":
     - heading "Talare" [level=2]
     - button "Namnge talarna"

@@ -2,9 +2,9 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
+    - link "Tal till text – Eneo":
       - /url: /flows
-      - img "Sundsvalls kommun"
+      - img "Eneo"
       - text: ""
     - button "Öppna konto för Erik Lund":
       - img "Erik Lund": EL
@@ -13,6 +13,7 @@
   - heading "Välj ett flöde" [level=1]
   - region "Kommunledningskontoret":
     - heading "Kommunledningskontoret" [level=2]
+    - separator
     - list:
       - listitem:
         - link "Nämndmöte till rapport Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.":
@@ -22,6 +23,7 @@
           - /url: /flows/e05f8fd7-95fd-44e5-aa1d-2597881e71b9
   - region "Socialtjänsten":
     - heading "Socialtjänsten" [level=2]
+    - separator
     - list:
       - listitem:
         - link "Samråd till protokoll Gör ett protokoll av ett samrådsmöte.":

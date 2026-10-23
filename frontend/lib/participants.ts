@@ -44,6 +44,25 @@ export function addNames(current: readonly string[], names: readonly string[]): 
 }
 
 const recentKey = (ownerId: string) => `tal-till-text:${ownerId}:recent-names`;
+// A person's names under either key: `tal-till-text:<owner>:recent-names` and `tal-till-text:<owner>:last-names:...`.
+const NAMES_KEY = /^tal-till-text:([^:]+):(?:recent-names$|last-names:)/;
+
+/**
+ * Someone signed in here: every other person's names go (a shared computer), as their drafts and confirmed words do.
+ * The signed-in person's stay.
+ */
+export function keepOnlyNamesOf(storage: Pick<Storage, "key" | "length" | "removeItem"> | null | undefined, ownerId: string): void {
+  try {
+    if (!storage) return;
+    for (let index = storage.length - 1; index >= 0; index -= 1) {
+      const name = storage.key(index);
+      const owner = name ? NAMES_KEY.exec(name)?.[1] : undefined;
+      if (name && owner && owner !== ownerId) storage.removeItem(name);
+    }
+  } catch {
+    // A refused storage holds nothing.
+  }
+}
 
 /** The names this user entered before, most recent first. */
 export function recentNames(storage: KeyValueStorage | null | undefined, ownerId: string): string[] {
@@ -65,5 +84,31 @@ export function rememberNames(
     storage?.setItem(recentKey(ownerId), JSON.stringify(recent));
   } catch {
     // Full or blocked storage: the suggestions are a convenience.
+  }
+}
+
+const lastNamesKey = (ownerId: string, flowId: string, field: string) => `tal-till-text:${ownerId}:last-names:${flowId}:${field}`;
+
+/** The names this user last sent in a flow's list field, which its next setup offers to add in one press. */
+export function lastNames(storage: KeyValueStorage | null | undefined, ownerId: string, flowId: string, field: string): string[] {
+  try {
+    const saved: unknown = JSON.parse(storage?.getItem(lastNamesKey(ownerId, flowId, field)) ?? "[]");
+    return participantsOf(saved);
+  } catch {
+    return [];
+  }
+}
+
+export function keepLastNames(
+  storage: KeyValueStorage | null | undefined,
+  ownerId: string,
+  flowId: string,
+  field: string,
+  names: readonly string[],
+): void {
+  try {
+    storage?.setItem(lastNamesKey(ownerId, flowId, field), JSON.stringify(names));
+  } catch {
+    // Full or blocked storage: the offer is a convenience.
   }
 }

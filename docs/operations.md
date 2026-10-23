@@ -1,56 +1,36 @@
 # Drift
 
-Modulen körs som en image, en process, på port 3001: `python -m app.serve` serverar både gränssnittet och API:t, som vanlig HTTP. TLS slutar framför den. Imagen är `ghcr.io/eneo-ai/eneo-mod-speech-to-text`, och `docker-compose.yml` hämtar och kör den.
-
-## Sätt upp modulen i Eneo
-
-Modulen har inga egna konton: Eneo loggar in användaren, och modulen anropar Eneo med en servicenyckel. Gör det här i Eneo innan du driftsätter ([Eneos modulguide](https://github.com/eneo-ai/eneo/blob/develop/docs/deployment/MODULES.md) har alla steg och felsökning; Eneos gränssnitt är på engelska):
-
-1. **Förutsättningar.** Du behöver en roll med behörigheterna `admin`, `modules` och `api_keys` (rollen Owner har dem), och en Eneo som har sidan **Admin → Modules** och modulinloggningen (`/module-login`). Eneos guide anger inget versionsnummer: kontrollera att sidan finns, och att modulens release uttryckligen stöder Eneos modulinloggning.
-2. **Servicenyckel.** Skapa en i **Administration → API keys**: typ `sk_`, ägare `service`, så snäv resursomfattning som möjligt (ofta ett eget space), behörigheten `write` (`admin` bara om modulkontraktet kräver det), med utgångsdatum och rate limit. Kopiera hemligheten direkt, den visas en gång. Den blir `ENEO_API_KEY`, och nyckelns headernamn måste vara samma som Eneos `API_KEY_HEADER_NAME` (`ENEO_API_KEY_HEADER_NAME`, standard `X-API-Key`).
-3. **Installera modulen** i **Admin → Modules**: modulnyckeln, en callback-URL per rad och servicenyckeln, och välj **Install module**.
-   - Modulnyckeln är `speech-to-text` (`MODULE_KEY`). Eneo skiljer på versaler och gemener och nyckeln kan inte ändras efteråt; modulen kräver gemener i kebab-case.
-   - Callback-URL:en är `<MODULE_PUBLIC_URL>/api/auth/callback`: en exakt HTTPS-adress utan jokertecken, som Eneo jämför i schema, värd, port, sökväg och avslutande snedstreck. Registrera produktion och test var för sig.
-4. **Modulens miljö:** samma modulnyckel, servicenyckelns hemlighet och en egen, separat genererad `SESSION_SECRET` ([Miljövariabler](#miljövariabler)). Driftsätt sedan.
-5. **Användarna** öppnar modulen på dess egen adress (`MODULE_PUBLIC_URL`) och loggar in via Eneo. Prova i ett privat fönster: inloggningen ska gå via Eneo och tillbaka till modulens flödeslista med en ren adress.
-
-Modulen visar de publicerade flöden som användaren har tillgång till. Ett flöde som ska ta emot ljud är publicerat och har ett ljudsteg som tar emot en fil ([Eneo-integration](eneo-integration.md#så-byggs-en-körning)). Utan ett sådant flöde är flödeslistan tom.
+Modulen är en image, `ghcr.io/eneo-ai/eneo-mod-speech-to-text`, och en process som serverar både gränssnittet och API:t på port 3001 över vanlig HTTP. TLS avslutas framför den. Första uppsättningen, med kopplingen till Eneo: [Kom igång](kom-igang.md). Den här sidan är referensen.
 
 ## Driftsätt med Dokploy eller Portainer
 
-> [!WARNING]
-> **Anpassa proxyn för långsamma anslutningar.** Webbläsaren skickar stora filer i delar om högst 4 MiB. Traefiks `readTimeout` måste räcka för en sådan del, eller hela filen för en klient som använder multipart-rutten direkt: [så ändrar du inställningen](#vad-som-står-framför-modulen).
+Ladda ner `docker-compose.yml` och `env.example` från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases) och fyll i `env.example` som `.env` ([Kom igång, steg 4](kom-igang.md#4-kör-modulen)).
 
-Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases): `docker-compose.yml` och `env.example`, som du fyller i och använder som `.env`.
-
-- **Variabler:** de i `.env`. `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL`, `MODULE_PUBLIC_URL`, `ENEO_API_KEY` och `SESSION_SECRET` måste fyllas i; resten har standardvärden ([Miljövariabler](#miljövariabler)).
-- **Dokploy:** skapa ett Compose-projekt, klistra in `docker-compose.yml` och variablerna under Environment, lägg domänen på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och Traefik sköter HTTPS-certifikatet.
-- **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten lyssnar på 3001 och publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
-- **Image:** paketet ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot `ghcr.io`.
-- **Verifiera:** `<MODULE_PUBLIC_URL>/health` svarar 200 med den utgåva och commit som körs ([Vilken version som körs](#vilken-version-som-körs)), och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress. Innan verklig användning: [acceptansen](#acceptans-innan-verklig-användning).
+- **Dokploy:** skapa ett Compose-projekt, klistra in `docker-compose.yml` och variablerna under Environment, lägg domänen på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och dess Traefik sköter HTTPS-certifikatet. [Höj `readTimeout`](#höj-readtimeout-i-traefik).
+- **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
+- **Ingen omvänd proxy på värden:** `docker-compose.traefik.yml` i repot lägger Traefik med Let's Encrypt, HSTS och `readTimeout` 1800 s framför modulen. Sätt `MODULE_HOST` (och `MODULE_PUBLIC_URL=https://<MODULE_HOST>`) och `ACME_EMAIL` i `.env`, låt port 80 och 443 nå värden och kör `docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d`. Dokploy har redan en Traefik och ska inte ha filen.
+- **Imagen:** paketet på `ghcr.io` ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot registret.
 
 ## Acceptans innan verklig användning
 
-Imagens acceptans i CI kör med stubben som Eneo och bevisar imagen, inte driftsmiljön ([Tester](quality-gates.md#imagens-acceptans)). Driftsätt därför en ny version först för acceptans med påhittat material, gör kontrollerna nedan på den riktiga domänen mot det riktiga Eneo, och släpp sedan in verklig användning med samma image.
+CI prövar imagen mot en stubbe som spelar Eneo ([Tester](quality-gates.md#imagens-acceptans)), inte er driftsmiljö. Driftsätt därför en ny version med testkonton i egna ytor, gör kontrollerna nedan på den riktiga domänen mot det riktiga Eneo och släpp sedan in verklig användning på samma container. En omstart till bevisar inget och loggar ut alla. Anteckna utfallet där driftsättningen följs upp.
 
-- **Inloggningen:** via Eneo och tillbaka till flödeslistan med en ren adress, i ett privat fönster.
-- **Eneos behörighet:** två testkonton i två ytor, med egna flöden och körningar: varje konto når sitt eget (den positiva kontrollen), och inget konto når det andras flöden, körningar, filer, resultat, granskningar eller livesessioner genom modulens adresser. Ett nekat anrop mot något som inte finns bevisar inget.
+- **Inloggningen** går via Eneo och tillbaka till flödeslistan med en ren adress, i ett privat fönster.
+- **Eneos behörighet:** två testkonton i två ytor, med egna flöden och körningar. Varje konto når sitt eget, och inget konto når det andras flöden, körningar, filer, resultat, granskningar eller livesessioner genom modulens adresser. Ett nekat anrop mot något som inte finns bevisar inget.
 - **TLS och cookies:** HTTPS och HSTS från proxyn, sessionscookien `Secure` och `HttpOnly`, modulens headers på plats (`curl -sI <MODULE_PUBLIC_URL>/`).
-- **Proxyn och uppladdningen:** `readTimeout` på ingångspunkten räcker för den långsammaste anslutningen ni lovar (se nedan) och en eventuell body-gräns rymmer `MAX_UPLOAD_BYTES`. Prova med en fil strax under `MAX_UPLOAD_BYTES` (den återupptagbara rutten reserverar 4 096 byte under taket, så en fil på exakt taket avvisas) från webbläsaren över en anslutning vid den hastigheten, med ett avbrott och en återupptagning på vägen, och se att en fil över taket avvisas med 413. Använder en klient multipart-rutten direkt är det hela filen i ett anrop som ska hinna. Höj inte produktionens gränser för att få provet att gå igenom.
-- **Volymen `spool`:** ligger på disk, rymmer `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES`, och ingen annan tjänst läser den.
+- **Proxyn och uppladdningen:** ladda upp en fil strax under `MAX_UPLOAD_BYTES` från webbläsaren över den långsammaste anslutning ni lovar, med ett avbrott och en återupptagning på vägen. En fil över taket ska få 413. Den återupptagbara rutten reserverar 4 096 byte under taket, så en fil på exakt taket avvisas. Höj inte produktionens gränser för att få provet att gå igenom.
+- **Volymen `spool`** ligger på disk, rymmer `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES`, och ingen annan tjänst läser den.
 - **Loggarna:** proxyns logg skriver inte `/api/auth/callback?…` ([Loggar](#loggar)).
-- **En äldre Safari (17 eller 18) på en riktig enhet:** konto-menyn, väljaren och dialogerna går att använda med touch och tangentbord, mikrofonen fungerar, en avbruten inspelning kan fortsättas, och en osänd inspelning finns kvar efter utloggning och ny inloggning i samma webbläsarprofil.
+- **En äldre Safari (17 eller 18) på en riktig enhet:** kontomenyn, väljaren och dialogerna går att använda med touch och tangentbord, mikrofonen fungerar, en avbruten inspelning kan fortsättas, och en osänd inspelning finns kvar efter utloggning och ny inloggning i samma webbläsarprofil.
 - **Ett helt varv:** en livesession, en inspelning, en uppladdning och ett resultat med PDF.
-
-Gör acceptansen innan modulen annonseras, med testkonton i egna ytor, och byt bara en gång: stoppa den gamla versionen, starta den nya, gör kontrollerna, och släpp sedan in verklig användning på samma container. En omstart till bevisar inget och loggar ut alla. Anteckna utfallet där driftsättningen följs upp. Bytet mellan versioner: [Uppgradera](#uppgradera).
 
 ## Uppgradera
 
-Byt `MODULE_VERSION` till den nya taggen (`vX.Y.Z`) och driftsätt om. Med `latest` hämtas ingen ny image om en med det namnet redan finns på värden, så fäst en version. Driftsätt genom att stoppa den gamla containern och sedan starta den nya: sessionerna ligger i processens minne, så två containrar samtidigt skickar personer fel, och alla loggar in igen efter bytet. Att gå tillbaka är att byta tillbaka. Efter bytet svarar `/health` med den nya utgåvan.
+Byt `MODULE_VERSION` till den nya taggen (`vX.Y.Z`) och driftsätt om. Fäst alltid en version: med `latest` hämtas ingen ny image om en med det namnet redan finns på värden. Stoppa den gamla containern innan den nya startar. Sessionerna ligger i processens minne, så två containrar samtidigt skickar personer fel, och alla loggar in igen efter bytet. Att gå tillbaka är att byta tillbaka. Efter bytet svarar `/health` med den nya utgåvan.
 
 ## Vilken version som körs
 
-`<MODULE_PUBLIC_URL>/health` svarar utan inloggning med vilket bygge som körs. Ange `revision` i en felanmälan: den pekar ut koden exakt, också när utgåvan är okänd. En inloggad användare hittar samma uppgifter under **Version** sist i flödeslistan, och **Kopiera supportinformation** ger dem som text, med hela commiten och modulens adress, att klistra in i en felanmälan.
+`<MODULE_PUBLIC_URL>/health` svarar utan inloggning. Ange `revision` i en felanmälan: den pekar ut koden exakt, också när utgåvan är okänd. En inloggad användare ser samma uppgifter under **Version** sist i flödeslistan, och **Kopiera supportinformation** ger dem som text.
 
 ```
 curl -fsS https://transkribering.example.org/health
@@ -59,70 +39,66 @@ curl -fsS https://transkribering.example.org/health
 
 | Fält | Betydelse | `null` när |
 |---|---|---|
-| `release` | Utgåvan som körs: `MODULE_VERSION`, när värdet är en versionstagg (`vX.Y.Z`). | `MODULE_VERSION` är `latest`, en `sha-<commit>`-tagg, tom eller något annat; containern inte har fått variabeln; imagen är byggd lokalt med `docker-compose.override.yml`. |
-| `revision` | Den commit imagen byggdes från. | Imagen är byggd utan byggargument, som ett lokalt bygge. |
-| `build_date` | När imagen byggdes, i UTC. Det är byggets tid, inte utgåvans och inte driftsättningens. | Som `revision`. |
+| `release` | `MODULE_VERSION`, när värdet är en versionstagg (`vX.Y.Z`). | `MODULE_VERSION` är `latest`, en `sha-<commit>`-tagg, tom eller något annat, eller imagen är byggd lokalt. |
+| `revision` | Commiten imagen byggdes från. | Imagen är byggd utan byggargument, som ett lokalt bygge. |
+| `build_date` | När imagen byggdes, i UTC. Inte utgåvans eller driftsättningens tid. | Som `revision`. |
 
-- **Utgåvan kommer från driftsättningen, inte från imagen.** En utgåva ger en redan testad image sin tagg utan att bygga om den, så imagen känner inte sin egen utgåva. `docker-compose.yml` skickar därför `MODULE_VERSION` till containern, samma värde som väljer imagens tagg. Med `latest` är utgåvan okänd: fäst en version för att se den.
-- **Commiten och byggtiden kommer från imagen.** De står också som imagens etiketter och går att läsa utan att starta den:
+Utgåvan kommer från driftsättningen: en utgåva ger en redan testad image sin tagg utan att bygga om den, så `docker-compose.yml` skickar `MODULE_VERSION` till containern. Commiten och byggtiden kommer från imagen och står också som dess etiketter (`org.opencontainers.image.revision`, `.created` och `.source`):
 
-  ```
-  docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/eneo-ai/eneo-mod-speech-to-text:v1.2.3
-  ```
-
-  Etiketterna är `org.opencontainers.image.revision`, `org.opencontainers.image.created` och `org.opencontainers.image.source`. Commiten för en utgåva är den som taggen `vX.Y.Z` står på i repot: [utgåvan kontrollerar det](#ci-och-utgåvor).
+```
+docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/eneo-ai/eneo-mod-speech-to-text:v1.2.3
+```
 
 Hur backenden läser värdena: [Backend](backend.md#hälsokontrollen).
 
 ## Miljövariabler
 
-Backend läser miljön en gång vid start (`load_settings` i `backend/app/config.py`); ett ogiltigt värde stoppar starten med ett tydligt fel. Variabler utan standard måste sättas.
+Backend läser miljön en gång vid start (`load_settings` i `backend/app/config.py`). Ett ogiltigt värde stoppar starten med ett fel som namnger variabeln. Variabler utan standard måste sättas, och exempelvärdet `sk_replace_me` i `ENEO_API_KEY` godtas inte.
 
 | Variabel | Standard | Regel och betydelse |
 |---|---|---|
-| `MODULE_VERSION` | `latest` | Imagens tagg i `docker-compose.yml`, som också skickar värdet till containern. En versionstagg (`vX.Y.Z`) är utgåvan i `/health`; alla andra värden ger ingen känd utgåva och stoppar aldrig starten ([Vilken version som körs](#vilken-version-som-körs)). |
+| `MODULE_VERSION` | `latest` | Imagens tagg i `docker-compose.yml`, som också skickar värdet till containern. En versionstagg (`vX.Y.Z`) blir utgåvan i `/health`; andra värden stoppar aldrig starten. |
 | `ENEO_BACKEND_URL` | | Absolut http(s)-URL utan query eller fragment: dit modulen når Eneos API (`http://backend:8000` på Eneos `module_net`). |
-| `ENEO_PUBLIC_URL` | | Eneos publika adress, dit webbläsaren skickas för att logga in. `https`; `http` bara för `localhost`, `127.0.0.1` och `[::1]`, annars stoppas starten. |
+| `ENEO_PUBLIC_URL` | | Eneos publika adress, dit webbläsaren skickas för att logga in. `https`; `http` bara för `localhost`, `127.0.0.1` och `[::1]`. |
 | `MODULE_PUBLIC_URL` | | Modulens publika adress. Samma regel som `ENEO_PUBLIC_URL`. Ger callback-URL:en och den tillåtna `Origin`. |
-| `MODULE_KEY` | `speech-to-text` i Compose | Gemener i kebab-case. Modulens nyckel i Eneo. |
-| `ENEO_API_KEY` | | Modulens servicenyckel (`sk_…`). Secret. |
-| `ENEO_API_KEY_HEADER_NAME` | `X-API-Key` | Giltigt HTTP-headernamn som inte är ett credential- eller ramhuvud som modulen sätter själv (`Authorization`, `Cookie`, `Content-Type` med flera). Ska vara samma som Eneos `API_KEY_HEADER_NAME`. |
-| `SESSION_SECRET` | | Minst 32 slumpmässiga tecken; `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Signerar login-state. Secret. |
-| `COOKIE_SECURE` | `true` | `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]` (lokal utveckling). |
-| `SESSION_MAX_AGE_MINUTES` | `480` | Heltal över 0. Övre gräns för en inloggning; det tidigaste av detta och Eneos sessionstak (`MODULE_AUTH_MAX_SESSION_HOURS`) gäller. |
-| `UPLOAD_PROXY_TIMEOUT_SECONDS` | `1800` | Över 0 och högst 86400: tidsgräns för hela vidarebefordran av en uppladdning. |
-| `UPLOAD_RECEIVE_TIMEOUT_SECONDS` | `1800` | Hela mottagningen, inklusive mellanrummen mellan delarna i en återupptagbar uppladdning. Över 0 och högst 86400 sekunder. |
-| `UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS` | `30` | Längsta väntan utan nya byte från webbläsaren, över 0 och högst 86400 sekunder. |
-| `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` | `300` | Längsta uppehåll mellan anrop till en återupptagbar uppladdning. Över 0 och högst 86400 sekunder. |
-| `MAX_CONCURRENT_UPLOADS` | `1` | Samtidiga uppladdningar, från mottagning till städad temporärfil. Heltal 1–96, högst det gemensamma taket nedan. |
-| `MAX_CONCURRENT_HEAVY_IO` | `64` | Gemensamt tak för uppladdningar, filhämtningar och livetext. Heltal 1–96; minst fyra av HTTP-poolens 100 anslutningar lämnas för korta API- och inloggningsanrop. |
+| `MODULE_KEY` | `speech-to-text` i Compose | Modulens nyckel i Eneo. Gemener i kebab-case. |
+| `ENEO_API_KEY` | | Servicenyckeln (`sk_…`). Hemlig. |
+| `ENEO_API_KEY_HEADER_NAME` | `X-API-Key` | Samma som Eneos `API_KEY_HEADER_NAME`. Ett giltigt headernamn som inte är ett som modulen sätter själv (`Authorization`, `Cookie`, `Content-Type` med flera). |
+| `SESSION_SECRET` | | Minst 32 tecken, modulens egen: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Signerar inloggningens state. Hemlig. |
+| `COOKIE_SECURE` | `true` | `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]`. |
+| `SESSION_MAX_AGE_MINUTES` | `480` | Heltal över 0. Längsta inloggning; Eneos sessionstak (`MODULE_AUTH_MAX_SESSION_HOURS`) gäller om det är kortare. |
+| `UPLOAD_PROXY_TIMEOUT_SECONDS` | `1800` | Tid för att skicka en mottagen uppladdning vidare till Eneo. |
+| `UPLOAD_RECEIVE_TIMEOUT_SECONDS` | `1800` | Tid för hela mottagningen, inklusive uppehållen mellan delarna i en återupptagbar uppladdning. |
+| `UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS` | `30` | Längsta väntan utan nya byte från webbläsaren. |
+| `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` | `300` | Längsta uppehåll mellan anrop till en återupptagbar uppladdning. |
+| `MAX_CONCURRENT_UPLOADS` | `1` | Samtidiga uppladdningar. Heltal 1–96, högst `MAX_CONCURRENT_HEAVY_IO`. |
+| `MAX_CONCURRENT_HEAVY_IO` | `64` | Gemensamt tak för uppladdningar, filhämtningar och livetext. Heltal 1–96, så att minst fyra av HTTP-poolens 100 anslutningar blir kvar för korta anrop. |
 | `MAX_BODY_BYTES` | `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. |
-| `MAX_UPLOAD_BYTES` | `1073741824` (1 GiB) | Tak för hela request-bodyn i en uppladdning (multipart-överhuvud inräknat, så en fil tar något mindre). Höj den om flödena tar emot större ljudfiler. |
-| `MAX_RESPONSE_BYTES` | `33554432` (32 MiB) | Mest som läses av ett enskilt svar från Eneo; längre svar blir 502. En fil som strömmas räknas inte. |
-| `ORGANIZATION_*`, `SHOW_ORGANIZATION` | tomma, `true` | Namn, logga och accentfärg: [Byt organisation](branding.md). |
-| `SPEAKER_REVIEW_ENABLED` | `false` | Byggargument, ingen körningsinställning: den fastställs när imagen byggs (`docker build --build-arg SPEAKER_REVIEW_ENABLED=true`), och en publicerad image har granskningen av. Att skriva talare kräver stöd för v3 i Eneo. |
+| `MAX_UPLOAD_BYTES` | `1073741824` (1 GiB) | Tak för hela request-bodyn i en uppladdning, multipart-överhuvud inräknat. Höj den om flödena tar emot större ljudfiler. |
+| `MAX_RESPONSE_BYTES` | `33554432` (32 MiB) | Mest som läses av ett svar från Eneo; längre svar blir 502. En fil som strömmas räknas inte. |
+| `ORGANIZATION_*`, `SHOW_ORGANIZATION` | tomma (Eneo), `true` | Namn, logga och accentfärg: [Byt organisation](branding.md). |
+| `SPEAKER_REVIEW_ENABLED` | `false` | Byggargument, ingen körningsinställning (`docker build --build-arg SPEAKER_REVIEW_ENABLED=true`). En publicerad image har granskningen av. Att skriva talare kräver stöd för v3 i Eneo. |
 
-De tre `MAX_*_BYTES` är heltal från 1 till 2^40; ett värde utanför det stoppar starten. Compose skickar standardvärdena, och ett tomt värde i Compose blir standardvärdet.
+De fyra tidsgränserna är sekunder, över 0 och högst 86400. De tre `MAX_*_BYTES` är heltal från 1 till 2^40. Ett tomt värde i Compose blir standardvärdet.
 
 ## Vad som står framför modulen
 
-Modulen svarar på vanlig HTTP och litar inte på något `X-Forwarded-*`: den läser varken schema, värd eller klientadress. Allt som står framför den hör till driftsättningen och måste ha:
+Modulen svarar på vanlig HTTP och läser inga `X-Forwarded-*`-headers. Proxyn framför den ska ge:
 
-- **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS. Sessionscookien är `Secure`, och webbläsaren skickar den bara över HTTPS: hela vägen från webbläsaren till proxyn måste vara HTTPS (proxyn talar vanlig HTTP med modulen). Samma krav gäller mikrofonen: webbläsaren ger bara sidor i en säker kontext, alltså HTTPS eller `localhost`, tillgång till den. Hur HSTS sätts i Dokploy och i en annan Traefik: [nedan](#hsts-i-traefik). Kedjan TLS, cookie och inloggning kontrolleras för hand vid driftsättningen.
-- **Storlek och tid för uppladdningar.** Gäller Traefik v3.7: varje ingångspunkt har `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s. `readTimeout` gäller hela requesten inklusive bodyn, så en uppladdning som tar längre än 60 s att skicka kapas av proxyn, hur snabbt modulen än svarar. Hur du höjer den: [nedan](#höj-readtimeout-i-traefik).
-  - Webbläsaren skickar högst 4 MiB per request (`frontend/lib/api.ts`). 60 s räcker vid ungefär 0,6 Mbit/s; höj tiden om användarnas anslutningar är långsammare. Klienter som använder multipart-rutten direkt behöver tid för hela filen: exempelkonfigurationens 1800 s räcker för 1 GiB över 5 Mbit/s.
-  - `UPLOAD_PROXY_TIMEOUT_SECONDS` är nästa steg och en egen tid: när hela filen är hos modulen får den högst så länge på sig att skicka den vidare till Eneo. Proxyns `writeTimeout` på 0 gör att inget i proxyn kapar den delen.
+- **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS. Sessionscookien är `Secure` och mikrofonen kräver en säker sida, så hela vägen från webbläsaren till proxyn måste vara HTTPS. Se [HSTS i Traefik](#hsts-i-traefik).
+- **Tid för uppladdningar.** Traefik v3.7 har `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s per ingångspunkt. `readTimeout` gäller hela requesten med bodyn, så en uppladdning som tar mer än 60 s att skicka kapas. Se [Höj readTimeout i Traefik](#höj-readtimeout-i-traefik).
+  - Webbläsaren skickar högst 4 MiB per request, och 60 s räcker då ner till ungefär 0,6 Mbit/s. En klient som använder multipart-rutten direkt skickar hela filen i ett anrop: 1800 s räcker för 1 GiB över 5 Mbit/s.
+  - När filen är hos modulen gäller `UPLOAD_PROXY_TIMEOUT_SECONDS` för vägen vidare till Eneo.
   - En eventuell `maxRequestBodyBytes` i proxyn ska rymma `MAX_UPLOAD_BYTES`. Svarar modulen 413 medan webbläsaren fortfarande skickar kan en proxy göra det till ett 502.
-- **WebSocket.** Uppgraderingen till `/api/live/...` måste släppas igenom, och webbläsarens `Origin` måste komma fram oförändrad. Traefik gör det utan extra konfiguration (v3.7); går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom uppgraderingar. Traefik v3.7 varnar vid start när `aliasHeadersStrategy` saknas; det är ofarligt för modulen.
-
-- **Rate limiting.** Modulen har ingen egen; behöver du en sätts den i proxyn.
+- **WebSocket.** Uppgraderingen till `/api/live/...` ska släppas igenom med webbläsarens `Origin` oförändrad. Traefik v3.7 gör det utan extra konfiguration. Går `ENEO_BACKEND_URL` via en proxy ska den också släppa igenom uppgraderingar. Traefiks varning om `aliasHeadersStrategy` vid start är ofarlig för modulen.
+- **Rate limiting**, om ni vill ha det. Modulen har ingen egen.
 
 ### Höj readTimeout i Traefik
 
-I Dokploy är det två ingångspunkter, `web` och `websecure`, och båda ligger i Traefiks statiska konfiguration, `traefik.yml`:
+I Dokploy finns ingångspunkterna `web` och `websecure` i Traefiks statiska konfiguration:
 
-1. Öppna filen: på servern är den `/etc/dokploy/traefik/traefik.yml`, och i Dokploys panel redigeras den under **Traefik File System**.
-2. Lägg `transport` under de `web` och `websecure` som redan finns, och behåll allt annat i dem (`address`, `http`, certifikat):
+1. Öppna `/etc/dokploy/traefik/traefik.yml` på servern, eller **Traefik File System** i Dokploys panel.
+2. Lägg `transport` under de `web` och `websecure` som redan finns, och behåll resten av dem (`address`, `http`, certifikat):
 
    ```yaml
    entryPoints:
@@ -136,15 +112,15 @@ I Dokploy är det två ingångspunkter, `web` och `websecure`, och båda ligger 
            readTimeout: 1800s
    ```
 
-3. Starta om Traefik, eftersom en ändring i den statiska konfigurationen inte läses om av sig själv: `docker restart dokploy-traefik`.
+3. Starta om Traefik, som inte läser om den statiska konfigurationen själv: `docker restart dokploy-traefik`.
 
-En annan Traefik tar samma nycklar i sin `traefik.yml` (`--entryPoints.websecure.transport.respondingTimeouts.readTimeout=1800s` som flagga).
+En annan Traefik tar samma nycklar i sin `traefik.yml`, eller flaggan `--entryPoints.websecure.transport.respondingTimeouts.readTimeout=1800s`.
 
 ### HSTS i Traefik
 
-Två små filer i Dokploy; HSTS gäller då varje tjänst bakom den Traefik:
+I Dokploy gäller det här varje tjänst bakom samma Traefik:
 
-1. En middleware i den dynamiska konfigurationen, `/etc/dokploy/traefik/dynamic/hsts.yml` (Traefiks fil-provider läser den katalogen):
+1. Skapa `/etc/dokploy/traefik/dynamic/hsts.yml`:
 
    ```yaml
    http:
@@ -154,7 +130,7 @@ Två små filer i Dokploy; HSTS gäller då varje tjänst bakom den Traefik:
            stsSeconds: 31536000
    ```
 
-2. Koppla den till `websecure` i `traefik.yml`, bredvid `readTimeout`, och starta om Traefik:
+2. Koppla den till `websecure` i `traefik.yml` och starta om Traefik:
 
    ```yaml
    entryPoints:
@@ -164,49 +140,48 @@ Två små filer i Dokploy; HSTS gäller då varje tjänst bakom den Traefik:
            - hsts@file
    ```
 
-Vill du ha HSTS bara för modulen sätter du middleware på modulens router med Compose-etiketter i stället, `traefik.http.middlewares.hsts.headers.stsSeconds=31536000` och `traefik.http.routers.<router>.middlewares=hsts`, där `<router>` är routerns namn i Traefik (Dokploy genererar det för tjänsten).
+Bara för modulen: sätt middleware på modulens router med Compose-etiketterna `traefik.http.middlewares.hsts.headers.stsSeconds=31536000` och `traefik.http.routers.<router>.middlewares=hsts`, där `<router>` är namnet Dokploy gav routern.
 
 ## Vad en användare behöver
 
-En aktuell Chrome, Edge, Safari eller Firefox och tillstånd till mikrofonen. Fullständig återgivning kräver Chrome eller Edge 125, Safari 26 eller Firefox 147; äldre webbläsare öppnar sidan men placerar menyer och väljare fel. Testerna körs i Chromium, WebKit och Firefox ([Tester](quality-gates.md#produktionstesterna)). Mikrofonen kräver HTTPS (se ovan).
+En aktuell Chrome, Edge, Safari eller Firefox och tillstånd till mikrofonen. Allt visas rätt från Chrome och Edge 125, Safari 26 och Firefox 147; äldre webbläsare öppnar sidan men placerar menyer och väljare fel. Testerna körs i Chromium, WebKit och Firefox ([Tester](quality-gates.md#produktionstesterna)). Mikrofonen kräver HTTPS eller `localhost`.
 
 ## Uppladdningens tillfälliga lagring
 
-En uppladdning tas emot hel av modulen innan den skickas vidare. Återupptagbara uppladdningar skrivs direkt till en temporärfil; multipart-filer större än 1 MB läggs också på disk. Containern är skrivskyddad, så `/tmp` är den enda skrivbara platsen, och i `docker-compose.yml` är den en volym (`spool`), alltså disk: en tmpfs skulle hålla varje uppladdning i minnet. Disken ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES`, plus utrymme för systemets övriga temporärfiler. En full disk ger ett fel på uppladdningen.
+Modulen tar emot en uppladdning hel innan den skickar den vidare. Containern är skrivskyddad, och `/tmp` är den enda skrivbara platsen: volymen `spool` i `docker-compose.yml`, alltså disk och inte minne. Disken ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES` plus systemets övriga temporärfiler. En full disk ger ett fel på uppladdningen.
 
-`UPLOAD_RECEIVE_TIMEOUT_SECONDS` räknas från skapandet och omfattar nätavbrott mellan delarna. En avbruten del skrivs om. En övergiven fil städas efter `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` utan anrop från ägaren, eller när totaltiden går ut. Ett giltigt anrop förlänger uppehållstiden men aldrig totaltiden. Färdigställning behåller platsen tills filen har skickats och temporärfilen stängts. Därefter sparas bara en liten kvittens i högst 30 minuter. Högst 256 resurser får finnas samtidigt; den äldsta färdiga kvittensen tas bort om plats behövs. Aktiva filer tas aldrig bort för att ge plats åt andra.
+- Återupptagbara uppladdningar skrivs direkt till en temporärfil, och multipart-filer större än 1 MB också.
+- `UPLOAD_RECEIVE_TIMEOUT_SECONDS` räknas från starten och omfattar avbrotten mellan delarna. En avbruten del skrivs om.
+- En övergiven fil städas efter `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` utan anrop, eller när totaltiden går ut. Ett anrop förlänger uppehållstiden men aldrig totaltiden.
+- En färdig uppladdning lämnar bara en liten kvittens, i högst 30 minuter. Högst 256 finns samtidigt; den äldsta färdiga tas bort när plats behövs, aldrig en aktiv fil.
+- Startar processen om försvinner positionerna och kvittenserna. Saknas svaret från Eneo kan Eneo redan ha filen. Appen startar då inget flöde utan kräver ett uttryckligt nytt försök, och en ny uppladdning kan lämna den tidigare filen utan körning.
+- Är taket nått svarar modulen 503 med `Retry-After: 2` innan något lagras. Filhämtningar och livetext delar taket; livetexten får ett fel som går att försöka igen, och inspelningen fortsätter lokalt.
 
-Gränser och städning ägs av `backend/app/resumable.py`. Om backendprocessen startas om försvinner positionerna och kvittenserna. Ett saknat svar från Eneo, eller en försvunnen kvittens efter begärt färdigställande, kan innebära att Eneo redan har lagrat filen. Appen startar då inget flöde och kräver ett uttryckligt nytt försök; en ny uppladdning kan lämna den tidigare filen utan en körning.
-
-Kapacitet reserveras före läsning av filen och frigörs efter städningen. När taket är nått svarar modulen 503 med `Retry-After: 2`; ingen ny fil börjar mellanlagras. Filhämtningar och livetext använder samma gemensamma tak. Livetexten får ett återförsöksbart fel så att inspelningen kan fortsätta lokalt. Inställningarna läses i `backend/app/config.py`; tilldelning och frigörande sker i `backend/app/limits.py` och `backend/app/main.py`.
+Koden: `backend/app/resumable.py`, `backend/app/limits.py` och `backend/app/main.py`.
 
 ## Kapacitet för live-texten
 
-Statiska filer, uppladdningar och live-reläets WebSocket delar en process och en händelseslinga. Mätt på en bärbar dator ryms en live-session och omkring 45 nya besök i sekunden utan märkbar fördröjning i reläet; vid omkring 100 besök i sekunden är processen mättad. Vad ett visst antal besök i sekunden betyder beror på maskinen (en körare med 4 vCPU i GitHub Actions klarar ungefär hälften så många anrop i sekunden), så acceptanskontrollen lägger sina rader som andelar av vad modulen klarar av ett riktigt besök, och "opåverkad" gäller upp till en tredjedel av det. Det är en observation, inget löfte för en annan maskin, och mer kapacitet än en process kräver ett delat sessionslager.
+Statiska filer, uppladdningar och live-reläet delar en process. Mätt på en bärbar dator ryms en livesession och omkring 45 nya besök i sekunden utan märkbar fördröjning; vid omkring 100 i sekunden är processen mättad. En körare med 4 vCPU i GitHub Actions klarar ungefär hälften, så acceptanskontrollen räknar i andelar av vad maskinen klarar, och "opåverkad" gäller upp till en tredjedel av det. Det är en observation, inget löfte. Mer kapacitet än en process kräver ett delat sessionslager.
 
 ## Inget att säkerhetskopiera
 
-Modulen har ingen databas och ingen volym med data; monteringarna är en valfri, skrivskyddad mapp med en logotyp och uppladdningens tillfälliga lagring. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
+Modulen har ingen databas. Sessioner ligger i minnet, inspelningar i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Monteringarna är uppladdningens tillfälliga lagring och en valfri, skrivskyddad mapp med en logga. Säkerhetskopiera Eneo.
 
 ## Eneos modul-overlay
 
-I en Eneo-installation ger Eneos Compose-overlay modulen endast `module_net` och variablerna i tabellen ovan som den behöver, med `ENEO_BACKEND_URL` som `http://backend:8000`. Overlay-filen mappar operatörens secret till `ENEO_API_KEY`. Modulen exponerar port 3001 och hälsokontrollen `/health`.
+I en Eneo-installation ger Eneos Compose-overlay modulen bara nätverket `module_net` och variablerna ovan, med `ENEO_BACKEND_URL` som `http://backend:8000`, och mappar operatörens hemlighet till `ENEO_API_KEY`. Modulen exponerar port 3001 och `/health`.
 
 ## Loggar
 
-Modulen loggar till containerns stdout och stderr (`docker logs <container>`, `docker compose logs speech-to-text`). Det finns ingen accesslogg. Den loggar fel och varningar med tydliga etiketter (upstream-fel, misslyckad ticketväxling, en logotyp som inte kunde läsas) men aldrig en token eller en URL med query. Proxyns loggning ska inte heller skriva callbackens query string: den bär en engångsticket.
+Modulen loggar till containerns stdout och stderr: `docker compose logs speech-to-text`. Det finns ingen accesslogg. Fel och varningar har tydliga etiketter (upstream-fel, misslyckad ticketväxling, en logga som inte kunde läsas), men ingen token och ingen URL med query. Proxyns logg ska inte heller skriva callbackens query string: den bär en engångsticket.
 
 ## CI och utgåvor
 
-`.github/workflows/ci.yml` körs vid pull request och vid push till `main`; arbetsflödena är källan till vad som körs. `gate.yml` kör gatens övriga projekt varje natt på `main` ([Tester](quality-gates.md#validera-en-förbättring)). `docs.yml` bygger `docs-site/` och kör dess webbläsarkontroll. Ändringar i dokumentationen på `main` publicerar sajten på [GitHub Pages](https://eneo-ai.github.io/eneo-mod-speech-to-text/).
+`.github/workflows/ci.yml` körs vid pull request och push till `main`. `gate.yml` kör gatens övriga projekt varje natt på `main` ([Tester](quality-gates.md#validera-en-förbättring)). `docs.yml` bygger och kontrollerar `docs-site/` och publicerar ändringar på `main` till [GitHub Pages](https://eneo-ai.github.io/eneo-mod-speech-to-text/).
 
-Inför första publiceringen behöver en repoadministratör välja **Settings → Pages → Build and deployment → Source: GitHub Actions**. Arbetsflödets vanliga token kan publicera till en aktiverad sajt, men kan inte aktivera Pages. Steget **Check GitHub Pages configuration** kontrollerar inställningen före publicering.
-
-Om bygget lyckas men publiceringen svarar med `404 Not Found`, kontrollera Pages-inställningen. Kör sedan det misslyckade jobbet igen, eller välj **Actions → Docs → Run workflow → main** för att bygga, kontrollera och publicera på nytt. Manuella körningar på andra grenar bygger och kontrollerar sajten utan att publicera den.
-
-När CI bygger imagen (`ci.yml`, jobbet `image`) får bygget commiten och en tidpunkt som läses en gång. `Dockerfile` skriver dem både som imagens etiketter och i byggposten som backenden svarar med på `/health`, och imagens acceptans kräver att de två säger samma sak ([Vilken version som körs](#vilken-version-som-körs)).
-
-`release.yml` körs när en tagg `vX.Y.Z` pushas. Den bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest` med samma digest, kontrollerar att imagen under `vX.Y.Z` är byggd från den taggade commiten (etiketten `org.opencontainers.image.revision`) och skapar en GitHub-utgåva med `docker-compose.yml` och `env.example`. En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart. Säger imagen en annan commit skapas ingen GitHub-utgåva; taggarna i registret pekar då redan på imagen och rättas för hand.
+- **Pages första gången:** en repoadministratör väljer **Settings → Pages → Build and deployment → Source: GitHub Actions**. Arbetsflödets token kan publicera men inte aktivera Pages; steget **Check GitHub Pages configuration** kontrollerar inställningen. Svarar publiceringen `404 Not Found`, kontrollera inställningen och kör jobbet igen, eller **Actions → Docs → Run workflow → main**. På andra grenar bygger och kontrollerar en manuell körning utan att publicera.
+- **Imagen:** jobbet `image` i `ci.yml` ger bygget commiten och en tidpunkt. `Dockerfile` skriver dem som imagens etiketter och i byggposten som `/health` svarar med, och imagens acceptans kräver att de stämmer överens.
+- **Utgåvan:** `release.yml` körs när en tagg `vX.Y.Z` pushas och bygger ingenting. Den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest`, kontrollerar att imagens `org.opencontainers.image.revision` är den taggade commiten och skapar en GitHub-utgåva med `docker-compose.yml` och `env.example`. En commit som inte gått igenom CI på `main` har ingen image, och taggen misslyckas: kör jobbet igen när CI är klart. Säger imagen en annan commit skapas ingen utgåva, men taggarna i registret pekar redan på imagen och rättas för hand.
 
 ```
 git tag v1.2.3 <commit på main>
@@ -215,7 +190,7 @@ git push origin v1.2.3
 
 ## Uppdatera beroenden och fästa versioner
 
-Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, basimagerna vid digest, GitHub Actions vid commit-sha, `docs-site/` till exakta versioner. Inget uppdateras av sig självt, och repot har ingen Dependabot: gör så här, till exempel varje månad och när en sårbarhet rapporteras. Ändra ett steg i taget, kör CI och godkänn imagens acceptans innan nästa. CI stoppar vid fynd i produktionsberoendena (`npm audit` från nivån high, `pip-audit` på låsfilen).
+Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, basimagerna vid digest, GitHub Actions vid commit-sha och `docs-site/` till exakta versioner. Inget uppdateras av sig självt och repot har ingen Dependabot. Uppdatera till exempel varje månad och när en sårbarhet rapporteras, ett steg i taget, och låt CI och imagens acceptans gå igenom innan nästa. CI stoppar vid fynd i produktionsberoendena (`npm audit` från nivån high, `pip-audit` på låsfilen).
 
 - **Backendens paket:** ändra versionen i `backend/requirements.txt` och generera om låsfilen från repots rot. `backend/tests/test_dependency_lock.py` stoppar en ändring av den ena filen utan den andra.
 
@@ -224,7 +199,7 @@ Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, bas
     --exclude-newer <dagens datum>T00:00:00Z -o backend/requirements.lock
   ```
 
-- **Basimagerna** (`Dockerfile`, `deploy/acceptance/compose.yml`, `.github/workflows/`): hämta taggens nya digest och byt den där den står, efter att ha läst versionens ändringslista.
+- **Basimagerna** (`Dockerfile`, `deploy/acceptance/compose.yml`, `.github/workflows/`): läs versionens ändringslista, hämta taggens nya digest och byt den där den står.
 
   ```
   docker buildx imagetools inspect node:24.21.0-bookworm-slim --format '{{.Manifest.Digest}}'
@@ -236,20 +211,20 @@ Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, bas
   git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v7.*'
   ```
 
-- **Dokumentationssajten:** `npm install --save-exact <paket>@<version>` i `docs-site/`; checka in `package.json` och `package-lock.json`. Astro, Starlight, MD3-temat, OpenAPI-tillägget och Mermaid har exakta versioner; kontrollera deras kompatibilitetskrav vid en uppdatering.
+- **Dokumentationssajten:** `npm install --save-exact <paket>@<version>` i `docs-site/` och checka in `package.json` och `package-lock.json`. Kontrollera kompatibilitetskraven mellan Astro, Starlight, MD3-temat, OpenAPI-tillägget och Mermaid.
 
 ## Vid problem
 
 | Symptom | Trolig orsak och åtgärd |
 |---|---|
-| Backend startar inte | Felet säger vilken variabel. En `http`-adress för `MODULE_PUBLIC_URL` eller `ENEO_PUBLIC_URL`, eller `COOKIE_SECURE=false`, stoppar starten om värden inte är `localhost`, `127.0.0.1` eller `[::1]`. Saknas `index.html` i `STATIC_DIR` stoppar starten med mappens namn. |
-| Backend startar om i en slinga efter en ändrad accentfärg | `ORGANIZATION_ACCENT` eller `ORGANIZATION_ACCENT_DARK` är inte läsbar nog (under 4,5:1) eller har fel form. Loggen säger vad som mättes: [Byt organisation](branding.md#felmeddelanden-vid-start). |
-| Login misslyckas efter callback | Kontrollera exakt registrerad callback-URL, modulnyckel, bunden servicenyckel och att `COOKIE_SECURE=true` bara används bakom HTTPS. Felkoderna: [Inloggning och session](auth-and-session.md#om-callbacken-misslyckas). |
-| Mikrofonen går inte att välja | Sidan öppnas inte över HTTPS (eller `localhost`), eller så har webbläsaren nekat tillståndet. |
-| Uppladdningen misslyckas | 503 `uploads_busy`: kapaciteten är upptagen, försök igen efter väntetiden. 408 `upload_receive_timeout`: mottagningen stod stilla för länge eller tog längre än mottagningens totaltid. 413: `max_body_bytes` (JSON-anrop) eller `max_upload_bytes` (uppladdning), höj rätt variabel; ett 413 utan det namnet är Eneos egen gräns. 411: en klient som skickar bodyn utan `Content-Length`, till exempel en proxy som skickar i delar. 504: vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. 502: `upstream_unreachable` (Eneo nåddes inte, ofta ett lastbalanserarproblem: kolla loggen efter det exakta httpx-felet), `upstream_too_large`, `upstream_redirect` (Eneo omdirigerade, vilket modulen aldrig följer) eller `upstream_invalid` på en fil (Eneos svar på begäran om en signerad URL gick inte att använda). |
-| Uppladdningen faller efter lång tid | Proxyns `readTimeout` (60 s som standard i Traefik v3.7) är kortare än uppladdningen: [Vad som står framför modulen](#vad-som-står-framför-modulen). |
-| "Det gick inte att skicka" under uppladdningen | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen" ([Inspelaren](recording.md#uppladdning-och-nya-försök)). |
-| Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem. |
-| En gammal färg visas efter ett byte | Accentens stilmall får cachas i fem minuter. Ladda om sidan eller öppna den i ett privat fönster. |
+| Backend startar inte | Felet i loggen namnger variabeln. `Missing required environment variables` räknar upp dem som saknas. `is a placeholder from .env.example`: byt exempelvärdet mot ett eget. En `http`-adress i `MODULE_PUBLIC_URL` eller `ENEO_PUBLIC_URL`, eller `COOKIE_SECURE=false`, godtas bara för `localhost`, `127.0.0.1` och `[::1]`. |
+| Backend startar om i en slinga efter en ändrad färg eller logga | Accentfärgen når inte 4,5:1 eller har fel form, eller en logga saknar namn. Loggen säger vad: [Felmeddelanden vid start](branding.md#felmeddelanden-vid-start). |
+| Inloggningen misslyckas efter callbacken | Kontrollera den registrerade callback-URL:en tecken för tecken, modulnyckeln och servicenyckeln, och att `ENEO_API_KEY_HEADER_NAME` är samma som Eneos `API_KEY_HEADER_NAME`. Felkoderna: [Inloggning och session](auth-and-session.md#om-callbacken-misslyckas). |
+| Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller servicenyckelns omfattning utesluter dem. |
+| Mikrofonen går inte att välja | Sidan öppnas inte över HTTPS (eller `localhost`), eller webbläsaren har nekat tillståndet. |
+| Uppladdningen faller efter lång tid | Proxyns `readTimeout` (60 s i Traefik v3.7) är kortare än uppladdningen: [Höj readTimeout i Traefik](#höj-readtimeout-i-traefik). |
+| Uppladdningen får en felkod | 503 `uploads_busy`: taket är nått, försök igen strax. 408 `upload_receive_timeout`: mottagningen stod stilla eller tog för lång tid. 413 med `max_body_bytes` eller `max_upload_bytes`: höj den variabeln; utan namnet är det Eneos egen gräns. 411: en klient skickade utan `Content-Length`, till exempel en proxy som skickar i delar. 504: vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. 502: `upstream_unreachable` (Eneo nåddes inte; loggen har httpx-felet), `upstream_too_large`, `upstream_redirect` (Eneo omdirigerade, vilket modulen aldrig följer) eller `upstream_invalid` (Eneos svar om en signerad URL gick inte att använda). |
+| "Det gick inte att skicka" | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas med "Försök igen" ([Inspelaren](recording.md#uppladdning-och-nya-försök)). |
+| En gammal färg visas efter ett byte | Färgens stilmall får cachas i fem minuter. Ladda om sidan. |
 | "Sidan kunde inte visas." | En flik som stått öppen över en ny version frågar efter filer som inte finns. "Ladda om sidan". |
-| Alla blir utloggade | Containern startade om: sessionslagret är processlokalt. |
+| Alla blir utloggade | Containern startade om: sessionerna ligger i processens minne. |

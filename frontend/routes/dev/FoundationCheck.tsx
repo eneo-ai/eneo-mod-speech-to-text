@@ -46,7 +46,7 @@ export function FoundationCheck() {
       <ThemeProbe />
       <VStack gap={4}>
         <Heading level={1}>Grundkontroll</Heading>
-        <Banner status="warning" title="Flödet har uppdaterats" description="Läs in sidan igen." collapsible={false} />
+        <Banner status="warning" title="Flödet har uppdaterats" description="Ladda om sidan." collapsible={false} />
         <Button label="Primär" variant="primary" onClick={() => setDialog(true)} />
         <Button label="Liten" size="sm" variant="secondary" onClick={() => setAlert(true)} />
         <TextInput label="Ärende" placeholder="Skriv ärendet" value={text} onChange={setText} />

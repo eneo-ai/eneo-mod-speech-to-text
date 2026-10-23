@@ -1,5 +1,5 @@
-import { useContext, useState } from "react";
-import { Plus, RotateCcw, Upload } from "lucide-react";
+import { useContext, useId, useState, type MouseEvent } from "react";
+import { ArrowDown, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Code } from "@astryxdesign/core/Code";
@@ -7,7 +7,6 @@ import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Divider } from "@astryxdesign/core/Divider";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
-import { Section } from "@astryxdesign/core/Section";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
@@ -22,6 +21,8 @@ import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
+// The result's quiet ghost start: a ghost button's icon on the edge the card's words start from.
+import styles from "./RunResult.module.css";
 import { usePhaseHeading } from "./usePhaseHeading";
 import { LeaveContext } from "./useLeaveQuestion";
 
@@ -67,13 +68,26 @@ export function RunFailure({
   contract?: RunContract | null;
 }) {
   const { leaveFirst } = useContext(LeaveContext);
+  const wayOnId = useId();
   const cancelled = runOutcome(run.status) === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
   const offerStartAgain = Boolean(onStartAgain) && (cancelled || Boolean(refusal?.startAgain));
-  const offerChooseInput = Boolean(onChooseInput) && Boolean(failure?.inputMustChange);
+  // The way back to a new recording or file: when the input itself has to change, and after a cancellation, which the
+  // person chose (with a new run of the same audio beside it, the filled one).
+  const offerChooseInput = Boolean(onChooseInput) && (Boolean(failure?.inputMustChange) || cancelled);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
+
+  // The transcript's heading takes the focus and comes to the window's top, as a jump does; focus alone scrolls only as
+  // far as shows it, which on a laptop is its first line at the window's foot. Before it is read the link is a plain one.
+  function toTranscript(event: MouseEvent) {
+    const target = document.getElementById("run-transcript");
+    if (!target) return;
+    event.preventDefault();
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start", behavior: "instant" });
+  }
 
   async function retry() {
     setRetrying(true);
@@ -89,6 +103,7 @@ export function RunFailure({
       {/* What happened and what can be done, in the card; what the run left behind follows it. */}
       <StateCard>
         <VStack gap={6}>
+          {/* No tile: the note under the heading carries the state, and a second mark would say it twice. */}
           <VStack gap={1}>
             <Heading level={1} ref={heading} tabIndex={-1}>
               {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
@@ -106,37 +121,28 @@ export function RunFailure({
             role="note"
             status={cancelled ? "info" : failure?.inputMustChange || run.error?.retryable ? "warning" : "error"}
             title={failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
-            description={failure?.summary ?? "Körningen kunde inte slutföras."}
+            description={failure?.summary ?? (cancelled ? undefined : "Körningen kunde inte slutföras.")}
             collapsible={false}
           />
-          {/* The transcript stays last on the page (see RunTranscript below), so the card says it is there. */}
-          {showTranscript && (
-            <Text as="p" type="supporting">
-              Transkriberingen finns längst ner på sidan.
-            </Text>
-          )}
-
           <VStack gap={3}>
             {/* One alert for each sentence, however many ways of saying it there are. */}
             {[...new Set([refusal?.message, error].filter(Boolean))].map((message) => (
               <Banner key={message} status="error" title={message} collapsible={false} />
             ))}
-            {/* What the way on does, then the way on itself. */}
-            {offerRetry && (
-              <Text as="p" type="supporting">
-                Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
-              </Text>
-            )}
-            {offerStartAgain && (
-              <Text as="p" type="supporting">
-                En ny körning använder samma ljud och uppgifter och gör om alla steg.
-              </Text>
-            )}
-            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
+            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the
+                card. At its own width from the card's start, as the progress has Avbryt körningen; across a phone. The
+                line under it says what it does, as a line under an action does, and is its description: the action
+                comes right after what went wrong, on a small phone's first screen. */}
             {(offerChooseInput || offerRetry || offerStartAgain) && (
-              <ActionRow>
+              <ActionRow align="start">
                 {offerChooseInput && (
-                  <Button label="Välj nytt ljud" variant="primary" size="lg" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
+                  <Button
+                    label="Välj nytt ljud"
+                    variant={offerStartAgain ? "secondary" : "primary"}
+                    size="lg"
+                    icon={<Icon icon={Upload} size="sm" color="inherit" />}
+                    onClick={() => leaveFirst(() => onChooseInput?.())}
+                  />
                 )}
                 {offerRetry && (
                   // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
@@ -144,15 +150,33 @@ export function RunFailure({
                     label="Försök igen"
                     variant={run.error?.retryable ? "primary" : "secondary"}
                     size="lg"
+                    aria-describedby={`${wayOnId}r`}
                     isLoading={retrying}
                     icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
                     onClick={() => leaveFirst(retry)}
                   />
                 )}
                 {offerStartAgain && (
-                  <Button label="Starta en ny körning" variant="primary" size="lg" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
+                  <Button label="Starta en ny körning" variant="primary" size="lg" aria-describedby={`${wayOnId}s`} icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
                 )}
               </ActionRow>
+            )}
+            {offerRetry && (
+              <Text as="p" type="supporting" id={`${wayOnId}r`} data-measure>
+                Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
+              </Text>
+            )}
+            {offerStartAgain && (
+              <Text as="p" type="supporting" id={`${wayOnId}s`} data-measure>
+                En ny körning använder samma ljud och uppgifter och gör om alla steg.
+              </Text>
+            )}
+            {/* What the run did finish stays last on the page (RunTranscript below): the way to it, which takes the focus
+                to its heading. A button's target, as the card's other ways on have, at its own width from the card's start. */}
+            {showTranscript && (
+              <HStack>
+                <Button href="#run-transcript" variant="ghost" label="Gå till transkriberingen" icon={<Icon icon={ArrowDown} size="sm" color="inherit" />} onClick={toTranscript} className={styles.quietStart} />
+              </HStack>
             )}
           </VStack>
         </VStack>
@@ -163,9 +187,7 @@ export function RunFailure({
           <Heading level={2} id="run-steps">
             Stegen
           </Heading>
-          <Section>
-            <StepList steps={steps} />
-          </Section>
+          <StepList steps={steps} />
         </VStack>
       )}
 

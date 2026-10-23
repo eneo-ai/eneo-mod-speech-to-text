@@ -2,9 +2,9 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
+    - link "Tal till text – Eneo":
       - /url: /flows
-      - img "Sundsvalls kommun"
+      - img "Eneo"
       - text: ""
     - link "Alla flöden":
       - /url: /flows

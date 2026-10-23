@@ -470,6 +470,23 @@
                 }
               }
             }
+          },
+          "507": {
+            "description": "Modulens disk för uppladdningar som pågår är full. Inget av delen sparades; skicka samma del igen när uppladdningar före den har gått vidare till Eneo. error är module_storage_full.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "const": "30"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BffError"
+                }
+              }
+            }
           }
         }
       },
@@ -899,7 +916,7 @@
         ],
         "summary": "Accentfärgens stilmall",
         "operationId": "get_api_branding_theme_css",
-        "description": "Sidan länkar den efter sitt byggda tema. Innehållet är en fast mall med en redan kontrollerad accent, eller en tom kommentar utan `ORGANIZATION_ACCENT`. `ETag` och `If-None-Match` ger `304`.",
+        "description": "Sidan länkar den efter sitt byggda tema. Innehållet är en fast mall med en redan kontrollerad accent, eller utan `ORGANIZATION_ACCENT` bara transkriberingens ton (`--module-accent-tint`). `ETag` och `If-None-Match` ger `304`.",
         "parameters": [
           {
             "name": "If-None-Match",
@@ -4479,6 +4496,7 @@
           "error": {
             "type": "string",
             "enum": [
+              "module_storage_full",
               "streams_busy",
               "upload_receive_timeout",
               "uploads_busy",

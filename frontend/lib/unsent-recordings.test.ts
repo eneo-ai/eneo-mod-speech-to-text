@@ -32,7 +32,8 @@ const render = ({
   ...props
 }: Partial<Omit<ComponentProps<typeof UnsentRecordings>, "list">> & { recordings: UnsentRecording[] }) =>
   mount(createElement(UnsentRecordings, { list: { recordings, unreadable: false, retry: () => {} }, onSend: () => {}, sendLabel: () => "Skapa dokument", ...props }));
-const rowsOf = (container: HTMLElement) => [...container.querySelectorAll("li")];
+/** Each recording: the one that leads the card, then the rows of the list under it. */
+const rowsOf = (container: HTMLElement) => [...container.querySelectorAll("[data-recording]")];
 const labels = (row: Element) => [...row.querySelectorAll("button")].map((b) => b.textContent!.trim());
 /** The element the row's actions say they are described by: what a screen reader reads after each button's name. */
 const summaryOf = (row: Element) => {
@@ -47,9 +48,15 @@ const filled = (container: HTMLElement) =>
 test("an unsent recording keeps the name it was made with, then its flow and length", async () => {
   assert.equal(recordingDetails(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }), "Nämndmöte till rapport · 42\u00a0min");
   assert.equal(recordingDetails(recording("b", 65 * 60_000, at(22, 16, 40))), "1\u00a0h\u00a05\u00a0min");
-  const { container } = await render({ recordings: [recording("c", 30_000, at(20, 9, 5))], withFlowName: true });
-  // The name the ready panel shows (lib/format recordingName), then its flow and length.
-  assert.deepEqual([...summaryOf(rowsOf(container)[0]).children].map((line) => line.textContent), ["Inspelning 20 sep 09:05", "Nämndmöte till rapport · 30\u00a0s"]);
+  const { container } = await render({ recordings: [recording("c", 30_000, at(20, 9, 5)), recording("d", 60_000, at(19, 8, 0))], withFlowName: true });
+  const [lead, next] = rowsOf(container);
+  // The name the ready panel shows (lib/format recordingName), then its flow and length under the card's heading: the
+  // name's date and time whole, the flow's name free to wrap with its dot after it, the length one word; and in the list
+  // under it the name over the rest.
+  const line = summaryOf(lead).firstElementChild!;
+  assert.equal(line.textContent, "Inspelning 20 sep 09:05 · Nämndmöte till rapport\u00a0· 30\u00a0s");
+  assert.deepEqual([...line.children].map((part) => part.textContent), ["Inspelning 20 sep 09:05 ·"], "only the name is kept whole");
+  assert.deepEqual([...summaryOf(next).children].map((line) => line.textContent), ["Inspelning 19 sep 08:00", "Nämndmöte till rapport · 1\u00a0min"]);
 });
 
 test("one unsent recording is spoken of in the singular", async () => {
@@ -101,6 +108,36 @@ test("where the browser may delete the recordings the list does not promise they
   assert.match(two.container.textContent!, /De finns på den här enheten\. Webbläsaren kan ta bort dem om du väntar länge med att skicka dem till Eneo\./);
 });
 
+test("a recording the device stopped keeping does not say it is on the device: the latest of it is only in this tab", async () => {
+  // The device filled up while it was recorded; the person left the flow page for the list in the same tab.
+  const full = await render({ recordings: [{ ...recording("a", 12_000, at(23, 10, 12)), refused: "full" }], evictable: true });
+  const said = full.container.textContent!;
+  assert.doesNotMatch(said, /finns på den här enheten|finns kvar på den här enheten/, "no word that would make the person close the tab");
+  assert.match(said, /Enheten är full, så det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./);
+  await full.unmount();
+  const refused = await render({ recordings: [{ ...recording("a", 12_000, at(23, 10, 12)), refused: "failed" }] });
+  assert.match(refused.container.textContent!, /Det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./);
+});
+
+test("among several recordings, each one the device stopped keeping says so in its own row, in view, and none is said to be on the device", async () => {
+  // An older recording a reload cut off is kept on the device; a newer one, stopped when the device was full, has its
+  // latest audio only in this tab.
+  const kept = { ...recording("kept", 60_000, at(23, 9, 0)), state: "recording" as const };
+  const tabOnly: UnsentRecording = { ...recording("tab", 12_000, at(23, 10, 12)), refused: "full" };
+  for (const folded of [true, false]) {
+    const { container, unmount } = await render({ recordings: [tabOnly, kept], onContinue: () => {}, folded });
+    assert.doesNotMatch(container.textContent!, /finns (kvar )?på den här enheten/, "no word that would make the person close the tab");
+    const fold = container.querySelector("[aria-controls]");
+    const hidden = fold && document.getElementById(fold.getAttribute("aria-controls")!);
+    const row = rowsOf(container).find((r) => r.textContent!.includes("Inspelning 23 sep 10:12"))!;
+    assert.match(row.textContent!, /Enheten är full, så det senaste av inspelningen finns bara i den här fliken\. Stäng inte fliken\./, `folded: ${folded}`);
+    assert.ok(!hidden?.contains(row), "not folded away");
+    const durable = rowsOf(container).find((r) => r.textContent!.includes("Inspelning 23 sep 09:00"))!;
+    assert.doesNotMatch(durable.textContent!, /Stäng inte fliken/, "the recording the device keeps is not said to be in the tab");
+    await unmount();
+  }
+});
+
 test("each unsent recording offers Skapa dokument, Spara ljudfil and Ta bort, described by its summary", async () => {
   const { container } = await render({
     recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 120_000, at(23, 9, 0))],
@@ -128,7 +165,9 @@ test("the actions call back with their recording, and Fortsätt spela in only wh
   });
   const [first, second] = rowsOf(container);
   assert.deepEqual(labels(first), ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"]);
-  assert.deepEqual(labels(second), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
+  // A recording the person stopped is recorded on in too, as one a reload cut off (until a send of it has begun); sending
+  // it is the likelier, so its send comes first and Fortsätt spela in stands with the other ways after it.
+  assert.deepEqual(labels(second), ["Skapa dokument", "Fortsätt spela in", "Spara ljudfil", "Ta bort"]);
   await act(async () => button(first, "Fortsätt spela in")!.click());
   await act(async () => button(second, "Skapa dokument")!.click());
   assert.deepEqual([continued, sent], [["a"], ["b"]]);
@@ -146,7 +185,7 @@ test("a recording with no audio says so plainly, and offers neither a document n
   const [cutOff, stopped] = rowsOf(container);
   for (const row of [cutOff, stopped]) assert.match(row.textContent!, /Inget ljud sparades i den här inspelningen\./);
   assert.deepEqual(labels(cutOff), ["Fortsätt spela in", "Ta bort"]);
-  assert.deepEqual(labels(stopped), ["Ta bort"]);
+  assert.deepEqual(labels(stopped), ["Fortsätt spela in", "Ta bort"]);
   const { container: elsewhere } = await render({ recordings: [{ ...silent("c", "stopped"), exportOnly: true }] });
   assert.deepEqual(labels(rowsOf(elsewhere)[0]), [], "another tab's: nothing to save either");
 });
@@ -158,7 +197,7 @@ test("without Web Locks, another tab's recording is offered only as a file to sa
   assert.deepEqual(labels(first), ["Spara ljudfil"]);
   assert.match(first.textContent!, /I den här webbläsaren kan den bara sparas som fil\./);
   assert.equal(summaryOf(first).textContent?.startsWith("Inspelning"), true, "the one action is still described by the summary");
-  assert.deepEqual(labels(second), ["Skapa dokument", "Spara ljudfil", "Ta bort"], "a recording this tab may change keeps every action");
+  assert.deepEqual(labels(second), ["Skapa dokument", "Fortsätt spela in", "Spara ljudfil", "Ta bort"], "a recording this tab may change keeps every action");
 });
 
 test("a recording a reload cut off says so and how to go on, with Fortsätt spela in the one filled action", async () => {
@@ -190,6 +229,17 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");
 });
 
+test("a recording the person stopped can be recorded on in from the list too, beside sending it, which stays the likelier", async () => {
+  const stopped = recording("a", 60_000, at(23, 10, 12));
+  const { container } = await render({ recordings: [stopped], onContinue: () => {} });
+  assert.equal(container.querySelector("h2")?.textContent, "En inspelning har inte skickats", "it was not cut off");
+  assert.ok(button(rowsOf(container)[0], "Fortsätt spela in"));
+  assert.deepEqual(filled(container), [], "the setup's own action stays the filled one");
+  assert.equal(resumableRecording([stopped]), undefined);
+  const { container: sent } = await render({ recordings: [{ ...stopped, state: "uploading" }], onContinue: () => {} });
+  assert.equal(button(sent, "Fortsätt spela in"), null, "once a send has begun, nothing more is recorded in it");
+});
+
 test("folded, the list shows one recording, the latest a reload cut off before the newest, and the rest under a closed fold", async () => {
   const cutOff = (id: string, startedAt: number) => ({ ...recording(id, 60_000, startedAt), state: "recording" as const });
   const newest = recording("new", 60_000, at(23, 11, 0));
@@ -207,6 +257,8 @@ test("folded, the list shows one recording, the latest a reload cut off before t
   const { container: none } = await render({ recordings: [newest, recording("old", 60_000, at(23, 9, 0))], onContinue: () => {}, folded: true });
   const [first] = rowsOf(none);
   assert.match(first.textContent!, /Inspelning 23 sep 11:00/, "without one cut off, the newest");
+  assert.deepEqual(labels(first), ["Skapa dokument", "Fortsätt spela in", "Spara ljudfil", "Ta bort"]);
+  assert.deepEqual(filled(none), ["Skapa dokument"], "a stopped one is likelier sent than recorded on in: its send is the filled action");
   assert.ok(button(none, "En inspelning till"));
   const { container: page } = await render({ recordings: listed, onContinue: () => {} });
   assert.equal(button(page, "2 inspelningar till"), null, "on a flow's page every one is in view");
@@ -322,7 +374,7 @@ test("a recording another tab holds is listed with why nothing can be done with 
     const [held, own] = rowsOf(container);
     assert.match(held.textContent!, /Inspelningen används i en annan flik\./);
     assert.deepEqual(labels(held), [], "nothing here that the other tab would have to undo");
-    assert.deepEqual(labels(own), ["Skapa dokument", "Spara ljudfil", "Ta bort"]);
+    assert.deepEqual(labels(own), ["Skapa dokument", "Fortsätt spela in", "Spara ljudfil", "Ta bort"]);
 
     // The other tab lets it go, which tells this one nothing: back in view, the list is read again.
     elsewhere = [];

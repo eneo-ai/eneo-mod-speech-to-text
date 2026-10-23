@@ -8,19 +8,6 @@
       - listitem: Ljudet görs om till text.
       - listitem: Du får resultatet här när flödet är klart.
     - button "Tips för bra ljud"
-  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
-  - group "Deltagare Valfritt":
-    - text: Lägg till namn
-    - textbox "Deltagare Valfritt Lägg till namn":
-      - /placeholder: Lägg till namn
-    - button "Lägg till" [disabled]:
-      - text: ""
-      - status
-  - status
-  - text: Ärende
-  - textbox "Ärende" [invalid]
-  - text: Fyll i det här för att skapa dokumentet. Antal talare Valfritt
-  - textbox "Antal talare Valfritt"
   - region "Ljudet":
     - status
     - status
@@ -38,6 +25,19 @@
     - button "Byt fil":
       - text: ""
       - status
+    - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
+    - group "Deltagare Valfritt":
+      - text: Lägg till namn
+      - textbox "Deltagare Valfritt Lägg till namn":
+        - /placeholder: Lägg till namn
+      - button "Lägg till" [disabled]:
+        - text: ""
+        - status
+    - status
+    - text: Ärende
+    - textbox "Ärende" [invalid]
+    - text: Fyll i det här för att skapa dokumentet. Antal talare Valfritt
+    - textbox "Antal talare Valfritt"
     - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter uppladdningen.
     - switch "Märk upp talare"
     - button "Skapa dokument":

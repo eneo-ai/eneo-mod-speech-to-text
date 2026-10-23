@@ -4,10 +4,9 @@
  * change that hands every passage a new prop or closure turns each interaction back into 2,000 renders (450-950 ms on a phone).
  */
 import type { Page, TestInfo } from "@playwright/test";
-import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
 import { countRenders } from "./react-renders";
-import { isLaptop, run } from "./screens";
+import { chooseSpeaker, isLaptop, longTranscript, result } from "./screens";
 import { REAL } from "./sentinel";
 
 // One laptop and one phone: the renders are the same on every project, and the long run is not worth 20 copies. The built
@@ -31,10 +30,7 @@ const passagesWith = (page: Page, pattern: string) =>
 /** The long run's transcript on screen, every passage mounted and rendering stopped; `mounted` is the renders it took. */
 async function openLong(page: Page, info: TestInfo) {
   const turns = await countRenders(page, "TurnBlock");
-  await run(page, ids.runs.long);
-  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
-  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-  await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBeGreaterThanOrEqual(1_500);
+  await longTranscript(page, info);
   const mounted = await turns.settled();
   await turns.reset();
   return { turns, mounted, total: await passages(page).count() };
@@ -77,21 +73,66 @@ test("Rätta on one passage renders that passage and no other", async ({ page },
   expect(renders, "passages rendered by opening one correction").toBeLessThanOrEqual(5);
 });
 
-test("choosing a speaker and then everyone renders the passages that appear, not the ones that stay", async ({ page }, info) => {
+test("choosing a speaker and then everyone renders no passage: each stays in the page, hidden while it is filtered out", async ({ page }, info) => {
   const { turns, total } = await openLong(page, info);
   const first = await page.locator('[data-turn-index][aria-label^="Talare 1,"]').count();
   expect(first, "the first speaker has some of the passages").toBeGreaterThan(0);
   expect(first).toBeLessThan(total);
+  const shown = () => page.evaluate(() => document.querySelectorAll("[data-turn-index]:not([hidden])").length);
+  // Each passage's element, known again after the round: one taken out and built again is a new element.
+  await page.evaluate(() => document.querySelectorAll("[data-turn-index]").forEach((passage) => passage.setAttribute("data-was-here", "")));
 
-  await page.getByRole("button", { name: "Talare 1", exact: true }).click();
-  await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(first);
-  // Passages leave; none appears, and those that stay are not rendered again.
-  expect(await turns.settled(), "passages rendered while the others left").toBeLessThanOrEqual(SLACK);
+  await chooseSpeaker(page, info, "Talare 1");
+  await expect.poll(shown, { timeout: 30_000 }).toBe(first);
+  // The others are hidden; none appears, and those that stay are not rendered again.
+  expect(await turns.settled(), "passages rendered while the others were hidden").toBeLessThanOrEqual(SLACK);
   await turns.reset();
 
-  await page.getByRole("button", { name: "Alla", exact: true }).click();
-  await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(total);
-  expect(await turns.settled(), `passages rendered for the ${total - first} that appear (the ${first} that stayed are not among them)`).toBeLessThanOrEqual(total - first + SLACK);
+  await chooseSpeaker(page, info, "Alla");
+  await expect.poll(shown, { timeout: 30_000 }).toBe(total);
+  // Shown again, not built again: an hour's meeting taken out and put back was one long frame each way.
+  expect(await turns.settled(), `passages rendered for the ${total - first} shown again`).toBeLessThanOrEqual(SLACK);
+  expect(await page.evaluate(() => document.querySelectorAll("[data-turn-index]:not([data-was-here])").length), "passages built again").toBe(0);
+});
+
+test("after quick changes of speaker the list shows the last one chosen, and stays with it", async ({ page }, info) => {
+  await longTranscript(page, info);
+  // A choice's passages follow once its chip has been drawn. Talare 1, Talare 2, Alla and Talare 3 are chosen each in a
+  // task of its own, none waiting for a frame, so each lands while the one before it is still on its way.
+  const phone = info.project.use.viewport!.width < 640;
+  const list = phone ? await page.getByRole("combobox", { name: "Talare" }).elementHandle() : null;
+  await page.evaluate(
+    async ({ list, speakers }) => {
+      const task = () => new Promise((resolve) => setTimeout(resolve));
+      for (const speaker of speakers) {
+        if (list) {
+          // On a phone the speakers' list: opened, and the speaker's option pressed once it is there.
+          (list as HTMLElement).click();
+          const option = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent!.trim().endsWith(speaker === "Alla" ? "Alla talare" : speaker));
+          while (!option()) await task();
+          option()!.click();
+        } else document.querySelector<HTMLElement>(`button[aria-label="${speaker}"]`)!.click();
+        await task();
+      }
+    },
+    { list, speakers: ["Talare 1", "Talare 2", "Alla", "Talare 3"] },
+  );
+  const theirs = await page.locator('[data-turn-index][aria-label^="Talare 3,"]').count();
+  const shown = page.locator("[data-turn-index]:not([hidden])");
+  await expect(shown, "the last speaker's passages are shown").toHaveCount(theirs, { timeout: 30_000 });
+  // A choice still on its way would come within a frame, a task and a frame.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(() => requestAnimationFrame(resolve)))));
+  expect(await shown.count(), "and stay shown").toBe(theirs);
+  expect(await page.locator('[data-turn-index]:not([hidden]):not([aria-label^="Talare 3,"])').count(), "with no other speaker's").toBe(0);
+});
+
+test("a search with its count and arrows keeps a field to read what was typed in, under the chips it shared a row with", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "where the chips and the search share a row; a phone gives the search a row of its own");
+  await result(page);
+  const search = page.getByRole("textbox", { name: "Sök i transkriberingen" });
+  await search.fill("budget");
+  await expect(page.getByRole("button", { name: "Nästa träff" })).toBeVisible();
+  expect((await search.boundingBox())!.width, "the search field's width with a query typed").toBeGreaterThanOrEqual(160);
 });
 
 test("playing and pausing renders no passage", async ({ page }, info) => {
@@ -103,4 +144,20 @@ test("playing and pausing renders no passage", async ({ page }, info) => {
   await page.getByRole("button", { name: "Pausa uppspelningen" }).click();
   await expect(page.getByRole("button", { name: "Spela upp", exact: true }).first()).toBeVisible();
   expect(await turns.settled(), "passages rendered by playing and pausing").toBeLessThanOrEqual(5);
+});
+
+test("while the recording plays, its player renders as often as its thumb moves, not on every frame", async ({ page }, info) => {
+  const player = await countRenders(page, "AudioPlayer");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await player.settled();
+  await player.reset();
+  await page.locator("[data-docked-player]").getByRole("button", { name: "Spela upp" }).click();
+  await page.waitForTimeout(3_000);
+  const renders = await player.renders();
+  await page.getByRole("button", { name: "Pausa uppspelningen" }).first().click();
+  // A 20 s recording on an 800 px track moves its thumb a pixel every 25 ms: at most 20 times a second, 60 in 3 s. Drawn
+  // on every frame it was about 180.
+  expect(renders, "the thumb is drawn while it plays").toBeGreaterThan(10);
+  expect(renders, "renders in 3 s of playing").toBeLessThan(90);
 });

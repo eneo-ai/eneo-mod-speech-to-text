@@ -1,7 +1,5 @@
 - main:
   - heading "Samråd till protokoll" [level=1]
-  - paragraph: Gör ett protokoll av ett samrådsmöte.
-  - button "Så fungerar det 3 steg"
   - region "Ljudet":
     - status
     - status
@@ -34,6 +32,7 @@
     - textbox "Antal talare Valfritt"
     - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter uppladdningen.
     - switch "Märk upp talare"
+    - button "Så fungerar det 3 steg"
   - button "Skapa dokument":
     - text: ""
     - status

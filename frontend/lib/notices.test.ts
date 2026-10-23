@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
-import { createElement } from "react";
+import { createElement, useEffect, useRef } from "react";
 
 import { OfflineBanner, type OfflineWaiting } from "../components/OfflineBanner";
 import { RetryNotice } from "../components/RetryNotice";
@@ -90,16 +90,22 @@ async function host(t: TestContext) {
   return { container: element, render: (ui: ReturnType<typeof createElement>) => act(async () => root.render(ui)) };
 }
 
+/** The next frame, where a reveal asked for in a draw's effects runs. */
+const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
 test("an alert that is to be revealed scrolls into view once per problem, with a jump", async (t) => {
   const calls = scrolled(t);
   const { container, render } = await host(t);
   const first: Problem = { title: "Det gick inte att skapa dokumentet." };
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
+  await frame();
   assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
   assert.ok(calls[0].element.contains(alerts(container)[0]), "the alert itself");
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
+  await frame();
   assert.equal(calls.length, 1, "the same problem drawn again is not scrolled to again");
   await render(createElement(ProblemAlert, { problem: { title: "Det gick inte igen." }, reveal: true }));
+  await frame();
   assert.equal(calls.length, 2, "another problem is");
 });
 
@@ -107,10 +113,35 @@ test("an alert that need not be revealed stays where it is", async (t) => {
   const calls = scrolled(t);
   const quiet = await host(t);
   await quiet.render(createElement(ProblemAlert, { problem: { title: "Ingen scroll." } }));
+  await frame();
   assert.equal(calls.length, 0);
   const revealed = await host(t);
   await revealed.render(createElement(ProblemAlert, { problem: { title: "Scrolla." }, reveal: true }));
+  await frame();
   assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
+});
+
+test("an alert drawn with a view that focuses its heading is revealed after that focus, which would scroll the page back", async (t) => {
+  // A failed send draws the setup again with its answer: the setup's own effect, which runs after its children's,
+  // focuses its heading, and the browser scrolls that into view.
+  const order: string[] = [];
+  const original = window.Element.prototype.scrollIntoView;
+  window.Element.prototype.scrollIntoView = () => void order.push("reveal");
+  t.after(() => {
+    window.Element.prototype.scrollIntoView = original;
+  });
+  function Setup() {
+    const heading = useRef<HTMLHeadingElement>(null);
+    useEffect(() => {
+      heading.current?.focus();
+      order.push("heading");
+    }, []);
+    return createElement("section", null, createElement("h2", { ref: heading, tabIndex: -1 }, "Ladda upp"), createElement(ProblemAlert, { problem: { title: "Flödet har uppdaterats." }, reveal: true }));
+  }
+  const { render } = await host(t);
+  await render(createElement(Setup));
+  await frame();
+  assert.deepEqual(order, ["heading", "reveal"]);
 });
 
 const wait = (retryAt: number | null, retryNow = () => {}) => ({ retryAt, retryNow });
@@ -141,6 +172,18 @@ test("a waiting send says it in one sentence in the live region, and the countdo
 
   await act(async () => button(container, "Försök nu")!.click());
   assert.equal(now, 1, "Försök nu tries at once");
+});
+
+test("Försök nu goes with the wait it ended, and the focus it had goes to the view's heading, not the page's body", async () => {
+  // The sending view as it stands: its heading, and the notice under it; the press ends the wait, and the button with it.
+  let view!: Awaited<ReturnType<typeof mount>>;
+  const sending = (current: ReturnType<typeof wait> | null) =>
+    createElement("main", null, createElement("h1", { tabIndex: -1 }, "Dokumentet skapas"), createElement(RetryNotice, { wait: current }));
+  view = await mount(sending(wait(Date.now() + 5_000, () => view.rerender(sending(null)))));
+  button(view.container, "Försök nu")!.focus();
+  await view.act(async () => button(view.container, "Försök nu")!.click());
+  assert.equal(button(view.container, "Försök nu"), null);
+  assert.equal(document.activeElement?.tagName, "H1");
 });
 
 test("a send that has stopped trying by itself says so, with no countdown, and Försök igen tries at once", async () => {
@@ -186,6 +229,29 @@ function device() {
     },
   };
 }
+
+test("a send that waits while the offline notice speaks says only when it tries again: the failure is said once", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000_000 });
+  const { status, network } = device();
+  // The sending view: the page's offline notice above, the send's own notice in the card.
+  const sending = createElement("main", null, createElement(OfflineBanner, { waiting: "upload", status }), createElement(RetryNotice, { wait: wait(1_005_000), status }));
+  const { container, act } = await mount(sending);
+  assert.match(container.textContent ?? "", /Det gick inte att skicka just nu\. Försöker igen om 5\u00a0s\./, "online, the send says why it waits");
+
+  await act(async () => network(false));
+  // What is on screen: the live regions say it again, for a screen reader.
+  const shown = container.cloneNode(true) as HTMLElement;
+  shown.querySelectorAll('[role="status"]').forEach((region) => region.remove());
+  const text = shown.textContent ?? "";
+  assert.equal(text.match(/Ingen anslutning|inte just nu|inte att skicka/g)?.length, 1, text);
+  assert.match(text, /Försöker igen om 5\u00a0s\./);
+  const spoken = [...container.querySelectorAll('[role="status"]')].map((region) => region.textContent).filter(Boolean);
+  assert.deepEqual(spoken, ["Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka."], "one sentence for a screen reader");
+
+  // A send that has stopped trying says only what is left to do.
+  const stopped = await mount(createElement(RetryNotice, { wait: wait(null), status }));
+  assert.equal(stopped.container.querySelector("p:not([role])")?.textContent, "Försök igen när du vill.");
+});
 
 // What waits, said for a device with no network, and for a module that does not answer.
 const OFFLINE: [OfflineWaiting, string][] = [

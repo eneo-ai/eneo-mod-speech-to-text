@@ -1054,7 +1054,7 @@ class BrandingMarkerTests(BuiltUiCase):
         response, answer = self.page_with()
 
         self.assertEqual(self.attribute(response), answer)
-        self.assertEqual(json.loads(answer)["organization"]["name"], "Sundsvalls kommun")
+        self.assertEqual(json.loads(answer)["organization"]["name"], "Eneo")
         self.assertEqual(response.text, branded(INDEX, answer))
 
     def test_a_named_organisation_is_in_the_page(self) -> None:

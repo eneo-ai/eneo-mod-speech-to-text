@@ -6,7 +6,7 @@ Gränssnittet är en React-app med Vite, react-router och designsystemet Astryx.
 
 | Sökväg | Innehåll |
 |---|---|
-| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar, varje annan adress "Sidan finns inte.") och sidorna. Varje sidas kod hämtas när routen först besöks. På `/flows/:id` hämtas en körnings resultat, granskning och felvy (`components/flow/run-views.tsx`) först när en körning öppnas, medan körningen läses. `routes/dev/` är utvecklingssidor. |
+| `frontend/routes.tsx`, `frontend/routes/` | Routetabellen (`/` inloggning, `/flows` flödeslistan, `/flows/:id` ett flöde, `/inloggad` sidan som förnyelsefönstret visar, varje annan adress "Sidan finns inte.") och sidorna. Varje sidas kod hämtas när routen först besöks. På `/flows/:id` hämtas en körnings resultat, granskning och felvy (`components/flow/run-views.tsx`) först när en körning öppnas, medan körningen läses, och körningens steglista (`components/flow/RunProgress.tsx`) när ljudet skickas eller en körning visas. `routes/dev/` är utvecklingssidor. |
 | `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. |
 | `frontend/kit/` | Tema, providers och skal (`ModuleShell`, `ColorModeProvider`). Importerar inget från `routes/`, `components/` eller `lib/`. |
 | `frontend/lib/` | Logik utan gränssnitt, ett ansvar per fil, med testerna bredvid. Importerar ingen UI-kod. |
@@ -49,10 +49,11 @@ Den enda byggkonstanten är `__SPEAKER_REVIEW__`, satt från `SPEAKER_REVIEW_ENA
 - **Ett fälts egna knappar** är inget beslut: små, i textens rubrikrad ovanför fältet (granskningens Redigera, Avbryt redigering och Spara ändring, den sista bara när något har ändrats). Avbryt redigering frågar först när en ändring skulle kastas.
 - **En lång text under granskning** har en enda scroll: rubrikraden stannar överst i fönstret och beslutet nederst, fältet växer med texten och Redigera öppnar där man läser. Ett lågt fönster (telefon på sidan, 200 % zoom) håller båda i sidan.
 - **Läsbredd:** granskad text och resultatets dokument högst 75 tecken per rad; textgranskningen är en läskolumn från 1024 px.
-- **Resultatet:** huvudåtgärden först (nedladdningen, eller Kopiera för en text utan fil), de två andra bredvid när raden har plats och annars i menyn **Fler alternativ** (`components/flow/ResultDocument.tsx`). En PDF öppnas i en dialog bara med mus (från 640 px, från filens namn från 1024 px); på en pekskärm och i ett smalare fönster i en egen flik (`components/flow/ResultFiles.tsx`).
-- **Transkriberingens talare** på en färdig körning: en egen rad ovanför talarfiltret, med **Talare** först (också filtrets namn för en skärmläsare) och **Namnge talare** sist. En repliks **Ändra talare** har **Byt namn på** dess talare efter valet och vad det gäller, på en färdig körning och i granskningen; den öppnar namndialogen (`components/SpeakerNamingDialog.tsx`) vid den talaren. Fokus går tillbaka dit dialogen öppnades.
-- **Inspelningar som inte har skickats** (`components/UnsentRecordings.tsx`): upp till 640 px en stapel över hela kortet, bredare en rad med **Ta bort** sist; frågan om att ta bort är ett beslut.
-- **Rörelse** tar `--duration-fast` och `--ease-standard`, bara opacitet: en vy av flödet som ersätter en annan tonar in (`components/flow/FlowFrame.module.css`), liksom en utfällnings innehåll (`styles/globals.css`). Med reducerad rörelse tonar inget.
+- **Resultatet:** huvudåtgärden först (nedladdningen, eller Kopiera för en text utan fil), de två andra bredvid när raden har plats och annars i menyn **Fler alternativ** (`components/flow/ResultDocument.tsx`). En PDF öppnas i en dialog bara med mus (från 640 px; från 1024 px från filens namn, eller från ögat bland knapparna när dokumentet bara är sin fil); på en pekskärm och i ett smalare fönster i en egen flik (`components/flow/ResultFiles.tsx`).
+- **Transkriberingens talare** på en färdig körning: en egen rad ovanför talarfiltret, med **Talare** först (också filtrets namn för en skärmläsare) och **Namnge talare** sist. Under 640 px står filtrets lista i ordets ställe, och **Namnge talare** och transkriberingens meny står som ikoner i slutet av raden. En repliks **Ändra talare** har **Byt namn på** dess talare efter valet och vad det gäller, på en färdig körning och i granskningen; den öppnar namndialogen (`components/SpeakerNamingDialog.tsx`) vid den talaren. Fokus går tillbaka dit dialogen öppnades.
+- **Inspelningar som inte har skickats** (`components/UnsentRecordings.tsx`): upp till 640 px står den första knappen över hela kortet, de inramade efter den (skickandet efter **Fortsätt spela in**, **Spara ljudfil**) på en rad där de får plats och annars under varandra, och **Ta bort** sist i deras rad i sin egen bredd; bredare står alla i en rad med **Ta bort** sist; frågan om att ta bort är ett beslut. En inspelning som är klar (`components/flow/ReadyPanel.tsx`) har samma ordning: **Spara ljudfil** och **Ta bort** först i kortets fot och beslutet sist, på telefon beslutet överst.
+- **Rörelse** tar `--duration-fast` och `--ease-standard`, bara opacitet: en vy av flödet som ersätter en annan tonar in (`components/flow/FlowFrame.module.css`), liksom en utfällnings innehåll (`styles/globals.css`). Med reducerad rörelse tonar inget och ingen pil vrids. En rullning som sidan gör själv över mer än ett och ett halvt fönster hoppar i stället för att glida (`scrollBehaviorFor` i `lib/motion.ts`).
+- **Läsarens egen textstorlek** (iOS tillgänglighetsstorlekar, en telefon zoomad till 200 %): det designsystemet håller på en rad eller i fast höjd ger vika i stället för att klippas eller läggas över annat. Knappars ikoner står bredvid orden, flikar och märken radbryts, och en rad som är smalare än sitt antal rem av rotens text byter form, till exempel tidigare körningar med Öppna under raden (`useNarrowerThan` i `components/flow/useRoomInRow.ts`). En inspelnings fästa delar släpps när de lämnar en varning mindre än 6 rem. `frontend/tests/e2e/large-text.spec.ts` håller det.
 
 ## Var tillståndet bor
 
@@ -71,11 +72,15 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Det man skrivit men inte skickat | `lib/drafts.ts` (`sessionStorage`, per person) |
 | Talarnas namn: ett namngivningsstegs, med de namn som ges efter körningen ovanpå | Eneos rättningsset; regeln är `effectiveSpeakerNames` i `lib/transcript-corrections.ts` |
 | Var uppspelningen av en körning stannade | `lib/playback-position.ts` (`localStorage`, de 50 senast lyssnade körningarna) |
+| Resultatets valda flik (Dokument eller Transkribering) under en dators bredd | `components/flow/RunResult.tsx` (`sessionStorage`, per körning) |
 | Körningens tillstånd | `run` i `routes/FlowPage.tsx`; uppföljningen i `lib/follow-run.ts` |
 | Om vi är uppkopplade, och vad sidan säger när vi inte är det: "Ingen anslutning." när enheten saknar nät, annars "Tal till text svarar inte just nu." | `lib/online-status.ts` |
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
 | Mikrofonval | `lib/microphone.ts` |
 | Om spelarens bokstavstangenter (K, J och L) är på | `lib/letter-keys.ts` (`localStorage`, per person) |
+| Spelarens hastighet, som nästa transkribering börjar i | `lib/playback-rate.ts` (`localStorage`, per person) |
+| Märk upp talare som det lämnades på ett flöde | `lib/flow-session.ts` (`localStorage`, per flöde) |
+| Namnen ett listfält senast skickades med, som flödets nästa uppsättning erbjuder | `lib/participants.ts` (`lastNames`, `localStorage`, per person, flöde och fält) |
 
 Skärmarnas lägen finns i `frontend/tests/e2e/screens.ts`; flödessidans adressparametrar är `?run=<id>` (öppnar en körning), `?recording=<id>` (en osänd inspelning skickas) och `?continue=<id>` (en avbruten inspelning spelas in vidare).
 
@@ -91,7 +96,7 @@ Dessutom: överstyr aldrig `--color-*` i `:root`; skriv inte StyleX (`stylex.cre
 
 ### Eneo-temat
 
-`frontend/kit/theme/eneo.theme.ts` är temakällan (accent `#004595`, mörkt läge `#52B1FF`, systemtypsnitt, tokens, komponentåsidosättningar och anpassningar för pekmål) och **det enda stället** en brist i designsystemet rättas. `frontend/kit/theme/built/` genereras av `npm run theme:build`, är incheckad och redigeras aldrig för hand; den ligger i en egen mapp, för bredvid källan skulle bundlern hitta `.ts`-filen och tyst bygga temat i webbläsaren. En driftsättning byter accenten med `ORGANIZATION_ACCENT` ([Byt organisation](branding.md)). Domänfärgerna (inspelningsröd, de sex talarfärgerna) är CSS-variabler i `styles/globals.css`.
+`frontend/kit/theme/eneo.theme.ts` är temakällan (accent `#1563BC`, mörkt läge `#52B1FF`, typsnittet Figtree från `@fontsource-variable/figtree`, tokens, komponentåsidosättningar och anpassningar för pekmål) och **det enda stället** en brist i designsystemet rättas. `frontend/kit/theme/built/` genereras av `npm run theme:build`, är incheckad och redigeras aldrig för hand; den ligger i en egen mapp, för bredvid källan skulle bundlern hitta `.ts`-filen och tyst bygga temat i webbläsaren. En driftsättning byter accenten med `ORGANIZATION_ACCENT` ([Byt organisation](branding.md)). Domänfärgerna (inspelningsröd, de sex talarfärgerna) är CSS-variabler i `styles/globals.css`.
 
 ### Rätta en brist i designsystemet
 

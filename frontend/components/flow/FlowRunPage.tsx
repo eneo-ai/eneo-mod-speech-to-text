@@ -41,6 +41,7 @@ export function FlowRunPage({
   return (
     <FlowFrame
       locked={locked}
+      run
       aside={
         <FlowAside
           published={published}

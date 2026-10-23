@@ -215,6 +215,18 @@ export async function unsavedCorrections(page: Page, view: "review" | "result" =
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 }
 
+/** A tab of the result below a laptop's width, chosen where there are tabs; beside each other from it, there are none. */
+export async function resultTab(page: Page, name: "Dokument" | "Transkribering") {
+  const tab = page.getByRole("tab", { name, exact: true });
+  if ((await tab.isVisible()) && (await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+}
+
+/** The result's Ny inspelning: on a phone it ends the document's tab. */
+export async function startOver(page: Page) {
+  await resultTab(page, "Dokument");
+  await page.getByRole("button", { name: "Ny inspelning", exact: true }).click();
+}
+
 /** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
 export async function leaveRecording(page: Page) {
   await setup(page);
@@ -228,11 +240,17 @@ export async function leaveRecording(page: Page) {
 
 /**
  * A recording of `bytes` bytes for flow 1, kept on this device as the recorder keeps one (lib/recording-store.ts): stopped,
- * or cut off by a reload ("recording"). The page must be on the app's origin, whose database it is.
+ * or cut off by a reload ("recording"), under the name the flow had then. The page must be on the app's origin, whose
+ * database it is.
  */
-export async function keptRecording(page: Page, bytes: number, state: "stopped" | "recording" = "stopped"): Promise<string> {
+export async function keptRecording(
+  page: Page,
+  bytes: number,
+  state: "stopped" | "recording" = "stopped",
+  flowName = "Nämndmöte till rapport",
+): Promise<string> {
   return page.evaluate(
-    async ({ bytes, flowId, stepId, state }) => {
+    async ({ bytes, flowId, flowName, stepId, state }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const opening = indexedDB.open("tal-till-text", 1);
         opening.onupgradeneeded = () => {
@@ -246,7 +264,7 @@ export async function keptRecording(page: Page, bytes: number, state: "stopped" 
       const startedAt = Date.now();
       const writing = db.transaction(["recordings", "chunks"], "readwrite");
       writing.objectStore("recordings").put({
-        id, ownerId: "user-1", flowId, flowName: "Nämndmöte till rapport", stepId, inputMode: "record", mimeType: "audio/wav",
+        id, ownerId: "user-1", flowId, flowName, stepId, inputMode: "record", mimeType: "audio/wav",
         startedAt, durationMs: 280_000, state, runId: null,
         parts: [{ index: 0, startedAt, durationMs: 280_000, bytes, chunks: 1, fileId: null }],
       });
@@ -258,7 +276,7 @@ export async function keptRecording(page: Page, bytes: number, state: "stopped" 
       db.close();
       return id;
     },
-    { bytes, flowId: ids.flows.flow1, stepId: ids.steps.audio, state },
+    { bytes, flowId: ids.flows.flow1, flowName, stepId: ids.steps.audio, state },
   );
 }
 
@@ -434,6 +452,26 @@ export async function result(page: Page) {
   // Below a laptop's width the transcript waits in its tab.
   await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
 }
+
+/**
+ * The long run's transcript on screen, every passage in the page: a meeting of about two hours, whose passage `i` is
+ * Talare `i % 3 + 1`'s and starts at 3.6 s × `i` (the stub's `long`). Below a laptop's width it waits in its tab.
+ */
+export async function longTranscript(page: Page, info: TestInfo) {
+  await run(page, ids.runs.long);
+  await heading(page, "Dokumentet är klart");
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  await expect(page.locator("[data-turn-index]")).toHaveCount(2_000, { timeout: 30_000 });
+}
+
+/** Where the browser skips a long transcript's passages a group at a time, and finds, focuses and shows them its own way. */
+export const GROUP_ENGINES = ["laptop-1440-light", "phone-390-light", "laptop-1440-firefox", "phone-390-webkit"];
+
+/** Shows one speaker's passages, or everyone's ("Alla"): chips from 640 px, on a phone the list in the speakers' row. */
+export const chooseSpeaker = (page: Page, info: TestInfo, speaker: string) =>
+  info.project.use.viewport!.width < 640
+    ? pick(page.getByRole("combobox", { name: "Talare" }), speaker === "Alla" ? "Alla talare" : speaker)
+    : page.getByRole("button", { name: speaker, exact: true }).click();
 
 /** A text result whose full content is in a file, with its preview on the page. */
 export async function fileBackedText(page: Page) {
@@ -640,6 +678,18 @@ export const STATES: State[] = [
   { name: "version-nothing-known", go: (page) => version(page, { release: null, revision: null, build_date: null }) },
   { name: "unsent-recordings", go: leaveRecording },
   {
+    // A flow's name longer than a phone's line wraps in the card; the recording's date and time and its length stay whole.
+    name: "unsent-recordings-long-flow-name",
+    go: async (page) => {
+      // The list first, whole: a reload while its code and its flows are still on their way cancels them, and WebKit
+      // reports each cancel as an error of the page it leaves.
+      await flows(page);
+      await keptRecording(page, 1_000, "stopped", "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor");
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+    },
+  },
+  {
     name: "unsent-recording-delete-question",
     go: async (page) => {
       await leaveRecording(page);
@@ -700,6 +750,25 @@ export const STATES: State[] = [
       await expect(page.getByRole("button", { name: "Sluta testa" })).toBeVisible();
     },
   },
+  // The browser refuses the microphone when Starta inspelning asks for it: blocked for the page, no device, or held by
+  // another app. Each says why and what to do above the setup, which stays as it was.
+  ...([
+    ["setup-microphone-blocked", "NotAllowedError", "Mikrofonen är blockerad."],
+    ["setup-microphone-missing", "NotFoundError", "Ingen mikrofon hittades."],
+    ["setup-microphone-in-use", "NotReadableError", "Mikrofonen kunde inte startas."],
+  ] as const).map(([name, refusal, title]) => ({
+    name,
+    go: async (page: Page) => {
+      await page.addInitScript((error) => {
+        if (typeof MediaDevices === "undefined") return;
+        MediaDevices.prototype.getUserMedia = () => Promise.reject(new DOMException("The microphone could not be used", error));
+      }, refusal);
+      await setup(page);
+      await chooseMode(page, "Spela in");
+      await page.getByRole("button", { name: "Starta inspelning" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: title })).toBeVisible();
+    },
+  })),
   {
     name: "setup-count-from-names",
     go: async (page) => {
@@ -773,6 +842,15 @@ export const STATES: State[] = [
       await speakerLabelsUnavailable(page);
       await page.goto(`/flows/${ids.flows.flow2}`);
       await heading(page, "Flödet kan inte användas just nu.");
+    },
+  },
+  {
+    // A run of the flow waits for this person's review: said above the setup's work, with the way to it.
+    name: "setup-review-waiting",
+    go: async (page) => {
+      await page.goto(`/flows/${ids.flows.flow2}`);
+      await setupShown(page);
+      await expect(page.getByRole("button", { name: /^Granska, körningen / }).first()).toBeVisible();
     },
   },
   {
@@ -878,7 +956,7 @@ export const STATES: State[] = [
     expects: [{ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ }],
     go: async (page) => {
       await unsavedCorrections(page, "result");
-      await page.getByRole("button", { name: "Ny inspelning", exact: true }).click();
+      await startOver(page);
       await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
     },
   },
@@ -891,6 +969,20 @@ export const STATES: State[] = [
       await page.waitForTimeout(2_000);
       await stop(page);
       await expect(page.getByRole("slider", { name: "Position" })).toBeVisible();
+    },
+  },
+  {
+    // Strömma stopped: its live text kept to read and copy until the document brings the final text, under the decision
+    // on a phone.
+    name: "ready-stromma",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Strömma");
+      // Well past 2 s, which the ready view calls very short (its actions then swap places): the live text can come sooner.
+      await page.waitForTimeout(2_000);
+      await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
+      await stop(page);
+      await expect(page.getByRole("region", { name: "Preliminär text" })).toContainText("Välkomna");
     },
   },
   {
@@ -1200,6 +1292,19 @@ export const STATES: State[] = [
       await run(page, ids.runs.failed);
       await heading(page, "Dokumentet kunde inte skapas");
       await page.getByRole("button", { name: "Visa teknisk information" }).click();
+    },
+  },
+  {
+    // A run the person stopped (Avbryt körningen), as Eneo answers it: cancelled, with no error. Its way on is a new run of
+    // the same audio, or back to a new recording or file.
+    name: "failure-cancelled",
+    go: async (page) => {
+      await page.route(new RegExp(`/runs/${ids.runs.failed}/(status/)?$`), async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ response, json: { ...(await response.json()), status: "cancelled", error: null } });
+      });
+      await run(page, ids.runs.failed);
+      await heading(page, "Körningen avbröts");
     },
   },
   {

@@ -118,3 +118,14 @@ test("reading the list again starts from the first page, and a page still coming
   assert.equal(earlier.getSnapshot().runs.length, 10, "one page again, without the old list's second page");
   assert.deepEqual(eneo.asked.at(-1), { limit: 10, offset: 0 });
 });
+
+test("the runs waiting for this person's review: newest first as Eneo lists them, never a test run from Eneo's editor", async () => {
+  const { pendingReviews } = await import("./earlier-runs");
+  const run = (id: string, status: string, purpose?: string): FlowRunSummary => ({ id, flow_id: "flow-1", status, ...(purpose ? { purpose } : {}) });
+  assert.deepEqual(pendingReviews([]), []);
+  assert.deepEqual(pendingReviews([run("a", "completed"), run("b", "running")]), [], "nothing waits");
+  assert.deepEqual(
+    pendingReviews([run("new", "awaiting_review"), run("done", "completed"), run("test", "awaiting_review", "test"), run("old", "awaiting_review")]).map((r) => r.id),
+    ["new", "old"],
+  );
+});

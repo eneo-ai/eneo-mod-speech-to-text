@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { AlignLeft, FileText, RotateCcw } from "lucide-react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -12,14 +12,31 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { ActionRow } from "@/components/ActionRow";
 import { useSignedOut } from "@/components/AuthGate";
+import { LoadFailure } from "@/components/LoadFailure";
 import { SlowWait } from "@/components/SlowWait";
 import { BackToFlows } from "@/components/flow/BackToFlows";
+import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { runWait, type StepView } from "@/lib/run-progress";
 import { creatingHeading } from "@/lib/flow-output";
 import { PRODUCT_NAME } from "@/lib/product";
-import { StepList } from "./StepList";
-import { StateCard } from "./StateCard";
+import { StateCard, StateHead } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
+
+// A run's steps (the design system's stepper, the most of this view's code) show only once a run is under way, which a
+// page that records or uploads never shows: fetched when the sending or the run's view first draws, while the run is
+// started and its steps are read.
+const stepList = lazyLoader(() => import("./StepList").then((module) => module.StepList));
+
+/** Fetches the step list ahead of the run's steps (the sending view, the run's own); a test awaits it. */
+export const preloadStepList = () => stepList.load().then(() => undefined, () => undefined);
+
+/** The run's steps once their code is there: until then nothing, as before the steps are read; the person's reload if it
+ *  cannot come. */
+function Steps({ steps }: { steps: readonly StepView[] }) {
+  const { value: List, failed } = useLoaded(stepList);
+  if (List) return <List steps={steps} />;
+  return failed ? <LoadFailure keeps="Körningen fortsätter i Eneo.">Stegen kunde inte visas.</LoadFailure> : null;
+}
 
 /** The run goes on in Eneo: what happens now, for how long, every step, and a way to stop it. */
 export function RunProgress({
@@ -61,6 +78,7 @@ export function RunProgress({
     if (!asking && wasAsking.current) trigger.current?.focus();
     wasAsking.current = asking;
   }, [asking]);
+  useEffect(() => void preloadStepList(), []);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 15_000);
@@ -81,13 +99,17 @@ export function RunProgress({
     <StateCard>
       <VStack gap={6}>
         <VStack gap={2}>
-          <Heading level={1} ref={heading} tabIndex={-1}>
-            {creatingHeading(makesText)}
-          </Heading>
+          <StateHead icon={makesText ? AlignLeft : FileText}>
+            <Heading level={1} ref={heading} tabIndex={-1}>
+              {creatingHeading(makesText)}
+            </Heading>
+          </StateHead>
           <VStack gap={1}>
-            {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way. */}
+            {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way.
+                A step's name is its author's, often an order ("Skriv rapporten"): heard alone it is said to the listener,
+                so it is said as the list shows it, under way. */}
             <VisuallyHidden as="p" role="status">
-              {stage}
+              {steps.some((step) => step.state === "running" && step.label === stage) ? `Pågår: ${stage}` : stage}
             </VisuallyHidden>
             {steps.length === 0 && (
               <HStack gap={2} align="center" aria-hidden>
@@ -115,14 +137,14 @@ export function RunProgress({
         </VStack>
         {steps.length > 0 && (
           <VStack as="section" aria-label="Flödets steg">
-            <StepList steps={steps} />
+            <Steps steps={steps} />
           </VStack>
         )}
         {/* Reassurance for a page closed by mistake, not a request to close it, and where to find the run then: the
             flow's page lists it under Tidigare körningar (EarlierRuns). A review still ahead (a step with its note)
             stops the run until the person answers; the result is promised only where the run is known to finish
             without them, and otherwise only that it goes on. */}
-        <Text as="p" type="supporting">
+        <Text as="p" type="supporting" data-measure>
           {steps.some((step) => step.note !== null)
             ? "Körningen väntar på dig när det är dags att granska. Om du stänger sidan hittar du den under Tidigare körningar i flödet."
             : !unattended
@@ -133,7 +155,9 @@ export function RunProgress({
         </Text>
         {error && <Banner status="error" title={error} collapsible={false} />}
         <HStack>
-          <Button ref={trigger} label="Avbryt körningen" variant="secondary" isLoading={cancelling} onClick={() => setAsking(true)} />
+          {/* Busy, not disabled, so the focus the question gives back stays on it (a refused cancel is said above it); a
+              press while the cancel is on its way asks nothing, so it is sent once. */}
+          <Button ref={trigger} label="Avbryt körningen" variant="secondary" isLoading={cancelling} isInterruptible onClick={() => !cancelling && setAsking(true)} />
         </HStack>
         <AlertDialog
           isOpen={asking && !signedOut}
@@ -181,19 +205,23 @@ export function RunOpening({ onRetry, retrying = false }: { onRetry: () => void;
   );
 }
 
-/** The run has ended but its result could not be read: say so, and read it again. */
-export function RunUnread({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const heading = usePhaseHeading("Resultatet kunde inte hämtas");
+/**
+ * The run has ended but its result could not be read, or it waits for the person's review (`review`) and its pause could
+ * not be read: say so, and read it again.
+ */
+export function RunUnread({ message, review = false, onRetry }: { message: string; review?: boolean; onRetry: () => void }) {
+  const title = review ? "Granskningen kunde inte hämtas" : "Resultatet kunde inte hämtas";
+  const heading = usePhaseHeading(title);
   return (
     <StateCard>
       <VStack gap={6}>
         <VStack gap={2}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            Resultatet kunde inte hämtas
+            {title}
           </Heading>
           <Text as="p">{message}</Text>
           <Text as="p" type="supporting">
-            Körningen är avslutad och finns kvar i Eneo.
+            {review ? "Körningen väntar på din granskning i Eneo." : "Körningen är avslutad och finns kvar i Eneo."}
           </Text>
         </VStack>
         <ActionRow>

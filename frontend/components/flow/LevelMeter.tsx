@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 import { prefersReducedMotion } from "@/lib/motion";
 import styles from "./LevelMeter.module.css";
 
@@ -40,49 +40,78 @@ function analyse(AudioCtor: typeof AudioContext, stream: MediaStream) {
   }
 }
 
+type LevelListener = (level: number, running: boolean, peak: number, now: number) => void;
+
+/** The streams being read, each read once for all that listen to it (useInputLevel). */
+const readings = new Map<MediaStream, { listeners: Set<RefObject<LevelListener>>; stop: () => void }>();
+
+/** Reads `stream`'s level about fifteen times a second for `listeners`; what stops it, or null without audio for it. */
+function read(stream: MediaStream, listeners: Set<RefObject<LevelListener>>): (() => void) | null {
+  const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const audio = AudioCtor ? analyse(AudioCtor, stream) : null;
+  if (!audio) return null;
+  const { context, source, analyser } = audio;
+  void context.resume().catch(() => undefined);
+  const stopResuming = keepRunning(context);
+  analyser.fftSize = 1024;
+  source.connect(analyser);
+  const samples = new Float32Array(analyser.fftSize);
+  let level = 0;
+  const timer = setInterval(() => {
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    let peak = 0;
+    for (const sample of samples) {
+      sum += sample * sample;
+      peak = Math.max(peak, Math.abs(sample));
+    }
+    const now = levelFromRms(Math.sqrt(sum / samples.length));
+    level = Math.max(now, level * 0.85);
+    for (const listener of listeners) listener.current(level, context.state === "running", peak, now);
+  }, 66);
+  return () => {
+    clearInterval(timer);
+    stopResuming();
+    source.disconnect();
+    void context.close().catch(() => undefined);
+  };
+}
+
 /**
  * Calls `onLevel` about fifteen times a second with the input's level, which
  * rises at once and falls slowly so the display stays calm, and the read's
  * loudest sample as it is. `running` is false while the browser keeps the
  * audio context suspended and the level means nothing. Without audio for it,
- * there is no level, and the recording goes on.
+ * there is no level, and the recording goes on. A stream is read once for all
+ * that listen to it (the meter and the silence watch, the test's meter and its
+ * "heard"): one audio context and one timer, not one each.
  */
 export function useInputLevel(
   stream: MediaStream | null,
   /** `level` glides down for the display; `now` is this read's own level, the evidence that sound is coming in now. */
-  onLevel: (level: number, running: boolean, peak: number, now: number) => void,
+  onLevel: LevelListener,
 ): void {
   const listener = useRef(onLevel);
   listener.current = onLevel;
 
   useEffect(() => {
-    const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    const audio = stream && AudioCtor ? analyse(AudioCtor, stream) : null;
-    if (!audio) return;
-    const { context, source, analyser } = audio;
-    void context.resume().catch(() => undefined);
-    const stopResuming = keepRunning(context);
-    analyser.fftSize = 1024;
-    source.connect(analyser);
-    const samples = new Float32Array(analyser.fftSize);
-    let level = 0;
-    const timer = setInterval(() => {
-      analyser.getFloatTimeDomainData(samples);
-      let sum = 0;
-      let peak = 0;
-      for (const sample of samples) {
-        sum += sample * sample;
-        peak = Math.max(peak, Math.abs(sample));
-      }
-      const now = levelFromRms(Math.sqrt(sum / samples.length));
-      level = Math.max(now, level * 0.85);
-      listener.current(level, context.state === "running", peak, now);
-    }, 66);
+    if (!stream) return;
+    let reading = readings.get(stream);
+    if (!reading) {
+      const listeners = new Set<RefObject<LevelListener>>();
+      const stop = read(stream, listeners);
+      if (!stop) return;
+      reading = { listeners, stop };
+      readings.set(stream, reading);
+    }
+    const { listeners, stop } = reading;
+    listeners.add(listener);
     return () => {
-      clearInterval(timer);
-      stopResuming();
-      source.disconnect();
-      void context.close().catch(() => undefined);
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        stop();
+        readings.delete(stream);
+      }
       // Paused or gone: the display settles instead of freezing mid-word.
       listener.current(0, false, 0, 0);
     };
@@ -100,11 +129,14 @@ export function LevelMeter({
   stream,
   bars,
   variant,
+  even = false,
   className,
 }: {
   stream: MediaStream | null;
   bars: number;
   variant: "steps" | "wave";
+  /** Steps of one height (the container's), lit from the start: a level across a row, rather than a rising staircase. */
+  even?: boolean;
   className?: string;
 }) {
   const elements = useRef<Array<HTMLSpanElement | null>>([]);
@@ -138,7 +170,7 @@ export function LevelMeter({
           }}
           data-lit="false"
           className={styles.bar}
-          style={variant === "steps" ? { height: `${40 + (60 * (index + 1)) / bars}%` } : undefined}
+          style={variant === "steps" ? { height: even ? "100%" : `${40 + (60 * (index + 1)) / bars}%` } : undefined}
         />
       ))}
     </div>

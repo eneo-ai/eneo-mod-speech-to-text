@@ -39,7 +39,7 @@ class BrandingRouteTests(unittest.TestCase):
         self.use(DEFAULT_ORGANIZATION)
         self.assertEqual(
             self.client.get("/api/branding").json(),
-            {"organization": {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False, "logo_sizes": None}},
+            {"organization": {"name": "Eneo", "logo": "default", "dark_logo": False, "logo_sizes": None}},
         )
         self.use(None)
         self.assertEqual(self.client.get("/api/branding").json(), {"organization": None})
@@ -103,7 +103,7 @@ class BrandingRouteTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/branding/logo/other").status_code, 422)
 
 
-GREEN = Accent(light="#1E7B34", dark="#2AAE4A", on_light="#FFFFFF", on_dark="#0B1118")
+GREEN = Accent(light="#1C7531", dark="#269E42", on_light="#FFFFFF", on_dark="#0B1118")
 
 
 class BrandingThemeTests(unittest.TestCase):
@@ -125,7 +125,7 @@ class BrandingThemeTests(unittest.TestCase):
         main.settings.accent = GREEN
         response = self.client.get("/api/branding/theme.css")
         self.assertEqual(response.text, theme_css(GREEN))
-        self.assertIn("--color-accent: light-dark(#1E7B34, #2AAE4A);", response.text)
+        self.assertIn("--color-accent: light-dark(#1C7531, #269E42);", response.text)
 
     def test_it_is_served_safely_and_without_user_data(self) -> None:
         main.settings.accent = GREEN

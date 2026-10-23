@@ -13,13 +13,26 @@
   padding-block-end: var(--spacing-8);
 }
 
+/* The page's head stands 24 px under the bar on a phone and 48 px from a laptop's width (the shell's 16 px and this); on a
+   small phone (320 × 568) the shell's 16 px alone, so the chosen way in is whole above the dock. A recording's page (`.fill`)
+   has no shell padding: its own is the sum, so the flow's name stays where it is when a recording starts and stops. */
+.page {
+  padding-block-start: var(--spacing-2);
+}
+
+@media (max-width: 767.98px) and (max-height: 640px) {
+  .page {
+    padding-block-start: 0;
+  }
+}
+
 @media (min-width: 1024px) {
   .page {
-    padding-block-start: var(--spacing-4);
+    padding-block-start: var(--spacing-8);
     /* The window's height below where a view starts, before the page is scrolled: under the shell's bar (its height as
        the shell measures it, a banner over it included), the shell's padding and this page's. A card that keeps to the
        window (the transcript's, on the result and the review) is no taller, so its end is in view from the first paint. */
-    --view-fit-height: calc(100dvh - var(--_app-shell-header-height, 0px) - 2 * var(--spacing-4));
+    --view-fit-height: calc(100dvh - var(--_app-shell-header-height, 0px) - var(--spacing-4) - var(--spacing-8));
   }
 }
 
@@ -52,8 +65,9 @@
 @media (min-width: 1024px) {
   .columns {
     display: grid;
-    grid-template-columns: 20rem minmax(0, 1fr);
-    column-gap: var(--spacing-10);
+    /* Room for the flow's name at the display size: 20 rem on a laptop, up to 24 rem on a wide screen. */
+    grid-template-columns: clamp(20rem, 26vw, 24rem) minmax(0, 1fr);
+    column-gap: var(--spacing-12);
     align-content: start;
     align-items: start;
   }
@@ -70,13 +84,13 @@
      owns its edges, so its box is that wider and the content starts where theirs does. */
   max-width: calc(var(--module-page-width) + var(--spacing-8));
   padding-inline: var(--spacing-4);
-  padding-block: var(--spacing-3) 0;
+  padding-block: var(--spacing-6) 0;
 }
 
 @media (min-width: 1024px) {
   .fill {
     min-height: 0;
-    padding-block: var(--spacing-8) var(--spacing-6);
+    padding-block: var(--spacing-12) var(--spacing-6);
     overflow: hidden;
   }
 
@@ -84,6 +98,12 @@
     grid-template-rows: minmax(0, 1fr);
     align-content: stretch;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 767.98px) and (max-height: 640px) {
+  .fill {
+    padding-block-start: var(--spacing-4);
   }
 }
 
@@ -107,11 +127,6 @@
     align-content: stretch;
     align-items: stretch;
   }
-}
-
-/* A wrapper that takes no box of its own, so what it holds stays a flex item of the bar. */
-.bare {
-  display: contents;
 }
 
 /* What shows only from the laptop breakpoint: it sets no display of its own, so the component's own (flex,
@@ -138,6 +153,30 @@
   font-weight: var(--font-weight-normal);
 }
 
+/* The summary keeps the row one line high, however many are named: the rest of it shows where the fold is opened, and
+   the row's name holds all of it. The label is trimmed to its capitals (the design system's text-box-trim): its padding
+   keeps the descenders and the accents inside what it clips. */
+.fold > :global(.astryx-collapsible-trigger) > span {
+  min-inline-size: 0;
+  padding-block: var(--spacing-1-5);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Where the reader's large text (or a phone's zoom) leaves the row less than 15 rem of the root's text, a one-line
+   summary would show a word or two of "Så fungerar det 3 steg": there it wraps, whole. */
+.fold {
+  container-type: inline-size;
+}
+
+@container (width < 15rem) {
+  .fold > :global(.astryx-collapsible-trigger) > span {
+    overflow: visible;
+    white-space: normal;
+  }
+}
+
 .fold > :global(.astryx-collapsible-content) {
   padding-block-start: var(--spacing-4);
 }
@@ -158,27 +197,48 @@
   }
 }
 
+/* A run's state on a short, wide screen (a phone on its side): its card stands beside the flow's column, as a recording's
+   stage does, so its heading starts at the page's top and what it offers is in the first screen. The page scrolls as a
+   whole, as it does in a column. */
+@media (min-width: 560px) and (max-height: 480px) {
+  .run.columns {
+    display: grid;
+    grid-template-columns: clamp(8rem, 33%, 17rem) minmax(0, 1fr);
+    column-gap: var(--spacing-4);
+    align-items: start;
+  }
+}
+
 /* While the page holds audio or a run, the flow's name labels the card beside it rather than heads the page: on a phone
-   or tablet, where the card needs the room, it is the size of a state's own line. */
+   or tablet, where the card needs the room, it is at the body's size, a clear step under the card's own heading so the
+   card's heading leads. */
 @media (max-width: 1023.98px) {
   .compactName {
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
     line-height: 1.3;
   }
 }
 
-/* A run's card has the page's heading, so the flow's name beside it is no heading: from a laptop's width, where the
-   flow has a column of its own, it keeps the size it has on the setup and while recording, so the column stays as it
-   is while the run goes on. */
-@media (min-width: 1024px) {
-  .columnName {
-    font-size: var(--text-heading-1-size);
-    line-height: var(--text-heading-1-leading);
+/* The setup's title on the narrowest phones: a step under the display size, as the card's headings are (FlowSetup), so a
+   name of a few words keeps one line. */
+@media (max-width: 359.98px) {
+  .name {
+    font-size: var(--text-heading-2-size);
+    line-height: var(--text-heading-2-leading);
   }
 }
 
+/* A run's card has the page's heading, so the flow's name beside it is no heading: words at the display size, set as
+   the theme sets a display heading, so the flow's column is the same in every state. */
+.columnName {
+  letter-spacing: -0.02em;
+  hyphens: auto;
+  hyphenate-limit-chars: 8 3 3;
+}
+
 /* "Så fungerar det" (HowItWorks): the steps and tips as native lists whose words wrap; the reset takes the markers away,
-   so they are given back here. */
+   so they are given back here. A step's number stands on the column's edge, under its heading's first letter, and its
+   words hang beside it; the numbers keep one width from the tenth on. */
 .steps,
 .tips {
   margin: 0;
@@ -186,7 +246,12 @@
 }
 
 .steps {
+  padding-inline-start: var(--spacing-5);
   list-style: decimal;
+}
+
+.steps ::marker {
+  font-variant-numeric: tabular-nums;
 }
 
 .tips {

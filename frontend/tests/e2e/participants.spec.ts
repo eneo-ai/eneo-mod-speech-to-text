@@ -1,11 +1,11 @@
 /**
- * The participants' field as it is laid out: "Lägg till" stands beside the input from the start and is off until a name
- * is typed, so the input keeps its width as a name comes and goes; the two are one height, and their words stand on one
- * baseline. A long name wraps inside its chip, and every chip's remove button takes a press across its whole target.
+ * The participants' field as it is laid out: "Lägg till" stands beside the input from the start, one piece with it and off
+ * until a name is typed, so the input keeps its width as a name comes and goes; the two are one height, and their words
+ * stand on one baseline. A long name wraps inside its chip, and every chip's remove button takes a press across its whole target.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { setup, STATES } from "./screens";
+import { addParticipants, chooseFile, setup, STATES } from "./screens";
 
 /** The input's box, Lägg till's box, and the baseline each one's words stand on, in whole CSS px. */
 function row(page: Page) {
@@ -51,6 +51,9 @@ test("Lägg till stands beside the field, level with it and off until a name is 
   const input = page.getByRole("textbox", { name: /^Deltagare/ });
   const add = page.getByRole("button", { name: "Lägg till", exact: true });
   await expect(add, "there before a name is typed, and off").toBeDisabled();
+  // The microphones are known a moment after the page shows (Chromium names its test ones), and the microphone's
+  // description above the field says what they allow: measured once they are, so only the typing could move the field.
+  await expect(page.getByRole("combobox", { name: "Mikrofon" })).toContainText("Fake Default Audio Input");
   // On a phone the field stands after the ways in, below the first screen: measured where typing in it leaves the page.
   await input.focus();
   const empty = await row(page);
@@ -105,18 +108,18 @@ test("a long name wraps inside its chip, in the field's column, and every remove
   expect(small, `remove buttons that take a press over less than ${target} px`).toEqual([]);
 });
 
-test("a name being typed when a tablet is turned (the window crosses a laptop's width) is kept, and the field keeps the focus", async ({ page }) => {
+test("a name being typed when a tablet is turned (the window crosses a laptop's width) stays in the field, which keeps the focus", async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
   await setup(page);
   const field = page.getByRole("textbox", { name: /^Deltagare/ });
   await field.fill("Anna Berg");
-  // Upright: one column, where the details follow the choice of way in.
+  // Upright: one column. The details stand in the working card at every width, so nothing moves under the typing.
   await page.setViewportSize({ width: 820, height: 1180 });
-  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(field).toHaveValue("Anna Berg");
   await expect(field).toBeFocused();
-  await field.fill("Erik Lund");
   await page.setViewportSize({ width: 1180, height: 820 });
-  await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
+  await expect(field).toHaveValue("Anna Berg");
   await expect(field).toBeFocused();
 });
 
@@ -129,4 +132,50 @@ test("a field left before the window crosses a laptop's width does not take the 
   await page.setViewportSize({ width: 820, height: 1180 });
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   await expect(field).not.toBeFocused();
+});
+
+test("the names last sent are offered in one press on the flow's next setup: two chips, said, and the focus in the field", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await setup(page);
+  const offer = page.getByRole("button", { name: /^Lägg till förra gångens namn/ });
+  await expect(offer, "nothing sent yet: nothing to offer").toHaveCount(0);
+  await chooseFile(page);
+  await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await page.waitForURL(/[?&]run=/);
+
+  await setup(page);
+  await expect(offer).toHaveText("Lägg till förra gångens namn (2)");
+  const box = (await offer.boundingBox())!;
+  if (info.project.use.hasTouch) expect(box.height, "a finger's target").toBeGreaterThanOrEqual(44);
+  await offer.click();
+  const chips = page.getByRole("list", { name: "Tillagda namn" }).getByRole("listitem");
+  await expect(chips).toHaveText(["Anna Berg", "Erik Lund"]);
+  await expect(page.getByRole("status").filter({ hasText: "Anna Berg och Erik Lund har lagts till." })).toBeAttached();
+  await expect(offer, "the field has names: nothing more to offer").toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: /^Deltagare|^Lägg till namn/ }).first()).toBeFocused();
+});
+
+test("a name removed with a finger leaves the focus on the next name's remove, and the keyboard closed", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a finger");
+  await setup(page);
+  await chooseFile(page);
+  await addParticipants(page, ["Anna Berg", "Erik Lund", "Karin Ek"]);
+  await page.getByRole("button", { name: "Ta bort Erik Lund" }).tap();
+  await expect(page.getByRole("button", { name: "Ta bort Karin Ek" }), "the next name's").toBeFocused();
+  await page.getByRole("button", { name: "Ta bort Karin Ek" }).tap();
+  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" }), "the last one gone: the one before it").toBeFocused();
+});
+
+test("last time's names added with a finger leave the keyboard closed: the focus on the first name's remove", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a finger");
+  await setup(page);
+  await chooseFile(page);
+  await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await page.waitForURL(/[?&]run=/);
+  await setup(page);
+  await page.getByRole("button", { name: /^Lägg till förra gångens namn/ }).tap();
+  await expect(page.getByRole("list", { name: "Tillagda namn" }).getByRole("listitem")).toHaveText(["Anna Berg", "Erik Lund"]);
+  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
 });

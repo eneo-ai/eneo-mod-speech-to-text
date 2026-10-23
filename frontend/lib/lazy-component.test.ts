@@ -65,6 +65,28 @@ test("when the code cannot be fetched the page says so, and asks nothing more: a
   assert.deepEqual(Object.keys(view.state()).sort(), ["failed", "value"], "there is no retry to press");
 });
 
+test("asked for while the device has no network, the code is fetched once the network is back, not before", async () => {
+  // A browser keeps a failed fetch of a module for as long as the page lives: one made offline (a send that began
+  // offline draws its progress) would fail the run's views when the network was back.
+  const { lazyLoader } = await import("./lazy-component");
+  const { createOnlineStatus } = await import("./online-status");
+  const heard: Partial<Record<"online" | "offline", () => void>> = {};
+  const target = { navigator: { onLine: false }, addEventListener: (type: "online" | "offline", listener: () => void) => void (heard[type] = listener) };
+  const { get, calls } = gate<string>();
+  const loader = lazyLoader(get, createOnlineStatus(target));
+  const view = await show(loader);
+  await settle(view);
+  assert.equal(calls.length, 0, "nothing is fetched while there is no network");
+  assert.equal(view.text(), "waiting", "the page waits, it has not failed");
+  await view.act(async () => {
+    target.navigator.onLine = true;
+    heard.online?.();
+  });
+  assert.equal(calls.length, 1, "fetched when the network is back");
+  await view.act(async () => calls[0].resolve("kod"));
+  assert.equal(view.text(), "kod");
+});
+
 test("a failure is kept: another page that asks later has it at once, and nothing is fetched again", async () => {
   const { lazyLoader } = await import("./lazy-component");
   const { get, calls } = gate<string>();

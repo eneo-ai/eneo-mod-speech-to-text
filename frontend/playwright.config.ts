@@ -68,6 +68,9 @@ const noHarness = specs("harness");
 const portable = ["a11y", "keyboard", "controls", "aria"];
 // What the module does only for Safari's engine on a touch screen, an iPhone's and an iPad's: its WebKit touch projects run it.
 const touchSafari = "touch-pdf";
+// A file going up is the engine's own XMLHttpRequest, and the network going away its own events: the uploads run on an
+// iPhone's engine and on Firefox's laptop as well.
+const uploads = ["resumable-upload", "offline-upload"];
 
 // The sentinel's own tests cause what it watches for, so they need it, and the real target.
 const SENTINEL_SPEC = /sentinel\.spec\.ts/;
@@ -87,6 +90,14 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  // In CI: a committed test.only fails the run instead of running one test, a run that hangs ends before the job's own
+  // limit with its report, and a test that fails is run once more. A test that passes on that second try is reported as
+  // flaky (scripts/ci-summary.mjs lists it in the job's summary) and fails the nightly gate (GATE_FAIL_ON_FLAKY), so a
+  // retry never hides a race: it only keeps one slow moment of a shared runner from failing a pull request.
+  forbidOnly: !!process.env.CI,
+  globalTimeout: process.env.CI ? 30 * 60_000 : 0,
+  retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: !!process.env.GATE_FAIL_ON_FLAKY,
   // One dev server serves every worker: more than four starve it on a shared host, and a page
   // still loading then fails a check that is not about accessibility.
   workers: WORKERS,
@@ -133,10 +144,10 @@ export default defineConfig({
     { name: "reduced-motion", use: { ...touch(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
     // The other engines, as engine checks and not as the products built on them (Playwright's WebKit is ahead of Safari):
     // WebKit where an iPhone, an iPad and a Mac have it, Firefox on a laptop. The tablet has no snapshots, as Chromium's.
-    { name: "phone-390-webkit", use: { ...touch(390, 844), ...webkit, colorScheme: "light" }, testMatch: specs(...portable, touchSafari) },
+    { name: "phone-390-webkit", use: { ...touch(390, 844), ...webkit, colorScheme: "light" }, testMatch: specs(...portable, touchSafari, ...uploads) },
     { name: "tablet-landscape-webkit", use: { ...touch(1024, 768), isMobile: false, ...webkit, colorScheme: "light" }, testMatch: specs("a11y", "keyboard", "controls", touchSafari) },
     { name: "laptop-1440-webkit", use: { ...laptop, ...webkit, colorScheme: "light" }, testMatch: specs(...portable, "harness") },
-    { name: "laptop-1440-firefox", use: { ...laptop, ...firefox, colorScheme: "light" }, testMatch: specs(...portable, "harness") },
+    { name: "laptop-1440-firefox", use: { ...laptop, ...firefox, colorScheme: "light" }, testMatch: specs(...portable, "harness", ...uploads) },
   ]),
   webServer: [
     {

@@ -10,16 +10,17 @@ export const STACKED = "(max-width: 640px)";
  * alert dialog lays out its own: one row at the end of its space with the main action last, and up to 640 px wide a
  * stack across the whole width with the main action on top. The page's order follows the screen's at both widths, so
  * the keyboard meets the main action first where it stands first. `children` come in the row's order, the main last.
- * An editor's own buttons are no decision: they stand small at the start of the field they belong to.
+ * An editor's own buttons are no decision: they stand small at the start of the field they belong to. A way on after a
+ * card's explanation (a failed run's Försök igen) stands at the start (`align`), where the words it follows start.
  */
-export function ActionRow({ children }: { children: ReactNode }) {
+export function ActionRow({ children, align = "end" }: { children: ReactNode; align?: "start" | "end" }) {
   const stacked = useMediaQuery(STACKED);
   const actions = Children.toArray(children);
   return (
     <Stack
       direction={stacked ? "vertical" : "horizontal"}
       gap={2}
-      hAlign={stacked ? "stretch" : "end"}
+      hAlign={stacked ? "stretch" : align}
       wrap={stacked ? "nowrap" : "wrap"}
     >
       {stacked ? actions.reverse() : actions}

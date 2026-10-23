@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { LevelMeter, useInputLevel } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -22,11 +22,12 @@ import {
 const STANDARD = "standard";
 const TEST = "Testa mikrofonen";
 const STOP = "Sluta testa";
-/** When to test, and what the test does with the sound (it only measures the level; nothing is kept or sent). Under the
- *  picker's label, so it stands still whatever the test is doing. Which microphone to pick is said only when the list
- *  has more than one (`choosable`): the browser names its microphones once one has been allowed. */
-const before = (choosable: boolean) =>
-  `Testa innan mötet börjar${choosable ? " och välj den mikrofon som sitter närmast talarna" : ""}. Det du säger under testet spelas inte in och skickas inte vidare.`;
+/** What to do before the meeting, and what the test does with the sound (it only measures the level; nothing is kept or
+ *  sent), in one line across the section on a laptop. Under the picker's label, and the same words whatever the browser
+ *  knows of its microphones, so nothing under it moves when it names them: choosing is the picker's own label. */
+const BEFORE = "Testa mikrofonen före mötet. Testet spelas inte in och skickas inte.";
+/** The status line's words before a test, and between tests with nothing to say: what the line is for. */
+const RESTING = "Testet visar här om mikrofonen hör dig.";
 /** The browser's question about the microphone left unanswered for a moment: the same words as the start's (FlowInput). */
 const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
 /** A muted track while it is tested: the recording's own words for it (lib/recording-view). Each status is one line on
@@ -180,61 +181,68 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     if (stream || asking) void test(id);
   }
 
+  // What the test says, with an icon for a verdict, so it is not told by colour alone: heard, or quiet (nothing heard, or
+  // the microphone gone). Waiting words have none.
+  const status: { words: string; verdict?: "heard" | "quiet" } = stream
+    ? muted
+      ? { words: AWAY, verdict: "quiet" }
+      : heard
+        ? { words: "Mikrofonen hör dig.", verdict: "heard" }
+        : { words: "Säg något för att se att du hörs." }
+    : askingLong
+      ? { words: ASK_THE_BROWSER }
+      : tested
+        ? heard
+          ? { words: "Mikrofonen hörde dig.", verdict: "heard" }
+          : {
+              words: `Mikrofonen hörde inget. Kontrollera att den inte är avstängd${choosable ? ", eller välj en annan i listan" : ""}.`,
+              verdict: "quiet",
+            }
+        : { words: RESTING };
+
+  // One section under the way that records: the picker across it, then the test beside the level it drives, then what the
+  // test says, on a line of its own, so words of another length never move the level or the button.
   return (
-    <VStack gap={2}>
-      {/* Beside each other where there is room; on a phone the picker fills the row and the test stands under it
-          (FlowSetup.module.css sets the width by the row's width). */}
-      <HStack gap={3} wrap="wrap" align="end" className={styles.microphoneRow}>
-        {/* Its list is a popover, as the page's other overlays are covered with it when the login ends: the touch screen's
-            bottom sheet is a modal dialog of its own, which would stay above the covered page. */}
-        <Selector
-          label="Mikrofon"
-          options={choices.map((choice) => ({ value: choice.value || STANDARD, label: choice.label }))}
-          value={value || STANDARD}
-          onChange={(next) => choose(next === STANDARD ? "" : next)}
-          description={missing ? `Den valda mikrofonen hittades inte. Standard används. ${before(choosable)}` : before(choosable)}
-          width="var(--microphone-picker-width, min(100%, 24rem))"
-        />
-        <Button label={testing ? STOP : TEST} variant="secondary" onClick={() => (testing ? stopTest() : void test())}>
-          {/* As wide with either word, so it does not shrink under the finger that pressed it: the icon and the word
-              shown, centred together, over the other word's, hidden. */}
-          <span className={styles.sameWidth}>
-            <span>
-              <Icon icon="microphone" />
-              {testing ? STOP : TEST}
+    <VStack gap={3} className={styles.microphone}>
+      {/* Its list is a popover, as the page's other overlays are covered with it when the login ends: the touch screen's
+          bottom sheet is a modal dialog of its own, which would stay above the covered page. */}
+      <Selector
+        label="Mikrofon"
+        options={choices.map((choice) => ({ value: choice.value || STANDARD, label: choice.label }))}
+        value={value || STANDARD}
+        onChange={(next) => choose(next === STANDARD ? "" : next)}
+        description={missing ? `Den valda mikrofonen hittades inte. Standard används. ${BEFORE}` : BEFORE}
+        width="100%"
+      />
+      {/* Beside each other from 30 rem; narrower, the test takes the row, as the phone's other actions do, and the level
+          the row under it. The level rests in its place from the first draw, unlit, so a test that starts moves nothing. */}
+      <HStack gap={4} wrap="wrap" vAlign="center">
+        <StackItem className={styles.test}>
+          <Button label={testing ? STOP : TEST} variant="secondary" width="100%" onClick={() => (testing ? stopTest() : void test())}>
+            {/* As wide with either word, so it does not shrink under the finger that pressed it: the icon and the word
+                shown, centred together, over the other word's, hidden. */}
+            <span className={styles.sameWidth}>
+              <span>
+                <Icon icon={testing ? "stop" : "microphone"} />
+                {testing ? STOP : TEST}
+              </span>
+              <span aria-hidden>
+                <Icon icon={testing ? "microphone" : "stop"} />
+                {testing ? TEST : STOP}
+              </span>
             </span>
-            <span aria-hidden>
-              <Icon icon="microphone" />
-              {testing ? TEST : STOP}
-            </span>
-          </span>
-        </Button>
+          </Button>
+        </StackItem>
+        <LevelMeter stream={stream} bars={40} variant="steps" even className={styles.meter} />
       </HStack>
-      {/* The level and what it says have their place from the first draw, so a test that starts moves nothing under
-          them (the start's button on a tablet or a laptop); the bars rest until it does. The bars take their height
-          from the row they stand in. The words have a line of their own under the bars: beside them, on a phone, a
-          longer one dropped to a row of its own and a shorter one came back, and what stood under them moved. */}
-      <VStack gap={1}>
-        <HStack height={24}>
-          <LevelMeter stream={stream} bars={24} variant="steps" />
-        </HStack>
-        {/* Always rendered, with a line's height when it says nothing, so a screen reader hears the change once. */}
-        <Text as="p" role="status" type="supporting">
-          {stream
-            ? muted
-              ? AWAY
-              : heard
-                ? "Mikrofonen hör dig."
-                : "Säg något för att se att du hörs."
-            : askingLong
-              ? ASK_THE_BROWSER
-              : tested
-                ? heard
-                  ? "Mikrofonen hörde dig."
-                  : `Mikrofonen hörde inget. Kontrollera att den inte är avstängd${choosable ? ", eller välj en annan i listan" : ""}.`
-                : " "}
+      {/* Always rendered, so a screen reader hears each change once. */}
+      <HStack as="p" role="status" gap={2} vAlign="center">
+        {status.verdict === "heard" && <Icon icon="success" color="success" size="sm" />}
+        {status.verdict === "quiet" && <Icon icon="warning" color="warning" size="sm" />}
+        <Text type="supporting" color={status.verdict ? "primary" : "secondary"} textWrap="pretty">
+          {status.words}
         </Text>
-      </VStack>
+      </HStack>
       {problem && <ProblemAlert problem={problem} onRetry={() => void test()} />}
     </VStack>
   );

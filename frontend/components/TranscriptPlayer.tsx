@@ -4,7 +4,9 @@ import {
   type ComponentType,
   Fragment,
   memo,
+  type ReactNode,
   type Ref,
+  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -38,13 +40,15 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { SpeakerMark } from "@/components/SpeakerMark";
 import { SpeakerNamingDialog, type SpeakerNamingHandle } from "@/components/SpeakerNamingDialog";
 import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { useRoomInRow } from "@/components/flow/useRoomInRow";
 import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
 import { browserStorage } from "@/lib/browser-storage";
 import { downloadBlob } from "@/lib/download";
 import { letterKeysOn, setLetterKeysOn } from "@/lib/letter-keys";
-import { scrollBehavior } from "@/lib/motion";
+import { playbackRate, RATES, setPlaybackRate } from "@/lib/playback-rate";
+import { scrollBehaviorFor } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { useSignedOut } from "@/components/AuthGate";
 import { ActionRow } from "@/components/ActionRow";
@@ -62,6 +66,7 @@ import {
   firstSegmentForSpeaker,
   paragraphTurns,
   pendingSpeakerReview,
+  speakerColorIndex,
   speakerName,
   speakerSummaries,
   type SearchHit,
@@ -102,7 +107,6 @@ type Naming = {
   participants: readonly string[];
 };
 
-const RATES = [0.75, 1, 1.25, 1.5, 2];
 const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const NO_HITS: ReadonlyMap<number, Hit[]> = new Map();
@@ -146,6 +150,26 @@ export function shortcut({ key, altKey, ctrlKey, metaKey }: Pick<KeyboardEvent, 
 /** The class names that apply, joined: a CSS Module's names and a caller's own. */
 const join = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
 
+/**
+ * `value`, once the frame that shows its change has been painted, in a render that a next change interrupts (as
+ * useDeferredValue's): what follows the change, however long, never holds back the paint of the press that made it.
+ */
+function useAfterPaint<T>(value: T): T {
+  const [painted, setPainted] = useState(value);
+  useEffect(() => {
+    if (Object.is(painted, value)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => startTransition(() => setPainted(value)));
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [value, painted]);
+  return painted;
+}
+
 /** The same function from render to render, calling the latest `fn`: a passage given it renders again only when it changes. */
 function useSteady<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
   const latest = useRef(fn);
@@ -187,15 +211,26 @@ function ReviewEditorAtPlayhead({
   );
 }
 
-/** The speed, chosen from a menu: any speed in one step, never a round through the others. */
-function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: number; className: string }) {
+/**
+ * The speed, chosen from a menu: any speed in one step, never a round through the others. Compact, its words alone. The
+ * speed chosen is kept for the person, and the next transcript they play starts at it.
+ */
+function SpeedMenu({ playback, rate, className, compact = false, ownerId }: { playback: Playback; rate: number; className: string; compact?: boolean; ownerId?: string }) {
   return (
     <DropdownMenu
       button={{ label: `Hastighet ${rateLabel(rate)}`, children: rateLabel(rate), variant: "ghost", size: "sm", className }}
+      hasChevron={!compact}
       placement="above"
       alignment="end"
     >
-      <DropdownMenuRadioGroup label="Hastighet" value={String(rate)} onChange={(value) => playback.setRate(Number(value))}>
+      <DropdownMenuRadioGroup
+        label="Hastighet"
+        value={String(rate)}
+        onChange={(value) => {
+          playback.setRate(Number(value));
+          if (ownerId) setPlaybackRate(browserStorage(), ownerId, Number(value));
+        }}
+      >
         {RATES.map((option) => (
           <DropdownMenuRadioItem key={option} value={String(option)} label={rateLabel(option)} />
         ))}
@@ -205,7 +240,7 @@ function SpeedMenu({ playback, rate, className }: { playback: Playback; rate: nu
 }
 
 /**
- * The controls docked under the transcript: the keys, Följ, speed, the player and its skips, as playback stands. Each
+ * The controls docked under the transcript: the keys, Följ uppspelningen, speed, the player and its skips, as playback stands. Each
  * control names its key (`shortcut`) to a screen reader while the letter keys are on; the line above them names the
  * keys to the eye, and turns the letters off and on. No tooltip: shown on keyboard focus, one lies over its neighbours
  * in this row.
@@ -217,6 +252,7 @@ function PlayerControls({
   onFollow,
   letterKeys,
   onLetterKeys,
+  ownerId,
 }: {
   playback: Playback;
   dock: HTMLElement | null;
@@ -225,8 +261,11 @@ function PlayerControls({
   /** Whether K, J and L act (lib/letter-keys.ts); null where they are not said, and do nothing (KEYS_SAID). */
   letterKeys: boolean | null;
   onLetterKeys: (on: boolean) => void;
+  /** The person whose speed this browser keeps. */
+  ownerId?: string;
 }) {
   const { rate, unavailable, atStart, atEnd } = usePlaybackFlags(playback);
+  const small = useMediaQuery(SMALL);
 
   function skipFromControl(milliseconds: number, trigger: HTMLElement) {
     playback.skip(milliseconds);
@@ -239,10 +278,10 @@ function PlayerControls({
 
   return (
     <>
-      {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
-          row from 640 px (below it the copy here is shown, and the one in the row is not). The keys are said once,
-          where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
+      {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. The keys are said
+          once, where there is a keyboard to press them (KEYS_SAID), and act only there. The line ends with its own button,
           which turns the letters off, and on again: the focus stays on it, and the line's new words are said. */}
+      {(letterKeys !== null || !follow) && (
       <div className={styles.dockTools}>
         {letterKeys !== null && (
           <Text type="supporting" className={styles.keys}>
@@ -258,10 +297,23 @@ function PlayerControls({
             </Button>
           </Text>
         )}
-        {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={onFollow} />}
-        <SpeedMenu playback={playback} rate={rate} className={styles.rateBelow} />
+        {/* It goes once pressed: from the keyboard the focus stays in the player, on its position, as the skips' does. */}
+        {!follow && (
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Följ uppspelningen"
+            className={styles.follow}
+            onClick={(event) => {
+              const focused = document.activeElement === event.currentTarget;
+              onFollow();
+              if (focused) dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+            }}
+          />
+        )}
       </div>
-      <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined}>
+      )}
+      <AudioPlayer playback={playback} label="Inspelningen" playKey={letterKeys ? "K" : undefined} compact={small}>
         <IconButton
           variant="ghost"
           className={styles.skip}
@@ -280,7 +332,7 @@ function PlayerControls({
           icon={<RotateCw aria-hidden />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
-        <SpeedMenu playback={playback} rate={rate} className={styles.rate} />
+        <SpeedMenu playback={playback} rate={rate} className={styles.rate} compact={small} ownerId={ownerId} />
       </AudioPlayer>
     </>
   );
@@ -325,6 +377,13 @@ const PLAYER_ON_TOP = "(min-width: 640px) and (max-width: 1023.98px) and (min-he
  * and the player's buttons play, as do Space and the arrows with the focus in it.
  */
 const KEYS_SAID = "(hover: hover) and (pointer: fine)";
+
+/** A phone: the speakers' filter is a list beside their naming, and a passage's colour and name say its speaker. */
+const PHONE = "(max-width: 639.98px)";
+/** Under 400 px the player's row keeps its speed and the position's time alone, so the slider keeps its room. */
+const SMALL = "(max-width: 399.98px)";
+/** The narrowest phones: the review's download beside the transcript's heading is its icon alone. */
+const TINY = "(max-width: 359.98px)";
 
 /**
  * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
@@ -436,6 +495,7 @@ export function TranscriptPlayer(
     naming,
     onRenameSpeaker,
     ownerId,
+    actions,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
@@ -485,6 +545,12 @@ export function TranscriptPlayer(
     onRenameSpeaker?: (label: string, returnTo: HTMLElement | null) => void;
     /** The signed-in person, whose choice of the letter keys this browser keeps; without one it lasts while shown. */
     ownerId?: string;
+    /**
+     * The page's own actions for the transcript (its copy and download, where the page has no heading row for them): at
+     * the end of the speakers' row where they can be named, else on a row of their own. Labelled where the row has room
+     * for them (`fits`), folded into one menu where it has not.
+     */
+    actions?: (fits: boolean) => ReactNode;
   },
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -492,8 +558,10 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const [dock, dockRef] = useDock();
   const playerOnTop = useMediaQuery(PLAYER_ON_TOP);
+  const [dock, dockRef] = useDock(playerOnTop ? "top" : "bottom");
+  const phone = useMediaQuery(PHONE);
+  const tiny = useMediaQuery(TINY);
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -506,6 +574,11 @@ export function TranscriptPlayer(
     hasAudio && !shared ? Array.from({ length: fileCount }, (_, i) => ({ url: audioSrcFor(i), durationMs: null })) : NO_SOURCES,
   );
   const playback = shared ?? own;
+  // The speed the person chose last, once for each player this transcript is given.
+  useEffect(() => {
+    if (ownerId) playback.setRate(playbackRate(browserStorage(), ownerId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playback]);
   // The list does not follow playback by rendering: useTranscriptPlayhead lights it, and the controls under it
   // (PlayerControls) render their own state. A list of an hour's meeting takes a fifth of a second to render.
 
@@ -550,14 +623,16 @@ export function TranscriptPlayer(
   // Naming after the run, where the passages can be corrected and have speakers to name.
   const canName = naming !== undefined && canEdit && corrections !== undefined && labelled && speakers.length > 0;
   const namingDialog = useRef<SpeakerNamingHandle>(null);
+  const actionsRow = useRoomInRow();
 
   // A filter whose speaker is gone (all their passages moved) shows everyone again.
   const toCheck = turns.filter(pendingSpeakerReview).length;
   const shownFilter =
     filter === TO_CHECK ? (toCheck > 0 ? TO_CHECK : "all") : speakers.some((s) => s.label === filter) ? filter : "all";
   // The chip and the typed letter show at once; the passages and the hits follow them, a render that a next press or
-  // letter interrupts: an hour's meeting is two thousand passages.
-  const listFilter = useDeferredValue(shownFilter);
+  // letter interrupts: an hour's meeting is two thousand passages. The filter's passages follow once the chip has been
+  // drawn: WebKit takes a long frame to show a thousand hidden passages again, which the press would otherwise wait for.
+  const listFilter = useAfterPaint(shownFilter);
   const searched = useDeferredValue(query);
   const visibleTurns = useMemo(
     () =>
@@ -637,9 +712,14 @@ export function TranscriptPlayer(
     if (!following.current.follow || following.current.editing || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
-    if (!block || withinReadingZone(block, listRef.current)) return;
+    // A passage the speaker filter hides is not on screen to keep in view.
+    if (!block || block.hidden || withinReadingZone(block, listRef.current)) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    // Far away it jumps: following the playhead back from the transcript's other end glided 1.5 s past the text.
+    const scrolls = listRef.current.scrollHeight > listRef.current.clientHeight;
+    const view = scrolls ? listRef.current.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+    const box = block.getBoundingClientRect();
+    block.scrollIntoView({ block: "center", behavior: scrollBehaviorFor(box.top + box.height / 2 - (view.top + view.height / 2), view.height) });
   }, []);
   // The review editor lights its own words; the playhead only keeps its place in view there.
   const playheadAt = useTranscriptPlayhead(listRef, playback, shown, keepInView, !reviewEnabled);
@@ -770,6 +850,74 @@ export function TranscriptPlayer(
     return correctedSegmentText(segments[source].text, corrections?.occurrences.filter((o) => o.segment_index === source) ?? []);
   });
 
+  // The passages, as elements kept from render to render: a press that changes what the passages do not show (a chip, the
+  // list's choice, a letter of the search, the player) renders the page's tools without rebuilding two thousand
+  // passages' elements, and the garbage they leave, before its next paint. The passages follow in the deferred render.
+  // Every passage stays in the page under the speaker filter, hidden while it is filtered out: a filter flips an attribute
+  // on each passage instead of taking an hour's meeting out of the page and building it again.
+  const renamePassage = canName || onRenameSpeaker ? renameSpeaker : undefined;
+  const shownTurns = useMemo(() => new Set(visibleTurns), [visibleTurns]);
+  const passages = useMemo(() => {
+    const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
+    for (const turn of turns) {
+      const last = parts[parts.length - 1];
+      if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
+      else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
+    }
+    return parts.map((part) => (
+      <div key={part.fileIndex} className={styles.part} hidden={!part.turns.some((turn) => shownTurns.has(turn))}>
+        {totalFiles > 1 && <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>}
+        {/* A list said as one (role="list"): Safari leaves out the role of a list drawn without bullets. */}
+        <ol className={styles.turns} role="list" aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
+          {part.turns.map((turn) => {
+            // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
+            const editableTurn =
+              canEdit &&
+              (pendingSpeakerReview(turn) ||
+              turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
+                ? canDecide
+                : true);
+            // A passage is given only what is its own: the line being edited and the hits when they are in it.
+            const editingHere = turn.parts.some((p) => p.segmentIndex === editingIndex);
+            const hitHere = turn.parts.some((p) => hitsBySegment.has(p.segmentIndex));
+            return (
+              <TurnItem
+                key={turn.index}
+                hidden={!shownTurns.has(turn)}
+                turn={turn}
+                rawSegments={segments}
+                correctedIndices={correctedIndices}
+                correctedRanges={correctedRanges}
+                hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
+                partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
+                labelled={labelled}
+                displayName={displayName}
+                labelOptions={labelOptions}
+                samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
+                canEdit={canEdit}
+                canPickSpeaker={editableTurn && labelled}
+                textForEdit={textForEdit}
+                confirmedWords={confirmedWords}
+                onToggleConfirmed={onToggleConfirmed}
+                editingIndex={editingHere ? editingIndex : -1}
+                onStartEdit={startEdit}
+                onCancelEdit={cancelEdit}
+                onCommitLine={commitTurnLine}
+                onRevertLine={revertTurnLine}
+                onReassign={reassignTurn}
+                onRename={renamePassage}
+                onSeekTurn={seekTurn}
+                onPartClick={clickPart}
+              />
+            );
+          })}
+        </ol>
+      </div>
+    ));
+    // The callbacks are steady (useSteady): they call the latest code without being dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, shownTurns, totalFiles, canEdit, canDecide, corrections, segments, editingIndex, hitsBySegment, correctedIndices, correctedRanges, labelled, displayName, labelOptions, settledPassages, confirmedWords, onToggleConfirmed, renamePassage]);
+
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
     if (audioPending) {
@@ -801,19 +949,17 @@ export function TranscriptPlayer(
     );
   }
 
-  const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
-  for (const turn of visibleTurns) {
-    const last = parts[parts.length - 1];
-    if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
-    else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
-  }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
+  // The page's actions join the speakers' row, which then needs no row of its own above it: one row less over the text.
+  const actionsBySpeakers = actions !== undefined && tools && canName;
+  const actionsAbove = actionsBySpeakers ? undefined : actions;
   // Naming the speakers after the run: at the end of the speakers' own row above their filter, or on a row of its own
   // above the review's view, which has no filter for the speakers' word to name.
   const namingControl = canName && (
     <SpeakerNaming
       ref={namingDialog}
+      iconOnly={phone && !reviewEnabled}
       naming={naming}
       speakers={speakers}
       shown={shown}
@@ -823,6 +969,24 @@ export function TranscriptPlayer(
       playback={playback}
       hasAudio={hasAudio}
     />
+  );
+  // When the filter is a list rather than chips (TranscriptPlayer.module.css, data-fold): a large meeting below a laptop's
+  // width, more than two speakers on a phone, and any two on the narrowest. Named, in the chips' place, as they are.
+  const fold = speakers.length > CHIP_LIMIT ? "many" : speakers.length > 2 ? "several" : speakers.length === 2 ? "two" : undefined;
+  const speakerList = (className: string) => (
+    <div className={className}>
+      <Selector
+        label={canName ? "Talare" : "Filtrera talare"}
+        isLabelHidden
+        value={shownFilter}
+        onChange={setFilter}
+        options={[
+          { value: "all", label: "Alla talare" },
+          ...speakers.map((speaker) => ({ value: speaker.label, label: displayName(speaker.label) })),
+          ...(toCheck > 0 ? [{ value: TO_CHECK, label: `Osäkra (${toCheck})` }] : []),
+        ]}
+      />
+    </div>
   );
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Ändringar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
@@ -843,7 +1007,7 @@ export function TranscriptPlayer(
       data-dock-edge={playerOnTop ? "top" : undefined}
       className={join(styles.dock, playerOnTop && styles.dockTop)}
     >
-      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={keysSaid ? letterKeys : null} onLetterKeys={turnLetterKeys} />
+      <PlayerControls playback={playback} dock={dock} follow={follow} onFollow={() => setFollow(true)} letterKeys={keysSaid ? letterKeys : null} onLetterKeys={turnLetterKeys} ownerId={ownerId} />
     </div>
   );
 
@@ -854,105 +1018,125 @@ export function TranscriptPlayer(
       aria-label="Inspelning och transkribering"
       tabIndex={0}
       ref={playerRef}
+      // While a text field of the player has the focus (the search, a passage's editor) a touch screen's soft keyboard
+      // covers the window's lower half, and the dock stays in the text (TranscriptPlayer.module.css). Said on the
+      // section by hand, not by a render or a `:has()`: neither should touch two thousand passages for a focus.
+      onFocus={(e) => e.currentTarget.toggleAttribute("data-typing", e.target.matches("input, textarea"))}
+      onBlur={(e) => e.currentTarget.removeAttribute("data-typing")}
     >
       {title && (
-        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2}>
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2} className={styles.inset}>
           <Heading level={2}>{title}</Heading>
           {canDownload && (
             // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
-            // speakers under it.
-            <Button variant="ghost" size="sm" icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed}>
-              Ladda ner
+            // speakers under it. Under 360 px its icon alone, so it stays on the heading's row.
+            <Button variant="ghost" size="sm" isIconOnly={tiny} icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
+              {tiny ? undefined : "Ladda ner"}
             </Button>
           )}
         </HStack>
       )}
-      {reviewEnabled && namingControl && (
-        <HStack hAlign="end" vAlign="center" paddingInline={3} paddingBlockEnd={2}>
-          {namingControl}
+      {/* The review's view has no speakers' row: its naming shares the row of the page's actions for the transcript, so
+          no row holds it alone above the text; without those actions it has the row to itself. One row either way: the
+          actions come and go beside the naming (a result crossing a laptop's width), which keeps its open dialog. */}
+      {(actionsAbove || (reviewEnabled && canName)) && (
+        <HStack
+          ref={actionsAbove ? actionsRow.ref : undefined}
+          hAlign="end"
+          vAlign="center"
+          gap={actionsAbove ? 2 : undefined}
+          paddingInline={3}
+          paddingBlockStart={actionsAbove ? 4 : undefined}
+          paddingBlockEnd={actionsAbove ? 3 : 2}
+          className={join(styles.inset, !actionsAbove && styles.trailingButton)}
+        >
+          {reviewEnabled && namingControl}
+          {actionsAbove?.(actionsRow.fits)}
         </HStack>
       )}
       {tools && (
-        <VStack gap={3} className={styles.tools}>
-          {labelled && (
-          <VStack gap={2}>
-          {/* Where the speakers can be named, a row of their own above the filter: their word, and the naming at its end. */}
-          {canName && (
-            <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
-              <Text type="label">Talare</Text>
-              {namingControl}
+        <VStack gap={2} className={styles.tools}>
+          {/* Where the speakers can be named, a row of their own above the filter: their word, and the naming at its end,
+              with the page's own actions after it where the page gives them. On a phone the filter's list takes the
+              word's place, and the naming and the actions (folded into their menu) stand at its end as icons: one row
+              for what are three from 640 px. The naming keeps its place in the tree at every width: a tablet turned
+              leaves its dialog, and a correction being written, as they are. The last ghost button ends its words on
+              the content's edge. */}
+          {labelled && canName && (
+            <HStack ref={actionsBySpeakers ? actionsRow.ref : undefined} hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+              {phone ? speakerList(styles.rowList) : <Text type="label">Talare</Text>}
+              <HStack gap={2} vAlign="center" className={actionsBySpeakers ? undefined : styles.trailing}>
+                {namingControl}
+                {actionsBySpeakers && actions?.(phone ? false : actionsRow.fits)}
+              </HStack>
             </HStack>
           )}
-          {/* The speaker filter: chips that wrap, so none is cut off on a phone. Under the speakers' word the group is
-              named by that word, one name to see and to hear (ToggleButtonGroup is named by its label, never by
-              aria-labelledby). */}
-          <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
-            <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
-              <ToggleButton value="all" label="Alla" />
-              {speakers.map((speaker) => (
-                <ToggleButton
-                  key={speaker.label}
-                  value={speaker.label}
-                  label={displayName(speaker.label)}
-                  icon={<SpeakerMark label={speaker.label} name={displayName(speaker.label)} size="sm" />}
-                />
-              ))}
-              {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
-              {toCheck > 0 && (
-                <>
-                  <Divider orientation="vertical" />
-                  <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
-                </>
-              )}
-            </ToggleButtonGroup>
-          </div>
-          {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. In their place under
-              the speakers' word, the list is named by that word as they are. */}
-          {speakers.length > CHIP_LIMIT && (
-            <div className={styles.speakerList}>
-              <Selector
-                label={canName ? "Talare" : "Filtrera talare"}
-                isLabelHidden
-                value={shownFilter}
-                onChange={setFilter}
-                options={[
-                  { value: "all", label: "Alla talare" },
-                  ...speakers.map((speaker) => ({ value: speaker.label, label: displayName(speaker.label) })),
-                  ...(toCheck > 0 ? [{ value: TO_CHECK, label: `Osäkra (${toCheck})` }] : []),
-                ]}
-              />
-            </div>
-          )}
-          </VStack>
-          )}
-
-          <HStack gap={2} vAlign="center">
-            <div className={styles.search}>
-              <TextInput
-                label="Sök i transkriberingen"
-                isLabelHidden
-                startIcon="search"
-                hasClear
-                placeholder="Sök i transkriberingen"
-                value={query}
-                onChange={(next) => {
-                  setQuery(next);
-                  setHitIndex(0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  stepHit(e.shiftKey ? -1 : 1);
-                }}
-              />
-            </div>
-            {query.trim() && (
+          {/* The speaker filter and the search share a row where both fit (a tablet, a laptop's card), the search under the
+              filter where they do not. The filter is chips that wrap, so none is cut off; on a phone with more than two
+              speakers, and on the narrowest phones, a list (TranscriptPlayer.module.css), whose chips would take two rows.
+              Under the speakers' word the group is named by that word, one name to see and to hear (ToggleButtonGroup is
+              named by its label, never by aria-labelledby). */}
+          <HStack gap={2} vAlign="center" wrap="wrap">
+            {labelled && !(canName && phone) && (
               <>
-                <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
-                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
-                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
+                <div className={styles.chips} data-fold={fold}>
+                  <ToggleButtonGroup label={canName ? "Talare" : "Visa talare"} type="single" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
+                    <ToggleButton value="all" label="Alla" />
+                    {speakers.map((speaker) => (
+                      <ToggleButton
+                        key={speaker.label}
+                        value={speaker.label}
+                        label={displayName(speaker.label)}
+                        icon={<SpeakerMark label={speaker.label} name={displayName(speaker.label)} size="sm" />}
+                      />
+                    ))}
+                    {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
+                    {toCheck > 0 && (
+                      <>
+                        <Divider orientation="vertical" />
+                        <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
+                      </>
+                    )}
+                  </ToggleButtonGroup>
+                </div>
+                {fold && speakerList(styles.speakerList)}
               </>
             )}
+            <HStack gap={2} vAlign="center" className={styles.find}>
+              <div className={styles.search}>
+                <TextInput
+                  label="Sök i transkriberingen"
+                  isLabelHidden
+                  startIcon="search"
+                  hasClear
+                  placeholder="Sök i transkriberingen"
+                  value={query}
+                  onChange={(next) => {
+                    setQuery(next);
+                    setHitIndex(0);
+                  }}
+                  onKeyDown={(e) => {
+                    // Esc empties the search, as a browser's own find does; the focus stays to type another.
+                    if (e.key === "Escape" && query) {
+                      e.preventDefault();
+                      setQuery("");
+                      setHitIndex(0);
+                      return;
+                    }
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    stepHit(e.shiftKey ? -1 : 1);
+                  }}
+                />
+              </div>
+              {query.trim() && (
+                <>
+                  <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
+                  <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
+                  <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
+                </>
+              )}
+            </HStack>
           </HStack>
           {/* The count is said once per change, not per keystroke's markup. */}
           <VisuallyHidden as="p" role="status">{hitStatus && hits.length > 0 ? `Träff ${hitStatus}` : hitStatus}</VisuallyHidden>
@@ -1034,12 +1218,16 @@ export function TranscriptPlayer(
       >
         Hoppa förbi transkriberingen
       </a>
-      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
+      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. Its passages' controls
+          are the keyboard's way through it, and the box is no Tab stop of its own: Firefox makes a box that scrolls one, and
+          gives it no focus, so a Tab landed on nothing. A transcript with no control in it (no audio, nothing to correct)
+          is a stop of its own, named, so the keyboard can scroll it. */}
       <div
         ref={listRef}
         onWheel={onUserScroll}
         onTouchMove={onUserScroll}
         className={join(styles.scrollport, !reviewEnabled && styles.padded)}
+        {...(reviewEnabled || hasAudio || canEdit ? { tabIndex: -1 } : { tabIndex: 0, role: "group", "aria-label": "Transkriberingen" })}
       >
         {reviewEnabled ? <ReviewEditorAtPlayhead playback={playback} raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
@@ -1050,56 +1238,7 @@ export function TranscriptPlayer(
             playback.playRange(fileIndex, time * 1_000, end * 1_000);
           }}
           confirmedWords={confirmedWords} onToggleConfirmed={onToggleConfirmed}
-          onInteract={() => setFollow(false)} /> : parts.map((part) => (
-          <div key={part.fileIndex} className={styles.part}>
-            {totalFiles > 1 && (
-              <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>
-            )}
-            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
-              {part.turns.map((turn) => {
-                // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
-                const editableTurn =
-                  canEdit &&
-                  (pendingSpeakerReview(turn) ||
-                  turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
-                    ? canDecide
-                    : true);
-                // A passage is given only what is its own: the line being edited and the hits when they are in it.
-                const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
-                const hitHere = turn.parts.some((part) => hitsBySegment.has(part.segmentIndex));
-                return (
-                  <TurnBlock
-                    key={turn.index}
-                    turn={turn}
-                    rawSegments={segments}
-                    correctedIndices={correctedIndices}
-                    correctedRanges={correctedRanges}
-                    hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
-                    partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                    labelled={labelled}
-                    displayName={displayName}
-                    labelOptions={labelOptions}
-                    samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
-                    canEdit={canEdit}
-                    canPickSpeaker={editableTurn && labelled}
-                    textForEdit={textForEdit}
-                    confirmedWords={confirmedWords}
-                    onToggleConfirmed={onToggleConfirmed}
-                    editingIndex={editingHere ? editingIndex : -1}
-                    onStartEdit={startEdit}
-                    onCancelEdit={cancelEdit}
-                    onCommitLine={commitTurnLine}
-                    onRevertLine={revertTurnLine}
-                    onReassign={reassignTurn}
-                    onRename={canName || onRenameSpeaker ? renameSpeaker : undefined}
-                    onSeekTurn={seekTurn}
-                    onPartClick={clickPart}
-                  />
-                );
-              })}
-            </ol>
-          </div>
-        ))}
+          onInteract={() => setFollow(false)} /> : passages}
         {!reviewEnabled && visibleTurns.length === 0 && (
           <Text as="p" className={styles.empty}>Inga repliker att visa.</Text>
         )}
@@ -1118,33 +1257,7 @@ export function TranscriptPlayer(
   );
 }
 
-/** One passage. Memoized: the list renders only the passages a change reaches (TranscriptPlayer gives each its own). */
-const TurnBlock = memo(function TurnBlock({
-  turn,
-  rawSegments,
-  correctedIndices,
-  correctedRanges,
-  hitsBySegment,
-  partLabel,
-  displayName,
-  labelOptions,
-  labelled,
-  samePassages,
-  canEdit,
-  canPickSpeaker,
-  confirmedWords,
-  onToggleConfirmed,
-  editingIndex,
-  onStartEdit,
-  onCancelEdit,
-  onCommitLine,
-  onRevertLine,
-  onReassign,
-  onRename,
-  textForEdit,
-  onSeekTurn,
-  onPartClick,
-}: {
+type TurnProps = {
   turn: TranscriptTurn;
   rawSegments: readonly TranscriptSegment[];
   correctedIndices: ReadonlySet<number>;
@@ -1174,12 +1287,71 @@ const TurnBlock = memo(function TurnBlock({
   textForEdit: (index: number) => string;
   onSeekTurn: (turn: TranscriptTurn) => void;
   onPartClick: (part: TranscriptTurnPart, e: React.MouseEvent) => void;
-}) {
+};
+
+/** Who says a passage, as its item and its head say it. A passage to check has no mark, and its words suggest no one. */
+function turnSpeaker(turn: TranscriptTurn, displayName: (label: string | null) => string) {
   const toCheck = pendingSpeakerReview(turn);
   const decision = turn.parts[0].segment.decision;
-  const markLabel = toCheck || decision === "unresolved" ? null : turn.speaker;
-  // The passage's own words for who speaks; a passage to check suggests no one.
-  const name = effectiveSpeakerLabel(turn.parts[0].segment, displayName);
+  return {
+    toCheck,
+    decision,
+    markLabel: toCheck || decision === "unresolved" ? null : turn.speaker,
+    name: effectiveSpeakerLabel(turn.parts[0].segment, displayName),
+  };
+}
+
+/**
+ * One passage in the list. Filtered out it stays in the page, hidden: the speaker filter changes `hidden` here and renders
+ * nothing inside it, whose TurnBlock is memoized on the rest.
+ */
+const TurnItem = memo(function TurnItem({ hidden, ...props }: TurnProps & { hidden: boolean }) {
+  const { turn, labelled, displayName, partLabel } = props;
+  const { markLabel, name } = turnSpeaker(turn, displayName);
+  const clock = formatClock(turn.start * 1_000);
+  return (
+    <li
+      hidden={hidden}
+      role="listitem"
+      data-turn-index={turn.index}
+      aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
+      className={styles.turn}
+      // The speaker's colour carries over to the passage's name and the rule beside its text (styles/globals.css --tint).
+      data-speaker-color={labelled && markLabel ? speakerColorIndex(markLabel) : undefined}
+    >
+      <TurnBlock {...props} />
+    </li>
+  );
+});
+
+/** What one passage shows. Memoized: the list renders only the passages a change reaches (TranscriptPlayer gives each its own). */
+const TurnBlock = memo(function TurnBlock({
+  turn,
+  rawSegments,
+  correctedIndices,
+  correctedRanges,
+  hitsBySegment,
+  partLabel,
+  displayName,
+  labelOptions,
+  labelled,
+  samePassages,
+  canEdit,
+  canPickSpeaker,
+  confirmedWords,
+  onToggleConfirmed,
+  editingIndex,
+  onStartEdit,
+  onCancelEdit,
+  onCommitLine,
+  onRevertLine,
+  onReassign,
+  onRename,
+  textForEdit,
+  onSeekTurn,
+  onPartClick,
+}: TurnProps) {
+  const { toCheck, decision, markLabel, name } = turnSpeaker(turn, displayName);
   const storedSpeaker = rawSegments[turn.parts[0]?.segment.sourceSegmentIndex ?? turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const clock = formatClock(turn.start * 1_000);
   // One "Rätta" per passage. In a passage of several sentences it first makes each sentence the target.
@@ -1215,11 +1387,7 @@ const TurnBlock = memo(function TurnBlock({
   );
 
   return (
-    <li
-      data-turn-index={turn.index}
-      aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
-      className={styles.turn}
-    >
+    <>
       {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} />}
       <div className={styles.turnBody}>
         {/* On a touch screen the head's controls are 44 px targets; negative margins keep the row compact. */}
@@ -1385,7 +1553,7 @@ const TurnBlock = memo(function TurnBlock({
           })}
         </div>
       </div>
-    </li>
+    </>
   );
 });
 
@@ -1559,6 +1727,7 @@ function SpeakerPicker({
  */
 function SpeakerNaming({
   ref,
+  iconOnly,
   naming,
   speakers,
   shown,
@@ -1569,6 +1738,8 @@ function SpeakerNaming({
   hasAudio,
 }: {
   ref: Ref<SpeakerNamingHandle>;
+  /** On a phone its icon alone, at the end of the speakers' row. */
+  iconOnly: boolean;
   naming: Naming;
   speakers: readonly { label: string; passages: number }[];
   /** The passages as shown, with the corrections. */
@@ -1613,7 +1784,7 @@ function SpeakerNaming({
     <SpeakerNamingDialog
       ref={ref}
       rows={rows}
-      participants={[...new Set([...naming.participants, ...Object.values(names)])]}
+      participants={naming.participants}
       passages={(label) => speakers.find((speaker) => speaker.label === label)?.passages ?? 0}
       quote={(label) => shown.find((segment) => segment.speaker === label)?.text ?? null}
       onListen={hasAudio ? listenTo : undefined}
@@ -1624,7 +1795,7 @@ function SpeakerNaming({
       draftKey={naming.draftKey}
       description={naming.description}
     >
-      <Button variant="ghost" size="sm" icon={<UsersRound aria-hidden />} label="Namnge talare" />
+      <Button variant="ghost" size="sm" isIconOnly={iconOnly} icon={<UsersRound aria-hidden />} label="Namnge talare" />
     </SpeakerNamingDialog>
   );
 }

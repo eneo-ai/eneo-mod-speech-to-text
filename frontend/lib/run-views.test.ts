@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Text } from "@astryxdesign/core/Text";
@@ -14,7 +14,7 @@ const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" }
 const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
-import { RunOpening, RunProgress, RunUnread } from "../components/flow/RunProgress";
+import { preloadStepList, RunOpening, RunProgress, RunUnread } from "../components/flow/RunProgress";
 import { SubmittingView, type SubmissionState } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
@@ -25,6 +25,9 @@ import { listOwnRuns } from "./api";
 import { inStaticRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
+
+// The run's step list is fetched when its view first draws (RunProgress): here it is there before, as on a page that sent.
+before(preloadStepList);
 
 /** Markup as the page renders it once, inside the router that its way-back link needs. */
 const markup = (element: import("react").ReactElement) => renderToStaticMarkup(inStaticRouter(element));
@@ -46,7 +49,9 @@ test("the running view names the stage once in a status region and says each ste
   );
 
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
-  assert.deepEqual(statuses(html), ["Analysera mötesinnehållet"], "the stage, once, in the only status region");
+  // A step's name is its author's, often an order ("Skriv rapporten"): heard alone it is said to the listener, so the
+  // status says it as the list shows it, under way.
+  assert.deepEqual(statuses(html), ["Pågår: Analysera mötesinnehållet"], "the stage, once, in the only status region");
   const words = text(html);
   // A finished step also carries the design system's own word for a screen reader, between its name and the page's.
   assert.match(words, /Transkribera mötet (?:\S+ )?Klar/);
@@ -135,12 +140,13 @@ const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }
     }),
   );
 
-test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt beside the file name", () => {
+test("an upload names its bar, shows the bytes and the percent, and ends with Avbryt uppladdningen, as the run ends with its own", () => {
   const html = uploading({ percent: 33 });
   assert.match(html, /role="progressbar"[^>]*aria-valuenow="33"|aria-valuenow="33"[^>]*role="progressbar"/);
   const words = text(html);
-  assert.match(words, /möte\.wav Avbryt/);
+  assert.match(words, /Stäng inte sidan och lås inte skärmen förrän flödet har startat\. möte\.wav Uppladdning/, "what a closed page does, read before the bar");
   assert.match(words, /512 B av 2 kB 33 %/);
+  assert.match(words, /Avbryt uppladdningen$/, "the card's last row");
   assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen…"], "the stage once, first");
 });
 
@@ -148,6 +154,14 @@ test("an upload, and the run's start after it, say to keep the page open until t
   for (const html of [uploading({ percent: 33 }), uploading({ loaded: 2048, total: 2048, percent: 100 })]) {
     assert.match(text(html), /Stäng inte sidan och lås inte skärmen förrän flödet har startat\./);
   }
+});
+
+test("once every byte has left, the bar stands full while the stage's spinner says Eneo takes the file, and its words stay", () => {
+  const value = (html: string) => /aria-valuenow="(\d+)"/.exec(html)?.[1] ?? null;
+  const sent = uploading({ loaded: 2048, total: 2048, percent: 100 });
+  // A moving bar's fill slides past its track's clipped edge: the gate's reflow check reads that as content cut off.
+  assert.equal(value(sent), "100", "full and still, not moving");
+  assert.match(text(sent), /2 kB av 2 kB 100 %/);
 });
 
 test("once every byte has left, the stage says Eneo is taking the file, and a recording is called a recording", () => {
@@ -644,6 +658,19 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelledHtml, /data-status="info"/);
   assert.doesNotMatch(cancelledHtml, /data-status="error"/);
   assert.equal([...cancelledHtml.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1);
+  // The person stopped it: no word that it could not be finished, and a way back to a new recording or file beside the
+  // new run, which stays the one filled action.
+  assert.doesNotMatch(text(cancelledHtml), /kunde inte slutföras/);
+  const backToSetup = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onStartAgain: () => undefined, onChooseInput: () => undefined }),
+  );
+  assert.match(text(backToSetup), /Välj nytt ljud/);
+  assert.deepEqual([...backToSetup.matchAll(/<button[^>]*data-variant="primary"[^>]*>/g)].length, 1, "one filled action");
+  assert.doesNotMatch(backToSetup, /<button[^>]*data-variant="primary"[^>]*aria-label="Välj nytt ljud"/);
+  const onlyBack = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onChooseInput: () => undefined }),
+  );
+  assert.match(text(onlyBack), /Välj nytt ljud/, "a run that cannot be started again still has the way back");
 });
 
 /**
@@ -703,10 +730,61 @@ test("the transcript is not copied or downloaded while its saved corrections cou
   assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
-  const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
+  const unread = render("Kunde inte läsa sparade rättningar. Ladda om sidan innan du redigerar eller godkänner.");
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.ok(names(unread).includes("Läs in igen"));
+});
+
+test("under the result's tabs the transcript's copy and download end the speakers' row, after Namnge talare: no row holds them alone", () => {
+  const html = markup(
+    createElement(RunTranscriptView, {
+      flowId: "flow-1",
+      runId: "run-1",
+      fileName: "transkribering.txt",
+      transcript: {
+        pending: false,
+        speakerReviews: [],
+        correctionProblem: null,
+        segments: [
+          { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten." },
+        ],
+        fromMetadata: true,
+        fileIds: [],
+        stepId: "step-1",
+        corrections: EMPTY_CORRECTIONS,
+        speakerNames: {},
+        textPreview: false,
+        wordTimingFailed: false,
+      },
+      confirmedWords: new Set<string>(),
+      editing: {
+        corrections: EMPTY_CORRECTIONS,
+        saveState: "idle" as const,
+        localError: null,
+        saveQueue: { current: Promise.resolve(true) },
+        onCorrectionsChange: async () => null,
+        saveNow: async () => null,
+        retryCorrections: async () => undefined,
+        downloadUnsavedCorrections: () => undefined,
+        hasDropped: false,
+        downloadDropped: () => undefined,
+        readAgain: () => undefined,
+      },
+      onReload: () => undefined,
+      headingHidden: true,
+      naming: { draftKey: { ownerId: "user-1", name: "names:run-1" }, thing: "dokumentet", delivered: false, hasDocument: true, participants: [] },
+    }),
+  );
+  assert.deepEqual(
+    names(html).filter((name) => /^(Namnge talare|Kopiera transkriberingen|Ladda ner som text, transkriberingen)$/.test(name)),
+    ["Namnge talare", "Kopiera transkriberingen", "Ladda ner som text, transkriberingen"],
+  );
+  // From the speakers' word to the download, one row: the filter (a group) only after it.
+  const row = html.slice(html.indexOf(">Talare<"), html.indexOf("Ladda ner som text</"));
+  assert.ok(row.length > 0 && !/role="group"/.test(row), "the speakers' word, Namnge talare and the two in one row");
+  assert.match(html, /<h2[^>]*id="run-transcript"[^>]*>Transkribering<\/h2>/, "the card's heading, heard");
 });
 
 test("a finished run whose result could not be read says so and offers to read it again, never 'klart'", () => {
@@ -775,7 +853,7 @@ test("words the flow's service could not time are said quietly, only where there
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
-  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner." });
+  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Ladda om sidan innan du godkänner." });
   assert.match(html, /Kunde inte läsa transkriberingens underlag/);
   assert.deepEqual(names(html), ["Läs in igen"]);
   const empty = transcriptView({ segments: [] });

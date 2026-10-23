@@ -51,8 +51,15 @@ jobs:
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - name: Install frontend dependencies
         run: npm ci
+      # apt-get update and install as `sudo timeout`, three tries, the runner's mirror and then two others (.github/apt-retry.sh):
+      # a mirror that stalls or trickles is cut off and another tried.
+      - name: Install the browser's system libraries
+        timeout-minutes: 18
+        run: ${{ github.workspace }}/.github/apt-retry.sh --playwright chromium
+      # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 16
+        run: for try in 1 2 3; do timeout 300 npx playwright install chromium && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       - name: Build frontend
         run: npm run build
 

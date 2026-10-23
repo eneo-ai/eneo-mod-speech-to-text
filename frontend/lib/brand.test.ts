@@ -18,14 +18,16 @@ const render = (branding: Branding, href?: string) =>
 
 const images = (html: string) => [...html.matchAll(/<img ([^>]*)\/>/g)].map(([, attributes]) => attributes);
 
-test("the default is Sundsvall's lockup: its mark, named, and the product's name", () => {
-  const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null } }, "/flows");
-  assert.match(html, /aria-label="Tal till text – Sundsvalls kommun"/);
-  const [mark, ...others] = images(html);
-  assert.deepEqual(others, [], "one mark");
-  assert.match(mark, /src="\/brand\/sundsvalls-kommun-logotyp\.svg"/);
-  assert.match(mark, /alt="Sundsvalls kommun"/);
-  assert.match(mark, /data-brand-logo="default"/, "the one that is inverted in the dark mode");
+test("the default is Eneo's lockup: its wordmark for each mode, named, and the product's name", () => {
+  const html = render({ organization: { name: "Eneo", logo: "default", dark_logo: false, logo_sizes: null } }, "/flows");
+  assert.match(html, /aria-label="Tal till text – Eneo"/);
+  const [light, dark, ...others] = images(html);
+  assert.deepEqual(others, [], "one for light, one for dark");
+  assert.match(light, /src="\/brand\/eneo-logotyp\.svg"/);
+  assert.match(light, /data-brand-logo="light"/);
+  assert.match(dark, /src="\/brand\/eneo-logotyp-mork\.svg"/);
+  assert.match(dark, /data-brand-logo="dark"/);
+  for (const image of [light, dark]) assert.match(image, /alt="Eneo"/);
   assert.match(html, />Tal till text</);
 });
 
@@ -52,10 +54,11 @@ test("every logo is drawn with its width and height, so its room is kept before 
   assert.match(light, /width="600" height="48"/);
   assert.match(dark, /width="160" height="40"/);
 
-  // The bundled mark is a file of the page's own: its proportions are those of its viewBox (277.4 x 110.3), tenfold.
-  const [bundled] = images(render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null } }));
-  assert.match(bundled, /width="2774" height="1103"/);
-  assert.match(readFileSync("public/brand/sundsvalls-kommun-logotyp.svg", "utf8"), /viewBox="0 0 277\.4 110\.3"/, "the constant is the file's");
+  // The bundled wordmark is a file of the page's own, for each mode: its proportions are those of its viewBox.
+  for (const bundled of images(render({ organization: { name: "Eneo", logo: "default", dark_logo: false, logo_sizes: null } }))) assert.match(bundled, /width="650" height="172"/);
+  for (const file of ["eneo-logotyp.svg", "eneo-logotyp-mork.svg"]) {
+    assert.match(readFileSync(`public/brand/${file}`, "utf8"), /viewBox="0 0 650 172"/, "the constant is the file's");
+  }
 });
 
 test("the first frame, before any page has loaded, already names the organisation", () => {
@@ -74,32 +77,31 @@ test("a name without a logo shows as text, and a hidden organisation leaves the 
   assert.match(named, /aria-label="Tal till text – Region Västernorrland"/);
 
   const hidden = render({ organization: null }, "/flows");
-  assert.doesNotMatch(hidden, /<img|Sundsvall|separator/, "no mark and no divider");
+  assert.doesNotMatch(hidden, /<img|Eneo|separator/, "no mark and no divider");
   assert.match(hidden, /aria-label="Tal till text"/);
   assert.match(hidden, />Tal till text</);
 });
 
 test("without a provider no organisation is named: the backend's branding is the one owner of who is shown", () => {
   const html = renderToStaticMarkup(inStaticRouter(createElement(Brand, { href: "/flows" })));
-  assert.doesNotMatch(html, /<img|Sundsvall/);
+  assert.doesNotMatch(html, /<img|Eneo/);
   assert.match(html, /aria-label="Tal till text"/);
 });
 
 test("without a destination the lockup is not a link", () => {
-  const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null } });
+  const html = render({ organization: { name: "Eneo", logo: "default", dark_logo: false, logo_sizes: null } });
   assert.doesNotMatch(html, /<a /);
   assert.match(html, />Tal till text</);
 });
 
-test("the stylesheet shows the logo of the colour mode and inverts Sundsvall's", () => {
+test("the stylesheet shows the logo of the colour mode", () => {
   const css = readFileSync("styles/globals.css", "utf8");
   const media = css.slice(css.indexOf("@media (prefers-color-scheme: dark)"));
   // The mode is data-theme on <html> (light or dark; none is the system's, which the media query answers).
-  assert.match(css, /:root\[data-theme="dark"\] \[data-brand-logo="default"\]\s*\{[^}]*filter:\s*invert\(1\)/, "the black mark turns white in the dark mode");
+  assert.doesNotMatch(css, /invert\(/, "no logo is inverted: each mode has its own");
   assert.match(css, /:root\[data-theme="dark"\] \[data-brand-logo="light"\]\s*\{[^}]*display:\s*none/, "the light logo gives way to the dark one");
   assert.match(css, /:root\[data-theme="dark"\] \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*block/, "and the dark one shows");
   assert.match(css, /:root \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*none/, "while it stays out of every other mode");
-  assert.match(media, /:root:not\(\[data-theme\]\) \[data-brand-logo="default"\]\s*\{[^}]*filter:\s*invert\(1\)/, "the same for a system that is dark and a person who chose nothing");
   assert.match(media, /:root:not\(\[data-theme\]\) \[data-brand-logo="light"\]\s*\{[^}]*display:\s*none/);
   assert.match(media, /:root:not\(\[data-theme\]\) \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*block/);
 });

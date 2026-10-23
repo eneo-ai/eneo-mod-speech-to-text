@@ -8,7 +8,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test } from "./gate";
-import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
+import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, movingAnimations, placeholderContrast, reflow, targetSizes, undecidedContrast, unnamedControls } from "./checks";
 import { STATES } from "./screens";
 
 for (const state of STATES) {
@@ -21,6 +21,8 @@ for (const state of STATES) {
     if (process.env.SHOTS) await page.screenshot({ path: `test-results/shots/${project}/${state.name}.png`, fullPage: true });
 
     const scan = await axe(page);
+    // What axe could not decide of a text's colour, measured on the screen's pixels.
+    const undecided = await undecidedContrast(page, scan.undecidedText);
     // The browser's own tree is read over the DevTools protocol, which only Chromium speaks.
     const unnamed = browserName === "chromium" ? await unnamedControls(page) : [];
     const placeholders = await placeholderContrast(page);
@@ -39,9 +41,11 @@ for (const state of STATES) {
       spaced = await reflow(page);
       await remove();
     }
-    const motion = info.project.use.reducedMotion === "reduce" ? await endlessAnimations(page) : [];
+    const reduced = info.project.use.reducedMotion === "reduce";
+    const motion = reduced ? await endlessAnimations(page) : [];
+    const moving = reduced ? await movingAnimations(page) : [];
 
-    const findings = { state: state.name, project, axe: scan, unnamed, placeholders, targets, touchTargets, reflow: layout, textSpacing: spaced, motion };
+    const findings = { state: state.name, project, axe: scan, undecided, unnamed, placeholders, targets, touchTargets, reflow: layout, textSpacing: spaced, motion };
     writeFileSync(info.outputPath("findings.json"), JSON.stringify(findings, null, 2));
 
     const list = (items: string[]) => items.map((item) => `\n  - ${item}`).join("");
@@ -52,6 +56,10 @@ for (const state of STATES) {
     expect.soft(
       blocking(scan.violations).map((v) => `${v.id} (${v.impact}): ${v.help} → ${v.nodes.map((n) => n.target).join(", ")}`),
       "axe: WCAG violations, and serious or critical best practice",
+    ).toEqual([]);
+    expect.soft(
+      undecided.filter((item) => item.ratio < item.needed).map((item) => `${item.target} (${item.reason}): ${item.ratio}:1, needs ${item.needed}:1, rgb(${item.text}) on rgb(${item.behind})`),
+      "text whose contrast axe left undecided, under its ratio on the screen's pixels (WCAG 1.4.3)",
     ).toEqual([]);
     expect.soft(unnamed, "controls without a name in Chromium's accessibility tree (WCAG 4.1.2)").toEqual([]);
     expect.soft(placeholders, "placeholder text under 4.5:1, which axe does not measure (WCAG 1.4.3)").toEqual([]);
@@ -66,5 +74,6 @@ for (const state of STATES) {
       expect.soft(spaced.truncated.filter((item) => /^h[1-6] /.test(item)), "a heading cut short with increased text spacing (WCAG 1.4.12)").toEqual([]);
     }
     expect.soft(motion, "endless animation despite reduced motion").toEqual([]);
+    expect.soft(moving, "something moves on screen despite reduced motion").toEqual([]);
   });
 }

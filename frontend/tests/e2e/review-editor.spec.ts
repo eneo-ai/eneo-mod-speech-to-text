@@ -148,3 +148,32 @@ test("Tab goes on through the text and Alt+T reaches its tools", async ({ page }
   await expect(page.getByRole("group", { name: "Markerade ord" })).toHaveCount(0);
   expect(errors, "Escape with a marked passage and no selection in the browser's sense is no error").toEqual([]);
 });
+
+test("the speaker review's tools stand only while there is something to decide or step through", async ({ page }) => {
+  await reviewEditor(page, "accessibility");
+  const tools = page.getByRole("group", { name: "Verktyg för transkriberingen" });
+  await expect(tools.getByText("Inga väntande talarbeslut")).toBeVisible();
+  await expect(tools.getByRole("toolbar", { name: "Granska talarförslag" }), "three disabled buttons say nothing").toHaveCount(0);
+  await pick(page.getByRole("combobox", { name: "Testfall" }), "bulk");
+  await expect(tools.getByRole("toolbar", { name: "Granska talarförslag" })).toBeVisible();
+});
+
+test("on a touch tablet a passage's time and speaker share one line above its text", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a finger; the window is a tablet's, set here");
+  await page.setViewportSize({ width: 1024, height: 1366 });
+  await reviewEditor(page, "bulk");
+  const turn = page.locator("[data-turn-index]").first();
+  const [clock, name] = [(await turn.getByRole("button", { name: /^Flytta uppspelningen till/ }).boundingBox())!, (await turn.getByRole("button", { name: /^Markera stycket/ }).boundingBox())!];
+  expect(Math.abs(clock.y - name.y), "on one line").toBeLessThanOrEqual(2);
+  expect(clock.height, "a finger's target").toBeGreaterThanOrEqual(44);
+});
+
+test("the text being edited shows the keyboard's focus on itself, not only on its label above", async ({ page }) => {
+  await reviewEditor(page, "bulk");
+  const text = page.getByRole("textbox", { name: "Transkribering, markera ord för att redigera" });
+  await text.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(text).toBeFocused();
+  expect(await text.evaluate((element) => getComputedStyle(element).outlineStyle), "a ring on the text").not.toBe("none");
+});

@@ -2,9 +2,9 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
+    - link "Tal till text – Eneo":
       - /url: /flows
-      - img "Sundsvalls kommun"
+      - img "Eneo"
       - text: Tal till text
     - link "Alla flöden":
       - /url: /flows
@@ -13,4 +13,4 @@
       - status
 - main:
   - heading "Flödet kan inte användas just nu." [level=1]
-  - paragraph: Flödet kan inte användas just nu. Den som ansvarar för det behöver publicera det på nytt.
+  - paragraph: Den som ansvarar för det behöver publicera det på nytt.

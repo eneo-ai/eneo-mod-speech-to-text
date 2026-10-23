@@ -23,7 +23,8 @@ const ICONS: Record<Exclude<StepState, "running">, [LucideIcon, "success" | "sec
 export function StepList({ steps }: { steps: readonly StepView[] }) {
   const current = steps.findIndex((step) => step.state !== "done");
   return (
-    // role="list": a list the reset has stripped of its bullets keeps its list semantics in Safari.
+    // role="list": a list the reset has stripped of its bullets keeps its list semantics in Safari. On the card itself,
+    // not in a panel of its own: the icons and the state words carry the steps.
     <Stepper orientation="vertical" activeStep={current === -1 ? steps.length : current} label="Flödets steg" role="list">
       {steps.map((step, index) => {
         const indicator =

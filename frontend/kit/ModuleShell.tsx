@@ -34,12 +34,12 @@ export function ModuleShell({
   height?: "auto" | "fill";
   children: ReactNode;
 }) {
-  // "surface": the page is one colour from the bar to the window's end. The default ("elevated") ends the surface at
-  // the content's height, so a short page (the sign-in) shows a band of the wash colour below it.
+  // "wash": the page rests on the body colour from the bar to the window's end, with white cards on it; the theme gives
+  // the bar the surface colour.
   return (
     <AppShell
       height={height}
-      variant="surface"
+      variant="wash"
       mobileNav={false}
       // A page that fills the window owns its edges, so a bar stuck to the region's bottom is flush with the window.
       contentPadding={height === "fill" ? 0 : 4}

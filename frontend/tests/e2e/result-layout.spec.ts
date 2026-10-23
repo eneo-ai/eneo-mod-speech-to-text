@@ -17,7 +17,8 @@ test("the document is the wider column, the transcript sits beside it and the he
       const rect = section.getBoundingClientRect();
       return { left: rect.left, width: rect.width, top: rect.top, position: getComputedStyle(section).position };
     };
-    const heading = document.querySelector("h1")!.getBoundingClientRect();
+    // The heading's row: the result's tile, then the heading.
+    const heading = document.querySelector("h1")!.parentElement!.getBoundingClientRect();
     return { document: box("result-panel-document"), transcript: box("result-panel-transcript"), heading: { left: heading.left, top: heading.top } };
   });
   const { document: doc, transcript, heading } = columns;
@@ -49,7 +50,8 @@ test("on a wide screen the result's workspace grows with the window, the bar wit
   await page.setViewportSize({ width: 2560, height: 1440 });
   await result(page);
   const brand = (await page.getByRole("banner").getByRole("img").first().boundingBox())!;
-  const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+  // The heading's row (the result's tile, then the heading) starts under the brand.
+  const title = (await page.getByRole("heading", { level: 1 }).locator("..").boundingBox())!;
   expect(Math.round(title.x), "the page's heading under the brand").toBe(Math.round(brand.x));
   const transcript = (await page.locator("#result-panel-transcript").boundingBox())!;
   expect(transcript.width, "the transcript beside the document has room").toBeGreaterThanOrEqual(700);
@@ -113,3 +115,24 @@ async function expectReadingMeasure(article: Locator) {
   expect(width, "a line of the text holds 72 to 80 characters").toBeGreaterThanOrEqual(least);
   expect(width).toBeLessThanOrEqual(most);
 }
+
+test("on a failed run, Gå till transkriberingen brings the transcript's heading to the window's top", async ({ page }, info) => {
+  await STATES.find((state) => state.name === "failure")!.go(page, info);
+  await page.getByRole("link", { name: "Gå till transkriberingen" }).click();
+  const heading = page.locator("#run-transcript");
+  await expect(heading).toBeFocused();
+  // At the window's top, or as near it as the page's end lets it come. The transcript is last on the page, so in a window
+  // taller than what follows its heading (2560 x 1440: the page scrolls 216 px) the page is then at its end, the whole
+  // transcript in view under its heading. Focus alone would leave the heading at the window's foot, or not scroll at all.
+  const at = await heading.evaluate((element) => ({
+    top: element.getBoundingClientRect().top,
+    end: scrollY >= document.scrollingElement!.scrollHeight - innerHeight - 1,
+    bottom: element.closest('[aria-labelledby="run-transcript"]')!.getBoundingClientRect().bottom,
+    height: innerHeight,
+  }));
+  expect(at.top, "not under the window's top edge").toBeGreaterThanOrEqual(0);
+  if (at.top > 1) {
+    expect(at.end, "below the window's top only where the page ends").toBe(true);
+    expect(at.bottom, "and the transcript under its heading in view").toBeLessThanOrEqual(at.height);
+  }
+});

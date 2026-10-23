@@ -1,0 +1,37 @@
+/* Beside the tile, the rest of the leading recording's row: its words, its actions and what they answer. */
+.lead {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+/* The leading recording's words in the card of unsent recordings from 640 px: 24 rem of their own beside the actions
+   before the actions go under them, so a heading of a few words is never squeezed into two lines beside them. */
+.text {
+  flex: 1 1 24rem;
+  min-inline-size: 0;
+}
+
+/* A recording's name (its date and time) keeps its words together: its line breaks after the dot. */
+.part {
+  white-space: nowrap;
+}
+
+/* Up to 640 px the outlined actions after the first share a row where they fit, each taking its part of the row's room,
+   and take the row's width one under the other where they do not. Ta bort ends their row at its own width, its words on
+   the edge the buttons above end on: a ghost button's padding stands outside the column. Where the row has no room for
+   it, it ends the line under them the same way (the auto margin takes only room the others leave). */
+.outlined > * {
+  flex: 1 1 auto;
+}
+
+.outlined > .quiet {
+  flex: none;
+  margin-inline-start: auto;
+  margin-inline-end: calc(-1 * var(--spacing-3));
+}
+
+/* Ta bort alone at a row's start (no audio to save): a ghost button's own padding would set its icon in from the edge the
+   buttons above share. */
+.outlined > .quiet:first-child {
+  margin-inline-start: calc(-1 * var(--spacing-3));
+}

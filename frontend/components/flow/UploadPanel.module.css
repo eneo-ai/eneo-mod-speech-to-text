@@ -1,8 +1,16 @@
+/* The drop zone and the chosen file stand in the working card: each has its edge, never a second lift. */
+.zone,
+.file {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
 /* A drop zone: a dashed edge, and the whole of it opens the file chooser. */
 .zone {
   border-style: dashed;
   cursor: pointer;
   text-align: center;
+  transition: border-color var(--duration-fast) var(--ease-standard);
 }
 
 /* With a mouse the edge firms up under the pointer: the whole zone is something to click. */

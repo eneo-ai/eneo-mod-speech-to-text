@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps, type FocusEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   Download,
   Eye,
@@ -27,8 +28,10 @@ import { useSignedOut } from "@/components/AuthGate";
 import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
 import { ProblemAlert } from "./ProblemAlert";
+import { IconTile } from "@/components/IconTile";
 import styles from "./ResultFiles.module.css";
 import { pressing, savingWay, useFileAccess, waiting, type FileAccess } from "./useFileAccess";
+import { useSaidLater } from "./recording-hooks";
 
 export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   pdf: FileText,
@@ -48,6 +51,8 @@ export const LAPTOP = "(min-width: 1024px)";
  * the same icon whichever way a tablet is turned, in the device's own viewer.
  */
 const WITH_A_MOUSE = "(hover: hover) and (pointer: fine)";
+/** How long a viewer that has drawn nothing is waited for before the dialog says the browser cannot show the file. */
+const VIEWER_GIVES_UP_MS = 8_000;
 
 /** A file's name, its date kept on one line: "… 2026-09-24.pdf" breaks before the date, never inside it. */
 export function FileName({ name }: { name: string }) {
@@ -91,15 +96,16 @@ export function ResultFiles({
             const download = runArtifactUrl(flowId, runId, file.fileId);
             return (
               <HStack key={file.fileId} as="li" wrap="wrap" vAlign="center" gap={2}>
-                <Item className={styles.file} startContent={<Icon icon={FILE_ICONS[file.kind]} />} label={<Text><FileName name={file.name} /></Text>} description={file.meta} />
+                <Item className={styles.file} startContent={<IconTile icon={FILE_ICONS[file.kind]} size="sm" />} label={<Text><FileName name={file.name} /></Text>} description={file.meta} />
                 {file.available && (
-                  <HStack wrap="wrap" gap={2} paddingInline={2} paddingBlockEnd={2}>
+                  <HStack wrap="wrap" gap={2}>
                     {file.previewable && (
                       <OpenFile file={file} url={runArtifactUrl(flowId, runId, file.fileId, true)} download={download} access={access} />
                     )}
                     <Button
                       as={DownloadLink}
                       href={download}
+                      size="sm"
                       icon={<Icon icon={Download} />}
                       label={`Ladda ner ${file.name}`}
                       onClick={pressing(access, file.fileId, savingWay(file))}
@@ -138,12 +144,20 @@ export function OpenFile({
   url,
   download,
   name = false,
+  iconOnly = false,
+  openerIn,
   access,
 }: {
   file: ResultFileView;
   url: string;
   download: string;
   name?: boolean;
+  /** An outlined icon in a row of actions (the document's file from a laptop's width), named by the file. No tooltip: one
+   *  shown on keyboard focus would lie over the button it names. */
+  iconOnly?: boolean;
+  /** Where the opener stands when not here (null: not drawn yet). The document's file moves it to its row's end from a
+   *  laptop's width, and its dialog, which stays here, stays open. */
+  openerIn?: HTMLElement | null;
   /** How the file is reached: asked for before the dialog opens or the tab is sent to it. */
   access: FileAccess;
 }) {
@@ -152,6 +166,20 @@ export function OpenFile({
   // Whether the viewer has drawn the file: until then the dialog's empty viewer says that it is coming.
   const [shown, setShown] = useState(false);
   if (!open && shown) setShown(false);
+  // A browser with no PDF viewer of its own (a managed Firefox or Chrome told to download PDFs, Chrome on Android) draws
+  // nothing, and one that downloads or refuses the file never says it has loaded: the dialog says so, beside its Öppna i
+  // ny flik and Ladda ner, rather than spin for ever. Without a viewer the file is not even asked for (it would download).
+  const noViewer = typeof navigator !== "undefined" && navigator.pdfViewerEnabled === false;
+  const [stalled, setStalled] = useState(false);
+  if (!open && stalled) setStalled(false);
+  useEffect(() => {
+    if (!open || shown || noViewer) return;
+    const timer = setTimeout(() => setStalled(true), VIEWER_GIVES_UP_MS);
+    return () => clearTimeout(timer);
+  }, [open, shown, noViewer]);
+  const cannotShow = open && !shown && (noViewer || stalled);
+  // Said from a region that is in the dialog before its words are.
+  const note = useSaidLater(cannotShow ? "Webbläsaren kan inte visa filen här. Välj Öppna i ny flik eller Ladda ner." : "");
   // While the login has ended the page is covered and the dialog, which a cover does not reach, is closed; it is
   // back when the login is, with its viewer and where it was.
   const covered = useSignedOut();
@@ -168,7 +196,21 @@ export function OpenFile({
 
   const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file.fileId, "tab"), ...waiting(access, file.fileId, "tab") } as const;
   const openDialog = () => access.start(file.fileId, { open: () => setOpen(true) });
-  const opener = !roomy ? (
+  const opener = iconOnly ? (
+    roomy ? (
+      <Button
+        ref={trigger}
+        isIconOnly
+        aria-haspopup="dialog"
+        icon={<Icon icon={Eye} />}
+        label={`Öppna ${file.name}`}
+        onClick={openDialog}
+        {...waiting(access, file.fileId, "open")}
+      />
+    ) : (
+      <Button ref={trigger} {...newTab} isIconOnly icon={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`} />
+    )
+  ) : !roomy ? (
     name ? (
       <Button ref={trigger} {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
         <FileName name={file.name} />
@@ -199,7 +241,7 @@ export function OpenFile({
 
   return (
     <>
-      {opener}
+      {openerIn === undefined ? opener : openerIn && createPortal(opener, openerIn)}
       {/* One dialog at every width, mounted while it is closed (for the focus it gives back): a window resized while it is
           open keeps it, and its viewer, as it is. The file is fetched only once it is open. */}
       {/* Safari's Tab leaves the dialog past its last control and comes back to the dialog itself, which shows no ring:
@@ -240,8 +282,11 @@ export function OpenFile({
                   spinner behind the viewer, covered by the file once it is drawn and gone when the viewer has loaded. */}
               {open && (
                 <div className={styles.viewerArea}>
-                  {!shown && <Spinner size="lg" aria-label="Laddar filen" className={styles.viewerWait} />}
-                  <iframe src={url} title={file.name} tabIndex={-1} className={styles.viewer} onLoad={() => setShown(true)} />
+                  {!shown && !cannotShow && <Spinner size="lg" aria-label="Laddar filen" className={styles.viewerWait} />}
+                  <Text as="p" role="status" className={styles.viewerNote}>
+                    {note}
+                  </Text>
+                  {!noViewer && <iframe src={url} title={file.name} tabIndex={-1} className={styles.viewer} onLoad={() => setShown(true)} />}
                 </div>
               )}
             </LayoutContent>

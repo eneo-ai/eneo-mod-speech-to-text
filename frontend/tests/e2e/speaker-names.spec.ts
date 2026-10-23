@@ -103,35 +103,50 @@ test("names given to a finished run's speakers show in its transcript, its copy 
   await expect(page.getByRole("button", { name: "Anna Berg, ändra talare" })).toHaveCount(3);
 });
 
-test("Namnge talare ends the speakers' own row above their chips, and the word at the row's start names the chips", async ({ page }, info) => {
+test("Namnge talare ends the speakers' own row above their chips, before the transcript's actions under the tabs, and the word at the row's start names the chips; on a phone the list stands in the word's place, the naming and the menu as icons at its end", async ({ page }, info) => {
   await run(page, ids.runs.done);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
   const player = page.getByRole("region", { name: "Inspelning och transkribering" });
-  const label = player.getByText("Talare", { exact: true });
   const naming = player.getByRole("button", { name: "Namnge talare" });
-  const chips = player.getByRole("group", { name: "Talare", exact: true });
-  await expect(label).toBeVisible();
-  await expect(chips).toBeVisible();
-  // A phone at its narrowest too, where the row has the least room.
-  for (const width of isLaptop(info) ? [1440] : [390, 320]) {
+  // A phone at its narrowest too, where the row has the least room; a tablet's row as a laptop's.
+  for (const width of isLaptop(info) ? [1440] : [768, 390, 320]) {
     await page.setViewportSize({ width, height: info.project.use.viewport!.height });
-    const [region, word, action, group] = await Promise.all([player, label, naming, chips].map(async (part) => (await part.boundingBox())!));
+    const phone = width < 640;
+    // The row starts with the speakers' word, which names the chips under it; on a phone with the list that stands in
+    // for them, named by the same word.
+    // The list's field, whose edge is the row's start (its combobox is the words inside it).
+    const start = phone
+      ? player.getByRole("combobox", { name: "Talare" }).locator("xpath=..")
+      : player.getByText("Talare", { exact: true }).filter({ visible: true });
+    // A ghost button's padding stands outside the column: its words end on the edge. Under the result's tabs the
+    // transcript's copy and download follow it and end the row (on a phone, folded into their menu).
+    const rowEnd = isLaptop(info)
+      ? naming.getByText("Namnge talare", { exact: true })
+      : phone
+        ? player.getByRole("button", { name: "Fler alternativ för transkriberingen" })
+        : player.getByRole("button", { name: /^Ladda ner som text/ }).getByText("Ladda ner som text", { exact: true });
+    // Under the row: the chips, or on a phone the search.
+    const under = phone ? player.getByRole("textbox", { name: "Sök i transkriberingen" }) : player.getByRole("group", { name: "Talare", exact: true });
+    await expect(start).toBeVisible();
+    await expect(under).toBeVisible();
+    const [region, first, action, end, below] = await Promise.all([player, start, naming, rowEnd, under].map(async (part) => (await part.boundingBox())!));
     const middle = (box: typeof region) => box.y + box.height / 2;
     expect(
       {
-        oneRow: Math.abs(middle(word) - middle(action)) <= 1,
-        atStart: Math.round(word.x) === Math.round(group.x),
-        // The row's end mirrors its start: the naming is as far from the transcript's edge as the word is from the other.
-        atEnd: Math.round(region.x + region.width - (action.x + action.width)) === Math.round(word.x - region.x),
-        aboveChips: action.y + action.height <= group.y && word.y + word.height <= group.y,
+        oneRow: Math.abs(middle(first) - middle(action)) <= 1 && Math.abs(middle(end) - middle(action)) <= 1,
+        atStart: phone || Math.round(first.x) === Math.round(below.x),
+        // The row's end mirrors its start: the last action ends as far from the transcript's edge as the row starts from
+        // the other.
+        atEnd: Math.round(region.x + region.width - (end.x + end.width)) === Math.round(first.x - region.x),
+        aboveTheRest: action.y + action.height <= below.y && first.y + first.height <= below.y,
       },
       `${width} px`,
-    ).toEqual({ oneRow: true, atStart: true, atEnd: true, aboveChips: true });
+    ).toEqual({ oneRow: true, atStart: true, atEnd: true, aboveTheRest: true });
   }
 });
 
-test("Byt namn på in a passage's Ändra talare opens the naming at that speaker, and Avbryt gives the focus back to the passage", async ({ page }, info) => {
+test("Byt namn på in a passage's Ändra talare opens the naming at that speaker, and Avbryt (on a phone's whole screen the title's Stäng) gives the focus back to the passage", async ({ page }, info) => {
   await run(page, ids.runs.done);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet är klart" })).toBeVisible();
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
@@ -145,7 +160,7 @@ test("Byt namn på in a passage's Ändra talare opens the naming at that speaker
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).click();
   await expect(page.getByRole("listbox").getByRole("option", { name: "Erik Lund" })).toBeVisible();
   await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await dialog.getByRole("button", { name: info.project.use.viewport!.width < 480 ? "Stäng" : "Avbryt", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(passage).toBeFocused();
 });

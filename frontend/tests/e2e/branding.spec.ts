@@ -10,7 +10,7 @@ import { stopProblems, tabWalk } from "./checks";
 import { STATES } from "./screens";
 
 const VARIANT = process.env.STUB_BRANDING;
-const ACCENT = { light: "rgb(30, 123, 52)", dark: "rgb(42, 174, 74)" } as const; // #1E7B34, and #2AAE4A derived from it
+const ACCENT = { light: "rgb(28, 117, 49)", dark: "rgb(38, 158, 66)" } as const; // #1C7531, and #269E42 derived from it
 const states = STATES.filter((state) => state.name.startsWith("branding-"));
 
 test.beforeEach(() =>

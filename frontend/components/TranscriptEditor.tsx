@@ -304,14 +304,16 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Verktyg för transkriberingen">
       <HStack justify="between" align="center" wrap="wrap" gap={1}>
         <span aria-live="polite" className={styles.quiet}>{pending.length ? `${pending.length} ${pending.length === 1 ? "ställe" : "ställen"} att granska` : "Inga väntande talarbeslut"}</span>
-        <Toolbar label="Granska talarförslag" size="sm" className={styles.actionBar} startContent={<HStack wrap="wrap" gap={1} className={styles.actions}>
+        {/* Only while there is something to decide or step through: three disabled buttons said nothing the line above
+            does not, and on a phone took the first screen. */}
+        {(pending.length > 0 || allSuggestions.length > 0) && <Toolbar label="Granska talarförslag" size="sm" className={styles.actionBar} startContent={<HStack wrap="wrap" gap={1} className={styles.actions}>
           <VisuallyHidden id={confirmAllNote}>Bekräfta återstående talarförslag i hela transkriberingen. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras.</VisuallyHidden>
           <Button variant="secondary" icon={<Icon icon={CheckCheck} />} isDisabled={!editable || !audioAvailable || !allSuggestions.length}
             label={`Bekräfta alla förslag${allSuggestions.length > 0 ? ` (${allSuggestions.length})` : ""}`} aria-describedby={confirmAllNote}
             onClick={() => confirmSuggestions(allSuggestions)} />
           <Button variant="ghost" isDisabled={!pending.length} onClick={() => navigate(-1)} label="Föregående passage som behöver talarbeslut">Föregående</Button>
           <Button variant="ghost" isDisabled={!pending.length} onClick={() => navigate(1)} label="Nästa passage som behöver talarbeslut">Nästa</Button>
-        </HStack>} />
+        </HStack>} />}
       </HStack>
       {selection.length > 0 && <div className={styles.marked} role="group" aria-label="Markerade ord">
         <div className={styles.selected}><span className={styles.quote} title={selectedText}>”{selectedText}”</span><span className={styles.count}>{wordCount} ord</span>
