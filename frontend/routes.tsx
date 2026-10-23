@@ -2,15 +2,24 @@ import type { ComponentType } from "react";
 import { createBrowserRouter, type RouteObject } from "react-router";
 import { NotFound, Root, RootHydrateFallback, RouteError } from "@/routes/Root";
 import type { RouteHandle } from "@/routes/RouteEffects";
+import { whenConnected } from "@/lib/lazy-component";
 import { documentTitle } from "@/lib/product";
 
 /**
  * One page. Its code is fetched when the route is first entered, so a person on the sign-in page does not download the
  * recording or the review (`tests/prod/weight.spec.ts` holds one budget per page). The flow page's is also fetched while
- * the flow list is read (routes/FlowsPage.tsx).
+ * the flow list is read (routes/FlowsPage.tsx). Entered while the device has no network, the page waits for it: an import
+ * that fails offline would fail for as long as the tab is open.
  */
 function page(where: { path: string } | { index: true }, title: string, load: () => Promise<ComponentType>): RouteObject {
-  return { ...where, handle: { title } satisfies RouteHandle, lazy: async () => ({ Component: await load() }) };
+  return {
+    ...where,
+    handle: { title } satisfies RouteHandle,
+    lazy: async () => {
+      await whenConnected();
+      return { Component: await load() };
+    },
+  };
 }
 
 // Spelled out where they are used, so the bundler knows the conditions at build time and drops the imports from a

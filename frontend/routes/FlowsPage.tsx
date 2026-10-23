@@ -28,6 +28,7 @@ import {
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
+import { whenConnected } from "@/lib/lazy-component";
 import { continueRecordingAddress, sendRecordingAddress } from "@/lib/flow-address";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
@@ -82,14 +83,15 @@ function FlowsListPage() {
 
   // A flow is what a person opens from here: once the list is shown, its page's code is fetched while the browser is
   // idle, so opening one does not wait for it, and the list's own answer never waits for that code. Not when the browser
-  // asks to save data. The route's own module: nothing of the page runs until it is opened, and a fetch that fails is
-  // the route's to say then, as when it fails on the press.
+  // asks to save data, and not while the device has no network (a fetch that fails offline would fail the press too).
+  // The route's own module: nothing of the page runs until it is opened, and a fetch that fails is the route's to say
+  // then, as when it fails on the press.
   const listed = groups !== null && !empty;
   useEffect(() => {
     if (!listed || (navigator as { connection?: { saveData?: boolean } }).connection?.saveData) return;
     const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1));
     const cancel = window.cancelIdleCallback ?? window.clearTimeout;
-    const handle = idle(() => void import("./FlowPage").catch(() => undefined));
+    const handle = idle(() => void whenConnected().then(() => import("./FlowPage")).catch(() => undefined));
     return () => cancel(handle);
   }, [listed]);
   // Asked again (Uppdatera, or a Försök igen) and still none: the new Uppdatera takes the focus the pressed button had.

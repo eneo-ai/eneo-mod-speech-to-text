@@ -64,6 +64,22 @@ signedIn("text whose formatting cannot be fetched stays readable with a line, an
   await expect(line).toHaveCount(0);
 });
 
+signedIn("a run whose views cannot be fetched is a page of its own: its heading, focused, and the reload the person chooses shows the run @chromium", async ({ session, page }) => {
+  expect(session.user).toBeTruthy();
+  const chunk = await removeChunk(page, "RunViews");
+  await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.done}`);
+  const heading = page.getByRole("heading", { level: 1, name: "Körningen kunde inte visas." });
+  await expect(heading).toBeFocused();
+  await expect(page).toHaveTitle(/^Körningen kunde inte visas · /);
+  expect(chunk.refused.length, "the run's views were asked for and refused").toBeGreaterThan(0);
+  const reloads = await watchForReloads(page);
+  expect(await reloads.stillTheSameTab(), "nothing reloaded the page by itself").toBe(true);
+
+  await chunk.lift();
+  await reloadButton(page).click();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+});
+
 signedIn("a page whose code cannot be fetched is replaced by a line and a reload button in the frame, and the reload the person chooses opens it @chromium", async ({ session, page }) => {
   expect(session.user).toBeTruthy();
   // The list fetches the page's code while it is read: the deploy came before that, and the person opens a flow from it.
