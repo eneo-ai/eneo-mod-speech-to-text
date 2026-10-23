@@ -244,7 +244,10 @@ switches round. One-pixel borders are `var(--border-width)`.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose sound ("Lås inte skärmen och byt inte app") a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it. There the live sheet's head is its log's first line: the Preliminär pill, and when the final text comes on a line of its own under it.
-- Pinned on a short screen, the controls' card stands a gutter above the window's edge. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
+- Pinned on a short screen, the controls' card stands a gutter above the window's edge. Where the reader's large text
+  makes what is pinned (the bar, or the stage and the controls) leave less than 6 rem for a warning, nothing is pinned:
+  it all stands in the page's flow, as a dock that tall does, and Pausa and Stoppa stand one above the other where they
+  have less than 5.5 rem each. Under 400 px Strömma's status, clock and level share one row over the buttons. In a window as low as a laptop's at 400 % zoom, Strömma's controls stay in the page's flow, so they never cover the live text that has the focus.
 - From 768 px Pausa and Stoppa are the stage card's footer, at the middle of it (25 rem), with one hairline between the
   stage and them.
 

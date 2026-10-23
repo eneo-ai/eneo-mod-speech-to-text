@@ -260,7 +260,14 @@
 }
 
 /* Wide enough for "Fortsätt", so pausing moves nothing. From a tablet's width, in the stage card's footer, they keep to
-   the middle at a laptop's width rather than stretch across the card. */
+   the middle at a laptop's width rather than stretch across the card. Side by side while each has 5.5 rem, as at every
+   ordinary text size; one above the other where the reader's large text leaves less, so Stoppa never reaches past the
+   window. */
+.actions,
+.statusActions {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr));
+}
+
 .actions {
   inline-size: 100%;
 }
@@ -388,6 +395,14 @@
     border-radius: var(--radius-container);
     background: var(--color-background-card);
   }
+}
+
+/* What the reader's large text makes too tall to leave a warning room beside it (`data-crowded`, Recorder.tsx) is not
+   pinned: it would cover the warnings, or the timer. It stands in the page's flow, as a dock that tall does. */
+.bar[data-crowded],
+.bar[data-crowded] .controls,
+.stage:has(+ .bar[data-crowded]) {
+  position: static;
 }
 
 /* Strömma in a window this low and narrow (a laptop at 400 % zoom): its controls stay in the page's flow, so they never

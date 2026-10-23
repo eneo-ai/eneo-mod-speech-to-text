@@ -7,7 +7,7 @@
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles } from "./checks";
-import { STATES } from "./screens";
+import { mutedMicrophone, record, setup, STATES } from "./screens";
 
 type Size = { width: number; height: number; root: number };
 const AX2: Size = { width: 390, height: 844, root: 34 };
@@ -56,5 +56,46 @@ for (const size of [AX5, ZOOM]) {
     await expect(filter).toBeVisible();
     expect((await filter.boundingBox())!.width, "the filter is not squeezed to nothing").toBeGreaterThanOrEqual(80);
     expect(await cut(filter)).toEqual([]);
+  });
+}
+
+/**
+ * Brought into view, `element` is wholly in the window and nothing is drawn over it: what large text makes too tall to pin
+ * scrolls with the page instead of covering it.
+ */
+const uncovered = (element: Locator) =>
+  element.evaluate((el) => {
+    el.scrollIntoView({ block: "center", behavior: "instant" });
+    const r = el.getBoundingClientRect();
+    if (r.top < -0.5 || r.bottom > innerHeight + 0.5) return `outside the window (${Math.round(r.top)}-${Math.round(r.bottom)} of ${innerHeight})`;
+    for (const y of [r.top + 2, r.top + r.height / 2, r.bottom - 2]) {
+      const top = document.elementFromPoint(r.left + r.width / 2, y);
+      if (top && !(el === top || el.contains(top) || top.contains(el))) return `covered at ${Math.round(y)} by ${top.tagName}.${String(top.className).slice(0, 40)}`;
+    }
+    return null;
+  });
+
+const RECORDING: [size: Size, what: string][] = [
+  // An iPhone in Safari at iOS's 194 % text: 664 px of window under the address bar.
+  [{ width: 390, height: 664, root: 34 }, "the warning"],
+  [AX5, "the warning"],
+  // An iPad upright at iOS's largest text: the bar outgrew its window and covered the timer.
+  [{ width: 834, height: 1031, root: 53 }, "the timer"],
+];
+for (const [size, what] of RECORDING) {
+  test(`a recording at ${size.width} x ${size.height}, ${size.root} px text: ${what} can be read and Stoppa stays on the screen`, async ({ page }) => {
+    await page.addInitScript(mutedMicrophone);
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await setup(page);
+    await addStyles(page, `html { font-size: ${size.root}px !important; }`);
+    await record(page, "Spela in");
+    const warning = page.getByRole("alert").filter({ hasText: "Vi hör inget från mikrofonen." });
+    await expect(warning).toBeVisible({ timeout: 15_000 });
+    const timer = page.locator("section[aria-label='Ljudet'] *").filter({ hasText: /^\d+:\d\d$/ }).first();
+    expect(await uncovered(what === "the warning" ? warning : timer), what).toBeNull();
+    expect(await uncovered(page.getByRole("button", { name: "Stoppa" })), "Stoppa").toBeNull();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "nothing past the window's side").toBe(true);
+    const stoppa = (await page.getByRole("button", { name: "Stoppa" }).boundingBox())!;
+    expect(stoppa.x + stoppa.width, "Stoppa within the window").toBeLessThanOrEqual(size.width);
   });
 }
