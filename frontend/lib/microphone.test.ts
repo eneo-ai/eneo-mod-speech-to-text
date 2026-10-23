@@ -47,6 +47,8 @@ test("Standard names the microphone the system uses when the browser says which,
   // Firefox and Safari name no default; before permission nothing is named.
   assert.deepEqual(microphoneChoices([input("a", "USB-mikrofon")], null).choices[0], { value: "", label: "Standard" });
   assert.deepEqual(microphoneChoices([input("", "", "")], null).choices, [{ value: "", label: "Standard" }]);
+  // Android's Chrome calls its default entry just "Default", in English, and it shares no group with a named one.
+  assert.deepEqual(microphoneChoices([input("default", "Default", "a"), input("x", "Speakerphone", "b")], null).choices[0], { value: "", label: "Standard" });
 });
 
 test("a remembered microphone that is gone falls back to Standard, with a note once the devices are known", () => {
