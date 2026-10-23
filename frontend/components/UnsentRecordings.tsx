@@ -308,7 +308,7 @@ function UnsentRecordingRow({
   onContinue?: (recording: StoredRecording) => void;
   /** The device no longer has it. */
   onRemoved: (id: string) => void;
-  /** Its main action (Fortsätt spela in, else the send) is the page's filled action. */
+  /** Its main action (Fortsätt spela in on one a reload cut off, else the send) is the page's filled action. */
   primary: boolean;
   /** The card's heading, when this recording leads the card: the row is then the card's head, with its tile. */
   head?: ReactNode;
@@ -386,32 +386,32 @@ function UnsentRecordingRow({
       className={styles.quiet}
     />
   );
-  // The ways on (going on with it, sending it), then saving it as a file (outlined), as the ready recording has them.
-  const [first, ...outlined] = [
-    onContinue && (
-      <Button
-        key="continue"
-        label="Fortsätt spela in"
-        variant={primary ? "primary" : "secondary"}
-        size={size}
-        aria-describedby={summaryId}
-        onClick={() => onContinue(recording)}
-      />
-    ),
-    onSend && audio && (
-      <Button
-        key="send"
-        label={sendLabel}
-        variant={primary && !onContinue ? "primary" : "secondary"}
-        size={size}
-        aria-describedby={summaryId}
-        onClick={() => onSend(recording)}
-      >
-        {tiny ? sendLabel.replace(/ av inspelningen$/, "") : undefined}
-      </Button>
-    ),
-    quietSave,
-  ].filter(Boolean);
+  // The ways on, the likelier first: going on with one a reload cut off (or with one that has nothing to send), else
+  // sending it; then the other way and saving it as a file (outlined), as the ready recording has them.
+  const continueFirst = onContinue !== undefined && (cutOff(recording) || !(onSend && audio));
+  const resume = onContinue && (
+    <Button
+      key="continue"
+      label="Fortsätt spela in"
+      variant={primary && continueFirst ? "primary" : "secondary"}
+      size={size}
+      aria-describedby={summaryId}
+      onClick={() => onContinue(recording)}
+    />
+  );
+  const send = onSend && audio && (
+    <Button
+      key="send"
+      label={sendLabel}
+      variant={primary && !continueFirst ? "primary" : "secondary"}
+      size={size}
+      aria-describedby={summaryId}
+      onClick={() => onSend(recording)}
+    >
+      {tiny ? sendLabel.replace(/ av inspelningen$/, "") : undefined}
+    </Button>
+  );
+  const [first, ...outlined] = [...(continueFirst ? [resume, send] : [send, resume]), quietSave].filter(Boolean);
   const actions = recording.elsewhere ? (
     <Text as="p" color="secondary">
       {IN_USE_ELSEWHERE}
