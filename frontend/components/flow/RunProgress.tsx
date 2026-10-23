@@ -153,8 +153,9 @@ export function RunProgress({
         </Text>
         {error && <Banner status="error" title={error} collapsible={false} />}
         <HStack>
-          {/* Busy, not disabled, so the focus the question gives back stays on it (a refused cancel is said above it). */}
-          <Button ref={trigger} label="Avbryt körningen" variant="secondary" isLoading={cancelling} isInterruptible onClick={() => setAsking(true)} />
+          {/* Busy, not disabled, so the focus the question gives back stays on it (a refused cancel is said above it); a
+              press while the cancel is on its way asks nothing, so it is sent once. */}
+          <Button ref={trigger} label="Avbryt körningen" variant="secondary" isLoading={cancelling} isInterruptible onClick={() => !cancelling && setAsking(true)} />
         </HStack>
         <AlertDialog
           isOpen={asking && !signedOut}
