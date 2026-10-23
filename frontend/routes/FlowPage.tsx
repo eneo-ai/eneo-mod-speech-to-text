@@ -263,12 +263,19 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const holdsAudio = snapshot.phase !== "setup";
   const submitting = run.kind === "submitting";
   const unstored = useSyncExternalStore(unstoredDrafts.subscribe, unstoredDrafts.any, () => false);
+  // Back or Forward to this flow's entry of another run, or of the setup, takes the run shown off the page (below): with
+  // work held in it, that asks first too. With a recording on the page, the page stays as it is.
+  const replacesShownRun = (next: { search: string }) => {
+    const shown = runIdOf(run);
+    return shown !== null && snapshot.phase === "setup" && new URLSearchParams(next.search).get(RUN_QUERY_PARAM) !== shown;
+  };
   const leaving = useLeaveQuestion(
     submitting || holdsAudio || unstored,
     submitting || holdsAudio
       ? leaveWarning(input.persistent, snapshot.phase, submitting && (submission.kind === "starting" ? "starting" : "uploading"), input.capture.refused)
       : UNSTORED_LEAVE,
     leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
+    replacesShownRun,
   );
   // The browser's own question (a reload, a closed tab) is not asked for a stopped recording the device keeps: it waits
   // among the unsent recordings and can be continued there, as the page's own question says. It is asked while the

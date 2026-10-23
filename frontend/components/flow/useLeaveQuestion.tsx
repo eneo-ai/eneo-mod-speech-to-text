@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
-import { useBlocker } from "react-router";
+import { useBlocker, type Location } from "react-router";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 
 /**
@@ -29,10 +29,11 @@ function returnPoint(): HTMLElement | null {
 /**
  * While `active`, leaving the flow page asks first, in the page's own dialog. The router's blocker asks for every
  * departure it sees: a link, the brand, Back and Forward. A change of the address that keeps the page (the page writing
- * `?run=`) is no departure. The browser's own question (beforeunload, by the page) covers what no navigation reaches:
+ * `?run=`) is no departure, but Back or Forward to an entry of the page whose view takes the place of the one shown
+ * (`replacesView`) is. The browser's own question (beforeunload, by the page) covers what no navigation reaches:
  * a reload, closing the tab, and Back from the first page of a visit.
  */
-export function useLeaveQuestion(active: boolean, warning: string, keepsWork = false) {
+export function useLeaveQuestion(active: boolean, warning: string, keepsWork = false, replacesView: (next: Location) => boolean = () => false) {
   const [correctionsHeld, setCorrectionsHeld] = useState(0);
   const holdUnsavedCorrections = useCallback(() => {
     setCorrectionsHeld((count) => count + 1);
@@ -45,7 +46,12 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
   useEffect(() => {
     allowed.current = false;
   }, [guarded]);
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => guarded && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation, historyAction }) =>
+      guarded &&
+      !allowed.current &&
+      (currentLocation.pathname !== nextLocation.pathname || (historyAction === "POP" && replacesView(nextLocation))),
+  );
   const [pendingAction, setPendingAction] = useState<(() => void | Promise<void>) | null>(null);
   // What had the focus when an action asked, for Stanna kvar to give it back to. The design system's dialog gives it back
   // to what had it, but a menu's item that asked (Logga ut) has gone with its menu: then it is the menu's own button.
