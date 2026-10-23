@@ -109,8 +109,9 @@ export function ReadyPanel({
   finishQueued = false,
   makesText = false,
   forwarded = null,
+  awaitingDevice = false,
   onCreate,
-  onContinue,
+  onContinue: continueStopped,
   onDiscard,
   earlierRuns,
   onOpenRun,
@@ -129,6 +130,11 @@ export function ReadyPanel({
   makesText?: boolean;
   /** Where the result goes on to a receiver: said above the action that sends it (`forwardedLine`). */
   forwarded?: string | null;
+  /**
+   * Stoppa ended before the device answered: the recording is not yet as the device holds it, so its length and audio are
+   * not known. Neither is said, and the ways on with it wait, until the stored one is here.
+   */
+  awaitingDevice?: boolean;
   /** Absent while the flow cannot run: the recording is then saved as a file or deleted, under the reason (`problem`). */
   onCreate?: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
@@ -161,10 +167,12 @@ export function ReadyPanel({
   // The player's time says the length once each part's is known, in whole seconds as its clock counts them.
   const lengthPlayed = sources.length > 0 && sources.every((source) => (source.durationMs ?? 0) >= 1_000);
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
-  // No audio reached the device: nothing to make or save, only going on and deleting.
-  const audio = hasAudio(recording);
-  const awaitingStop = recording.parts.some((part) => part.endConfirmed === false);
+  // No audio reached the device: nothing to make or save, only going on and deleting. Not known while it has not answered.
+  const audio = !awaitingDevice && hasAudio(recording);
+  const empty = !awaitingDevice && !audio;
+  const awaitingStop = !awaitingDevice && recording.parts.some((part) => part.endConfirmed === false);
   const create = audio && !awaitingStop ? onCreate : undefined;
+  const onContinue = awaitingDevice ? undefined : continueStopped;
   // Stopped a moment after it started, most likely by mistake, or with nothing kept: going on is the likely next step.
   const moment = onContinue !== undefined && (recording.durationMs < 2_000 || !audio);
   const createButton = create && (
@@ -237,9 +245,9 @@ export function ReadyPanel({
             Inspelningen är klar
           </Heading>
         </StateHead>
-        {/* Its length where the player under it does not say it. */}
+        {/* Its length where the player under it does not say it, once the device has given it. */}
         <Text as="p" color="secondary">
-          {lengthPlayed ? name : `${name} · ${formatDuration(recording.durationMs)}`}
+          {lengthPlayed || awaitingDevice ? name : `${name} · ${formatDuration(recording.durationMs)}`}
         </Text>
       </VStack>
 
@@ -249,7 +257,7 @@ export function ReadyPanel({
           first screen. */}
       {live && !stacked && <LiveDraft live={live} makesText={makesText} />}
 
-      {!audio && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
+      {empty && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {awaitingStop && <ProblemAlert problem={{ title: "Webbläsaren har inte bekräftat inspelningens stopp.", detail: "Spara ljudet som fil för att behålla det. Du kan sedan ladda upp filen i en ny inspelning." }} />}

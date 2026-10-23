@@ -235,6 +235,8 @@ interface SessionSnapshot {
   speakerCountFromNames: boolean;
   /** The recording being captured, or the stopped one that is ready. */
   recording: StoredRecording | null;
+  /** The ready recording is the capture's, as it was before a Stoppa the device has not answered: its audio is not known. */
+  awaitingDevice: boolean;
   /** The file chosen in Ladda upp. */
   file: ChosenFile | null;
   /** Its length is still being read; it cannot be sent yet. */
@@ -1243,6 +1245,7 @@ export class FlowSession {
         this.countFollowsNames &&
         (own ? filledValue(this.details[own]) : speakerCount !== null && speakerCount !== ""),
       recording: capturing ? capture.recording : this.ready,
+      awaitingDevice: capture.awaitingDevice && this.ready === capture.recording,
       file: this.file,
       // The latest pick while its length is read: the file shown is not yet the last one that fitted.
       fileChecking: this.file !== null && this.file !== this.accepted,

@@ -236,11 +236,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
     // are read once the flow is: a flow that is gone has no runs to ask for.
     const flow = getPublishedFlow(flowId);
     Promise.all([flow, getRunContract(flowId), urlRunId ? null : flow.then(() => earlier.reload())])
-      .then(([p, c]) => {
+      .then(async ([p, c]) => {
+        if (cancelled) return;
+        // The address as it is now: Back to the setup while the flow was read leaves the run it named, and the setup
+        // reads its earlier runs before it is drawn, as on a load of its own.
+        const runId = readRunIdFromUrl();
+        if (urlRunId && !runId) await earlier.reload();
         if (cancelled) return;
         setPublished(p);
         setContract(c);
-        if (urlRunId) resumeRun(urlRunId);
+        if (runId) resumeRun(runId);
       })
       .catch((err) => !cancelled && setLoadError(err));
     return () => {

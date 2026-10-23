@@ -121,6 +121,11 @@ interface CaptureSnapshot {
   stalled: boolean;
   /** Stoppa: the recorder has stopped and the recording is being stored; what follows its audio stops now too. */
   stopping: boolean;
+  /**
+   * Stoppa's wait ended before the device answered: `recording` is as the capture last read it, not as the device holds
+   * it, so what it has of the audio is not known until the device answers (then `recording` is the stored one).
+   */
+  awaitingDevice: boolean;
 }
 
 interface WakeLockLike {
@@ -254,6 +259,7 @@ export class RecordingCapture {
     hiddenGap: null,
     stalled: false,
     stopping: false,
+    awaitingDevice: false,
   };
   private listeners = new Set<() => void>();
   private store: RecordingStore | null = null;
@@ -469,8 +475,8 @@ export class RecordingCapture {
       : { error: this.snapshot.error ?? END_UNCONFIRMED };
     this.set(
       failure === null
-        ? { status: "stopped", recording: stopped, stream: null, stopping: false, persistent: store.persistent, ...unconfirmed }
-        : { status: "stopped", stream: null, stopping: false, persistent: false, error: failure },
+        ? { status: "stopped", recording: stopped, stream: null, stopping: false, awaitingDevice: false, persistent: store.persistent, ...unconfirmed }
+        : { status: "stopped", stream: null, stopping: false, awaitingDevice: true, persistent: false, error: failure },
     );
     return stopped;
   }
@@ -479,7 +485,7 @@ export class RecordingCapture {
   reset(): void {
     if (this.snapshot.status === "stopped") {
       if (this.snapshot.recording) this.store?.letGo(this.snapshot.recording.id);
-      this.set({ status: "idle", recording: null, error: null, remainingMs: null, limitReached: false });
+      this.set({ status: "idle", recording: null, error: null, remainingMs: null, limitReached: false, awaitingDevice: false });
     }
   }
 
@@ -930,7 +936,7 @@ export class RecordingCapture {
       void store.get(recording.id).then((latest) => {
         if (!latest || this.snapshot.recording?.id !== recording.id || this.snapshot.status !== status) return;
         const confirmed = !latest.parts.some((part) => part.endConfirmed === false);
-        this.set({ recording: latest, ...(confirmed && this.snapshot.error === END_UNCONFIRMED ? { error: null } : {}) });
+        this.set({ recording: latest, awaitingDevice: false, ...(confirmed && this.snapshot.error === END_UNCONFIRMED ? { error: null } : {}) });
       }).catch(() => undefined);
     }
     const capturing = status === "recording" || status === "paused" || status === "interrupted";

@@ -326,6 +326,30 @@ test("an earlier run opened from the setup is an entry of its own: Back goes to 
 
   await page.goForward();
   await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+
+  // The run's entry loaded again, and Back to the setup while the flow is still being read: the setup stays, and its
+  // address names no run, when the reads come in.
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let held = 0;
+  await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow1}/(published|run-contract)/`), async (route) => {
+    held += 1;
+    await released;
+    await route.fallback().catch(() => undefined);
+  });
+  await page.reload({ waitUntil: "commit" });
+  await expect.poll(() => held, { message: "the flow and its contract are being read" }).toBeGreaterThanOrEqual(2);
+  await page.evaluate(() => ((window as unknown as { loaded: boolean }).loaded = true));
+  await page.goBack({ waitUntil: "commit" });
+  expect(new URL(page.url()).searchParams.has("run")).toBe(false);
+  // The same page, still reading: Back loaded nothing anew.
+  expect(await page.evaluate(() => (window as unknown as { loaded?: boolean }).loaded)).toBe(true);
+  release();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+  await page.waitForTimeout(1_000);
+  expect(new URL(page.url()).searchParams.has("run"), "the setup's address keeps no run").toBe(false);
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toHaveCount(0);
 });
 
 test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
