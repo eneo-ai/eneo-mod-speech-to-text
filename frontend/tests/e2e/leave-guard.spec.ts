@@ -174,6 +174,27 @@ test("unsaved transcript corrections ask before leaving; a successful retry remo
   await expect(question(page)).toHaveCount(0);
 });
 
+test("unsaved result corrections are kept in the tab: after a reload the page shows them and saves them", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
+  await unsavedCorrections(page, "result");
+  // The network is back; the tab is reloaded (as a phone does with a tab it put away), the browser's question accepted.
+  await page.unroute("**/transcript-corrections**");
+  const saved: unknown[] = [];
+  await page.route("**/steps/*/transcript-corrections/", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = route.request().postDataJSON();
+    saved.push(body);
+    await route.fulfill({ json: { ...body, flow_run_id: ids.runs.done, step_id: ids.steps.audio, revision: (body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-25T20:00:00Z" } });
+  });
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  await resultTab(page, "Transkribering");
+  await expect.poll(() => saved.length, { message: "the kept correction is saved again" }).toBe(1);
+  await expect(page.getByRole("button", { name: "Talare 2, ändra talare" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toHaveCount(0);
+});
+
 for (const action of ["Alla flöden", "Ny inspelning"]) {
   test(`unsaved result corrections survive cancelling ${action}`, async ({ page, sentinel }) => {
     sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
