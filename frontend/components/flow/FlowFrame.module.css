@@ -164,6 +164,19 @@
   text-overflow: ellipsis;
 }
 
+/* Where the reader's large text (or a phone's zoom) leaves the row less than 15 rem of the root's text, a one-line
+   summary would show a word or two of "Så fungerar det 3 steg": there it wraps, whole. */
+.fold {
+  container-type: inline-size;
+}
+
+@container (width < 15rem) {
+  .fold > :global(.astryx-collapsible-trigger) > span {
+    overflow: visible;
+    white-space: normal;
+  }
+}
+
 .fold > :global(.astryx-collapsible-content) {
   padding-block-start: var(--spacing-4);
 }

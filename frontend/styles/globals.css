@@ -164,6 +164,14 @@ a.astryx-top-nav-heading:focus-visible,
   outline-offset: var(--focus-outline-offset);
 }
 
+/* A button's icon slot is a fixed 16 or 20 px while its icon is sized in rem: with the reader's large text the icon
+   outgrew its slot and was drawn over the button's words. The slot is as wide as its icon. (The slot is the first child
+   of the button's content, which has no class of its own; without an icon that is the label, which is auto already.) */
+.astryx-button > span > span:first-child {
+  inline-size: auto;
+  block-size: auto;
+}
+
 /* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
    gives it back, for every button the design system draws. */
 @media (forced-colors: active) {

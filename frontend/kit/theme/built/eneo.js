@@ -445,6 +445,8 @@ export const eneoTheme = {
     "button": {
       "base": {
         "whiteSpace": "normal",
+        "overflowWrap": "break-word",
+        "hyphens": "auto",
         "height": "auto",
         "minHeight": "var(--size-element-md)",
         "paddingBlock": "var(--spacing-0-5)",

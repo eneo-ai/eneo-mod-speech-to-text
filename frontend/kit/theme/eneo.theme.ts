@@ -261,9 +261,13 @@ export const eneoTheme = defineTheme({
     // is small enough that a one-line label still fills the size's own height: 28, 32 and 36 px.
     // A button after the field in an input group (the participants' Lägg till) is one piece with it, as the group's own
     // addons are: square where they meet. The design system squares the field's corners there, not the button's.
+    // A word longer than the button (the reader's large text: "mikrofonen") is hyphenated where the page's language
+    // allows, and broken where it does not, rather than cut off with an ellipsis.
     button: {
       base: {
         whiteSpace: 'normal',
+        overflowWrap: 'break-word',
+        hyphens: 'auto',
         height: 'auto',
         minHeight: 'var(--size-element-md)',
         paddingBlock: 'var(--spacing-0-5)',

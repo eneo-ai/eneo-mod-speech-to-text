@@ -24,20 +24,23 @@ async function at(page: Page, state: string, { width, height, root }: Size) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
-/** The words inside `scope` that their own box cuts off (one line with an ellipsis, a fixed height), as "text sw/cw". */
-function cut(scope: Locator) {
-  return scope.evaluate((root) => {
+/**
+ * The words inside `scope` that their own box cuts off (one line with an ellipsis, a fixed height), as "text sw/cw".
+ * `heightOnly` for a value a selector keeps on one line by design (its list has it whole): only its lines may not be cut.
+ */
+function cut(scope: Locator, heightOnly = false) {
+  return scope.evaluate((root, heightOnly) => {
     const found: string[] = [];
     for (const element of [root, ...root.querySelectorAll("*")]) {
       if (!(element instanceof HTMLElement) || element.closest(".astryx-visually-hidden") || !element.textContent?.trim()) continue;
       const style = getComputedStyle(element);
       if (style.display === "none" || element.clientWidth <= 1) continue;
-      const x = ["hidden", "clip"].includes(style.overflowX) && element.scrollWidth > element.clientWidth + 1;
+      const x = !heightOnly && ["hidden", "clip"].includes(style.overflowX) && element.scrollWidth > element.clientWidth + 1;
       const y = ["hidden", "clip"].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 2;
       if (x || y) found.push(`${element.textContent.trim().slice(0, 30)} ${element.scrollWidth}x${element.scrollHeight}/${element.clientWidth}x${element.clientHeight}`);
     }
     return found;
-  });
+  }, heightOnly);
 }
 
 for (const size of [AX2, AX5, ZOOM]) {
@@ -97,5 +100,69 @@ for (const [size, what] of RECORDING) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "nothing past the window's side").toBe(true);
     const stoppa = (await page.getByRole("button", { name: "Stoppa" }).boundingBox())!;
     expect(stoppa.x + stoppa.width, "Stoppa within the window").toBeLessThanOrEqual(size.width);
+  });
+}
+
+/** The buttons and links in `scope` whose icon is drawn over their own words, by name. */
+function iconsOverWords(scope: Locator) {
+  return scope.evaluate((root) => {
+    const found: string[] = [];
+    for (const control of root.querySelectorAll("button, a")) {
+      const icon = control.querySelector("svg")?.getBoundingClientRect();
+      if (!icon || icon.width === 0) continue;
+      const walker = document.createTreeWalker(control, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.textContent?.trim() || node.parentElement?.closest(".astryx-visually-hidden")) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const line of range.getClientRects()) {
+          const x = Math.min(icon.right, line.right) - Math.max(icon.left, line.left);
+          const y = Math.min(icon.bottom, line.bottom) - Math.max(icon.top, line.top);
+          if (x > 1 && y > 1) found.push(control.getAttribute("aria-label") ?? control.textContent!.trim());
+        }
+      }
+    }
+    return [...new Set(found)];
+  });
+}
+
+for (const size of [AX2, AX5]) {
+  test(`the microphone's picker and its test keep their words whole at ${name(size)}`, async ({ page }) => {
+    await at(page, "setup-microphone-check", size);
+    const section = page.getByRole("button", { name: "Sluta testa" }).locator("xpath=ancestor::section[1]");
+    expect(await cut(page.getByRole("combobox", { name: "Mikrofon" }), true)).toEqual([]);
+    expect(await cut(page.getByRole("button", { name: "Sluta testa" }))).toEqual([]);
+    expect(await iconsOverWords(section)).toEqual([]);
+  });
+
+  test(`a button's icon stands beside its words at ${name(size)}`, async ({ page }) => {
+    await at(page, "result", size);
+    expect(await iconsOverWords(page.locator("[role=main]"))).toEqual([]);
+  });
+}
+
+for (const size of [AX5, ZOOM, { width: 834, height: 1031, root: 53 }]) {
+  test(`a flow's bar keeps its way back and the account apart at ${name(size)}`, async ({ page }) => {
+    await at(page, "setup", size);
+    const back = page.getByRole("link", { name: "Alla flöden" });
+    const account = page.getByRole("button", { name: /Öppna konto för/ });
+    const [backBox, accountBox] = [(await back.boundingBox())!, (await account.boundingBox())!];
+    expect(accountBox.x - (backBox.x + backBox.width), "the room between them").toBeGreaterThanOrEqual(0);
+    expect(await cut(page.getByRole("banner"))).toEqual([]);
+    expect(await page.getByRole("banner").evaluate((bar) => bar.scrollWidth <= bar.clientWidth), "nothing past the bar's edge").toBe(true);
+  });
+}
+
+for (const size of [AX5, ZOOM]) {
+  test(`"Följ uppspelningen" stays inside the player at ${name(size)}`, async ({ page }) => {
+    await at(page, "result-transcript-tab", size);
+    // Scrolling the text by hand stops following the playhead, and the player offers to follow it again.
+    await page.locator("[data-turn-index]").first().dispatchEvent("wheel");
+    const follow = page.getByRole("button", { name: "Följ uppspelningen" });
+    await expect(follow).toBeVisible();
+    const [box, dock] = [(await follow.boundingBox())!, (await page.locator("[data-docked-player]").boundingBox())!];
+    expect(box.x, "not past the player's start").toBeGreaterThanOrEqual(dock.x - 0.5);
+    expect(box.x + box.width, "not past the player's end").toBeLessThanOrEqual(dock.x + dock.width + 0.5);
+    expect(await cut(follow)).toEqual([]);
   });
 }

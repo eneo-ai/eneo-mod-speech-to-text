@@ -562,6 +562,8 @@
 
   .astryx-button {
     white-space: normal;
+    overflow-wrap: break-word;
+    hyphens: auto;
     height: auto;
     min-height: var(--size-element-md);
     padding-block: var(--spacing-0-5);

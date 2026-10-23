@@ -373,9 +373,11 @@
   margin-inline-end: auto;
 }
 
-/* "Följ uppspelningen" keeps its words on one line: where the row is short the line of keys wraps beside it instead. */
+/* "Följ uppspelningen" keeps its words on one line: where the row is short the line of keys wraps beside it instead. Only
+   where the reader's large text makes the words alone wider than the player do they wrap, inside it. */
 .follow {
   flex-shrink: 0;
+  max-inline-size: 100%;
 }
 
 /* The button that turns the letters off, and on again, ends the line as a link ends a sentence: in the line's type, on
