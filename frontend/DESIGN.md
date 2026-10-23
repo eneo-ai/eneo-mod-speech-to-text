@@ -127,7 +127,8 @@ Every size is in rem, so the text follows the reader's own size: the browser's s
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
 The result with its transcript and the speaker review widen with a large window, up to 1600 px; document prose keeps a 75ch reading measure, and a note across a wide card (a run's, the unsent recordings') about 75 characters, its lines balanced (`[data-measure]`, `styles/globals.css`).
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
-(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. Every view of the flow,
+(480 px high) puts the flow beside the stage, and beside a run's card (sending, progress, failure), in a column a third
+of the width up to 17 rem. Every view of the flow,
 the setup's form included, is as wide as its column, so each ends at the same edge; a document alone fills the page's
 column with its prose capped at the reading measure, and the text review keeps a reading column (672 px). From 1024 px the transcript's card of the result and the review stands
 beside the heading from the page's top, keeps to the window as the page scrolls and is as tall as the window below the

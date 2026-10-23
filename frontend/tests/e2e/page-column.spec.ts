@@ -71,3 +71,26 @@ for (const [state, width, words] of [
     expect(await measure(paragraph), "the paragraph's width in ch (data-measure is 55)").toBeLessThanOrEqual(56);
   });
 }
+
+// A phone on its side (844 x 390, 932 x 430): a run's card stands beside the flow, as the recording's stage does, so its
+// heading starts at the page's top and what it offers is in the first screen, not under a stacked flow column.
+for (const [state, heading, action] of [
+  ["run-progress", "Dokumentet skapas", null],
+  ["failure", /kunde inte skapas|Körningen/, "Försök igen"],
+] as const) {
+  for (const [width, height] of [[844, 390], [932, 430]] as const) {
+    test(`on a phone on its side (${width} x ${height}) ${state}'s card stands beside the flow, its heading${action ? ` and ${action}` : ""} in the first screen`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height });
+      const { STATES } = await import("./screens");
+      await STATES.find((s) => s.name === state)!.go(page, info);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const title = (await page.getByRole("heading", { level: 1, name: heading }).boundingBox())!;
+      const flowName = (await page.getByRole("main").getByText("Nämndmöte till rapport").first().boundingBox())!;
+      expect(title.x, "the card beside the flow's column").toBeGreaterThan(flowName.x + flowName.width - 1);
+      expect(title.y, "the card's heading at the page's top").toBeLessThan(height / 2);
+      if (!action) return;
+      const button = (await page.getByRole("button", { name: action }).first().boundingBox())!;
+      expect(button.y + button.height, `${action} in the first screen`).toBeLessThanOrEqual(height);
+    });
+  }
+}

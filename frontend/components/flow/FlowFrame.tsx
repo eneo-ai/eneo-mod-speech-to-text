@@ -21,6 +21,7 @@ import { PRODUCT_NAME } from "@/lib/product";
 export function FlowFrame({
   locked = false,
   fill = false,
+  run = false,
   aside,
   children,
 }: {
@@ -28,6 +29,8 @@ export function FlowFrame({
   locked?: boolean;
   /** The window's height, with panes that scroll on their own (a recording); otherwise the page grows. */
   fill?: boolean;
+  /** A run's state (sending, running, failed): on a short, wide screen its card stands beside the flow, as a stage does. */
+  run?: boolean;
   /** The flow, in a column beside `children` from a laptop's width and above them before it. */
   aside?: ReactNode;
   children: ReactNode;
@@ -53,7 +56,7 @@ export function FlowFrame({
       end={!locked && <AccountMenu />}
       height={fill ? "fill" : "auto"}
     >
-      <div ref={room.ref} className={[styles.page, aside && styles.columns, fill && styles.fill].filter(Boolean).join(" ")}>
+      <div ref={room.ref} className={[styles.page, aside && styles.columns, fill && styles.fill, run && styles.run].filter(Boolean).join(" ")}>
         {aside}
         {children}
       </div>
