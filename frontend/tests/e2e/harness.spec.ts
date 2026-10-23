@@ -85,7 +85,10 @@ test("targets are measured once a smooth scroll has ended, not on their way past
   await page.setContent(`<main><h1>Prov</h1><div style="block-size: 6000px"></div><button>Mål</button><div style="block-size: 6000px"></div></main>`);
   await page.evaluate(() => document.querySelector("button")!.scrollIntoView({ block: "start", behavior: "smooth" }));
   await settle(page);
-  expect(await page.evaluate(() => Math.round(document.querySelector("button")!.getBoundingClientRect().top)), "the scroll has come to rest").toBe(0);
+  // Firefox comes to rest at a fraction of a pixel (and Math.round of -0.3 is -0, which toBe tells from 0); a scroll still
+  // under way is hundreds of pixels off.
+  const top = await page.evaluate(() => document.querySelector("button")!.getBoundingClientRect().top);
+  expect(Math.abs(top), "the scroll has come to rest").toBeLessThanOrEqual(1);
 });
 
 test("a control Tab focuses is measured where the engine's own scroll brings it, not on that scroll's way", async ({ page }) => {
@@ -188,6 +191,10 @@ test("a main command under another layer is caught: no pointer presses it, and t
     // Enter on the button would have been answered: a press that cannot land is not made with the keyboard instead.
     expect(problems, `with a ${pointer}`).toEqual([expect.stringContaining(`button "Skapa dokument" (1 of 1): a ${pointer} cannot press it`)]);
   }
+  // The sweep's copies are contexts of its own: the copy that failed leaves its picture and its tree in the report.
+  const attached = info.attachments.map((attachment) => attachment.name);
+  expect(attached).toContain('button-Skapa-dokument-1-of-1-.png');
+  expect(attached).toContain('button-Skapa-dokument-1-of-1-.aria.yml');
   await covered.go(page, info);
   const { stops } = await tabWalk(page);
   expect(stopProblems(stops)).toContainEqual(expect.stringContaining('button "Skapa dokument": entirely hidden by div'));

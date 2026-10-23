@@ -87,6 +87,14 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  // In CI: a committed test.only fails the run instead of running one test, a run that hangs ends before the job's own
+  // limit with its report, and a test that fails is run once more. A test that passes on that second try is reported as
+  // flaky (scripts/ci-summary.mjs lists it in the job's summary) and fails the nightly gate (GATE_FAIL_ON_FLAKY), so a
+  // retry never hides a race: it only keeps one slow moment of a shared runner from failing a pull request.
+  forbidOnly: !!process.env.CI,
+  globalTimeout: process.env.CI ? 30 * 60_000 : 0,
+  retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: !!process.env.GATE_FAIL_ON_FLAKY,
   // One dev server serves every worker: more than four starve it on a shared host, and a page
   // still loading then fails a check that is not about accessibility.
   workers: WORKERS,

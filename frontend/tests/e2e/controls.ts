@@ -234,8 +234,10 @@ async function copyOf(browser: Browser, info: TestInfo, state: State, use: Use):
     caused.push(`a native ${dialog.type()} dialog`);
     void dialog.dismiss();
   });
-  // A state that is not reached (or that leaves the test out, where the browser cannot record) takes its context with it.
+  // A state that is not reached (or that leaves the test out, where the browser cannot record) takes its context with it,
+  // and leaves its picture in the report.
   await state.go(page, info).catch(async (error) => {
+    await evidence(info, page, `${state.name} not reached`);
     await context.close();
     throw error;
   });
@@ -249,6 +251,26 @@ async function copyOf(browser: Browser, info: TestInfo, state: State, use: Use):
     await context.close();
   };
   return { context, page, sentinel, caused, close };
+}
+
+/** The first lines of an error: what failed, the locator and how long it waited, without Playwright's call log. */
+const brief = (error: unknown) =>
+  String(error)
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" ");
+
+/**
+ * What a copy looked like when something about it failed, attached to the test's report: the picture and the page as a
+ * screen reader gets it. A sweep runs in contexts of its own, which Playwright's own screenshot and trace do not see.
+ */
+async function evidence(info: TestInfo, page: Page, what: string) {
+  const name = what.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80);
+  await page.screenshot().then((body) => info.attach(`${name}.png`, { body, contentType: "image/png" }), () => undefined);
+  await page.locator("body").ariaSnapshot({ timeout: 2_000 }).then((body) => info.attach(`${name}.aria.yml`, { body, contentType: "text/yaml" }), () => undefined);
 }
 
 /** Waits until the page has stopped changing for a moment (late data, an animation). */
@@ -304,12 +326,15 @@ async function check(browser: Browser, info: TestInfo, state: State, control: Co
   try {
     copy = await copyOf(browser, info, state, use);
   } catch (error) {
-    return [`${where}: the state could not be reached in a fresh copy: ${String(error).split("\n")[0]}`];
+    return [`${where}: the state could not be reached in a fresh copy: ${brief(error)}`];
   }
   try {
     await quiet(copy.page);
     const tagged = await copy.page.evaluate(tagControls, SELECTOR);
-    if (tagged[control.index]?.name !== control.name) return [`${where}: the state differs between two copies (found ${JSON.stringify(tagged[control.index]?.name)})`];
+    if (tagged[control.index]?.name !== control.name) {
+      problems.push(`${where}: the state differs between two copies (found ${JSON.stringify(tagged[control.index]?.name)})`);
+      return problems;
+    }
     copy.sentinel.expect(...(declared.expects?.[label]?.expects ?? []));
     const target = copy.page.locator(`[data-controls-index="${control.index}"]`);
     await copy.page.evaluate(watch);
@@ -326,7 +351,8 @@ async function check(browser: Browser, info: TestInfo, state: State, control: Co
         await press(target, 5_000);
       } catch (error) {
         // No press landed, so there is no response to judge: under something, off the screen, or never still.
-        return [`${where}: a ${finger ? "finger" : "mouse"} cannot press it (${whyNot(error)})`];
+        problems.push(`${where}: a ${finger ? "finger" : "mouse"} cannot press it (${whyNot(error)})`);
+        return problems;
       }
     }
     let navigated = false;
@@ -376,8 +402,9 @@ async function check(browser: Browser, info: TestInfo, state: State, control: Co
     if (copy.sentinel.redirects.length) problems.push(`${where}: redirects: ${copy.sentinel.redirects.join("; ")}`);
     if (copy.sentinel.violations.length) problems.push(`${where}: Content-Security-Policy: ${copy.sentinel.violations.join("; ")}`);
   } catch (error) {
-    problems.push(`${where}: ${String(error).split("\n")[0]}`);
+    problems.push(`${where}: ${brief(error)}`);
   } finally {
+    if (problems.length) await evidence(info, copy.page, where);
     await copy.close();
   }
   return problems;

@@ -35,6 +35,10 @@ export default defineConfig({
   testDir: "tests/prod",
   outputDir: "test-results/prod",
   timeout: 60_000,
+  // As the gate's (playwright.config.ts): no committed test.only, an end before the job's limit, one retry reported as flaky.
+  forbidOnly: !!process.env.CI,
+  globalTimeout: process.env.CI ? 30 * 60_000 : 0,
+  retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: { locale: "sv-SE", colorScheme: "light", viewport: { width: 1280, height: 800 }, trace: "retain-on-failure" },
   projects: [

@@ -116,7 +116,9 @@ ORGANIZATION = (
     if BRANDING
     else {"name": "Eneo", "logo": "default", "dark_logo": False, "logo_sizes": None}
 )
-ACCENT = resolve_accent("#1C7531", None) if BRANDING else None
+# STUB_ACCENT (and STUB_ACCENT_DARK) is another accent, with or without STUB_BRANDING: the nightly gate scans the module in
+# accents at the edge of what the backend accepts (.github/workflows/gate.yml).
+ACCENT = resolve_accent(os.environ.get("STUB_ACCENT") or ("#1C7531" if BRANDING else None), os.environ.get("STUB_ACCENT_DARK") or None)
 # Which build runs, as the backend's GET /api/healthz answers it: release v0.1.0 and its commit, so the page's link to
 # the commit opens a real one. A gate state that needs another build answers it in the browser (tests/e2e/screens.ts):
 # on the gate's real target the backend answers, not this stub.
