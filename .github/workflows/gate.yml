@@ -104,17 +104,17 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-chromium webkit firefox
       - run: npm ci
-      # A shard can hold any engine's projects. Three minutes a try, three tries (.github/apt-retry.sh, as in ci.yml).
+      # A shard can hold any engine's projects. Three tries on three mirrors (.github/apt-retry.sh, as in ci.yml).
       - name: Install the browsers' system libraries
-        timeout-minutes: 12
-        run: ${{ github.workspace }}/.github/apt-retry.sh npx playwright install-deps chromium webkit firefox
+        timeout-minutes: 18
+        run: ${{ github.workspace }}/.github/apt-retry.sh --playwright chromium webkit firefox
       # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install browsers
         timeout-minutes: 16
         run: for try in 1 2 3; do timeout 300 npx playwright install chromium webkit firefox && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       # Firefox runs Web Audio only with a sound server (as in ci.yml).
       - name: A sound server for Firefox
-        run: ${{ github.workspace }}/.github/apt-retry.sh sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
+        run: ${{ github.workspace }}/.github/apt-retry.sh pulseaudio && pulseaudio --start --exit-idle-time=-1
       # Sharded by each test's measured time, the filter in a step of its own, as in ci.yml (scripts/controls-shard.mjs).
       - name: This shard's controls
         id: shard

@@ -110,7 +110,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # The browsers of the locked Playwright, kept between runs: their download is what has hung (a job waited 2 h 19 min
-      # in it) and failed on a name lookup. The system libraries are still installed each time (install-deps).
+      # in it) and failed on a name lookup. The system libraries are still installed each time (.github/apt-retry.sh).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -125,11 +125,11 @@ jobs:
         if: matrix.suite == 'production' || matrix.suite == 'real-backend'
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - run: npm ci
-      # Three minutes a try, three tries, apt's settings first (.github/apt-retry.sh): a mirror that stalls or trickles is
-      # cut off and tried again.
+      # apt-get update and install as `sudo timeout`, three tries, the runner's mirror and then two others (.github/apt-retry.sh):
+      # a mirror that stalls or trickles is cut off and another tried.
       - name: Install the browsers' system libraries
-        timeout-minutes: 12
-        run: ${{ github.workspace }}/.github/apt-retry.sh npx playwright install-deps $BROWSERS
+        timeout-minutes: 18
+        run: ${{ github.workspace }}/.github/apt-retry.sh --playwright $BROWSERS
       # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install browsers
         timeout-minutes: 16
@@ -138,7 +138,7 @@ jobs:
       # which a runner has none of: one that plays into a sink of nothing stands in for a computer's.
       - name: A sound server for Firefox
         if: matrix.suite == 'firefox'
-        run: ${{ github.workspace }}/.github/apt-retry.sh sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
+        run: ${{ github.workspace }}/.github/apt-retry.sh pulseaudio && pulseaudio --start --exit-idle-time=-1
       - name: Production build in three engines
         if: matrix.suite == 'production'
         run: npm run test:prod -- --workers=2 --add-reporter=json
@@ -272,10 +272,10 @@ jobs:
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - name: Install what the acceptance's browser checks need
         working-directory: frontend
-        timeout-minutes: 30
+        timeout-minutes: 35
         run: |
           npm ci
-          ${{ github.workspace }}/.github/apt-retry.sh npx playwright install-deps chromium
+          ${{ github.workspace }}/.github/apt-retry.sh --playwright chromium
           for try in 1 2 3; do timeout 300 npx playwright install chromium && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       - name: Accept the image
         env:

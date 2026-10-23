@@ -42,10 +42,15 @@ jobs:
       # Astro generates content types during the build, including OpenAPI pages.
       - name: Check strict TypeScript
         run: npm run typecheck
-      # Three minutes a try, three tries, apt's settings first (.github/apt-retry.sh): a mirror that stalls or trickles is
-      # cut off and tried again.
+      # apt-get update and install as `sudo timeout`, three tries, the runner's mirror and then two others (.github/apt-retry.sh):
+      # a mirror that stalls or trickles is cut off and another tried.
+      - name: Install the browser's system libraries
+        timeout-minutes: 18
+        run: ${{ github.workspace }}/.github/apt-retry.sh --playwright chromium
+      # Five minutes a try, three tries: a download that hangs is cut off and made again.
       - name: Install the browser
-        run: ${{ github.workspace }}/.github/apt-retry.sh npx playwright install --with-deps chromium
+        timeout-minutes: 16
+        run: for try in 1 2 3; do timeout 300 npx playwright install chromium && exit 0; echo "::warning::browser download, try $try failed"; done; exit 1
       # Every documentation and API page in both themes, plus search, keyboard, narrow menus and diagrams.
       - name: Check the built site in a browser
         run: npm run check
