@@ -661,7 +661,9 @@ export const STATES: State[] = [
     // A flow's name longer than a phone's line wraps in the card; the recording's date and time and its length stay whole.
     name: "unsent-recordings-long-flow-name",
     go: async (page) => {
-      await page.goto("/flows");
+      // The list first, whole: a reload while its code and its flows are still on their way cancels them, and WebKit
+      // reports each cancel as an error of the page it leaves.
+      await flows(page);
       await keptRecording(page, 1_000, "stopped", "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor");
       await page.reload();
       await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
