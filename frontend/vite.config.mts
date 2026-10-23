@@ -28,11 +28,12 @@ export default defineConfig(({ mode }) => ({
         // small chunks. Components used by fewer routes keep their own lazy boundaries (weight.spec.ts). Lucide's icon
         // runtime (not its icons) and the drafts store (lib/drafts.ts) go with them: every flow route reads both and the
         // sign-in neither, and left to themselves they become a chunk of their own, one more request on each flow route.
+        // So does the page's shell (kit/ModuleShell, the brand and kit/RouterLink), which every page draws.
         codeSplitting: {
           groups: [
             {
               name: "ui-shared",
-              test: /node_modules\/(@astryxdesign\/core\/dist\/|lucide-react\/dist\/esm\/(createLucideIcon|Icon|context|shared\/))|\/lib\/drafts\.ts$/,
+              test: /node_modules\/(@astryxdesign\/core\/dist\/|lucide-react\/dist\/esm\/(createLucideIcon|Icon|context|shared\/))|\/lib\/drafts\.ts$|\/kit\/(ModuleShell|RouterLink)\.tsx$|\/components\/Brand\.tsx$/,
               minShareCount: 4,
             },
           ],
