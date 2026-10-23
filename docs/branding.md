@@ -61,7 +61,11 @@ nyans ligger från Eneos blå, så att en röd eller grön accent inte ger bruna
 ser ut som en länk. Ligger en talares färg nära accentens nyans (närmare än 30 grader) får talaren en reservfärg i
 stället, magenta eller gulgrön. Har ljust och mörkt läge var sin nyans kan reservfärgerna ta slut: då behåller talaren sin
 ljushet i den nyans som ligger längst från accenterna och de andra talarna, aldrig blå. Backend ser till att varje talares färg når 4,5:1 mot sidans ytor och mot tonen på en
-markerad rad, även i accentens ton.
+markerad rad och på stycket som spelas, även i accentens ton.
+
+**Transkriberingen när den spelas.** Stycket som spelas, dess mening, orden som har sagts och ordet som sägs får var sin
+ton av accentfärgen, lagda på varandra. Med en mycket ljus färg i mörkt läge, eller en mycket mörk i ljust läge, skulle
+texten på dem hamna under 4,5:1. Då gör backend alla tonerna lika mycket svagare, så att texten når 4,5:1.
 
 **Mörkt läge.** Utelämnar du `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrolleras på samma sätt.
 
