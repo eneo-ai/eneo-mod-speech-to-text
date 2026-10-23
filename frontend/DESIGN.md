@@ -287,8 +287,8 @@ switches round. One-pixel borders are `var(--border-width)`.
   "Byt namn på" its speaker after the choice and what it applies to, after the run and in the review's pause alike: it
   opens the naming dialog at that speaker, and the focus goes back to the passage when it closes.
 - A passage's pieces are one element each (no wrapper per word), and a passage is laid out only when it is near the
-  window (`content-visibility: auto`), those far from it skipped fifty at a time, so a frame that scrolls or plays costs
-  the same at any length: an hour's meeting is tens of thousands of words. The speaker filter hides the passages it leaves
+  window (`content-visibility: auto`, on each passage: a box that skips several passages at once leaves them out of
+  Chromium's accessibility tree): an hour's meeting is tens of thousands of words. The speaker filter hides the passages it leaves
   out and keeps them in the page. On a phone a passage's coloured
   rule and its name say whose it is; its mark stands beside it from 640 px.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
