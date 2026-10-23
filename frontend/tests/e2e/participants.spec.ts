@@ -155,3 +155,27 @@ test("the names last sent are offered in one press on the flow's next setup: two
   await expect(offer, "the field has names: nothing more to offer").toHaveCount(0);
   await expect(page.getByRole("textbox", { name: /^Deltagare|^Lägg till namn/ }).first()).toBeFocused();
 });
+
+test("a name removed with a finger leaves the focus on the next name's remove, and the keyboard closed", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a finger");
+  await setup(page);
+  await chooseFile(page);
+  await addParticipants(page, ["Anna Berg", "Erik Lund", "Karin Ek"]);
+  await page.getByRole("button", { name: "Ta bort Erik Lund" }).tap();
+  await expect(page.getByRole("button", { name: "Ta bort Karin Ek" }), "the next name's").toBeFocused();
+  await page.getByRole("button", { name: "Ta bort Karin Ek" }).tap();
+  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" }), "the last one gone: the one before it").toBeFocused();
+});
+
+test("last time's names added with a finger leave the keyboard closed: the focus on the first name's remove", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a finger");
+  await setup(page);
+  await chooseFile(page);
+  await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await page.waitForURL(/[?&]run=/);
+  await setup(page);
+  await page.getByRole("button", { name: /^Lägg till förra gångens namn/ }).tap();
+  await expect(page.getByRole("list", { name: "Tillagda namn" }).getByRole("listitem")).toHaveText(["Anna Berg", "Erik Lund"]);
+  await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
+});
