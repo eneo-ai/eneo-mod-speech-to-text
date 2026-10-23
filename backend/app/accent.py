@@ -414,22 +414,24 @@ def _speakers(accent: Accent) -> list[tuple[str, str]]:
         return light, dark
 
     spares = iter(pair for pair in SPARE_SPEAKERS if not near(pair))
-    chosen: list[tuple[RGB, RGB] | None] = [None if near(pair) else readable(pair) for pair in SPEAKERS]
-    for index, pair in enumerate(SPEAKERS):
-        if chosen[index] is None and (spare := next(spares, None)):
-            chosen[index] = readable(spare)
-    for index, pair in enumerate(SPEAKERS):
-        if chosen[index] is None:
-            others = [colours for colours in chosen if colours]
-            in_hue = lambda hue: readable(tuple(to_hex(_from_hls(hue / 360, *_hls(_hex(own))[1:])) for own in pair))  # noqa: E731
-            room = lambda colours: (  # noqa: E731
-                all(_hue_apart(colours[side], accents[side]) >= _SPEAKER_APART and not _blue(colours[side]) for side in (0, 1)),
-                min(_hue_apart(colours[side], other[side]) for side in (0, 1) for other in [accents, *others]),
-            )
-            chosen[index] = max((in_hue(hue) for hue in range(0, 360, 5)), key=room)
+    # Those apart from the accents first, as the others are placed apart from them. The spares go to the first in an
+    # accent's hue, so a speaker given a hue of its own is placed apart from every spare too.
+    chosen = {index: readable(pair) for index, pair in enumerate(SPEAKERS) if not near(pair)}
     changed = []
     for index, pair in enumerate(SPEAKERS):
-        light, dark = (to_hex(rgb) for rgb in chosen[index])  # type: ignore[union-attr]
+        if index in chosen:
+            colours = chosen[index]
+        elif spare := next(spares, None):
+            colours = readable(spare)
+        else:
+            in_hue = lambda hue: readable(tuple(to_hex(_from_hls(hue / 360, *_hls(_hex(own))[1:])) for own in pair))  # noqa: E731
+            room = lambda candidate: (  # noqa: E731
+                all(_hue_apart(candidate[side], accents[side]) >= _SPEAKER_APART and not _blue(candidate[side]) for side in (0, 1)),
+                min(_hue_apart(candidate[side], other[side]) for side in (0, 1) for other in [accents, *chosen.values()]),
+            )
+            colours = max((in_hue(hue) for hue in range(0, 360, 5)), key=room)
+        chosen[index] = colours
+        light, dark = (to_hex(rgb) for rgb in colours)
         if (light, dark) != pair:
             changed.append((f"--module-speaker-{index}", f"light-dark({light}, {dark})"))
     return changed
