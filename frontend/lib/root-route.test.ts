@@ -66,3 +66,21 @@ test("a page that throws is replaced the same way, at the address the page had",
   assert.deepEqual(headings(container), ["Sidan kunde inte visas."]);
   assert.equal(router.state.location.pathname, "/");
 });
+
+test("a page whose code could not be fetched for want of a network says so, and its reload waits for the network", async (t) => {
+  const { onlineStatus } = await import("@/lib/online-status");
+  window.dispatchEvent(new Event("offline"));
+  t.after(() => void window.dispatchEvent(new Event("online")));
+  assert.equal(onlineStatus.connection, "offline");
+  const { container, act } = await open(t, async () => {
+    throw new TypeError("Failed to fetch dynamically imported module");
+  });
+  assert.deepEqual(headings(container), ["Sidan kunde inte visas."]);
+  // Not an update: the network is gone, and a reload without one would leave only the browser's own error page.
+  assert.match(container.textContent ?? "", /Ingen anslutning\. Ladda om sidan när anslutningen är tillbaka\./);
+  assert.doesNotMatch(container.textContent ?? "", /uppdaterats/);
+  const reload = () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Ladda om sidan");
+  assert.ok(reload()?.matches(":disabled, [aria-disabled='true']"), "no reload while there is nothing to load from");
+  await act(async () => void window.dispatchEvent(new Event("online")));
+  assert.ok(!reload()?.matches(":disabled, [aria-disabled='true']"), "the reload, once the network is back");
+});
