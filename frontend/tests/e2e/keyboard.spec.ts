@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabKey, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, chooseMode, isLaptop, isPhone, needsRecording, pdfInDialog, result, run, setup, STATES } from "./screens";
+import { backLink, chooseMode, chooseSpeaker, GROUP_ENGINES, isLaptop, isPhone, longTranscript, needsRecording, pdfInDialog, result, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
@@ -195,6 +195,79 @@ test("from the link before the transcript, Tab goes to its first passage's contr
     return { tag: element.tagName, name: element.getAttribute("aria-label") ?? element.textContent };
   });
   expect(focused).toEqual({ tag: "BUTTON", name: "Talare 1, ändra talare" });
+});
+
+// The browser skips a long transcript's passages while they are far from the window (content-visibility: auto,
+// TranscriptPlayer.module.css). What is in them is still the page's: found by the browser's find, reached by Tab, and
+// shown once it is. Each engine does this its own way.
+test.describe("a long transcript's passages far from the window", () => {
+  test.beforeEach(({}, info) => test.skip(!GROUP_ENGINES.includes(info.project.name), "a laptop and a phone in each engine"));
+
+  /** Whether the browser lays out what the passage shows, or skips it. */
+  const rendered = (passage: Locator) =>
+    passage
+      .locator("button")
+      .first()
+      .evaluate((control) => (control as HTMLElement & { checkVisibility(options: object): boolean }).checkVisibility({ contentVisibilityAuto: true }));
+  /** The passage the focus, or the selection, is in. */
+  const passageOf = (page: Page, of: "focus" | "selection") =>
+    page.evaluate((of) => {
+      const node = of === "focus" ? document.activeElement : getSelection()?.anchorNode;
+      return (node instanceof Element ? node : node?.parentElement)?.closest("[data-turn-index]")?.getAttribute("data-turn-index") ?? null;
+    }, of);
+
+  test("the browser's find reaches a passage it skips, selects the words there and shows them", async ({ page, browserName }, info) => {
+    await longTranscript(page, info);
+    // Passage 1,500 starts at 1:30:00, a time no other passage shows, a meeting's hour and a half below the window.
+    const far = page.locator('[data-turn-index="1500"]');
+    expect(await rendered(far), "the passage is skipped before the find").toBe(false);
+    // The browser's own find in the page, as its find bar (Ctrl+F) runs it.
+    expect(await page.evaluate(() => (window as unknown as { find(text: string): boolean }).find("1:30:00")), "found").toBe(true);
+    await settle(page);
+    expect(await passageOf(page, "selection"), "the selection is in the passage").toBe("1500");
+    expect(await rendered(far), "the passage is laid out").toBe(true);
+    // Chromium's window.find scrolls the page but no box in it, on a plain page as here (its find bar scrolls both, and
+    // has no automation): where the transcript scrolls in its own box, Chromium's find is the selection and the layout.
+    if (browserName === "chromium" && isLaptop(info)) return;
+    const seen = await page.evaluate(() => {
+      const box = getSelection()!.getRangeAt(0).getBoundingClientRect();
+      return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest("[data-turn-index]")?.getAttribute("data-turn-index") ?? null;
+    });
+    expect(seen, "what was found is in the window, under nothing").toBe("1500");
+  });
+
+  test("Tab from the link before a transcript read at its end goes to its first passage, which was skipped, and shows it focused", async ({ page }, info) => {
+    await longTranscript(page, info);
+    const first = page.locator('[data-turn-index="0"]');
+    await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+    // Read at its end with the focus left on the link: from a laptop's width the transcript's box scrolls, on a phone the page.
+    await page.locator('[data-turn-index="1999"]').evaluate((passage) => passage.scrollIntoView({ block: "end" }));
+    await settle(page);
+    expect(await rendered(first), "the first passage is skipped before the Tab").toBe(false);
+    await page.keyboard.press(tabKey(page));
+    expect(await passageOf(page, "focus"), "the focus is in the first passage").toBe("0");
+    const stop = await focusStop(page);
+    expect(stopProblems([stop!]), "its control is in the window with its focus seen").toEqual([]);
+    expect(await rendered(first), "the passage is laid out").toBe(true);
+  });
+
+  test("with one speaker chosen, Tab goes from one of theirs to the next and passes the others' passages", async ({ page }, info) => {
+    await longTranscript(page, info);
+    await chooseSpeaker(page, info, "Talare 2");
+    const theirs = await page.locator('[data-turn-index][aria-label^="Talare 2,"]').count();
+    await expect(page.locator("[data-turn-index]:not([hidden])")).toHaveCount(theirs, { timeout: 30_000 });
+    await page.getByRole("link", { name: "Hoppa förbi transkriberingen" }).focus();
+    const passed: string[] = [];
+    for (let stop = 1; stop <= 12; stop++) {
+      await page.keyboard.press(tabKey(page));
+      const at = await passageOf(page, "focus");
+      expect(at, `Tab ${stop} is in a passage`).not.toBeNull();
+      if (passed.at(-1) !== at) passed.push(at!);
+    }
+    // Talare 2 says passages 1, 4, 7, 10: those of Talare 1 and 3 between them are passed.
+    expect(passed.length, "passages Tab went through").toBeGreaterThanOrEqual(3);
+    expect(passed).toEqual(["1", "4", "7", "10"].slice(0, passed.length));
+  });
 });
 
 // A refused Skapa dokument moves the focus to the field to mend. Firefox and Safari scroll a focused field only to the

@@ -17,7 +17,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { needsRecording, STATES } from "./screens";
+import { chooseSpeaker, GROUP_ENGINES, longTranscript, needsRecording, STATES } from "./screens";
 
 // Dates the page shows are read against this time, so the snapshots stay put.
 const NOW = new Date("2026-09-24T12:00:00+02:00");
@@ -78,6 +78,52 @@ for (const { state, region, fixedTime, waysIn } of SNAPSHOTS) {
     await expect(region(page)).toMatchAriaSnapshot({ name });
   });
 }
+
+/**
+ * The roles and names directly in the transcript's list in Chromium's own tree, the one a screen reader is given: each
+ * of them has the list for its parent there. Chromium only.
+ */
+async function listChildren(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Accessibility.enable");
+    const { root } = await cdp.send("DOM.getDocument", { depth: 0 });
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: 'ol[aria-label="Transkriberingen"]' });
+    const [list] = (await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false })).nodes;
+    const { nodes } = (await cdp.send("Accessibility.getChildAXNodes", { id: list.nodeId })) as { nodes: { ignored: boolean; role?: { value: string }; name?: { value: string } }[] };
+    return nodes.filter((node) => !node.ignored).map((node) => `${node.role?.value} "${node.name?.value}"`);
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The browser skips a long transcript's passages while they are far from the window (content-visibility: auto,
+// TranscriptPlayer.module.css), and the speaker filter hides the other speakers' passages in the page. A screen reader is
+// given the list and its items, those far from the window among them, nothing between, and with a speaker chosen theirs
+// alone.
+test("a long transcript is one list of all its passages, those far from the window too, and with a speaker chosen of theirs only", async ({ page, browserName }, info) => {
+  test.skip(!GROUP_ENGINES.includes(info.project.name), "a laptop and a phone in each engine");
+  await longTranscript(page, info);
+  const list = page.getByRole("list", { name: "Transkriberingen" });
+  // The list and what is directly in it, as Playwright reads the page's markup: one line each.
+  const items = async () => (await list.ariaSnapshot({ depth: 1 })).split("\n").slice(1).map((line) => line.trim());
+  const passage = /^- listitem "Talare [123], [\d:]+"$/;
+  const all = await items();
+  expect(all, "every passage is an item of the list").toHaveLength(2_000);
+  expect(all.filter((line) => !passage.test(line)), "and nothing else is").toEqual([]);
+
+  await chooseSpeaker(page, info, "Talare 2");
+  const theirs = await page.locator('[data-turn-index][aria-label^="Talare 2,"]').count();
+  await expect(page.locator("[data-turn-index]:not([hidden])")).toHaveCount(theirs, { timeout: 30_000 });
+  const chosen = await items();
+  expect(chosen, "the list holds the speaker's passages").toHaveLength(theirs);
+  expect(chosen.filter((line) => !line.startsWith('- listitem "Talare 2, ')), "and no other's").toEqual([]);
+  if (browserName === "chromium") {
+    const tree = await listChildren(page);
+    expect(tree, "in Chromium's tree as well").toHaveLength(theirs);
+    expect(tree.filter((child) => !child.startsWith('listitem "Talare 2, ')), "no other speaker's").toEqual([]);
+  }
+});
 
 /** Records each change of a live region's text (aria-hidden parts left out), in order. */
 function listen() {
