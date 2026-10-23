@@ -201,19 +201,23 @@ export function RunOpening({ onRetry, retrying = false }: { onRetry: () => void;
   );
 }
 
-/** The run has ended but its result could not be read: say so, and read it again. */
-export function RunUnread({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const heading = usePhaseHeading("Resultatet kunde inte hämtas");
+/**
+ * The run has ended but its result could not be read, or it waits for the person's review (`review`) and its pause could
+ * not be read: say so, and read it again.
+ */
+export function RunUnread({ message, review = false, onRetry }: { message: string; review?: boolean; onRetry: () => void }) {
+  const title = review ? "Granskningen kunde inte hämtas" : "Resultatet kunde inte hämtas";
+  const heading = usePhaseHeading(title);
   return (
     <StateCard>
       <VStack gap={6}>
         <VStack gap={2}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            Resultatet kunde inte hämtas
+            {title}
           </Heading>
           <Text as="p">{message}</Text>
           <Text as="p" type="supporting">
-            Körningen är avslutad och finns kvar i Eneo.
+            {review ? "Körningen väntar på din granskning i Eneo." : "Körningen är avslutad och finns kvar i Eneo."}
           </Text>
         </VStack>
         <ActionRow>
