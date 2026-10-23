@@ -1,5 +1,5 @@
 import { Download, FileText, Mic, Trash2 } from "lucide-react";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { type RefObject, type UIEvent, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -65,10 +65,47 @@ function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; 
   return { sources, unreadable };
 }
 
+/** Where the draft is being read: the paragraph at its top, how far into that paragraph, at what width, and its focus. */
+type DraftReading = { paragraph: number; within: number; width: number; focused: boolean };
+
+/** The paragraph at the top of the draft's box and how far into it: the lines wrap anew at another width, paragraphs do not. */
+function readingOf(region: HTMLElement) {
+  const top = region.getBoundingClientRect().top;
+  const boxes = [...region.querySelectorAll(":scope > p")].map((p) => p.getBoundingClientRect());
+  const paragraph = Math.max(0, boxes.findIndex((box) => box.bottom > top));
+  const box = boxes[paragraph];
+  return { paragraph, within: box?.height ? (top - box.top) / box.height : 0, width: region.clientWidth };
+}
+
 /** Strömma's live text after Stoppa, to read and copy until the document brings the final text. */
-function LiveDraft({ live, makesText }: { live: LiveSession; makesText: boolean }) {
+function LiveDraft({ live, makesText, reading }: { live: LiveSession; makesText: boolean; reading: RefObject<DraftReading | null> }) {
   const { pieces } = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
+  // The panel has the draft in one of two places, and a window crossing the phone's width puts it in the other: a new
+  // element, which goes on where the last one was read, with its focus.
+  const keepReading = useCallback(
+    (region: HTMLElement | null) => {
+      if (!region) return;
+      const was = reading.current;
+      if (was) {
+        const anchor = region.querySelectorAll(":scope > p")[was.paragraph]?.getBoundingClientRect();
+        if (anchor) region.scrollTop += anchor.top - region.getBoundingClientRect().top + was.within * anchor.height;
+        if (was.focused) region.focus();
+      }
+      reading.current = { ...readingOf(region), focused: was?.focused ?? false };
+      return () => {
+        reading.current!.focused = document.activeElement === region;
+      };
+    },
+    [reading],
+  );
+  // Kept as it is read, since by the time the element is replaced the browser has already wrapped its text at the new width
+  // and cut its scroll to fit. That cut is a scroll too, at another width than the last one read: not the reader's.
+  const read = (event: UIEvent<HTMLElement>) => {
+    const region = event.currentTarget;
+    const was = reading.current!;
+    reading.current = region.clientWidth === was.width ? { ...readingOf(region), focused: was.focused } : { ...was, width: region.clientWidth };
+  };
   const texts = paragraphs(pieces).map((group) => group.map((piece) => piece.text).join(" "));
   if (texts.length === 0) return null;
   return (
@@ -85,7 +122,7 @@ function LiveDraft({ live, makesText }: { live: LiveSession; makesText: boolean 
         <CopyButton text={texts.join("\n\n")} label="Kopiera" />
       </HStack>
       {/* Scrolls on its own, by keyboard too, so a long meeting's draft keeps the actions in reach. */}
-      <VStack role="region" aria-labelledby={headingId} tabIndex={0} isScrollable gap={3} className={styles.draft}>
+      <VStack ref={keepReading} onScroll={read} role="region" aria-labelledby={headingId} tabIndex={0} isScrollable gap={3} className={styles.draft}>
         {texts.map((text, index) => (
           <Text as="p" key={index}>
             {text}
@@ -201,6 +238,7 @@ export function ReadyPanel({
   );
 
   const stacked = useMediaQuery(STACKED);
+  const draftReading = useRef<DraftReading | null>(null);
   // The quiet ways: keeping the audio as a file and deleting it. A ghost button's own padding would set its icon in from
   // the card's content edge, where the words above start: the group stands out by that much.
   const quiet = (
@@ -255,7 +293,7 @@ export function ReadyPanel({
       {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
       {/* The draft to read and copy: under the player, and on a phone under the decision, which it would push off the
           first screen. */}
-      {live && !stacked && <LiveDraft live={live} makesText={makesText} />}
+      {live && !stacked && <LiveDraft live={live} makesText={makesText} reading={draftReading} />}
 
       {empty && <Text as="p">Inget ljud sparades i den här inspelningen.</Text>}
 
@@ -308,7 +346,7 @@ export function ReadyPanel({
           </Text>
         )}
       </VStack>
-      {live && stacked && <LiveDraft live={live} makesText={makesText} />}
+      {live && stacked && <LiveDraft live={live} makesText={makesText} reading={draftReading} />}
       <AlertDialog
         isOpen={confirming && !signedOut}
         onOpenChange={setConfirming}
