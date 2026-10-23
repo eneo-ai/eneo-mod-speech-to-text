@@ -521,6 +521,18 @@
     border-radius: var(--radius-full);
   }
 
+  .astryx-tab-strip {
+    flex-wrap: wrap;
+  }
+
+  .astryx-tab {
+    white-space: normal;
+    height: auto;
+    min-height: var(--size-element-md);
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+
   .astryx-slider-control {
     min-block-size: 24px;
   }

@@ -14,6 +14,7 @@ import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContra
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
+import { useNarrowerThan } from "./useRoomInRow";
 import { useWorkspace } from "@/lib/workspace";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import { participantsOf } from "@/lib/participants";
@@ -132,6 +133,9 @@ export function RunResult({
   const participants = participantsField ? participantsOf(details[participantsField]) : [];
   const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument, participants } : undefined;
   const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
+  // Under 16 rem of the root's text (the reader's large text, a phone's zoom) two lines hold a word or two of them: there
+  // they are whole.
+  const headRoom = useNarrowerThan(16);
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
   const wide = useMediaQuery(LAPTOP, true);
@@ -211,7 +215,7 @@ export function RunResult({
     </HStack>
   );
   const head = (
-    <VStack gap={2}>
+    <VStack gap={2} ref={headRoom.ref}>
       {/* From 640 px "Ny inspelning" shares the title's row alone, centred on it, so the lines under it have the column's
           width. */}
       {metaStacked ? (
@@ -244,7 +248,7 @@ export function RunResult({
       )}
       {detailsLine && (
         // Two lines at most (a council has many participants): the rest on hover, all of it to a screen reader.
-        <Text as="p" color="secondary" maxLines={2}>
+        <Text as="p" color="secondary" maxLines={headRoom.narrow ? undefined : 2}>
           {detailsLine}
         </Text>
       )}

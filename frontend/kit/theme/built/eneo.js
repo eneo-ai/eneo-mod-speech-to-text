@@ -401,6 +401,20 @@ export const eneoTheme = {
         "borderRadius": "var(--radius-full)"
       }
     },
+    "tab-strip": {
+      "base": {
+        "flexWrap": "wrap"
+      }
+    },
+    "tab": {
+      "base": {
+        "whiteSpace": "normal",
+        "height": "auto",
+        "minHeight": "var(--size-element-md)",
+        "overflowWrap": "break-word",
+        "hyphens": "auto"
+      }
+    },
     "slider-control": {
       "base": {
         "minBlockSize": "24px"

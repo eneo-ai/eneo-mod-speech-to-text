@@ -92,7 +92,7 @@
 
 .optionNote {
   flex-shrink: 0;
-  /* Read text: never under the supporting size (11 px is the speaker marks' numerals only). */
+  /* Read text: never under the supporting size. */
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }

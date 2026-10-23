@@ -215,6 +215,11 @@ export const eneoTheme = defineTheme({
       },
       'color:blue': {backgroundColor: 'var(--color-accent-muted)', color: 'var(--color-text-primary)', borderRadius: 'var(--radius-full)'},
     },
+    // Tabs that do not fit beside each other (the reader's large text, a phone's zoom) stand in rows, each with its words
+    // whole and hyphenated where one is longer than the row: the design system's strip scrolled them sideways and cut
+    // the one not chosen at the window's edge.
+    'tab-strip': {base: {flexWrap: 'wrap'}},
+    tab: {base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', overflowWrap: 'break-word', hyphens: 'auto'}},
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
     'slider-control': {base: {minBlockSize: MOUSE_TARGET}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line. Chips stand 8 px apart

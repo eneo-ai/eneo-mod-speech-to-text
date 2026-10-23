@@ -111,8 +111,8 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Body** (400, 16 px, 1.5).
 - **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions. What has a consequence
   (the review's deadline and what to do, what Skapa dokument does to a recording, that a page closed during an upload
-  stops it) is body text in the secondary colour, never a footnote. Nothing read is set below 14 px; 11 px is the
-  speaker marks' numerals only. A field's words and every paragraph wrap with no word alone on their last line
+  stops it) is body text in the secondary colour, never a footnote. Nothing is set below 14 px, a speaker mark's letter
+  included: its disc grows with it at the reader's large text. A field's words and every paragraph wrap with no word alone on their last line
   (`text-wrap: pretty`, `styles/globals.css`).
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.

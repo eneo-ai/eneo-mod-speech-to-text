@@ -172,6 +172,13 @@ a.astryx-top-nav-heading:focus-visible,
   block-size: auto;
 }
 
+/* A token (a pill, a name's chip) keeps its words on one line and cuts the rest with an ellipsis; with the reader's large
+   text, or a long name, they wrap inside it instead (its height already gives way, kit/theme/eneo.theme.ts). */
+.astryx-token > span:not(.astryx-icon) {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
 /* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
    gives it back, for every button the design system draws. */
 @media (forced-colors: active) {

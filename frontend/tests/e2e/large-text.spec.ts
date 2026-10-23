@@ -166,3 +166,33 @@ for (const size of [AX5, ZOOM]) {
     expect(await cut(follow)).toEqual([]);
   });
 }
+
+for (const size of [AX2, AX5, ZOOM]) {
+  test(`a pill, the result's tabs and its details keep their words at ${name(size)}`, async ({ page }) => {
+    await at(page, "review", size);
+    expect(await cut(page.getByText("Osäkert förslag").first().locator(".."))).toEqual([]);
+    await at(page, "result", size);
+    const tabs = page.getByRole("tablist");
+    expect(await tabs.evaluate((strip) => strip.scrollWidth <= strip.clientWidth + 1), "both tabs in view, no strip to scroll").toBe(true);
+    expect(await cut(tabs)).toEqual([]);
+    expect(await cut(page.getByText(/^Deltagare:/))).toEqual([]);
+  });
+}
+
+for (const size of [AX2, AX5]) {
+  test(`a speaker's letter stays inside its round mark at ${name(size)}`, async ({ page }) => {
+    await at(page, "review", size);
+    const outside = await page.locator("span[aria-hidden][data-size]").evaluateAll((marks) =>
+      marks.flatMap((mark) => {
+        const disc = mark.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(mark);
+        const letter = range.getBoundingClientRect();
+        return letter.left < disc.left - 0.5 || letter.right > disc.right + 0.5 || letter.top < disc.top - 0.5 || letter.bottom > disc.bottom + 0.5
+          ? [`${mark.textContent} ${Math.round(letter.width)}x${Math.round(letter.height)} in ${Math.round(disc.width)}x${Math.round(disc.height)}`]
+          : [];
+      }),
+    );
+    expect(outside).toEqual([]);
+  });
+}
