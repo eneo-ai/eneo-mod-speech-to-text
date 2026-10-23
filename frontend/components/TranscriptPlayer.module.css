@@ -563,6 +563,11 @@
   font-size: var(--font-size-base);
   line-height: 1.65;
   color: var(--color-text-primary);
+  /* A long word (a Swedish compound) that ends a line is hyphenated: with the reader's large text it was otherwise broken
+     mid-syllable ("kommunsty|relsen"). */
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  hyphenate-limit-chars: 10 4 4;
 }
 
 .sentence {

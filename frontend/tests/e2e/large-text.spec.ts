@@ -210,3 +210,19 @@ test("an iPad upright at the largest text: the speaker chips stand clear of the 
   expect(over, "no chip over the search field").toEqual([]);
   expect(await cut(page.locator(".astryx-toggle-button").first())).toEqual([]);
 });
+
+for (const size of [AX2, AX5]) {
+  test(`a flow's description in the list is whole at ${name(size)}`, async ({ page }) => {
+    await at(page, "flow-list", size);
+    const row = page.getByRole("link", { name: /^Nämndmöte till rapport/ }).locator("xpath=ancestor::li[1]");
+    expect(await cut(row)).toEqual([]);
+  });
+}
+
+test(`a field's "Valfritt" stays inside the card at ${name(AX5)}`, async ({ page }) => {
+  await at(page, "setup", AX5);
+  const past = await page.locator(".astryx-field-label").evaluateAll((labels) =>
+    labels.filter((label) => label.getBoundingClientRect().width > 1).flatMap((label) => [...label.querySelectorAll("*")].filter((part) => part.getBoundingClientRect().right > label.getBoundingClientRect().right + 0.5).map((part) => part.textContent!.trim())),
+  );
+  expect(past).toEqual([]);
+});

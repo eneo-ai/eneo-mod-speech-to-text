@@ -184,6 +184,7 @@ export const eneoTheme = {
       "base": {
         "overflowWrap": "anywhere",
         "hyphens": "auto",
+        "hyphenateLimitChars": "8 3 3",
         "textWrap": "balance",
         ":focus-visible": {
           "outline": "none"
@@ -268,7 +269,8 @@ export const eneoTheme = {
     "field-label": {
       "base": {
         "fontWeight": "var(--font-weight-semibold)",
-        "color": "var(--color-text-primary)"
+        "color": "var(--color-text-primary)",
+        "flexWrap": "wrap"
       }
     },
     "text-input": {
@@ -347,7 +349,9 @@ export const eneoTheme = {
     },
     "markdown": {
       "base": {
-        "overflowWrap": "anywhere"
+        "overflowWrap": "anywhere",
+        "hyphens": "auto",
+        "hyphenateLimitChars": "10 4 4"
       }
     },
     "table-header-cell": {

@@ -16,6 +16,7 @@ import type { FlowSparsePublic } from "@/lib/api";
 import type { FlowSpaceGroup } from "@/lib/flow-discovery";
 import { withLastUsedFirst } from "@/lib/last-used-flow";
 import styles from "./FlowList.module.css";
+import { useNarrowerThan } from "@/components/flow/useRoomInRow";
 
 /** How the flow takes its input (Eneo's `input_type`); a flow with no file or audio asks only for details. */
 export function inputIcon(inputType: FlowSparsePublic["input_type"]): LucideIcon {
@@ -97,8 +98,11 @@ function SpaceSection({ group, lastFlowId }: { group: FlowSpaceGroup; lastFlowId
 function FlowRows({ flows, lastFlowId }: { flows: FlowSparsePublic[]; lastFlowId: string | null }) {
   const tablet = useMediaQuery(TABLET, true);
   const tiled = useMediaQuery(TILED, true);
+  // A description keeps two or three lines; where the reader's large text leaves the list under 16 rem of the root's text
+  // those lines hold a few words, and the description is whole instead.
+  const room = useNarrowerThan(16);
   return (
-    <List hasDividers density="spacious" className={styles.rows}>
+    <List hasDividers density="spacious" className={styles.rows} ref={room.ref}>
       {withLastUsedFirst(flows, lastFlowId).map((flow) => (
         <ListItem
           key={flow.id}
@@ -121,7 +125,7 @@ function FlowRows({ flows, lastFlowId }: { flows: FlowSparsePublic[]; lastFlowId
           }
           description={
             flow.description ? (
-              <Text type="supporting" color="secondary" maxLines={tablet ? 2 : 3} hasTruncateTooltip={false} textWrap="pretty">
+              <Text type="supporting" color="secondary" maxLines={room.narrow ? undefined : tablet ? 2 : 3} hasTruncateTooltip={false} textWrap="pretty">
                 {flow.description}
               </Text>
             ) : undefined

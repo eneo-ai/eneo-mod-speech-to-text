@@ -150,7 +150,8 @@ export const eneoTheme = defineTheme({
     // A field's label leads: semibold in the primary colour. Its description stays 14 px and secondary, and its last line
     // keeps more than one word (the field's words inherit it: the description has no class of its own).
     field: {base: {textWrap: 'pretty'}},
-    'field-label': {base: {fontWeight: 'var(--font-weight-semibold)', color: 'var(--color-text-primary)'}},
+    // Its "∙ Valfritt" goes under the label where the reader's large text leaves no room beside it, not past the card.
+    'field-label': {base: {fontWeight: 'var(--font-weight-semibold)', color: 'var(--color-text-primary)', flexWrap: 'wrap'}},
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
     // 320 px screen: Astryx breaks words only when it truncates.
     // A heading that wraps balances its lines: "Dokumentet kunde inte skapas" does not leave "skapas" alone on a phone.
@@ -159,8 +160,10 @@ export const eneoTheme = defineTheme({
     // A phase's heading takes focus when its view appears (usePhaseHeading) but is no control: the browser counts that
     // focus call as keyboard focus and would frame the headline on every visit.
     // Display and state titles are set a little tighter, as a bold face at their size wants.
+    // Only a word of 8 letters or more is hyphenated, 3 or more on each side: "Dokumentet kunde inte skapas" breaks
+    // between words, never "kun-de" (Firefox, and Chromium on Windows and Android, hyphenated a five-letter word).
     heading: {
-      base: {overflowWrap: 'anywhere', hyphens: 'auto', textWrap: 'balance', ':focus-visible': {outline: 'none'}},
+      base: {overflowWrap: 'anywhere', hyphens: 'auto', hyphenateLimitChars: '8 3 3', textWrap: 'balance', ':focus-visible': {outline: 'none'}},
       'level:1': {letterSpacing: '-0.01em'},
       'type:display-3': {letterSpacing: '-0.02em'},
     },
@@ -178,7 +181,9 @@ export const eneoTheme = defineTheme({
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
     // A result's prose, as the page's own text: a long address wraps inside the column instead of reaching past a 320 px screen.
-    markdown: {base: {overflowWrap: 'anywhere'}},
+    // A long word (10 letters or more, a Swedish compound) that ends a line is hyphenated, as a heading's is: with the
+    // reader's large text it was otherwise broken mid-syllable ("budgetrame|n").
+    markdown: {base: {overflowWrap: 'anywhere', hyphens: 'auto', hyphenateLimitChars: '10 4 4'}},
     // A table's header cells keep one line and cut the rest off with an ellipsis, where the cells under them wrap: a
     // heading such as "Belopp, tkr" loses its unit on a phone (WCAG 1.4.10).
     'table-header-cell': {base: {whiteSpace: 'normal', textOverflow: 'clip', overflowWrap: 'break-word', wordBreak: 'break-word'}},

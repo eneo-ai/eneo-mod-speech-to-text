@@ -9,6 +9,10 @@
   position: relative;
   min-block-size: calc(var(--spacing-12) + var(--spacing-6));
   padding-inline: var(--spacing-4);
+  /* A flow's name and its description hyphenate a long word that ends a line, as a heading does: with the reader's large
+     text "Nämndmöte" was otherwise broken at its edge ("Nämndm|öte"). */
+  hyphens: auto;
+  hyphenate-limit-chars: 8 3 3;
 }
 
 @media (min-width: 768px) {

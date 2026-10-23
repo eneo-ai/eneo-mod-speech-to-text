@@ -221,6 +221,7 @@
 .columnName {
   letter-spacing: -0.02em;
   hyphens: auto;
+  hyphenate-limit-chars: 8 3 3;
 }
 
 /* "Så fungerar det" (HowItWorks): the steps and tips as native lists whose words wrap; the reset takes the markers away,
