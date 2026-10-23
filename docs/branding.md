@@ -56,6 +56,11 @@ inget på sidan blir kvar i Eneos blå. Backend ser till att den sekundära text
 varje yta, även i den nya tonen. En grå accent ger rent gråa ytor. I mörkt läge tonas ytorna svagare ju längre accentens
 nyans ligger från Eneos blå, så att en röd eller grön accent inte ger bruna eller olivgröna ytor.
 
+**Talarnas färger.** Varje talare i transkriberingen har en egen färg, och ingen av dem är accentens, så att ett namn inte
+ser ut som en länk. Ligger en talares färg nära accentens nyans (närmare än 30 grader) får talaren en reservfärg i
+stället, magenta eller gulgrön. Backend ser till att varje talares färg når 4,5:1 mot sidans ytor och mot tonen på en
+markerad rad, även i accentens ton.
+
 **Mörkt läge.** Utelämnar du `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrolleras på samma sätt.
 
 **Exempel som godkänns:** `#1C7531` (grön), `#1563BC` och `#004595` (blå), `#6B1EFD` (violett), `#00695C` (blågrön).
