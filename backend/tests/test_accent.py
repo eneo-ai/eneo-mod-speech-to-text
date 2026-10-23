@@ -3,6 +3,7 @@ import math
 import re
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from app import accent as accent_module
@@ -173,24 +174,60 @@ class SpeakerTests(unittest.TestCase):
             for side in (0, 1):
                 self.assertLess(self.apart(_hex(kept[side]), _hex(base[side])), 5, (kept, base))
 
-    def test_no_speaker_is_in_the_accents_hue_and_each_stays_readable(self) -> None:
+    def assert_speakers_hold(self, accent: Accent) -> list[tuple[str, str]]:
+        """Every speaker 30 degrees from the accent's hue in each mode, 4.5:1 on every ground and on the selected tint, no
+        two alike, and none blue (the branding gate's rule: a deployment's page keeps no blue)."""
         names = ("--color-background-surface", "--color-background-card", "--color-background-popover",
                  "--color-background-muted", "--color-background-body")
+        speakers = self.speakers(theme_css(accent))
+        for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
+            neutrals = _neutrals(_hex(colour), mode)
+            grounds = [neutrals[name] for name in names]
+            # A passage's speaker name on the selected passage's tint.
+            grounds.append(accent_module._blend(_hex(colour), neutrals["--color-background-surface"], mode.tint))
+            for index, pair in enumerate(speakers):
+                rgb = _hex(pair[mode.side])
+                if accent.light != "#000000" and colour != "#000000":
+                    self.assertGreaterEqual(self.apart(rgb, _hex(colour)), 30, (accent, mode.name, index, pair))
+                self.assertGreaterEqual(min(contrast(rgb, ground) for ground in grounds), 4.5, (accent, mode.name, index, pair))
+                self.assertFalse(NeutralsTests.blue(rgb), (accent, mode.name, index, pair))
+        self.assertEqual(len(set(speakers)), len(speakers), accent)
+        return speakers
+
+    def test_no_speaker_is_in_the_accents_hue_and_each_stays_readable(self) -> None:
         for light in self.ACCENTS:
             accent = resolve_accent(light, None)
             assert accent is not None, light
-            speakers = self.speakers(theme_css(accent))
-            for mode, colour in ((LIGHT, accent.light), (DARK, accent.dark)):
-                neutrals = _neutrals(_hex(colour), mode)
-                grounds = [neutrals[name] for name in names]
-                # A passage's speaker name on the selected passage's tint.
-                grounds.append(accent_module._blend(_hex(colour), neutrals["--color-background-surface"], mode.tint))
-                for index, pair in enumerate(speakers):
-                    rgb = _hex(pair[mode.side])
-                    if light != "#000000" and colour != "#000000":
-                        self.assertGreaterEqual(self.apart(rgb, _hex(colour)), 30, (light, mode.name, index, pair))
-                    self.assertGreaterEqual(min(contrast(rgb, ground) for ground in grounds), 4.5, (light, mode.name, index, pair))
-            self.assertEqual(len(set(speakers)), len(speakers), light)
+            self.assert_speakers_hold(accent)
+
+    def test_a_light_and_dark_pair_that_spends_both_spares_keeps_every_speaker_apart(self) -> None:
+        # The light green is near the teal and the green speaker, and the dark is the magenta spare itself: only the
+        # yellow green is left, for two speakers.
+        accent = resolve_accent("#146E41", "#E198E1")
+        assert accent is not None
+        speakers = self.assert_speakers_hold(accent)
+        for side in (0, 1):
+            hues = [_hex(pair[side]) for pair in speakers]
+            closest = min(self.apart(one, other) for index, one in enumerate(hues) for other in hues[index + 1 :])
+            self.assertGreaterEqual(closest, 25, (side, speakers))
+
+    def test_any_accepted_light_and_dark_pair_keeps_every_speaker_apart_and_readable(self) -> None:
+        # The two accents are set apart, so they can lie in any two hues: around the wheel, each at the first lightness
+        # its mode accepts.
+        def accepted(hue: int, mode: Any, lightnesses: range) -> str:
+            for percent in lightnesses:
+                rgb = accent_module._from_hls(hue / 360, percent / 100, 0.7)
+                if _problem(rgb, mode) is None:
+                    return accent_module.to_hex(rgb)
+            raise AssertionError((hue, mode.name))
+
+        lights = [accepted(hue, LIGHT, range(45, 10, -5)) for hue in range(0, 360, 30)]
+        darks = [accepted(hue, DARK, range(55, 95, 5)) for hue in range(0, 360, 30)]
+        for light in lights:
+            for dark in darks:
+                accent = resolve_accent(light, dark)
+                assert accent is not None
+                self.assert_speakers_hold(accent)
 
     def test_a_spare_is_apart_from_every_speaker_and_is_not_blue(self) -> None:
         for spare in SPARE_SPEAKERS:

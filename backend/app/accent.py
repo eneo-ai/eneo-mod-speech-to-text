@@ -381,9 +381,19 @@ def _hue_apart(one: RGB, other: RGB) -> float:
     return min(turn, 360 - turn)
 
 
+def _blue(rgb: RGB) -> bool:
+    """The branding gate's blue (frontend/tests/e2e/branding.spec.ts), which a deployment's page shows none of: saturated,
+    its hue between 195 and 255 degrees."""
+    return (max(rgb) - min(rgb)) / 255 >= 0.1 and 195 <= _hls(rgb)[0] * 360 <= 255
+
+
 def _speakers(accent: Accent) -> list[tuple[str, str]]:
     """The speakers whose colour this accent changes: one in the accent's hue in either mode takes a spare's place, and
-    each keeps 4.5:1 on every ground of its mode and on the selected passage's tint, as the module's own do on Eneo's."""
+    each keeps 4.5:1 on every ground of its mode and on the selected passage's tint, as the module's own do on Eneo's.
+
+    The light and the dark accent can lie in two hues, so the spares can run out (light #146E41 with dark #E198E1 leaves
+    one for two speakers). A speaker then keeps its lightness and saturation in the hue, in steps of 5 degrees, that lies
+    farthest from the accents and the other speakers in both modes: at least _SPEAKER_APART from the accents, not blue."""
     accents = (_hex(accent.light), _hex(accent.dark))
     near = lambda pair: any(_hue_apart(_hex(pair[side]), accents[side]) < _SPEAKER_APART for side in (0, 1))  # noqa: E731
     grounds = []
@@ -391,11 +401,24 @@ def _speakers(accent: Accent) -> list[tuple[str, str]]:
         neutrals = _neutrals(accents[mode.side], mode)
         tints = [_blend(accents[mode.side], neutrals[token], mode.tint) for token in ("--color-background-surface", "--color-background-card")]
         grounds.append([neutrals[token] for token in _GROUNDS] + tints)
+    readable = lambda pair: tuple(_reaching(_hex(pair[mode.side]), grounds[mode.side], MIN_CONTRAST, mode) for mode in (LIGHT, DARK))  # noqa: E731
     spares = iter(pair for pair in SPARE_SPEAKERS if not near(pair))
+    chosen: list[tuple[RGB, RGB] | None] = [None if near(pair) else readable(pair) for pair in SPEAKERS]
+    for index, pair in enumerate(SPEAKERS):
+        if chosen[index] is None and (spare := next(spares, None)):
+            chosen[index] = readable(spare)
+    for index, pair in enumerate(SPEAKERS):
+        if chosen[index] is None:
+            others = [colours for colours in chosen if colours]
+            in_hue = lambda hue: readable(tuple(to_hex(_from_hls(hue / 360, *_hls(_hex(own))[1:])) for own in pair))  # noqa: E731
+            room = lambda colours: (  # noqa: E731
+                all(_hue_apart(colours[side], accents[side]) >= _SPEAKER_APART and not _blue(colours[side]) for side in (0, 1)),
+                min(_hue_apart(colours[side], other[side]) for side in (0, 1) for other in [accents, *others]),
+            )
+            chosen[index] = max((in_hue(hue) for hue in range(0, 360, 5)), key=room)
     changed = []
     for index, pair in enumerate(SPEAKERS):
-        chosen = next(spares, pair) if near(pair) else pair
-        light, dark = (to_hex(_reaching(_hex(chosen[mode.side]), grounds[mode.side], MIN_CONTRAST, mode)) for mode in (LIGHT, DARK))
+        light, dark = (to_hex(rgb) for rgb in chosen[index])  # type: ignore[union-attr]
         if (light, dark) != pair:
             changed.append((f"--module-speaker-{index}", f"light-dark({light}, {dark})"))
     return changed

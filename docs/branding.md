@@ -59,7 +59,8 @@ nyans ligger från Eneos blå, så att en röd eller grön accent inte ger bruna
 
 **Talarnas färger.** Varje talare i transkriberingen har en egen färg, och ingen av dem är accentens, så att ett namn inte
 ser ut som en länk. Ligger en talares färg nära accentens nyans (närmare än 30 grader) får talaren en reservfärg i
-stället, magenta eller gulgrön. Backend ser till att varje talares färg når 4,5:1 mot sidans ytor och mot tonen på en
+stället, magenta eller gulgrön. Har ljust och mörkt läge var sin nyans kan reservfärgerna ta slut: då behåller talaren sin
+ljushet i den nyans som ligger längst från accenterna och de andra talarna, aldrig blå. Backend ser till att varje talares färg når 4,5:1 mot sidans ytor och mot tonen på en
 markerad rad, även i accentens ton.
 
 **Mörkt läge.** Utelämnar du `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrolleras på samma sätt.
