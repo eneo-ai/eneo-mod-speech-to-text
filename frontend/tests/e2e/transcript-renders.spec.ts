@@ -77,25 +77,45 @@ test("Rätta on one passage renders that passage and no other", async ({ page },
   expect(renders, "passages rendered by opening one correction").toBeLessThanOrEqual(5);
 });
 
-test("choosing a speaker and then everyone renders the passages that appear, not the ones that stay", async ({ page }, info) => {
+test("choosing a speaker and then everyone renders no passage: each stays in the page, hidden while it is filtered out", async ({ page }, info) => {
   const { turns, total } = await openLong(page, info);
   const first = await page.locator('[data-turn-index][aria-label^="Talare 1,"]').count();
   expect(first, "the first speaker has some of the passages").toBeGreaterThan(0);
   expect(first).toBeLessThan(total);
+  const shown = () => page.evaluate(() => document.querySelectorAll("[data-turn-index]:not([hidden])").length);
+  // Each passage's element, known again after the round: one taken out and built again is a new element.
+  await page.evaluate(() => document.querySelectorAll("[data-turn-index]").forEach((passage) => passage.setAttribute("data-was-here", "")));
 
   // Chips from 640 px; on a phone the list in the speakers' row.
   const phone = info.project.use.viewport!.width < 640;
   const choose = (speaker: string) =>
     phone ? pick(page.getByRole("combobox", { name: "Talare" }), speaker === "Alla" ? "Alla talare" : speaker) : page.getByRole("button", { name: speaker, exact: true }).click();
   await choose("Talare 1");
-  await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(first);
-  // Passages leave; none appears, and those that stay are not rendered again.
-  expect(await turns.settled(), "passages rendered while the others left").toBeLessThanOrEqual(SLACK);
+  await expect.poll(shown, { timeout: 30_000 }).toBe(first);
+  // The others are hidden; none appears, and those that stay are not rendered again.
+  expect(await turns.settled(), "passages rendered while the others were hidden").toBeLessThanOrEqual(SLACK);
   await turns.reset();
 
   await choose("Alla");
-  await expect.poll(() => passages(page).count(), { timeout: 30_000 }).toBe(total);
-  expect(await turns.settled(), `passages rendered for the ${total - first} that appear (the ${first} that stayed are not among them)`).toBeLessThanOrEqual(total - first + SLACK);
+  await expect.poll(shown, { timeout: 30_000 }).toBe(total);
+  // Shown again, not built again: an hour's meeting taken out and put back was one long frame each way.
+  expect(await turns.settled(), `passages rendered for the ${total - first} shown again`).toBeLessThanOrEqual(SLACK);
+  expect(await page.evaluate(() => document.querySelectorAll("[data-turn-index]:not([data-was-here])").length), "passages built again").toBe(0);
+});
+
+test("a long transcript far from the window is skipped a group of passages at a time, so a frame looks at a few dozen groups and not at every passage", async ({ page }, info) => {
+  const { total } = await openLong(page, info);
+  // A passage the browser looks at for being near the window on every frame that scrolls or plays: one that is not inside
+  // something skipped (content-visibility: auto). Each passage alone, it was all two thousand.
+  const looked = await page.evaluate(
+    () =>
+      [...document.querySelectorAll<HTMLElement & { checkVisibility(options: object): boolean }>("[data-turn-index]")].filter((passage) =>
+        passage.checkVisibility({ contentVisibilityAuto: true }),
+      ).length,
+  );
+  // The groups near the window (50 passages each) and the list's last group, whose passages go one by one.
+  expect(looked, `passages looked at of ${total}`).toBeLessThanOrEqual(4 * 50);
+  expect(looked, "and those in view are").toBeGreaterThan(0);
 });
 
 test("a search with its count and arrows keeps a field to read what was typed in, under the chips it shared a row with", async ({ page }, info) => {

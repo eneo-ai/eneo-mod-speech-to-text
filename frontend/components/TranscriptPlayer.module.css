@@ -288,6 +288,35 @@
   list-style: none;
 }
 
+/* A passage the speaker filter hides stays in the page (TranscriptPlayer.tsx), and so does a group or part with none shown. */
+.part[hidden],
+.group[hidden],
+.turn[hidden] {
+  display: none;
+}
+
+/* Passages far from the window are skipped a group of 50 at a time (GROUP in TranscriptPlayer.tsx): on every frame that
+   scrolls or plays the browser looks at a few dozen groups for being near the window, and at the passages of those near
+   it, never at every passage of a long meeting. Near the window each passage is laid out as it comes (.turn), as without
+   the groups. A group's estimate is its 50 passages' (.turn's 5.25rem and padding), so a group that comes near keeps its
+   size until its passages are laid out, and the text in view does not move. Its clip margin lets a passage at its edge be
+   laid out ahead of the window as one in the middle of it is: the group draws nothing past its passages. */
+.group {
+  display: flex;
+  flex-direction: column;
+  content-visibility: auto;
+  contain-intrinsic-size: auto calc(5.25rem + 2 * var(--spacing-2)) auto calc(50 * (5.25rem + 2 * var(--spacing-4)));
+  overflow-clip-margin: 100vh;
+}
+
+/* The list's last group (a short transcript's only one) is fewer, and a group hides some of its passages while the
+   speaker filter is on: there each passage alone is laid out as it nears the window. */
+.group:last-child,
+.turns[data-filtered] .group {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 .empty {
   padding: var(--spacing-6) var(--spacing-3);
 }

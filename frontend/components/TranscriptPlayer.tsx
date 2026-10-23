@@ -6,6 +6,7 @@ import {
   memo,
   type ReactNode,
   type Ref,
+  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -117,6 +118,12 @@ type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
+/**
+ * Passages far from the window are skipped this many at a time (TranscriptPlayer.module.css, .group): on every frame that
+ * scrolls or plays the browser then looks at a few dozen groups, and finds what is under the pointer through them, never
+ * through every passage of a long meeting. The group's estimate in the CSS is this many passages'.
+ */
+const GROUP = 50;
 
 /**
  * The transcript's keys: Space or K plays and pauses, the arrow keys move five
@@ -148,6 +155,26 @@ export function shortcut({ key, altKey, ctrlKey, metaKey }: Pick<KeyboardEvent, 
 
 /** The class names that apply, joined: a CSS Module's names and a caller's own. */
 const join = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
+
+/**
+ * `value`, once the frame that shows its change has been painted, in a render that a next change interrupts (as
+ * useDeferredValue's): what follows the change, however long, never holds back the paint of the press that made it.
+ */
+function useAfterPaint<T>(value: T): T {
+  const [painted, setPainted] = useState(value);
+  useEffect(() => {
+    if (Object.is(painted, value)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => startTransition(() => setPainted(value)));
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [value, painted]);
+  return painted;
+}
 
 /** The same function from render to render, calling the latest `fn`: a passage given it renders again only when it changes. */
 function useSteady<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
@@ -609,8 +636,9 @@ export function TranscriptPlayer(
   const shownFilter =
     filter === TO_CHECK ? (toCheck > 0 ? TO_CHECK : "all") : speakers.some((s) => s.label === filter) ? filter : "all";
   // The chip and the typed letter show at once; the passages and the hits follow them, a render that a next press or
-  // letter interrupts: an hour's meeting is two thousand passages.
-  const listFilter = useDeferredValue(shownFilter);
+  // letter interrupts: an hour's meeting is two thousand passages. The filter's passages follow once the chip has been
+  // drawn: WebKit takes a long frame to show a thousand hidden passages again, which the press would otherwise wait for.
+  const listFilter = useAfterPaint(shownFilter);
   const searched = useDeferredValue(query);
   const visibleTurns = useMemo(
     () =>
@@ -690,7 +718,8 @@ export function TranscriptPlayer(
     if (!following.current.follow || following.current.editing || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
-    if (!block || withinReadingZone(block, listRef.current)) return;
+    // A passage the speaker filter hides is not on screen to keep in view.
+    if (!block || block.hidden || withinReadingZone(block, listRef.current)) return;
     programmaticScrollUntil.current = Date.now() + 800;
     // Far away it jumps: following the playhead back from the transcript's other end glided 1.5 s past the text.
     const scrolls = listRef.current.scrollHeight > listRef.current.clientHeight;
@@ -830,65 +859,79 @@ export function TranscriptPlayer(
   // The passages, as elements kept from render to render: a press that changes what the passages do not show (a chip, the
   // list's choice, a letter of the search, the player) renders the page's tools without rebuilding two thousand
   // passages' elements, and the garbage they leave, before its next paint. The passages follow in the deferred render.
+  // Every passage stays in the page under the speaker filter, hidden while it is filtered out: a filter flips an attribute
+  // on each passage instead of taking an hour's meeting out of the page and building it again.
   const renamePassage = canName || onRenameSpeaker ? renameSpeaker : undefined;
+  const filtered = listFilter !== "all";
+  const shownTurns = useMemo(() => new Set(visibleTurns), [visibleTurns]);
   const passages = useMemo(() => {
     const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
-    for (const turn of visibleTurns) {
+    for (const turn of turns) {
       const last = parts[parts.length - 1];
       if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
       else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
     }
+    const groups = (part: TranscriptTurn[]) => Array.from({ length: Math.ceil(part.length / GROUP) }, (_, g) => part.slice(g * GROUP, (g + 1) * GROUP));
+    const shown = (some: TranscriptTurn[]) => some.some((turn) => shownTurns.has(turn));
     return parts.map((part) => (
-      <div key={part.fileIndex} className={styles.part}>
+      <div key={part.fileIndex} className={styles.part} hidden={!shown(part.turns)}>
         {totalFiles > 1 && <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>}
-        <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
-          {part.turns.map((turn) => {
-            // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
-            const editableTurn =
-              canEdit &&
-              (pendingSpeakerReview(turn) ||
-              turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
-                ? canDecide
-                : true);
-            // A passage is given only what is its own: the line being edited and the hits when they are in it.
-            const editingHere = turn.parts.some((p) => p.segmentIndex === editingIndex);
-            const hitHere = turn.parts.some((p) => hitsBySegment.has(p.segmentIndex));
-            return (
-              <TurnBlock
-                key={turn.index}
-                turn={turn}
-                rawSegments={segments}
-                correctedIndices={correctedIndices}
-                correctedRanges={correctedRanges}
-                hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
-                partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                labelled={labelled}
-                displayName={displayName}
-                labelOptions={labelOptions}
-                samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
-                canEdit={canEdit}
-                canPickSpeaker={editableTurn && labelled}
-                textForEdit={textForEdit}
-                confirmedWords={confirmedWords}
-                onToggleConfirmed={onToggleConfirmed}
-                editingIndex={editingHere ? editingIndex : -1}
-                onStartEdit={startEdit}
-                onCancelEdit={cancelEdit}
-                onCommitLine={commitTurnLine}
-                onRevertLine={revertTurnLine}
-                onReassign={reassignTurn}
-                onRename={renamePassage}
-                onSeekTurn={seekTurn}
-                onPartClick={clickPart}
-              />
-            );
-          })}
+        {/* The passages stand in groups (.group) that assistive technology does not see (role="none"): the list and its
+            items say their roles themselves, as a group between them would otherwise keep an accessibility check from
+            seeing them as one. */}
+        <ol className={styles.turns} role="list" data-filtered={filtered || undefined} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
+          {groups(part.turns).map((group, g) => (
+            <div key={g} role="none" className={styles.group} hidden={!shown(group)}>
+              {group.map((turn) => {
+                // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
+                const editableTurn =
+                  canEdit &&
+                  (pendingSpeakerReview(turn) ||
+                  turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
+                    ? canDecide
+                    : true);
+                // A passage is given only what is its own: the line being edited and the hits when they are in it.
+                const editingHere = turn.parts.some((p) => p.segmentIndex === editingIndex);
+                const hitHere = turn.parts.some((p) => hitsBySegment.has(p.segmentIndex));
+                return (
+                  <TurnItem
+                    key={turn.index}
+                    hidden={!shownTurns.has(turn)}
+                    turn={turn}
+                    rawSegments={segments}
+                    correctedIndices={correctedIndices}
+                    correctedRanges={correctedRanges}
+                    hitsBySegment={hitHere ? hitsBySegment : NO_HITS}
+                    partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
+                    labelled={labelled}
+                    displayName={displayName}
+                    labelOptions={labelOptions}
+                    samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
+                    canEdit={canEdit}
+                    canPickSpeaker={editableTurn && labelled}
+                    textForEdit={textForEdit}
+                    confirmedWords={confirmedWords}
+                    onToggleConfirmed={onToggleConfirmed}
+                    editingIndex={editingHere ? editingIndex : -1}
+                    onStartEdit={startEdit}
+                    onCancelEdit={cancelEdit}
+                    onCommitLine={commitTurnLine}
+                    onRevertLine={revertTurnLine}
+                    onReassign={reassignTurn}
+                    onRename={renamePassage}
+                    onSeekTurn={seekTurn}
+                    onPartClick={clickPart}
+                  />
+                );
+              })}
+            </div>
+          ))}
         </ol>
       </div>
     ));
     // The callbacks are steady (useSteady): they call the latest code without being dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleTurns, totalFiles, canEdit, canDecide, corrections, segments, editingIndex, hitsBySegment, correctedIndices, correctedRanges, labelled, displayName, labelOptions, settledPassages, confirmedWords, onToggleConfirmed, renamePassage]);
+  }, [turns, shownTurns, filtered, totalFiles, canEdit, canDecide, corrections, segments, editingIndex, hitsBySegment, correctedIndices, correctedRanges, labelled, displayName, labelOptions, settledPassages, confirmedWords, onToggleConfirmed, renamePassage]);
 
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
@@ -921,12 +964,6 @@ export function TranscriptPlayer(
     );
   }
 
-  const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
-  for (const turn of visibleTurns) {
-    const last = parts[parts.length - 1];
-    if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
-    else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
-  }
   // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
   // The page's actions join the speakers' row, which then needs no row of its own above it: one row less over the text.
@@ -1229,33 +1266,7 @@ export function TranscriptPlayer(
   );
 }
 
-/** One passage. Memoized: the list renders only the passages a change reaches (TranscriptPlayer gives each its own). */
-const TurnBlock = memo(function TurnBlock({
-  turn,
-  rawSegments,
-  correctedIndices,
-  correctedRanges,
-  hitsBySegment,
-  partLabel,
-  displayName,
-  labelOptions,
-  labelled,
-  samePassages,
-  canEdit,
-  canPickSpeaker,
-  confirmedWords,
-  onToggleConfirmed,
-  editingIndex,
-  onStartEdit,
-  onCancelEdit,
-  onCommitLine,
-  onRevertLine,
-  onReassign,
-  onRename,
-  textForEdit,
-  onSeekTurn,
-  onPartClick,
-}: {
+type TurnProps = {
   turn: TranscriptTurn;
   rawSegments: readonly TranscriptSegment[];
   correctedIndices: ReadonlySet<number>;
@@ -1285,12 +1296,71 @@ const TurnBlock = memo(function TurnBlock({
   textForEdit: (index: number) => string;
   onSeekTurn: (turn: TranscriptTurn) => void;
   onPartClick: (part: TranscriptTurnPart, e: React.MouseEvent) => void;
-}) {
+};
+
+/** Who says a passage, as its item and its head say it. A passage to check has no mark, and its words suggest no one. */
+function turnSpeaker(turn: TranscriptTurn, displayName: (label: string | null) => string) {
   const toCheck = pendingSpeakerReview(turn);
   const decision = turn.parts[0].segment.decision;
-  const markLabel = toCheck || decision === "unresolved" ? null : turn.speaker;
-  // The passage's own words for who speaks; a passage to check suggests no one.
-  const name = effectiveSpeakerLabel(turn.parts[0].segment, displayName);
+  return {
+    toCheck,
+    decision,
+    markLabel: toCheck || decision === "unresolved" ? null : turn.speaker,
+    name: effectiveSpeakerLabel(turn.parts[0].segment, displayName),
+  };
+}
+
+/**
+ * One passage in the list. Filtered out it stays in the page, hidden: the speaker filter changes `hidden` here and renders
+ * nothing inside it, whose TurnBlock is memoized on the rest.
+ */
+const TurnItem = memo(function TurnItem({ hidden, ...props }: TurnProps & { hidden: boolean }) {
+  const { turn, labelled, displayName, partLabel } = props;
+  const { markLabel, name } = turnSpeaker(turn, displayName);
+  const clock = formatClock(turn.start * 1_000);
+  return (
+    <li
+      hidden={hidden}
+      role="listitem"
+      data-turn-index={turn.index}
+      aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
+      className={styles.turn}
+      // The speaker's colour carries over to the passage's name and the rule beside its text (styles/globals.css --tint).
+      data-speaker-color={labelled && markLabel ? speakerColorIndex(markLabel) : undefined}
+    >
+      <TurnBlock {...props} />
+    </li>
+  );
+});
+
+/** What one passage shows. Memoized: the list renders only the passages a change reaches (TranscriptPlayer gives each its own). */
+const TurnBlock = memo(function TurnBlock({
+  turn,
+  rawSegments,
+  correctedIndices,
+  correctedRanges,
+  hitsBySegment,
+  partLabel,
+  displayName,
+  labelOptions,
+  labelled,
+  samePassages,
+  canEdit,
+  canPickSpeaker,
+  confirmedWords,
+  onToggleConfirmed,
+  editingIndex,
+  onStartEdit,
+  onCancelEdit,
+  onCommitLine,
+  onRevertLine,
+  onReassign,
+  onRename,
+  textForEdit,
+  onSeekTurn,
+  onPartClick,
+}: TurnProps) {
+  const { toCheck, decision, markLabel, name } = turnSpeaker(turn, displayName);
   const storedSpeaker = rawSegments[turn.parts[0]?.segment.sourceSegmentIndex ?? turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const clock = formatClock(turn.start * 1_000);
   // One "Rätta" per passage. In a passage of several sentences it first makes each sentence the target.
@@ -1326,13 +1396,7 @@ const TurnBlock = memo(function TurnBlock({
   );
 
   return (
-    <li
-      data-turn-index={turn.index}
-      aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
-      className={styles.turn}
-      // The speaker's colour carries over to the passage's name and the rule beside its text (styles/globals.css --tint).
-      data-speaker-color={labelled && markLabel ? speakerColorIndex(markLabel) : undefined}
-    >
+    <>
       {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} />}
       <div className={styles.turnBody}>
         {/* On a touch screen the head's controls are 44 px targets; negative margins keep the row compact. */}
@@ -1498,7 +1562,7 @@ const TurnBlock = memo(function TurnBlock({
           })}
         </div>
       </div>
-    </li>
+    </>
   );
 });
 

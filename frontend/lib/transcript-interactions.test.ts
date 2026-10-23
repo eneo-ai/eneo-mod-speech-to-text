@@ -34,8 +34,11 @@ async function player(segments: TranscriptSegment[], props: Record<string, unkno
   );
 }
 
+// The passages shown: one the speaker filter hides stays in the page, hidden.
 const passages = (within: ParentNode) =>
-  [...within.querySelectorAll<HTMLLIElement>("li[data-turn-index]")].map((li) => li.getAttribute("aria-label"));
+  [...within.querySelectorAll<HTMLLIElement>("li[data-turn-index]:not([hidden])")].map((li) => li.getAttribute("aria-label"));
+// The filter's passages follow once the chip has been drawn: a frame, and the task after it.
+const drawn = (view: { act: (work: () => Promise<void>) => Promise<void> }) => view.act(() => new Promise((done) => setTimeout(done, 50)));
 // The count is the paragraph that says it: the design system's buttons hold live regions of their own.
 const status = (within: ParentNode) => within.querySelector('p[role="status"]')?.textContent ?? "";
 const chip = (within: ParentNode, words: string) =>
@@ -79,6 +82,7 @@ test("the speaker row filters and does nothing else; the search follows the filt
   assert.equal(computeAccessibleName(chip(view.container, "Talare 1")), "Talare 1", "named by the name, no count");
   assert.ok(chip(view.container, "Talare 1").querySelector("[data-speaker-color]"), "with the speaker's mark");
   await view.act(async () => chip(view.container, "Talare 2").click());
+  await drawn(view);
   assert.deepEqual(passages(view.container), ["Talare 2, 0:02", "Talare 2, 0:06"]);
   assert.ok(!picker(), "a chip opens nothing");
 
@@ -87,6 +91,7 @@ test("the speaker row filters and does nothing else; the search follows the filt
   assert.equal(status(view.container), "Träff 1 av 2", "only the passages shown are searched");
 
   await view.act(async () => chip(view.container, "Alla").click());
+  await drawn(view);
   assert.equal(passages(view.container).length, 4);
   assert.equal(status(view.container), "Träff 1 av 4");
 });
@@ -142,8 +147,10 @@ test("an uncertain passage keeps Eneo's words in the name slot, and one action: 
   assert.equal(computeAccessibleName(toDo), "Osäkra (1)");
   assert.equal(toDo.previousElementSibling?.getAttribute("data-orientation"), "vertical", "after a divider");
   await view.act(async () => toDo.click());
+  await drawn(view);
   assert.deepEqual(passages(view.container), ["Överlappande tal – osäker talare, 0:02"]);
   await view.act(async () => chip(view.container, "Alla").click());
+  await drawn(view);
 
   await view.act(async () => button(view.container, "Ändra talare")!.click());
   const options = speakerRadios().map((input) => computeAccessibleName(input));
@@ -420,8 +427,10 @@ test("a filter whose speaker has gone shows everyone again", async () => {
   }
   const view = await mount(createElement(Review));
   await view.act(async () => chip(view.container, "Talare 2").click());
+  await drawn(view);
   assert.deepEqual(passages(view.container), ["Talare 2, 0:02", "Talare 2, 0:06"]);
   await view.act(async () => drop());
+  await drawn(view);
   // Their two passages are one now, with no one between them: Talare 2 has none left, so all are shown.
   assert.deepEqual(passages(view.container), ["Talare 1, 0:00"]);
   assert.equal(chip(view.container, "Alla").getAttribute("aria-pressed"), "true");
