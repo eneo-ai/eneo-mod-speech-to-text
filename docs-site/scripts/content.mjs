@@ -23,7 +23,7 @@ export function prepareMarkdown(source, file) {
   if (file === 'index.md') {
     const introduction = body.split(/\n\s*\n/, 1)[0]
     body = body.slice(introduction.length).trimStart()
-    template = `hero:\n  tagline: ${JSON.stringify(introduction)}\n  actions:\n    - text: Driftsätt modulen\n      link: ${BASE}/operations/\n      icon: right-arrow\n    - text: Lokal utveckling\n      link: ${BASE}/development/\n      variant: secondary\n`
+    template = `hero:\n  tagline: ${JSON.stringify(introduction)}\n  actions:\n    - text: Kom igång\n      link: ${BASE}/kom-igang/\n      icon: right-arrow\n    - text: Lokal utveckling\n      link: ${BASE}/development/\n      variant: secondary\n`
   }
   const apiLink = file === 'api-referens.md' ? `\n\n[Öppna API-anropen](${BASE}/api/)\n` : ''
   return `---\ntitle: ${JSON.stringify(heading[1])}\n${template}---\n\n${body}${apiLink}`
