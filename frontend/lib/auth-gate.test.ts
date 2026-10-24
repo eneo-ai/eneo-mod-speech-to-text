@@ -155,9 +155,12 @@ test("a first status read that fails keeps the address, so a link that resumes a
     globalThis.fetch = browserFetch;
   });
   t.mock.method(console, "error", () => undefined);
+  // The route's own title, as the page had it before the session was read.
+  document.title = "Nämndmöte · Tal till text";
   const { router, visited, tree } = withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows/:id", entries: ["/flows/a?run=r1"] });
   const { container, act } = await mount(tree);
   for (let i = 0; i < 10; i += 1) await act(settle);
+  assert.equal(document.title, "Tal till text svarar inte just nu", "the tab says it too; the words name the product already");
 
   assert.deepEqual(visited, [], "the router went nowhere");
   assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1");
@@ -176,6 +179,7 @@ test("a first status read that fails keeps the address, so a link that resumes a
   for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
   assert.ok(container.textContent?.includes("Sidan"), "the page is there once the session answers");
   assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1", "at the address it was opened at");
+  assert.equal(document.title, "Nämndmöte · Tal till text", "and the route's title is back");
 });
 
 test("a device with no network says so, in the words the page's notice uses, not that the module does not answer", async (t) => {
@@ -193,6 +197,7 @@ test("a device with no network says so, in the words the page's notice uses, not
   for (let i = 0; i < 10; i += 1) await act(settle);
 
   assert.deepEqual([...container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent), ["Ingen anslutning."]);
+  assert.equal(document.title, "Ingen anslutning · Tal till text");
   assert.ok(button(container, "Försök igen"));
 });
 

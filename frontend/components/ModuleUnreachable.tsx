@@ -8,7 +8,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { Brand } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { connectionLost } from "@/lib/online-status";
-import { PRODUCT_NAME } from "@/lib/product";
+import { documentTitle, PRODUCT_NAME } from "@/lib/product";
 import { moveFocusToHeading } from "@/routes/RouteEffects";
 
 /**
@@ -26,13 +26,27 @@ export function ModuleUnreachable({ onRetry, retried = false }: { onRetry: () =>
     if (retried) retry.current?.focus();
     else moveFocusToHeading();
   }, []);
+  const lost = connectionLost();
+  // The tab says it as the notice does, without its period and with the product's name, or the words alone where they
+  // name the product already. The route's own title is back when the page goes.
+  const said = lost.replace(/\.$/, "");
+  const title = said.includes(PRODUCT_NAME) ? said : documentTitle(said);
+  // ponytail: useDocumentTitle inline; its module (flow/recording-hooks) would bring the recorder into every page's first
+  // load (lib/first-load.test.ts). Move that hook to a module of its own, with its callers in routes/, to share it.
+  useEffect(() => {
+    const before = document.title;
+    document.title = title;
+    return () => {
+      if (document.title === title) document.title = before;
+    };
+  }, [title]);
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
       <Layout height="auto" contentWidth={640} padding={4}>
         <LayoutContent isScrollable={false}>
           <VStack gap={4} paddingBlockStart={6}>
             <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-            <Banner status="error" title={connectionLost()} collapsible={false} />
+            <Banner status="error" title={lost} collapsible={false} />
             <HStack>
               <Button ref={retry} label="Försök igen" onClick={onRetry} />
             </HStack>
