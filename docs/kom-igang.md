@@ -1,6 +1,6 @@
 # Kom igång
 
-Du behöver administratörsrätt i Eneo och en server med Dokploy, Portainer eller Docker Compose. Eneos gränssnitt är på engelska, så menynamnen nedan är det också.
+Du behöver administratörsrätt i Eneo och en server med Docker Compose (Dokploy, Portainer), Podman eller Kubernetes med Helm. Eneos gränssnitt är på engelska, så menynamnen nedan är det också.
 
 ## 1. Kontrollera Eneo
 
@@ -31,7 +31,7 @@ Gå till **Admin → Modules**, fyll i tre värden och välj **Install module**:
 
 ## 4. Kör modulen
 
-Hämta `docker-compose.yml` och `env.example` från [senaste utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases). Spara `env.example` som `.env` och fyll i:
+Hämta `docker-compose.yml` och `env.example` från [senaste utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases). Spara `env.example` som `.env` och fyll i (med Helm går samma värden i `values.yaml`):
 
 ```sh
 MODULE_VERSION=v1.2.3
@@ -42,7 +42,7 @@ ENEO_API_KEY=sk_...
 SESSION_SECRET=...
 ```
 
-- `MODULE_VERSION` är utgåvans tagg. Fäst en version i stället för `latest`.
+- `MODULE_VERSION` är utgåvans tagg och står redan i `env.example`. Fäst en version i stället för `latest`.
 - `ENEO_BACKEND_URL` är dit modulen når Eneos API. På Eneos nätverk `module_net` är den `http://backend:8000`.
 - `SESSION_SECRET` ska vara modulens egen, inte en hemlighet som används någon annanstans. Skapa den så här:
 
@@ -50,10 +50,10 @@ SESSION_SECRET=...
   python -c "import secrets; print(secrets.token_urlsafe(48))"
   ```
 
-Driftsätt sedan i [Dokploy eller Portainer](operations.md#driftsätt-med-dokploy-eller-portainer). Modulen lyssnar på port 3001.
+Driftsätt sedan med [Docker Compose, Dokploy eller Portainer](operations.md#driftsätt-med-dokploy-eller-portainer), [Podman](operations.md#driftsätt-med-podman) eller [Kubernetes och Helm](operations.md#driftsätt-med-kubernetes-och-helm). Modulen lyssnar på port 3001.
 
 > [!WARNING]
-> Står Traefik framför modulen, som i Dokploy, kapar den uppladdningar som tar mer än 60 s. [Höj `readTimeout`](operations.md#höj-readtimeout-i-traefik) innan någon laddar upp.
+> Står Traefik framför modulen, som i Dokploy, kapar den uppladdningar som tar mer än 60 s. [Höj `readTimeout`](operations.md#höj-readtimeout-i-traefik) innan någon laddar upp. En ingress i Kubernetes har motsvarande gränser: [Krav på ingressen](operations.md#krav-på-ingressen).
 
 ## 5. Kontrollera
 

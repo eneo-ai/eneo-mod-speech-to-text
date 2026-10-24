@@ -33,7 +33,7 @@ def example_environment() -> dict[str, str]:
 
 class SettingsTests(unittest.TestCase):
     def test_a_secret_the_example_file_shows_does_not_start_the_module(self) -> None:
-        shown = (("SESSION_SECRET", "replace-with-long-random-string-now"), ("ENEO_API_KEY", "sk_replace_me"))
+        shown = (("ENEO_API_KEY", "sk_replace_me"),)
         for name, value in shown:
             with self.subTest(name=name):
                 with patch.dict(os.environ, {**valid_environment(), name: value}, clear=True):

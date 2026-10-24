@@ -1,0 +1,99 @@
+{{- $tag := .Values.image.tag | default .Chart.AppVersion }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ $tag | quote }}
+spec:
+  # The sessions are in the process's memory: one replica, and the old pod stops before the new one starts.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        # The module reads its environment once, at start: a changed chart-made Secret starts a new pod.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      # As docker-compose.yml runs it: the image's user (Dockerfile, USER), a read-only root, no capabilities.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: speech-to-text
+          image: "{{ .Values.image.repository }}:{{ $tag }}"
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: MODULE_VERSION
+              value: {{ $tag | quote }}
+            {{- range $name, $value := .Values.env }}
+            {{- if $value }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range list "ENEO_API_KEY" "SESSION_SECRET" }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.existingSecret | default $.Release.Name }}
+                  key: {{ . }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          # Patient: a restart logs everyone out, and a saturated process answers late rather than not at all.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 6
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: spool
+              mountPath: /tmp
+            {{- if .Values.branding.configMap }}
+            - name: branding
+              mountPath: {{ dir (required "branding.configMap needs env.ORGANIZATION_LOGO, the logo's path in the folder it is mounted as" .Values.env.ORGANIZATION_LOGO) }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        # The one writable place, where an upload is spooled: the node's disk (not memory), with a limit.
+        - name: spool
+          emptyDir:
+            sizeLimit: {{ .Values.spool.sizeLimit }}
+        {{- with .Values.branding.configMap }}
+        - name: branding
+          configMap:
+            name: {{ . }}
+        {{- end }}

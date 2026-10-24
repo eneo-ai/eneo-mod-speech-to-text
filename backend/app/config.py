@@ -412,10 +412,9 @@ def _required_url(name: str, *, public: bool = False) -> str:
     return value
 
 
-# Secrets that .env.example has shown. A value that is published is no secret, so the module does not start with one: an
+# Secrets .env.example shows. A value that is published is no secret, so the module does not start with one: an
 # exact list, not a guess at what looks like a placeholder.
 _PLACEHOLDERS = {
-    "SESSION_SECRET": frozenset({"replace-with-long-random-string-now"}),
     "ENEO_API_KEY": frozenset({"sk_replace_me"}),
 }
 

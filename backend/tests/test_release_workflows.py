@@ -32,6 +32,11 @@ class ReleasePathTests(unittest.TestCase):
         self.assertEqual(metadata["with"]["images"], IMAGE)
         self.assertEqual(workflow("release.yml")["env"]["IMAGE"], IMAGE)
 
+    def test_main_publishes_only_a_commit_every_other_ci_job_passed(self) -> None:
+        jobs = workflow("ci.yml")["jobs"]
+
+        self.assertEqual(set(jobs["publish"]["needs"]), set(jobs) - {"publish"})
+
     def test_main_publishes_the_commit_and_only_a_release_gives_a_version_and_latest(self) -> None:
         metadata = next(step for step in workflow("publish.yml")["jobs"]["ghcr"]["steps"] if step.get("id") == "meta")
 
@@ -66,6 +71,26 @@ class ReleasePathTests(unittest.TestCase):
         self.assertLess(given, text.index("gh release create"))
         refusal = text[text.index('if [ "$revision" != "$commit" ]; then') :]
         self.assertLess(refusal.index("exit 1"), refusal.index("fi\n"))
+
+    def test_the_release_assets_are_set_to_the_release_and_nothing_is_committed_back(self) -> None:
+        text = (WORKFLOWS / "release.yml").read_text()
+        chart = yaml.safe_load((REPOSITORY / "deploy" / "helm" / "eneo-mod-speech-to-text" / "Chart.yaml").read_text())
+
+        # The attached env.example names this release, on the line the checkout's .env.example has.
+        self.assertIn('sed "s/^MODULE_VERSION=.*/MODULE_VERSION=$GITHUB_REF_NAME/" .env.example > "$assets/env.example"', text)
+        self.assertRegex((REPOSITORY / ".env.example").read_text(), r"(?m)^MODULE_VERSION=latest$")
+        # The chart is this release (its image tag is its appVersion), packaged from the checkout, which stays a checkout's.
+        self.assertIn(
+            f'helm package deploy/helm/{chart["name"]} --version "${{GITHUB_REF_NAME#v}}" --app-version "$GITHUB_REF_NAME"', text
+        )
+        self.assertEqual((chart["version"], chart["appVersion"]), ("0.0.0", "latest"))
+        release = text[text.index("gh release create") :]
+        for asset in ('"$assets/docker-compose.yml"', '"$assets/env.example"', '"$chart"'):
+            with self.subTest(asset=asset):
+                self.assertIn(asset, release.splitlines()[0])
+        for writing in ("git commit", "git push"):
+            with self.subTest(writing=writing):
+                self.assertNotIn(writing, text)
 
     def test_ci_gives_the_build_the_commit_and_one_timestamp_and_the_image_says_them_twice(self) -> None:
         steps = workflow("ci.yml")["jobs"]["image"]["steps"]

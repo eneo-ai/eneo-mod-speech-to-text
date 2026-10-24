@@ -1,0 +1,8 @@
+apiVersion: v2
+name: eneo-mod-speech-to-text
+description: Tal till text, en modul för Eneo. En container, ingen databas.
+type: application
+# release.yml packages the chart with the release's tag: version X.Y.Z, appVersion vX.Y.Z, which is also the image's tag.
+# A checkout runs latest, as docker-compose.yml does.
+version: 0.0.0
+appVersion: latest

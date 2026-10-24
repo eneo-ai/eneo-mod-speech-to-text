@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "env", "spool"],
+  "properties": {
+    "global": { "type": "object" },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" }
+      }
+    },
+    "env": {
+      "type": "object",
+      "required": ["ENEO_BACKEND_URL", "ENEO_PUBLIC_URL", "MODULE_PUBLIC_URL", "MODULE_KEY"],
+      "properties": {
+        "ENEO_BACKEND_URL": { "type": "string", "minLength": 1 },
+        "ENEO_PUBLIC_URL": { "type": "string", "minLength": 1 },
+        "MODULE_PUBLIC_URL": { "type": "string", "pattern": "^https?://[^/]+" },
+        "MODULE_KEY": { "type": "string", "minLength": 1 }
+      },
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Z0-9_]*$",
+        "not": { "enum": ["MODULE_VERSION", "ENEO_API_KEY", "SESSION_SECRET"] }
+      },
+      "additionalProperties": { "type": "string" }
+    },
+    "existingSecret": { "type": "string" },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ENEO_API_KEY": { "type": "string" },
+        "SESSION_SECRET": { "type": "string" }
+      }
+    },
+    "branding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "configMap": { "type": "string" } }
+    },
+    "spool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sizeLimit"],
+      "properties": { "sizeLimit": { "type": "string", "minLength": 1 } }
+    },
+    "resources": { "type": "object" },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+        "tlsSecretName": { "type": "string" }
+      }
+    }
+  }
+}

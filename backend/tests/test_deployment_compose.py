@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import unittest
@@ -215,6 +216,15 @@ class TraefikOverlayTests(unittest.TestCase):
         self.assertEqual(compose_config()["services"][SERVICE]["expose"], ["3001"])
         self.assertGreaterEqual(routes["middlewares"][router["middlewares"][0]]["headers"]["stsSeconds"], 31536000)
         self.assertRegex(self.flags(config, "entrypoints.web.")["entrypoints.web.http.redirections.entrypoint.scheme"], "https")
+
+
+class ExampleFileTests(unittest.TestCase):
+    def test_every_variable_compose_passes_is_in_the_example_file(self) -> None:
+        # Set or commented out: the copy an operator fills in names every setting the service takes.
+        example = set(re.findall(r"(?m)^(?:# )?([A-Z][A-Z0-9_]*)=", (REPOSITORY_ROOT / ".env.example").read_text()))
+        passed = set(yaml.safe_load(COMPOSE_FILE.read_text())["services"][SERVICE]["environment"])
+
+        self.assertLessEqual(passed, example)
 
 
 class BrandingSettingsReachTheBackendTests(unittest.TestCase):
