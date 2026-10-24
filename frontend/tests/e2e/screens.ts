@@ -1007,7 +1007,7 @@ export const STATES: State[] = [
       await record(page, "Spela in");
       await stop(page);
       await page.getByRole("button", { name: "Ta bort" }).click();
-      await expect(page.getByRole("alertdialog", { name: "Ta bort inspelningen?" })).toBeVisible();
+      await expect(page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" })).toBeVisible();
     },
   },
   {

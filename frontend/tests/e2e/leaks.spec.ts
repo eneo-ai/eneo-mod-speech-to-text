@@ -268,7 +268,7 @@ const OVERLAYS: Record<string, Overlay> = {
       await stop(page);
     },
     show: (page) => page.getByRole("button", { name: "Ta bort", exact: true }).click(),
-    shown: (page) => page.getByRole("alertdialog", { name: "Ta bort inspelningen?" }),
+    shown: (page) => page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" }),
     hide: (page) => page.getByRole("button", { name: "Avbryt" }).click(),
   },
 };
