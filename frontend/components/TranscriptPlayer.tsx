@@ -25,6 +25,7 @@ import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@as
 import { Heading } from "@astryxdesign/core/Heading";
 import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
@@ -320,7 +321,7 @@ function PlayerControls({
           isDisabled={unavailable || atStart}
           label={`Bakåt ${SKIP_SECONDS} sekunder`}
           aria-keyshortcuts={letterKeys ? "J" : undefined}
-          icon={<RotateCcw aria-hidden />}
+          icon={<Icon icon={RotateCcw} size="sm" />}
           onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
         />
         <IconButton
@@ -329,7 +330,7 @@ function PlayerControls({
           isDisabled={unavailable || atEnd}
           label={`Framåt ${SKIP_SECONDS} sekunder`}
           aria-keyshortcuts={letterKeys ? "L" : undefined}
-          icon={<RotateCw aria-hidden />}
+          icon={<Icon icon={RotateCw} size="sm" />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
         <SpeedMenu playback={playback} rate={rate} className={styles.rate} compact={small} ownerId={ownerId} />
@@ -1032,7 +1033,7 @@ export function TranscriptPlayer(
           {canDownload && (
             // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
             // speakers under it. Under 360 px its icon alone, so it stays on the heading's row.
-            <Button variant="ghost" size="sm" isIconOnly={tiny} icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
+            <Button variant="ghost" size="sm" isIconOnly={tiny} icon={<Icon icon={Download} />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
               {tiny ? undefined : "Ladda ner"}
             </Button>
           )}
@@ -1096,7 +1097,7 @@ export function TranscriptPlayer(
                     {toCheck > 0 && (
                       <>
                         <Divider orientation="vertical" />
-                        <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
+                        <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<Icon icon={AlertTriangle} size="sm" className={styles.reviewIcon} />} />
                       </>
                     )}
                   </ToggleButtonGroup>
@@ -1134,8 +1135,8 @@ export function TranscriptPlayer(
               {query.trim() && (
                 <>
                   <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
-                  <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
-                  <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
+                  <IconButton label="Föregående träff" icon={<Icon icon={ChevronUp} />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
+                  <IconButton label="Nästa träff" icon={<Icon icon={ChevronDown} />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
                 </>
               )}
             </HStack>
@@ -1688,7 +1689,7 @@ function SpeakerPicker({
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<Pencil aria-hidden />}
+                      icon={<Icon icon={Pencil} />}
                       label={`Byt namn på ${displayName(current)}`}
                       aria-haspopup="dialog"
                       className={styles.rename}
@@ -1797,7 +1798,7 @@ function SpeakerNaming({
       draftKey={naming.draftKey}
       description={naming.description}
     >
-      <Button variant="ghost" size="sm" isIconOnly={iconOnly} icon={<UsersRound aria-hidden />} label="Namnge talare" />
+      <Button variant="ghost" size="sm" isIconOnly={iconOnly} icon={<Icon icon={UsersRound} />} label="Namnge talare" />
     </SpeakerNamingDialog>
   );
 }

@@ -517,7 +517,7 @@ export function ReviewView({
         )}
         <Button
           variant="primary"
-          icon={<CheckCircle2 aria-hidden />}
+          icon={<Icon icon={CheckCircle2} />}
           label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
           isLoading={working === "approve"}
           isDisabled={busy || continueBlocked}
@@ -639,7 +639,7 @@ export function ReviewView({
             <Button
               variant="secondary"
               size="sm"
-              icon={<UserPen aria-hidden />}
+              icon={<Icon icon={UserPen} />}
               label="Namnge talarna"
               isDisabled={busy || transcript.pending}
             />
@@ -815,7 +815,7 @@ export function ReviewView({
                   ref={editButton}
                   variant="secondary"
                   size="sm"
-                  icon={<Pencil aria-hidden />}
+                  icon={<Icon icon={Pencil} />}
                   label="Redigera"
                   isDisabled={busy}
                   onClick={() => {

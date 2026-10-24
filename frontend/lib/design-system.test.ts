@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test, { afterEach } from "node:test";
 import { createElement } from "react";
 import { cleanup, installDom, mount } from "./test-dom";
@@ -59,4 +59,13 @@ test("nothing of Next.js is left: no package, no script, no file", () => {
   for (const file of ["next.config.mjs", "next-env.d.ts", "lib/backend-base.mjs", "tests/prod/serve.mjs", "components/theme-provider.tsx"]) {
     assert.equal(existsSync(file), false, `${file} belonged to Next`);
   }
+});
+
+test("an icon given to a button is the design system's Icon, sized as the rest, never a bare 24 px drawing", () => {
+  // A drawing passed as is keeps its own 24 px: the button's icon slot grows with what it holds (styles/globals.css).
+  const bare = /icon=\{<(?!Icon\b)[A-Z]\w* aria-hidden(?: className=\{[^}]*\})? \/>\}/g;
+  const found = readdirSync("components", { recursive: true, encoding: "utf8" })
+    .filter((file) => file.endsWith(".tsx"))
+    .flatMap((file) => [...readFileSync(`components/${file}`, "utf8").matchAll(bare)].map((match) => `${file}: ${match[0]}`));
+  assert.deepEqual(found, []);
 });
