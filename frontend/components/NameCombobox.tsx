@@ -9,9 +9,10 @@ const NONE_ID = "none";
 const ADD_ID = "add";
 const WRITE_ID = "write";
 
-// A name, as the participants' field takes one: each word starts with a capital on a phone's keyboard, and no spelling
-// check underlines it. Astryx's types leave these attributes out, but its field passes them on to the input.
-const NAME_HINTS = { autoCapitalize: "words", spellCheck: "false" } as Record<string, string>;
+// A name, as the participants' field takes one: each word starts with a capital on a phone's keyboard, no spelling
+// check underlines it and iOS does not autocorrect it. Astryx's types leave these attributes out, but its field passes
+// them on to the input.
+const NAME_HINTS = { autoCapitalize: "words", autoCorrect: "off", spellCheck: "false" } as Record<string, string>;
 
 type Option =
   | { id: string; kind: "name"; name: string }
@@ -38,7 +39,13 @@ export function NameCombobox({
   label,
   description,
   problem,
+  enterKeyHint,
+  onEnter,
 }: {
+  /** What a phone's Enter key says it does: "next" where another field follows, "done" on the last. */
+  enterKeyHint?: "next" | "done";
+  /** Enter on a name that is done (no row marked by the arrows or a mouse): the list closes, and this goes on. */
+  onEnter?: () => void;
   /** The chosen or typed name, or null for none. */
   value: string | null;
   /** The known names to choose among. */
@@ -75,7 +82,7 @@ export function NameCombobox({
   }, [triggerRef]);
   // A name is no word to spell-check; the design system's input takes no spellCheck prop.
   useEffect(() => inputRef.current?.setAttribute("spellcheck", "false"), []);
-  // The row the arrow keys or a moving pointer marked; until then the list marks the field's own name, so Enter
+  // The row the arrow keys or a moving mouse marked; until then the list marks the field's own name, so Enter
   // keeps what is in the field: a name opened by a click, and a name typed or pasted (never the first suggestion).
   const [moved, setMoved] = useState<number | null>(null);
   // The list is filtered only while the person types; opened by a click it shows every name, so another can be chosen.
@@ -139,11 +146,14 @@ export function NameCombobox({
       }
       setMoved(active < 0 ? (delta > 0 ? 0 : items.length - 1) : (active + delta + items.length) % items.length);
     } else if (e.key === "Enter") {
-      if (!open) return;
+      // A row the arrows or a mouse marked is chosen, and the field keeps the focus. Otherwise the name in the field
+      // stands as it is (the list marks nothing else), and Enter ends it: the list closes and the focus goes on.
+      const option = moved === null ? undefined : items[active];
+      if (!open && !onEnter) return;
       e.preventDefault();
-      const option = items[active];
-      if (option) choose(option);
-      else popover.hide();
+      if (open && option) return choose(option);
+      popover.hide();
+      onEnter?.();
     } else if (e.key === "Tab") {
       // Closed here, not by the blur this press causes: a list hidden during the focus move makes the browser drop
       // the focus. Escape is the layer stack's: it closes the list and leaves a dialog around it open.
@@ -153,6 +163,41 @@ export function NameCombobox({
 
   // The marked row is brought into view when it becomes the marked one, and when the list itself mounts.
   const reveal = useCallback((row: HTMLLIElement | null) => row?.scrollIntoView({ block: "nearest" }), []);
+
+  // A phone's keyboard covers the window's lower part without making it shorter, so the list, placed against the whole
+  // window, would go on under the keyboard, its last rows out of reach. While it is open the dialog around the field
+  // ends where the visible part does (SpeakerNamingDialog): the list ends there too, at least a row tall, and scrolls.
+  // Measured against the dialog, not visualViewport: Safari's boxes are relative to the visible part, Chrome's to the window.
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const dialog = rootRef.current?.closest("dialog");
+    if (!open || !viewport || !dialog) return;
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const list = listRef.current;
+        if (!list || !rootRef.current) return;
+        const covered = viewport.height < document.documentElement.clientHeight - 1;
+        const room = dialog.getBoundingClientRect().bottom - rootRef.current.getBoundingClientRect().bottom - 12;
+        list.style.maxHeight = covered ? `${Math.max(room, 44)}px` : "";
+      });
+    };
+    // As the keyboard opens or closes, again once the dialog has followed it (a frame later in Chrome), and as its body
+    // scrolls the field.
+    const resized = new ResizeObserver(fit);
+    resized.observe(dialog);
+    fit();
+    viewport.addEventListener("resize", fit);
+    dialog.addEventListener("scroll", fit, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      resized.disconnect();
+      viewport.removeEventListener("resize", fit);
+      dialog.removeEventListener("scroll", fit, true);
+    };
+  }, [open]);
 
   const activeId = open && active >= 0 && items[active] ? `${listId}-${active}` : undefined;
 
@@ -170,6 +215,7 @@ export function NameCombobox({
         aria-activedescendant={activeId}
         autoComplete="off"
         {...NAME_HINTS}
+        {...({ enterKeyHint } as Record<string, string | undefined>)}
         value={text}
         placeholder={placeholder}
         isDisabled={disabled}
@@ -185,6 +231,13 @@ export function NameCombobox({
         // Not on focus: a list that opens on every Tab covers the next field.
         onClick={() => openList()}
         onKeyDown={onKeyDown}
+        // The focus moved on without Tab (a phone keyboard's arrows or its Next): the list goes too, once the focus has
+        // moved, so it does not cover the next speaker's row.
+        onBlur={() =>
+          requestAnimationFrame(() => {
+            if (!rootRef.current?.contains(document.activeElement)) popover.hide();
+          })
+        }
       />
       <IconButton
         variant="ghost"
@@ -203,7 +256,7 @@ export function NameCombobox({
       />
       {popover.render(
         open ? (
-          <ul id={listId} role="listbox" aria-label={`Förslag: ${label}`} className={styles.list}>
+          <ul ref={listRef} id={listId} role="listbox" aria-label={`Förslag: ${label}`} className={styles.list}>
             {items.map((option, i) => {
               const selected = isSelected(option);
               const note = option.kind === "name" && !selected ? optionNote?.(option.name) : null;
@@ -216,8 +269,9 @@ export function NameCombobox({
                   // The row Enter would take; the name in the field keeps its check beside it.
                   aria-selected={i === active}
                   data-kind={option.kind}
-                  // A pointer that moves marks its row; a list opening under a resting one marks nothing.
-                  onPointerMove={() => setMoved(i)}
+                  // A mouse that moves marks its row; a list opening under a resting one marks nothing, and nor does a
+                  // finger scrolling the list, so Enter then keeps the typed name.
+                  onPointerMove={(e) => e.pointerType === "mouse" && setMoved(i)}
                   onPointerDown={(e) => e.preventDefault()}
                   onClick={() => choose(option)}
                   className={styles.option}

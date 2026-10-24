@@ -146,3 +146,23 @@ export async function asPerson(element: import("react").ReactElement, user = { i
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   return createElement(AuthenticatedUserContext.Provider, { value: user }, element);
 }
+
+/**
+ * The part of the window a phone's keyboard leaves visible (window.visualViewport), moved as the browser moves it, in a
+ * window whose layout is as tall as jsdom's window (jsdom lays nothing out, so its clientHeight is 0).
+ */
+export function visualViewport(t: import("node:test").TestContext) {
+  const listeners = new Set<() => void>();
+  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+  Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
+  Object.defineProperty(document.documentElement, "clientHeight", { value: window.innerHeight, configurable: true });
+  t.after(() => {
+    Reflect.deleteProperty(window, "visualViewport");
+    Reflect.deleteProperty(document.documentElement, "clientHeight");
+  });
+  const move = (height: number, offsetTop: number) => {
+    Object.assign(viewport, { height, offsetTop });
+    listeners.forEach((listener) => listener());
+  };
+  return move;
+}

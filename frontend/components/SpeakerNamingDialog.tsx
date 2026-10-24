@@ -1,4 +1,4 @@
-import { cloneElement, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactElement, type MouseEvent, type Ref } from "react";
+import { cloneElement, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent, type Ref } from "react";
 import { Headphones, Pause } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -54,6 +54,11 @@ function useVisibleViewport(active: boolean): { height: number; top: number } | 
   }, [height]);
   return visible;
 }
+
+/** 12rem at the browser's default size: the dialog's title, one field and Spara namnen. */
+const MIN_FOLLOWED_HEIGHT = 192;
+/** 1rem at the browser's default size: what a field moved into sight keeps between itself and the keyboard. */
+const ABOVE_KEYBOARD = 16;
 
 /** The button that opens the dialog, whatever it is: it keeps its own props and gets the dialog's. */
 type Trigger = ReactElement<{ onClick?: (event: MouseEvent<HTMLElement>) => void } & Record<string, unknown>>;
@@ -160,18 +165,39 @@ export function SpeakerNamingDialog({
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const visible = useVisibleViewport(shown);
+  // Too little visible to hold a title, a field and an action (a phone on its side with the keyboard open): the dialog
+  // keeps its own size, and the browser pans to the field as it does without the dialog following.
+  const seen = useVisibleViewport(shown);
+  const visible = seen && seen.height >= MIN_FOLLOWED_HEIGHT ? seen : null;
   const height = visible?.height ?? null;
   // Less is visible than the window holds (the keyboard is open, or the page is zoomed in): the dialog stands at the top
   // of what is visible (SpeakerNamingDialog.module.css), where the middle of the window would put its title out of sight.
-  const covered = visible !== null && visible.height < window.innerHeight - 1;
+  // The window is its layout's height: Safari can report innerHeight as the visible part's.
+  const covered = visible !== null && visible.height < document.documentElement.clientHeight - 1;
   const dialogElement = useRef<HTMLDialogElement>(null);
-  useLayoutEffect(() => {
-    if (covered) dialogElement.current?.style.setProperty("--visible-top", `${visible.top}px`);
-  }, [covered, visible?.top]);
+  const saveButton = useRef<HTMLButtonElement>(null);
   const descriptionId = useId();
   // A phone held upright gives the dialog the whole screen: room for more than one speaker under its title.
   const narrow = useMediaQuery("(max-width: 479.98px)");
+  // The whole screen ignores maxHeight, and the design system's size for it outranks a class: only the element's own
+  // style makes it as tall as what the keyboard leaves, at its top, so the title, the field and Spara namnen show.
+  const followed = (
+    !covered ? undefined : narrow ? { top: visible.top, height: visible.height, maxHeight: visible.height } : { "--visible-top": `${visible.top}px` }
+  ) as CSSProperties | undefined;
+  // Too little visible to follow, and the field "Byt namn på" put the focus in is under the keyboard: Safari moves the
+  // visible part to a field that is tapped, not to that one. The dialog then moves up, keeping its size, until the field
+  // is above the keyboard, and back once the keyboard has closed. Only that field: a tapped one the browser shows itself,
+  // a moment after the keyboard's first resize, and the dialog moved as well would take it off the top.
+  const placed = useRef<HTMLElement | null>(null);
+  const [lift, setLift] = useState(0);
+  useLayoutEffect(() => {
+    if (!shown) placed.current = null;
+    if (!shown || !seen || seen.height >= MIN_FOLLOWED_HEIGHT) return setLift(0);
+    const field = placed.current;
+    if (seen.top > 0 || !field || document.activeElement !== field) return;
+    // Measured where the dialog is, which the lift so far has moved.
+    setLift((now) => Math.max(0, Math.ceil(field.getBoundingClientRect().bottom + now - seen.height + ABOVE_KEYBOARD)));
+  }, [shown, seen?.height, seen?.top]);
 
   // Esc, Stäng or the ×: what was typed is there when it opens again.
   const close = () => {
@@ -196,10 +222,15 @@ export function SpeakerNamingDialog({
   }, [open]);
   // Opened at one speaker: once the dialog is open (its title has the focus), that speaker's name field takes it.
   const [startAt, setStartAt] = useState<string | null>(null);
+  const fieldOf = (label: string) =>
+    [...(dialogElement.current?.querySelectorAll<HTMLElement>("li[data-speaker]") ?? [])].find((li) => li.dataset.speaker === label)?.querySelector("input");
   useEffect(() => {
     if (!shown || startAt === null) return;
-    const row = [...(dialogElement.current?.querySelectorAll<HTMLElement>("li[data-speaker]") ?? [])].find((li) => li.dataset.speaker === startAt);
-    row?.querySelector("input")?.focus();
+    const field = fieldOf(startAt) ?? null;
+    placed.current = field;
+    // Once the focus has left it, a tap brings it back, which the browser shows itself.
+    field?.addEventListener("blur", () => placed.current === field && (placed.current = null), { once: true });
+    field?.focus();
     setStartAt(null);
   }, [shown, startAt]);
   useImperativeHandle(ref, () => ({
@@ -262,6 +293,7 @@ export function SpeakerNamingDialog({
         variant={narrow ? "fullscreen" : "standard"}
         width="42rem"
         className={covered && !narrow ? styles.atVisibleTop : undefined}
+        style={followed ?? (lift ? { translate: `0 -${lift}px` } : undefined)}
         maxHeight={height ? `min(90dvh, 48rem, calc(${height}px - 2 * var(--spacing-4)))` : "min(90dvh, 48rem)"}
         aria-describedby={descriptionId}
       >
@@ -276,7 +308,8 @@ export function SpeakerNamingDialog({
                   moves focus with preventScroll), so the list brings whatever takes focus into view itself. */}
               {shown && (
                 <ul className={styles.rows} onFocus={(e) => e.target.scrollIntoView({ block: "nearest" })}>
-                  {draft.map((row) => {
+                  {draft.map((row, index) => {
+                    const next = draft[index + 1];
                     const count = passages(row.label);
                     const said = quote(row.label);
                     const unavailable = listenUnavailableReason?.(row.label) ?? null;
@@ -322,7 +355,8 @@ export function SpeakerNamingDialog({
                             label={`Vem är ${speakerDisplayLabel(row.label)}?`}
                             description={unsure ? "Osäkert förslag" : undefined}
                             value={row.name}
-                            options={names}
+                            // The field's own text is no known name: typed, it is offered to add.
+                            options={names.filter((name) => name !== row.name?.trim() || offered.includes(name))}
                             disabled={disabled || decided || saving}
                             placeholder="Välj eller skriv ett namn"
                             noneLabel="Inget namn (behåll etiketten)"
@@ -330,6 +364,10 @@ export function SpeakerNamingDialog({
                             optionNote={(name) => usedBy(name, row.label)}
                             problem={problems[row.label]}
                             onChange={(name) => rename(row.label, name)}
+                            // Enter goes on to the next speaker; after the last, to Spara namnen, which closes a
+                            // phone's keyboard and saves nothing by itself, so a stray Enter sends no names.
+                            enterKeyHint={next ? "next" : "done"}
+                            onEnter={() => (next ? fieldOf(next.label) : saveButton.current)?.focus()}
                           />
                           {/* A status, as on the page's list; the field says it to a screen reader. */}
                           {unsure && (
@@ -368,6 +406,7 @@ export function SpeakerNamingDialog({
                     <Button variant="secondary" label="Stäng" onClick={close} />
                   ) : (
                     <Button
+                      ref={saveButton}
                       variant="primary"
                       label={saving ? "Sparar…" : "Spara namnen"}
                       isDisabled={disabled || saving}

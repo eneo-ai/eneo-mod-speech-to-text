@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createElement, useState } from "react";
-import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
 
 installDom();
 afterEach(cleanup);
@@ -34,9 +34,20 @@ test("participants: a comma adds what came before it, and Backspace in the empty
   assert.deepEqual(shown(), ["Anna Berg"]);
 });
 
-test("participants: a name is not marked as misspelt, and a phone's keyboard starts each word with a capital", async () => {
+test("participants: each name added starts with a capital, as the first one typed does: iOS leaves its shift off in the field the page emptied", async () => {
+  const { view, input, shown, added } = await mountNames(["Kale Lindkvist"]);
+  const enter = () => input().dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await view.act(async () => type(input(), "elik"));
+  await view.act(async () => enter());
+  await view.act(async () => type(input(), "åsa Holm, Erik lund,"));
+  assert.deepEqual(shown(), ["Kale Lindkvist", "Elik", "Åsa Holm", "Erik lund"], "only the first letter: iOS capitalises each later word itself");
+  assert.deepEqual(added, [["Elik"], ["Åsa Holm", "Erik lund"]]);
+});
+
+test("participants: a name is not marked as misspelt or autocorrected, and a phone's keyboard starts each word with a capital", async () => {
   const { input } = await mountNames();
   assert.equal(input().getAttribute("spellcheck"), "false");
+  assert.equal(input().getAttribute("autocorrect"), "off", "iOS's autocorrect would change a name as the focus moves on");
   assert.equal(input().getAttribute("autocapitalize"), "words");
 });
 
@@ -97,6 +108,46 @@ test("participants: removed with a finger, the focus stays off the field, so the
   // A mouse's press after it takes the focus back to the field, as a key's does.
   await view.act(async () => press(button(view.container, "Ta bort Erik Lund")!, "mouse"));
   assert.equal(document.activeElement, input());
+});
+
+test("participants: on a phone on its side, a field offering earlier names that Safari leaves under the keyboard's suggestions is scrolled above them", async (t) => {
+  const move = visualViewport(t);
+  const scrolled: number[] = [];
+  const scrollBy = window.scrollBy;
+  window.scrollBy = ((_: number, y: number) => void scrolled.push(y)) as typeof window.scrollBy;
+  t.after(() => void (window.scrollBy = scrollBy));
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const { view, input } = await mountNames([], ["Anna Berg", "Erik Lund"]);
+  input().getBoundingClientRect = () => ({ top: 182, bottom: 208 }) as DOMRect;
+  await view.act(async () => input().focus());
+  // The keyboard and its suggestions leave 102 px, and the field, at 182-208, lies under them.
+  await view.act(async () => {
+    move(102, 0);
+    await frame();
+  });
+  assert.deepEqual(scrolled, [122], "the field ends a spacing above the keyboard");
+  // A browser that moved the visible part itself has shown the field.
+  scrolled.length = 0;
+  await view.act(async () => {
+    move(102, 60);
+    await frame();
+  });
+  assert.deepEqual(scrolled, []);
+  // With Safari's bars shown the keyboard leaves nothing (Safari says -8 px): there is no place to scroll the field to.
+  await view.act(async () => {
+    move(-8, 0);
+    await frame();
+  });
+  assert.deepEqual(scrolled, []);
+  // A field offering nothing, Safari shows itself.
+  const plain = await mountNames();
+  plain.input().getBoundingClientRect = () => ({ top: 182, bottom: 208 }) as DOMRect;
+  await plain.view.act(async () => plain.input().focus());
+  await plain.view.act(async () => {
+    move(102, 0);
+    await frame();
+  });
+  assert.deepEqual(scrolled, []);
 });
 
 test("a date detail shows the date it holds once its calendar has loaded", async () => {

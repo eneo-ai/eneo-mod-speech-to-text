@@ -4,7 +4,7 @@ import test, { afterEach } from "node:test";
 import { ApiError } from "./api";
 import { buildEditedMapping, namingRefusal, withSplitLabels, type SpeakerMappingRow } from "./speaker-mapping";
 import { computeAccessibleDescription, computeAccessibleName } from "dom-accessibility-api";
-import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
 
 installDom();
 afterEach(cleanup);
@@ -124,10 +124,27 @@ async function nameField(value: string | null, options: string[]) {
   return { view, input, key, option, marked };
 }
 
-test("a speaker's name is not marked as misspelt, and a phone's keyboard starts each word with a capital, as for participants", async () => {
+test("a speaker's name is not marked as misspelt or autocorrected, and a phone's keyboard starts each word with a capital, as for participants", async () => {
   const { input } = await nameField(null, ["Anna Berg"]);
   assert.equal(input.getAttribute("spellcheck"), "false");
+  // spellcheck="false" leaves iOS's autocorrect on: "Maja" became "Mana" when the focus moved on.
+  assert.equal(input.getAttribute("autocorrect"), "off");
   assert.equal(input.getAttribute("autocapitalize"), "words");
+});
+
+test("a name list closes when the focus moves on without Tab, as a phone keyboard's arrows or its Next move it", async () => {
+  const { view, input } = await nameField("Erik Lund", ["Anna Berg", "Erik Lund"]);
+  const next = document.createElement("input");
+  document.body.append(next);
+  await view.act(async () => input.focus());
+  await view.act(async () => input.click());
+  assert.equal(input.getAttribute("aria-expanded"), "true");
+  await view.act(async () => {
+    next.focus();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  });
+  assert.equal(input.getAttribute("aria-expanded"), "false", "the list no longer covers the next speaker's row");
+  next.remove();
 });
 
 test("the chevron reopens a name list on the field's own name, not on a row left before Escape", async () => {
@@ -209,6 +226,66 @@ test("inside the list, the row the keys are on is the selected one; the saved na
   assert.equal(option("Anna Berg").getAttribute("aria-selected"), "true");
   assert.equal(option("Erik Lund").getAttribute("aria-selected"), "false");
   assert.ok(option("Erik Lund").querySelector(".lucide-check"), "the name in the field still shows its check");
+});
+
+test("Enter ends a speaker's name and goes on to the next speaker's field; on the last it goes to Spara namnen and saves nothing", async () => {
+  const { view, field, saved } = await dialog();
+  const enter = (input: HTMLInputElement) =>
+    view.act(async () => input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  // What a phone's key says it does: on to the next field, and done on the last.
+  assert.equal(field("Talare 1").getAttribute("enterkeyhint"), "next");
+  assert.equal(field("Talare 2").getAttribute("enterkeyhint"), "done");
+  await view.act(async () => field("Talare 1").focus());
+  await enter(field("Talare 1"));
+  assert.equal(document.activeElement, field("Talare 2"), "a closed list: Enter goes on");
+  await view.act(async () => field("Talare 1").focus());
+  await view.act(async () => type(field("Talare 1"), "Sven"));
+  assert.equal(field("Talare 1").getAttribute("aria-expanded"), "true", "typing opens the list");
+  await enter(field("Talare 1"));
+  assert.equal(document.activeElement, field("Talare 2"), "a list opened by typing: Enter keeps the name and goes on");
+  assert.equal(field("Talare 1").value, "Sven");
+  assert.equal(field("Talare 1").getAttribute("aria-expanded"), "false");
+  await view.act(async () => type(field("Talare 2"), "Maja"));
+  await enter(field("Talare 2"));
+  assert.equal(document.activeElement, button(document.body, "Spara namnen"), "the last: the keyboard goes, Spara namnen has the focus");
+  assert.ok(document.querySelector("dialog[open]"), "a stray Enter sends nothing: the dialog stays open");
+  assert.deepEqual(saved, []);
+  assert.equal(field("Talare 2").value, "Maja");
+});
+
+test("a finger that scrolls a name list marks no row, so Enter keeps the typed name and goes on; a mouse marks the row it is on, and a tap chooses", async () => {
+  const { view, field } = await dialog();
+  const enter = (input: HTMLInputElement) =>
+    view.act(async () => input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  const option = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.startsWith(name))!;
+  const over = (row: Element, pointerType: string) =>
+    view.act(async () => row.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, pointerType })));
+  await view.act(async () => field("Talare 1").focus());
+  await view.act(async () => type(field("Talare 1"), "Sven"));
+  // A swipe through the list on a phone: the finger passes over Inget namn.
+  await over(option("Inget namn"), "touch");
+  assert.equal(option("Inget namn").getAttribute("aria-selected"), "false", "a finger's move marks nothing");
+  await enter(field("Talare 1"));
+  assert.equal(field("Talare 1").value, "Sven", "the typed name stands");
+  assert.equal(document.activeElement, field("Talare 2"), "Enter goes on to the next speaker");
+  // A mouse over a row marks it, and Enter takes it.
+  await view.act(async () => type(field("Talare 2"), "Er"));
+  await over(option("Erik Lund"), "mouse");
+  assert.equal(option("Erik Lund").getAttribute("aria-selected"), "true", "a mouse marks the row it is on");
+  await enter(field("Talare 2"));
+  assert.equal(field("Talare 2").value, "Erik Lund");
+  // A tap on a row still chooses it.
+  await view.act(async () => field("Talare 1").click());
+  await view.act(async () => option("Sara Holm").click());
+  assert.equal(field("Talare 1").value, "Sara Holm");
+});
+
+test("a new name typed for a speaker is offered to add, not listed as a name already known", async () => {
+  const { view, field } = await dialog();
+  await view.act(async () => type(field("Talare 2"), "Sven"));
+  const options = [...document.querySelectorAll('[aria-label="Förslag: Vem är Talare 2?"] [role="option"]')].map((o) => o.textContent);
+  assert.ok(options.includes("Lägg till ”Sven”"), JSON.stringify(options));
+  assert.ok(!options.includes("Sven"), "the field's own text is not a known name");
 });
 
 test("a name given to another speaker is said quietly, and only the row's own name is checked", async () => {
@@ -441,22 +518,137 @@ test("while the login has ended the dialog is closed, and it is back with its ty
   assert.ok(trigger.isConnected);
 });
 
+const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
+
 test("the dialog follows the part of the screen the phone's keyboard leaves: its height, and its top where the browser moves it", async (t) => {
-  const listeners = new Set<() => void>();
-  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
-  Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
-  t.after(() => void Reflect.deleteProperty(window, "visualViewport"));
+  const move = visualViewport(t);
   const { view } = await dialog();
-  const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
   assert.match(dialogElement().getAttribute("style") ?? "", new RegExp(`calc\\(${window.innerHeight}px`), "the dialog starts at the screen's height");
   assert.equal(dialogElement().classList.contains("atVisibleTop"), false, "in the middle of the window while all of it is visible");
   // The keyboard opens, and the browser moves the visible part down to keep the field in sight.
-  viewport.height = 420;
-  viewport.offsetTop = 120;
-  await view.act(async () => listeners.forEach((listener) => listener()));
+  await view.act(async () => move(420, 120));
   assert.match(dialogElement().getAttribute("style") ?? "", /calc\(420px/, "and keeps above the keyboard");
   assert.ok(dialogElement().classList.contains("atVisibleTop"), "at the top of the visible part");
   assert.equal(dialogElement().style.getPropertyValue("--visible-top"), "120px");
+});
+
+test("on a phone held upright the whole-screen dialog is as tall as what the keyboard leaves, so the focused field, the title and Spara namnen stay in sight", async (t) => {
+  // Below 480 px the dialog takes the whole screen.
+  const real = window.matchMedia;
+  window.matchMedia = ((query: string) => ({ ...real(query), matches: query === "(max-width: 479.98px)" })) as typeof window.matchMedia;
+  t.after(() => void (window.matchMedia = real));
+  const move = visualViewport(t);
+  const scrolled: { name: string; height: string }[] = [];
+  const original = window.Element.prototype.scrollIntoView;
+  window.Element.prototype.scrollIntoView = function (this: Element) {
+    if (this instanceof window.HTMLInputElement) scrolled.push({ name: computeAccessibleName(this), height: dialogElement().style.height });
+  };
+  t.after(() => void (window.Element.prototype.scrollIntoView = original));
+  const { view, field } = await dialog();
+  assert.equal(dialogElement().style.height, "", "the whole screen while all of it is visible");
+  // "Byt namn på Talare 2": the focus is in the lower speaker's field, and the keyboard covers all under 369 px.
+  await view.act(async () => field("Talare 2").focus());
+  scrolled.length = 0;
+  await view.act(async () => move(369, 0));
+  assert.deepEqual([dialogElement().style.top, dialogElement().style.height, dialogElement().style.maxHeight], ["0px", "369px", "369px"]);
+  assert.deepEqual(scrolled, [{ name: "Vem är Talare 2?", height: "369px" }], "the field is brought into the dialog's view once the dialog is that tall");
+  // The browser moves the visible part down: the dialog's title goes with it.
+  await view.act(async () => move(369, 171));
+  assert.equal(dialogElement().style.top, "171px");
+  // The keyboard closes.
+  await view.act(async () => move(window.innerHeight, 0));
+  assert.deepEqual([dialogElement().style.top, dialogElement().style.height], ["", ""]);
+  // Safari can report the window's height (innerHeight) as the part still visible, while the layout is as tall as ever.
+  const inner = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerHeight", { value: 369, configurable: true });
+  t.after(() => void (inner ? Object.defineProperty(window, "innerHeight", inner) : Reflect.deleteProperty(window, "innerHeight")));
+  await view.act(async () => move(369, 303));
+  assert.deepEqual([dialogElement().style.top, dialogElement().style.height], ["303px", "369px"], "it follows all the same");
+});
+
+test("with the keyboard open a name list ends where the dialog, and so the visible part, does: its last rows scroll into reach instead of lying under the keyboard", async (t) => {
+  const move = visualViewport(t);
+  // The name field ends at 311 px; the dialog at the window's end until it has followed the keyboard.
+  let dialogEnd = window.innerHeight;
+  const dialogs = window.HTMLDialogElement.prototype;
+  const boxes = window.HTMLDivElement.prototype;
+  dialogs.getBoundingClientRect = () => ({ top: 0, bottom: dialogEnd }) as DOMRect;
+  boxes.getBoundingClientRect = () => ({ top: 0, bottom: 311 }) as DOMRect;
+  // The dialog's size, watched: Chrome draws it at the keyboard's height a frame after the keyboard's own event.
+  const resized: ((entries: []) => void)[] = [];
+  const watcher = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(callback: (entries: []) => void) {
+      resized.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  t.after(() => {
+    Reflect.deleteProperty(dialogs, "getBoundingClientRect");
+    Reflect.deleteProperty(boxes, "getBoundingClientRect");
+    globalThis.ResizeObserver = watcher;
+  });
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const { view, field } = await dialog();
+  await view.act(async () => {
+    field("Talare 2").click();
+    move(396, 0);
+    await frame();
+  });
+  const list = () => document.querySelector<HTMLElement>('[aria-label="Förslag: Vem är Talare 2?"]')!.style.maxHeight;
+  // The dialog follows the keyboard: it ends at 396 px, where the keyboard starts.
+  dialogEnd = 396;
+  await view.act(async () => {
+    resized.forEach((callback) => callback([]));
+    await frame();
+  });
+  assert.equal(list(), "73px", "from under the field to the dialog's end, less a little room");
+  await view.act(async () => {
+    move(window.innerHeight, 0);
+    await frame();
+  });
+  assert.equal(list(), "", "the keyboard closed: the list is as long as it is");
+});
+
+test("with too little left visible to follow (a phone on its side with the keyboard open), the dialog keeps its size and the browser pans to the field", async (t) => {
+  const move = visualViewport(t);
+  const { view } = await dialog();
+  await view.act(async () => move(52, 228));
+  assert.doesNotMatch(dialogElement().getAttribute("style") ?? "", /52px/, "never shrunk to what 52 px leaves");
+  assert.equal(dialogElement().classList.contains("atVisibleTop"), false);
+});
+
+test("a phone on its side: where the browser leaves the field the focus was put in under the keyboard (Byt namn på, in Safari), the dialog moves up until the field is above it, and back when the keyboard closes", async (t) => {
+  const move = visualViewport(t);
+  const { createRef } = await import("react");
+  const handle = createRef<import("../components/SpeakerNamingDialog").SpeakerNamingHandle>();
+  const { view, field } = await dialog({ ref: handle });
+  // The lower speaker's field ends at 173 px, wherever the dialog has moved it.
+  const moved = () => -parseFloat(dialogElement().style.translate.split(" ")[1] ?? "0") || 0;
+  field("Talare 2").getBoundingClientRect = () => ({ top: 147 - moved(), bottom: 173 - moved() }) as DOMRect;
+  // "Byt namn på Talare 2" puts the focus in that field.
+  await view.act(async () => handle.current!.open("SPEAKER_01", null));
+  assert.equal(document.activeElement, field("Talare 2"));
+  // The keyboard leaves 36 px, and the browser does not move the visible part to the field.
+  await view.act(async () => move(36, 0));
+  assert.equal(dialogElement().style.translate, "0 -153px", "the field ends a spacing above the keyboard");
+  assert.doesNotMatch(dialogElement().getAttribute("style") ?? "", /36px/, "the dialog keeps its size");
+  // Moved, the field stays where it is as the keyboard settles.
+  await view.act(async () => move(36, 0));
+  assert.equal(dialogElement().style.translate, "0 -153px");
+  // The keyboard closes.
+  await view.act(async () => move(window.innerHeight, 0));
+  assert.equal(dialogElement().style.translate, "");
+  // A tapped field: the browser moves the visible part to it itself, a moment after the keyboard's first resize, so the
+  // dialog stays where it is (moved as well, the field would go off the top).
+  await view.act(async () => field("Talare 1").focus());
+  await view.act(async () => field("Talare 2").focus());
+  await view.act(async () => move(36, 0));
+  assert.equal(dialogElement().style.translate, "");
+  await view.act(async () => move(36, 140));
+  assert.equal(dialogElement().style.translate, "");
 });
 
 test("with no storage to keep drafts in (a private window), the dialog works and keeps nothing", async (t) => {
