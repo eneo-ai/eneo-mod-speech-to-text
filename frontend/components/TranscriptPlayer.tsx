@@ -25,6 +25,7 @@ import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@as
 import { Heading } from "@astryxdesign/core/Heading";
 import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
@@ -118,6 +119,10 @@ type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
+// What a phone's keyboard reads, which Astryx's types leave out and its fields pass on: a search is no word to correct or
+// capitalise, and its key says Sök; a line's editor saves on Enter, so its key says Klar.
+const SEARCH_HINTS = { autoCorrect: "off", autoCapitalize: "none", spellCheck: "false", enterKeyHint: "search" } as Record<string, string>;
+const DONE_HINT = { enterKeyHint: "done" } as Record<string, string>;
 
 /**
  * The transcript's keys: Space or K plays and pauses, the arrow keys move five
@@ -320,7 +325,7 @@ function PlayerControls({
           isDisabled={unavailable || atStart}
           label={`Bakåt ${SKIP_SECONDS} sekunder`}
           aria-keyshortcuts={letterKeys ? "J" : undefined}
-          icon={<RotateCcw aria-hidden />}
+          icon={<Icon icon={RotateCcw} size="sm" />}
           onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
         />
         <IconButton
@@ -329,7 +334,7 @@ function PlayerControls({
           isDisabled={unavailable || atEnd}
           label={`Framåt ${SKIP_SECONDS} sekunder`}
           aria-keyshortcuts={letterKeys ? "L" : undefined}
-          icon={<RotateCw aria-hidden />}
+          icon={<Icon icon={RotateCw} size="sm" />}
           onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
         />
         <SpeedMenu playback={playback} rate={rate} className={styles.rate} compact={small} ownerId={ownerId} />
@@ -740,9 +745,11 @@ export function TranscriptPlayer(
     el.scrollIntoView({ block: "center", behavior: "instant" });
   }, [currentHit, searched]);
 
+  // Only while something plays: a paused transcript scrolled to read has nothing to follow, and Följ uppspelningen would
+  // add a row to the player for nothing. Pressing play follows the playhead from there.
   function onUserScroll() {
     if (Date.now() < programmaticScrollUntil.current) return;
-    if (follow) setFollow(false);
+    if (follow && playback.getSnapshot().playing) setFollow(false);
   }
 
   function stepHit(by: number) {
@@ -1030,7 +1037,7 @@ export function TranscriptPlayer(
           {canDownload && (
             // Its word shown, as the result's "Ladda ner som text": a tooltip, shown on keyboard focus, lay over the
             // speakers under it. Under 360 px its icon alone, so it stays on the heading's row.
-            <Button variant="ghost" size="sm" isIconOnly={tiny} icon={<Download aria-hidden />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
+            <Button variant="ghost" size="sm" isIconOnly={tiny} icon={<Icon icon={Download} />} label="Ladda ner granskad transkribering" onClick={downloadReviewed} className={styles.trailing}>
               {tiny ? undefined : "Ladda ner"}
             </Button>
           )}
@@ -1094,7 +1101,7 @@ export function TranscriptPlayer(
                     {toCheck > 0 && (
                       <>
                         <Divider orientation="vertical" />
-                        <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
+                        <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<Icon icon={AlertTriangle} size="sm" className={styles.reviewIcon} />} />
                       </>
                     )}
                   </ToggleButtonGroup>
@@ -1109,6 +1116,7 @@ export function TranscriptPlayer(
                   isLabelHidden
                   startIcon="search"
                   hasClear
+                  {...SEARCH_HINTS}
                   placeholder="Sök i transkriberingen"
                   value={query}
                   onChange={(next) => {
@@ -1132,8 +1140,8 @@ export function TranscriptPlayer(
               {query.trim() && (
                 <>
                   <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
-                  <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
-                  <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
+                  <IconButton label="Föregående träff" icon={<Icon icon={ChevronUp} />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
+                  <IconButton label="Nästa träff" icon={<Icon icon={ChevronDown} />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
                 </>
               )}
             </HStack>
@@ -1177,7 +1185,7 @@ export function TranscriptPlayer(
                   "Alla osäkra ord är bekräftade."
                 )}
                 {uncertain.confirmed > 0 && uncertain.remaining > 0 && (
-                  <span> {uncertain.confirmed} bekräftade.</span>
+                  <span> {uncertain.confirmed} {uncertain.confirmed === 1 ? "bekräftat" : "bekräftade"}.</span>
                 )}
               </Text>
             )}
@@ -1644,7 +1652,8 @@ function SpeakerPicker({
         onOpenChange={(next) => !next && close()}
         width="22rem"
         maxHeight="calc(100dvh - 2 * var(--spacing-4))"
-        purpose="form"
+        // Untouched, a press beside it closes it, as a menu's would; once a choice is made only Avbryt, × or Esc does.
+        purpose={choice !== (current ?? "") || scope !== "one" ? "form" : "info"}
       >
         {/* A long meeting has hundreds of passages; only the open dialog needs its controls. */}
         {open && (
@@ -1686,7 +1695,7 @@ function SpeakerPicker({
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<Pencil aria-hidden />}
+                      icon={<Icon icon={Pencil} />}
                       label={`Byt namn på ${displayName(current)}`}
                       aria-haspopup="dialog"
                       className={styles.rename}
@@ -1795,7 +1804,7 @@ function SpeakerNaming({
       draftKey={naming.draftKey}
       description={naming.description}
     >
-      <Button variant="ghost" size="sm" isIconOnly={iconOnly} icon={<UsersRound aria-hidden />} label="Namnge talare" />
+      <Button variant="ghost" size="sm" isIconOnly={iconOnly} icon={<Icon icon={UsersRound} />} label="Namnge talare" />
     </SpeakerNamingDialog>
   );
 }
@@ -1863,6 +1872,7 @@ function LineEditor({
         isLabelHidden
         value={value}
         rows={1}
+        {...DONE_HINT}
         isReadOnly={locked}
         onChange={(next, e) => {
           setValue(next);

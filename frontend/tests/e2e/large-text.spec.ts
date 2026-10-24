@@ -7,7 +7,7 @@
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles } from "./checks";
-import { mutedMicrophone, record, setup, STATES } from "./screens";
+import { mutedMicrophone, record, scrollWhilePlaying, setup, STATES } from "./screens";
 
 type Size = { width: number; height: number; root: number };
 const AX2: Size = { width: 390, height: 844, root: 34 };
@@ -157,11 +157,9 @@ for (const size of [AX5, ZOOM, { width: 834, height: 1031, root: 53 }]) {
 for (const size of [AX5, ZOOM]) {
   test(`"Följ uppspelningen" stays inside the player at ${name(size)}`, async ({ page }) => {
     await at(page, "result-transcript-tab", size);
-    // Scrolling the text by hand stops following the playhead, and the player offers to follow it again.
-    await page.locator("[data-turn-index]").first().dispatchEvent("wheel");
-    const follow = page.getByRole("button", { name: "Följ uppspelningen" });
-    await expect(follow).toBeVisible();
-    const [box, dock] = [(await follow.boundingBox())!, (await page.locator("[data-docked-player]").boundingBox())!];
+    // Scrolling the text by hand while it plays stops following the playhead, and the player offers to follow it again.
+    const follow = await scrollWhilePlaying(page);
+    const [box, dock] = [(await follow.boundingBox())!, (await page.locator("[data-docked-player]", { has: follow }).boundingBox())!];
     expect(box.x, "not past the player's start").toBeGreaterThanOrEqual(dock.x - 0.5);
     expect(box.x + box.width, "not past the player's end").toBeLessThanOrEqual(dock.x + dock.width + 0.5);
     expect(await cut(follow)).toEqual([]);

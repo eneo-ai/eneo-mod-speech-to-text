@@ -9,6 +9,7 @@ import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
+import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow, STACKED } from "@/components/ActionRow";
@@ -50,29 +51,34 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentLis
     let unsubscribe = () => {};
     void recordingStore().then((store) => {
       if (cancelled) return;
-      const load = () =>
+      // Another tab that lets a recording go (closed, say) says nothing to this one: while one is listed as used there,
+      // the list is read again every few seconds, a look at the locks that takes none, so its actions come by themselves.
+      let again: ReturnType<typeof setTimeout> | undefined;
+      const load = (): Promise<void> =>
         store.listUnsentGroups(ownerId).then(
           ({ offered, elsewhere }) => {
             if (cancelled) return;
             setUnreadable(false);
-            setRecordings(
-              [
-                ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id), refused: store.refused(r.id) })),
-                ...elsewhere.map((r) => ({ ...r, elsewhere: true })),
-              ]
-                .filter((r) => !flowId || r.flowId === flowId)
-                .sort((a, b) => b.startedAt - a.startedAt),
-            );
+            const listed = [
+              ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id), refused: store.refused(r.id) })),
+              ...elsewhere.map((r) => ({ ...r, elsewhere: true })),
+            ]
+              .filter((r) => !flowId || r.flowId === flowId)
+              .sort((a, b) => b.startedAt - a.startedAt);
+            setRecordings(listed);
+            clearTimeout(again);
+            if (listed.some((r) => "elsewhere" in r)) again = setTimeout(() => void load(), 3_000);
           },
-          () => !cancelled && setUnreadable(true),
+          () => void (!cancelled && setUnreadable(true)),
         );
-      // Another tab that lets a recording go says nothing to this one: back in view, the list is read again.
+      // Back in view, the list is read again at once.
       const shown = () => document.visibilityState === "visible" && void load();
       const unfollow = store.subscribe(() => void load());
       document.addEventListener("visibilitychange", shown);
       unsubscribe = () => {
         unfollow();
         document.removeEventListener("visibilitychange", shown);
+        clearTimeout(again);
       };
       void load();
     });
@@ -426,24 +432,25 @@ function UnsentRecordingRow({
         <Button label={saving.label} aria-describedby={summaryId} isLoading={saving.busy} isInterruptible onClick={() => void save()} />
       </VStack>
     )
-  ) : confirming ? null : stacked ? (
+  ) : confirming ? null : (
     // Up to 640 px (as ActionRow) the first across the card; the outlined ones after it share a row where they fit and
     // stand one under the other where they do not, so the flows stay in view under a card of a cut-off recording; Ta bort
-    // ends their row at its own width, and goes under them where the row has no room for it.
-    <VStack gap={2} hAlign="stretch">
+    // ends their row at its own width, and goes under them where the row has no room for it. Wider all stand in one row,
+    // wrapping when they must, deleting last: their group gives its place to them. One stack that turns, so a window
+    // crossing 640 px moves the buttons instead of drawing them again, and a focused one keeps the focus.
+    <Stack
+      direction={stacked ? "vertical" : "horizontal"}
+      gap={2}
+      hAlign={stacked ? "stretch" : undefined}
+      vAlign={stacked ? undefined : "center"}
+      wrap={stacked ? undefined : "wrap"}
+    >
       {first}
-      <HStack gap={2} wrap="wrap" className={styles.outlined}>
+      <HStack gap={2} wrap="wrap" className={stacked ? styles.outlined : styles.row}>
         {outlined}
         {removeButton}
       </HStack>
-    </VStack>
-  ) : (
-    // Wider all stand in one row, wrapping when they must, deleting last.
-    <HStack gap={2} vAlign="center" wrap="wrap">
-      {first}
-      {outlined}
-      {removeButton}
-    </HStack>
+    </Stack>
   );
   const question = confirming && (
     <VStack role="group" aria-labelledby={questionId} gap={2}>
@@ -492,15 +499,17 @@ function UnsentRecordingRow({
       <HStack gap={4} vAlign="start" data-recording="">
         {!stacked && <IconTile icon={Mic} size="lg" />}
         <VStack gap={4} className={styles.lead}>
-          {stacked ? (
-            text
-          ) : (
-            <HStack gap={4} vAlign="center" hAlign="between" wrap="wrap">
-              {text}
-              {buttons}
-            </HStack>
-          )}
-          {(stacked || !buttons) && actions}
+          <Stack
+            direction={stacked ? "vertical" : "horizontal"}
+            gap={4}
+            vAlign={stacked ? undefined : "center"}
+            hAlign={stacked ? undefined : "between"}
+            wrap={stacked ? undefined : "wrap"}
+          >
+            {text}
+            {buttons}
+          </Stack>
+          {!buttons && actions}
           {question}
           {problem && <Banner status="error" title={problem} collapsible={false} />}
         </VStack>

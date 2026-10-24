@@ -304,9 +304,10 @@ export function ResultDocument({
     <>
       {!inCard && narrowActions}
 
+      {/* How to keep it from the tab, unless Dela here sends the file itself (it is read for it, or being read). */}
       {opensInTab && (
         <Text as="p" type="supporting">
-          {file.typeLabel} öppnas i en ny flik. Spara den där med webbläsarens delaknapp.
+          {file.typeLabel} öppnas i en ny flik.{(share === null || share.kind === "text") && " Spara den där med webbläsarens delaknapp."}
         </Text>
       )}
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}

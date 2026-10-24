@@ -338,7 +338,7 @@ export function SpeakerNamingDialog({
                                 variant="ghost"
                                 size="sm"
                                 className={styles.sample}
-                                icon={playing ? <Pause aria-hidden /> : <Headphones aria-hidden />}
+                                icon={<Icon icon={playing ? Pause : Headphones} size="sm" />}
                                 label={`${sample}: ${speakerDisplayLabel(row.label)}`}
                                 isDisabled={disabled || Boolean(unavailable)}
                                 onClick={() => (playing ? onStopListening?.() : onListen(row.label))}

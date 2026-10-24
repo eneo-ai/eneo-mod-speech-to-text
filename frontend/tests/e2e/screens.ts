@@ -98,6 +98,21 @@ async function version(page: Page, build: { release: string | null; revision: st
 }
 
 /**
+ * The transcript scrolled by hand while it plays: it stops following the playhead, and the player offers "Följ
+ * uppspelningen", which this returns. A scroll the page made by itself a moment ago is not the person's, so the wheel
+ * comes again until it counts.
+ */
+export async function scrollWhilePlaying(page: Page) {
+  await page.locator("[data-docked-player]").getByRole("button", { name: "Spela upp", exact: true }).click();
+  const follow = page.getByRole("button", { name: "Följ uppspelningen" });
+  await expect(async () => {
+    await page.locator("[data-turn-index]").first().dispatchEvent("wheel");
+    await expect(follow).toBeVisible({ timeout: 250 });
+  }).toPass();
+  return follow;
+}
+
+/**
  * The result's playhead on a word: pressing "punkten" plays from it, and the audio is paused at once, so the state stands
  * still with the word lit where it stopped (punkten, or one just after it) and its colours settled.
  */
@@ -992,7 +1007,7 @@ export const STATES: State[] = [
       await record(page, "Spela in");
       await stop(page);
       await page.getByRole("button", { name: "Ta bort" }).click();
-      await expect(page.getByRole("alertdialog", { name: "Ta bort inspelningen?" })).toBeVisible();
+      await expect(page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" })).toBeVisible();
     },
   },
   {

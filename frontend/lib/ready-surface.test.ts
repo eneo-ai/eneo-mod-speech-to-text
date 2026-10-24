@@ -219,7 +219,8 @@ test("the delete question: Avbryt and Escape keep the recording; Ta bort discard
 
   await view.act(async () => trigger.click());
   assert.ok(question()?.hasAttribute("open"), "the question opens");
-  assert.equal(question()?.getAttribute("aria-label") ?? question()?.textContent?.includes("Ta bort inspelningen?"), true);
+  assert.equal(question()?.getAttribute("aria-label") ?? question()?.textContent?.includes("Ta bort inspelningen från enheten?"), true);
+  assert.ok(question()?.textContent?.includes("Det går inte att ångra."), "in the words the unsent recordings ask it with");
   await view.act(async () => named(question()!, "Avbryt")!.click());
   assert.equal(question()?.hasAttribute("open"), false, "Avbryt closes it");
   assert.equal(document.activeElement, trigger, "and gives the focus back to Ta bort");

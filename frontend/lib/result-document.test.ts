@@ -1352,6 +1352,23 @@ test("on an iPhone or an iPad a PDF is saved from a tab of its own, which Safari
   assert.equal(opened.length, 1, "no tab");
 });
 
+test("on an iPhone or an iPad whose Dela sends the PDF itself, the note says only that it opens in a tab: no detour to save it", async (t) => {
+  safariOn(t, "an iPad");
+  Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  t.after(() => ["share", "canShare"].forEach((name) => Reflect.deleteProperty(navigator, name)));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => present()) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  const view = await document_({ text, file: pdf });
+  await view.act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  assert.ok(button(view.container, "Dela"), "Dela is there");
+  const words = view.container.textContent ?? "";
+  assert.match(words, /PDF öppnas i en ny flik\./);
+  assert.doesNotMatch(words, /webbläsarens delaknapp/, "Dela on the page sends the file");
+  await view.unmount();
+});
+
 test("narrower than a laptop the tab opens at the press and goes to the file once it is there; a file that is not closes it again", async (t) => {
   widthOf(t, 390);
   let answer: () => Response = missing;

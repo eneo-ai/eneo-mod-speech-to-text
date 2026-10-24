@@ -102,6 +102,15 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  // The browser's own bar (Chrome on Android) takes index.html's theme-color for the system's mode. A chosen mode gives
+  // both its colour; system gives each its own back, kept in `data-content`. Chrome in its own dark theme keeps its bar.
+  useEffect(() => {
+    const metas = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"][media]')];
+    for (const meta of metas) meta.dataset.content ??= meta.content;
+    const chosen = mode === "system" ? undefined : metas.find((meta) => meta.getAttribute("media") === `(prefers-color-scheme: ${mode})`);
+    for (const meta of metas) meta.content = (chosen ?? meta).dataset.content!;
+  }, [mode]);
+
   const setMode = useCallback((next: ColorMode) => {
     if (next !== modeRef.current) markSwitching();
     modeRef.current = next;

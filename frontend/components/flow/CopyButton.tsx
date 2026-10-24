@@ -35,9 +35,10 @@ export function useCopy(text: string, html?: () => string | null): [CopyState, (
   const [state, setState] = useState<CopyState>("idle");
   const announce = useAnnounce();
 
+  // "Kunde inte kopiera" stays long enough to be read and acted on; the check of a copy that worked is a glance.
   useEffect(() => {
     if (state === "idle") return;
-    const timer = setTimeout(() => setState("idle"), 2_500);
+    const timer = setTimeout(() => setState("idle"), state === "failed" ? 8_000 : 2_500);
     return () => clearTimeout(timer);
   }, [state]);
 

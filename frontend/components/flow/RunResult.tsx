@@ -251,8 +251,9 @@ export function RunResult({
           {newRun}
         </HStack>
       )}
-      {/* The dot stays with the flow's name, so a line too short for both breaks after it, as a recording's name does. Under
-          360 px, where it would end the first line alone, each has a line of its own and there is no dot. */}
+      {/* The dot stays with the flow's name, so a line too short for both breaks after it, as a recording's name does: in
+          its line, after its last word (a long name that wraps keeps it there, not at the column's end). Under 360 px,
+          where it would end the first line alone, each has a line of its own and there is no dot. */}
       {tiny ? (
         <VStack gap={0.5}>
           {flow}
@@ -260,14 +261,14 @@ export function RunResult({
         </VStack>
       ) : (
         <HStack gap={1} vAlign="start" wrap="wrap">
-          <HStack gap={1} vAlign="end">
-            {flow}
+          <Text as="p" color="secondary">
+            {flowName}
             {made && (
               <Text color="secondary" aria-hidden>
-                ・
+                {"\u00a0·"}
               </Text>
             )}
-          </HStack>
+          </Text>
           {made}
         </HStack>
       )}

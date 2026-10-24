@@ -11,9 +11,10 @@ test.beforeEach(({}, info) =>
   test.skip(!(info.project.use.browserName === "webkit" && info.project.use.hasTouch), "Safari's engine on a touch screen"),
 );
 
-test("Öppna PDF opens the PDF in a tab of its own, says how to keep it, and the page stays where it was", async ({ page }) => {
+test("Öppna PDF opens the PDF in a tab of its own, says so, and the page stays where it was", async ({ page }) => {
   await result(page);
-  await expect(page.getByText("PDF öppnas i en ny flik. Spara den där med webbläsarens delaknapp.")).toBeVisible();
+  // Playwright's WebKit has a share sheet that takes the file: Dela on the page keeps it, with no detour through the tab.
+  await expect(page.getByText("PDF öppnas i en ny flik.", { exact: true })).toBeVisible();
   const at = page.url();
   const saved: string[] = [];
   page.on("download", (download) => void saved.push(download.url()));
