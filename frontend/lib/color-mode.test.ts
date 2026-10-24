@@ -141,6 +141,31 @@ test("another tab's choice reaches this one", async () => {
   assert.equal(current?.mode, "dark", "another key is none of its business");
 });
 
+test("a chosen light or dark colours the browser's bar in both of the system's modes, and system gives each its own", async () => {
+  const { ColorModeProvider, useColorMode } = await load();
+  operatingSystem(false);
+  // As index.html has them: one colour for each of the system's modes.
+  document.head.innerHTML = `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FFFFFF" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B1322" />`;
+  const bar = () => [...document.querySelectorAll('meta[name="theme-color"]')].map((meta) => meta.getAttribute("content"));
+  localStorage.setItem("theme", "dark");
+  let current: ReturnType<typeof useColorMode> | undefined;
+  function Probe() {
+    current = useColorMode();
+    return null;
+  }
+  try {
+    const view = await mount(createElement(ColorModeProvider, { children: createElement(Probe) }));
+    assert.deepEqual(bar(), ["#0B1322", "#0B1322"], "a stored dark");
+    await view.act(async () => current?.setMode("light"));
+    assert.deepEqual(bar(), ["#FFFFFF", "#FFFFFF"], "light chosen");
+    await view.act(async () => current?.setMode("system"));
+    assert.deepEqual(bar(), ["#FFFFFF", "#0B1322"], "the system's: each its own");
+  } finally {
+    document.head.innerHTML = "";
+  }
+});
+
 test("the hook says so when there is no provider above it", async () => {
   const { useColorMode } = await load();
   function Probe() {
