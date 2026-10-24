@@ -446,7 +446,7 @@ function UnsentRecordingRow({
       wrap={stacked ? undefined : "wrap"}
     >
       {first}
-      <HStack gap={2} wrap="wrap" className={stacked ? styles.outlined : styles.inRow}>
+      <HStack gap={2} wrap="wrap" className={stacked ? styles.outlined : styles.row}>
         {outlined}
         {removeButton}
       </HStack>
