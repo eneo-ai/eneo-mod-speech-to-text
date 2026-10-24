@@ -119,6 +119,10 @@ type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
+// What a phone's keyboard reads, which Astryx's types leave out and its fields pass on: a search is no word to correct or
+// capitalise, and its key says Sök; a line's editor saves on Enter, so its key says Klar.
+const SEARCH_HINTS = { autoCorrect: "off", autoCapitalize: "none", spellCheck: "false", enterKeyHint: "search" } as Record<string, string>;
+const DONE_HINT = { enterKeyHint: "done" } as Record<string, string>;
 
 /**
  * The transcript's keys: Space or K plays and pauses, the arrow keys move five
@@ -1112,6 +1116,7 @@ export function TranscriptPlayer(
                   isLabelHidden
                   startIcon="search"
                   hasClear
+                  {...SEARCH_HINTS}
                   placeholder="Sök i transkriberingen"
                   value={query}
                   onChange={(next) => {
@@ -1866,6 +1871,7 @@ function LineEditor({
         isLabelHidden
         value={value}
         rows={1}
+        {...DONE_HINT}
         isReadOnly={locked}
         onChange={(next, e) => {
           setValue(next);

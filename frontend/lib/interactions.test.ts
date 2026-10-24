@@ -193,6 +193,31 @@ test("transcript: Tab to Spara and activate it saves once; leaving the editor sa
   outside.remove();
 });
 
+test("transcript: the search is no word to correct, and a phone's key says Sök; Enter steps to the next hit", async () => {
+  const { view } = await mountEditableTranscript(() => undefined);
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const search = [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
+  const hints = Object.fromEntries(["autocorrect", "autocapitalize", "spellcheck", "enterkeyhint"].map((name) => [name, search.getAttribute(name)]));
+  assert.deepEqual(hints, { autocorrect: "off", autocapitalize: "none", spellcheck: "false", enterkeyhint: "search" });
+  await view.act(async () => type(search, "t"));
+  const status = () => [...view.container.querySelectorAll("span, p")].map((el) => el.textContent).find((words) => /^\d+ av \d+$/.test(words ?? ""));
+  const total = /^1 av (\d+)$/.exec(status() ?? "")?.[1];
+  assert.ok(Number(total) > 1, "several hits to step through");
+  await view.act(async () => void search.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  assert.equal(status(), `2 av ${total}`, "Enter steps to the next hit");
+  await view.unmount();
+});
+
+test("transcript: a line editor's key says Klar, as Enter saves the line", async () => {
+  const saved: unknown[] = [];
+  const { view, editor } = await mountEditableTranscript((next) => saved.push(next));
+  assert.equal(editor.getAttribute("enterkeyhint"), "done");
+  await view.act(async () => void editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  assert.equal(saved.length, 1, "Enter saves");
+  assert.equal(view.container.querySelector("textarea"), null, "and closes the editor");
+  await view.unmount();
+});
+
 test("transcript: closing a line's editor from inside it gives the focus back to that passage's Rätta", async () => {
   for (const close of ["Enter", "Escape", "Spara", "Avbryt"]) {
     const { view, editor } = await mountEditableTranscript(() => undefined);
