@@ -32,6 +32,11 @@ class ReleasePathTests(unittest.TestCase):
         self.assertEqual(metadata["with"]["images"], IMAGE)
         self.assertEqual(workflow("release.yml")["env"]["IMAGE"], IMAGE)
 
+    def test_main_publishes_only_a_commit_every_other_ci_job_passed(self) -> None:
+        jobs = workflow("ci.yml")["jobs"]
+
+        self.assertEqual(set(jobs["publish"]["needs"]), set(jobs) - {"publish"})
+
     def test_main_publishes_the_commit_and_only_a_release_gives_a_version_and_latest(self) -> None:
         metadata = next(step for step in workflow("publish.yml")["jobs"]["ghcr"]["steps"] if step.get("id") == "meta")
 
