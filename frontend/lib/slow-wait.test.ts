@@ -103,6 +103,20 @@ test("an earlier run that is being opened says after 15 seconds that it takes lo
   assert.equal(retries, 1);
 });
 
+test("a run being opened that tries again by itself offers Försök nu after 15 seconds; a wait that only takes long, Försök igen", async (t) => {
+  const { RunOpening } = await import("../components/flow/RunProgress");
+  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = await mount(await onPage(createElement(RunOpening, { onRetry: () => undefined, retrying: true })));
+  await view.act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+  assert.ok(button(view.container, "Försök nu"));
+  assert.equal(button(view.container, "Försök igen"), null);
+  await view.unmount();
+  const { container, act } = await slowWait();
+  await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+  assert.ok(button(container, "Försök igen"), "the flow list and a flow's page keep their words");
+});
+
 test("a run that cannot be read while it is opened says that it tries again, at once", async () => {
   const { RunOpening } = await import("../components/flow/RunProgress");
   const { container } = await mount(await onPage(createElement(RunOpening, { onRetry: () => undefined, retrying: true })));
@@ -122,11 +136,12 @@ test("a run on screen whose status cannot be read says that it tries again, at o
 
   const trouble = await mount(await onPage(createElement(RunProgress, { ...props, retrying: { onRetry: () => (retries += 1) } })));
   assert.deepEqual(wordsInStatus(trouble.container), ["Tar fram texten", "Försöker igen. Körningen fortsätter i Eneo."]);
-  assert.equal(button(trouble.container, "Försök igen"), null, "not offered at once: it is trying");
+  assert.equal(button(trouble.container, "Försök nu"), null, "not offered at once: it is trying");
 
   await trouble.act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
   assert.deepEqual(wordsInStatus(trouble.container), ["Tar fram texten", "Försöker igen. Körningen fortsätter i Eneo.", "Det tar längre tid än vanligt."]);
   assert.equal(trouble.container.querySelector('a[href="/flows"]')?.textContent, "Alla flöden");
-  await trouble.act(async () => button(trouble.container, "Försök igen")!.click());
+  assert.equal(button(trouble.container, "Försök igen"), null, "the page tries again by itself: the button asks for it now");
+  await trouble.act(async () => button(trouble.container, "Försök nu")!.click());
   assert.equal(retries, 1);
 });
