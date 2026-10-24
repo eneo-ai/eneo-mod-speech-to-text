@@ -639,6 +639,37 @@ test("with too little left visible to follow (a phone on its side with the keybo
   assert.equal(dialogElement().classList.contains("atVisibleTop"), false);
 });
 
+test("a phone on its side: where the browser leaves the field the focus was put in under the keyboard (Byt namn på, in Safari), the dialog moves up until the field is above it, and back when the keyboard closes", async (t) => {
+  const move = visualViewport(t);
+  const { createRef } = await import("react");
+  const handle = createRef<import("../components/SpeakerNamingDialog").SpeakerNamingHandle>();
+  const { view, field } = await dialog({ ref: handle });
+  // The lower speaker's field ends at 173 px, wherever the dialog has moved it.
+  const moved = () => -parseFloat(dialogElement().style.translate.split(" ")[1] ?? "0") || 0;
+  field("Talare 2").getBoundingClientRect = () => ({ top: 147 - moved(), bottom: 173 - moved() }) as DOMRect;
+  // "Byt namn på Talare 2" puts the focus in that field.
+  await view.act(async () => handle.current!.open("SPEAKER_01", null));
+  assert.equal(document.activeElement, field("Talare 2"));
+  // The keyboard leaves 36 px, and the browser does not move the visible part to the field.
+  await view.act(async () => move(36, 0));
+  assert.equal(dialogElement().style.translate, "0 -153px", "the field ends a spacing above the keyboard");
+  assert.doesNotMatch(dialogElement().getAttribute("style") ?? "", /36px/, "the dialog keeps its size");
+  // Moved, the field stays where it is as the keyboard settles.
+  await view.act(async () => move(36, 0));
+  assert.equal(dialogElement().style.translate, "0 -153px");
+  // The keyboard closes.
+  await view.act(async () => move(window.innerHeight, 0));
+  assert.equal(dialogElement().style.translate, "");
+  // A tapped field: the browser moves the visible part to it itself, a moment after the keyboard's first resize, so the
+  // dialog stays where it is (moved as well, the field would go off the top).
+  await view.act(async () => field("Talare 1").focus());
+  await view.act(async () => field("Talare 2").focus());
+  await view.act(async () => move(36, 0));
+  assert.equal(dialogElement().style.translate, "");
+  await view.act(async () => move(36, 140));
+  assert.equal(dialogElement().style.translate, "");
+});
+
 test("with no storage to keep drafts in (a private window), the dialog works and keeps nothing", async (t) => {
   const real = Object.getOwnPropertyDescriptor(window, "sessionStorage")!;
   Object.defineProperty(window, "sessionStorage", { get: () => { throw new Error("blocked"); }, configurable: true });
