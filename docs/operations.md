@@ -1,15 +1,101 @@
 # Drift
 
-Modulen är en image, `ghcr.io/eneo-ai/eneo-mod-speech-to-text`, och en process som serverar både gränssnittet och API:t på port 3001 över vanlig HTTP. TLS avslutas framför den. Första uppsättningen, med kopplingen till Eneo: [Kom igång](kom-igang.md). Den här sidan är referensen.
+Modulen är en image, `ghcr.io/eneo-ai/eneo-mod-speech-to-text`, och en process som serverar både gränssnittet och API:t på port 3001 över vanlig HTTP. TLS avslutas framför den. Den har ingen databas, ställs in med miljövariabler och skriver bara i `/tmp`. Första uppsättningen, med kopplingen till Eneo: [Kom igång](kom-igang.md). Den här sidan är referensen.
 
-## Driftsätt med Dokploy eller Portainer
+## Driftsätt
 
-Ladda ner `docker-compose.yml` och `env.example` från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases) och fyll i `env.example` som `.env` ([Kom igång, steg 4](kom-igang.md#4-kör-modulen)).
+Varje [utgåva](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases) har `docker-compose.yml`, `env.example` med utgåvans `MODULE_VERSION` och Helm-charten `eneo-mod-speech-to-text-X.Y.Z.tgz`. Variablerna är desamma överallt ([Miljövariabler](#miljövariabler)). Kör en container åt gången: sessionerna ligger i processens minne.
 
+Pröva variablerna med imagen innan modulen startar. Ett fel namnger variabeln:
+
+```sh
+docker run --rm --env-file .env ghcr.io/eneo-ai/eneo-mod-speech-to-text:v1.2.3 \
+  python -c "from app.config import load_settings; load_settings()"
+```
+
+`podman run` tar samma argument.
+
+### Driftsätt med Dokploy eller Portainer
+
+Docker Compose med `docker-compose.yml`. Spara `env.example` som `.env` och fyll i den ([Kom igång, steg 4](kom-igang.md#4-kör-modulen)).
+
+- **Docker Compose:** `docker compose --env-file .env up -d`.
 - **Dokploy:** skapa ett Compose-projekt, klistra in `docker-compose.yml` och variablerna under Environment, lägg domänen på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och dess Traefik sköter HTTPS-certifikatet. [Höj `readTimeout`](#höj-readtimeout-i-traefik).
-- **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
+- **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables (**Load variables from .env file** läser in `.env`). Tjänsten publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
 - **Ingen omvänd proxy på värden:** `docker-compose.traefik.yml` i repot lägger Traefik med Let's Encrypt, HSTS och `readTimeout` 1800 s framför modulen. Sätt `MODULE_HOST` (och `MODULE_PUBLIC_URL=https://<MODULE_HOST>`) och `ACME_EMAIL` i `.env`, låt port 80 och 443 nå värden och kör `docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d`. Dokploy har redan en Traefik och ska inte ha filen.
 - **Imagen:** paketet på `ghcr.io` ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot registret.
+
+### Driftsätt med Podman
+
+```sh
+podman compose --env-file .env up -d
+```
+
+- Samma `docker-compose.yml` och `.env`. Behåll volymen `spool`: utan den lägger Podman en tmpfs på `/tmp` i den skrivskyddade containern, och varje uppladdning hamnar i minnet.
+- Processen kör som uid 999, inte root. Den namngivna volymen fungerar som den är, också rootless.
+- En bindmonterad logga ska vara läsbar för alla (`chmod 644`), och på en värd med SELinux (Fedora, RHEL) behöver monteringen `:z`: `./branding:/branding:ro,z`. Annars loggar modulen att filen inte får läsas och visar namnet.
+- Podman har ingen daemon som startar containern efter en omstart av värden. Ordna det med systemd.
+- `docker-compose.traefik.yml` är prövad med Docker Compose, inte med Podman.
+
+### Driftsätt med Kubernetes och Helm
+
+```sh
+kubectl create secret generic tal-till-text \
+  --from-literal=ENEO_API_KEY=sk_... \
+  --from-literal=SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+kubectl create configmap tal-till-text-logga --from-file=logo.svg --from-file=logo-mork.svg  # valfritt
+helm upgrade --install tal-till-text eneo-mod-speech-to-text-1.2.3.tgz -f values.yaml
+```
+
+```yaml
+# values.yaml
+env:
+  ENEO_BACKEND_URL: http://eneo-backend.eneo:8000
+  ENEO_PUBLIC_URL: https://eneo.example.org
+  MODULE_PUBLIC_URL: https://transkribering.example.org
+  ORGANIZATION_NAME: Umeå kommun
+  ORGANIZATION_LOGO: /branding/logo.svg
+  ORGANIZATION_LOGO_DARK: /branding/logo-mork.svg
+  MAX_UPLOAD_BYTES: "2147483648"
+existingSecret: tal-till-text
+branding:
+  configMap: tal-till-text-logga
+spool:
+  sizeLimit: 3Gi
+ingress:
+  enabled: true
+  className: nginx
+  tlsSecretName: tal-till-text-tls
+  annotations: {}  # se Krav på ingressen
+```
+
+- **`env`** tar variablerna i `.env` med samma namn, som text: citera tal och `true`/`false`. Ett tomt värde sätts inte. `MODULE_VERSION` sätter charten från imagens tagg, som är chartens utgåva om inte `image.tag` anges.
+- **`existingSecret`** är en Secret med nycklarna `ENEO_API_KEY` och `SESSION_SECRET`. Utan den skapar charten en av `secret.ENEO_API_KEY` och `secret.SESSION_SECRET`.
+- **Loggan:** ConfigMap:en monteras skrivskyddad i mappen som `ORGANIZATION_LOGO` pekar på; lägg båda loggorna i den. Modulen läser loggan vid start, så kör `kubectl rollout restart deployment/tal-till-text` efter ett byte.
+- **`spool.sizeLimit`** (standard `2Gi`) är gränsen för `/tmp`, en `emptyDir` på nodens disk. Den ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES` med marginal: över gränsen vräker Kubernetes podden och alla loggas ut.
+- Podden kör en replik med strategin `Recreate`, uid 999, skrivskyddat rotfilsystem och inga capabilities. Ingressens värd är värden i `MODULE_PUBLIC_URL`.
+
+#### Krav på ingressen
+
+| Krav | ingress-nginx | Traefik |
+|---|---|---|
+| Body på minst 5 MiB: webbläsaren skickar delar på högst 4 MiB. En klient som använder multipart-rutten direkt behöver `MAX_UPLOAD_BYTES`. | `nginx.ingress.kubernetes.io/proxy-body-size: "8m"` (standard 1m ger 413) | Ingen gräns som standard. |
+| Lästid 1800 s | `nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"` och `nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"` (standard 60) | `readTimeout: 1800s` på ingångspunkten (standard 60 s), inte per Ingress. |
+| WebSocket för livetexten | Fungerar utan annotation; tidsgränserna ovan håller den öppen. | Fungerar utan konfiguration. |
+
+I Traefiks Helm-chart sätts lästiden under `ports`; i k3s med en `HelmChartConfig` för `traefik` i `kube-system`:
+
+```yaml
+ports:
+  web:
+    transport:
+      respondingTimeouts:
+        readTimeout: 1800s
+  websecure:
+    transport:
+      respondingTimeouts:
+        readTimeout: 1800s
+```
 
 ## Acceptans innan verklig användning
 
@@ -26,7 +112,14 @@ CI prövar imagen mot en stubbe som spelar Eneo ([Tester](quality-gates.md#image
 
 ## Uppgradera
 
-Byt `MODULE_VERSION` till den nya taggen (`vX.Y.Z`) och driftsätt om. Fäst alltid en version: med `latest` hämtas ingen ny image om en med det namnet redan finns på värden. Stoppa den gamla containern innan den nya startar. Sessionerna ligger i processens minne, så två containrar samtidigt skickar personer fel, och alla loggar in igen efter bytet. Att gå tillbaka är att byta tillbaka. Efter bytet svarar `/health` med den nya utgåvan.
+| Plattform | Uppgradera | Gå tillbaka |
+|---|---|---|
+| Docker Compose, Dokploy | Sätt `MODULE_VERSION=vX.Y.Z` och driftsätt om (`docker compose --env-file .env up -d`). | Sätt den förra taggen och driftsätt om. |
+| Portainer | Sätt `MODULE_VERSION` och välj **Update the stack** med **Re-pull image**. | Den förra taggen, likadant. |
+| Podman | Sätt `MODULE_VERSION` i `.env` och kör `podman compose --env-file .env up -d --force-recreate`. | Den förra taggen, samma kommando. |
+| Kubernetes | `helm upgrade tal-till-text eneo-mod-speech-to-text-X.Y.Z.tgz -f values.yaml` | `helm rollback tal-till-text` |
+
+Fäst alltid en version: med `latest` hämtas ingen ny image om en med det namnet redan finns på värden. Stoppa den gamla containern innan den nya startar; charten gör det med strategin `Recreate`. Sessionerna ligger i processens minne, så två containrar samtidigt skickar personer fel, och alla loggar in igen efter bytet. Efter bytet svarar `/health` med den nya utgåvan.
 
 ## Vilken version som körs
 
@@ -57,7 +150,7 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 
 | Variabel | Standard | Regel och betydelse |
 |---|---|---|
-| `MODULE_VERSION` | `latest` | Imagens tagg i `docker-compose.yml`, som också skickar värdet till containern. En versionstagg (`vX.Y.Z`) blir utgåvan i `/health`; andra värden stoppar aldrig starten. |
+| `MODULE_VERSION` | `latest` | Imagens tagg i `docker-compose.yml`, som också skickar värdet till containern. Helm-charten sätter den från `image.tag`. En versionstagg (`vX.Y.Z`) blir utgåvan i `/health`; andra värden stoppar aldrig starten. |
 | `ENEO_BACKEND_URL` | | Absolut http(s)-URL utan query eller fragment: dit modulen når Eneos API (`http://backend:8000` på Eneos `module_net`). |
 | `ENEO_PUBLIC_URL` | | Eneos publika adress, dit webbläsaren skickas för att logga in. `https`; `http` bara för `localhost`, `127.0.0.1` och `[::1]`. |
 | `MODULE_PUBLIC_URL` | | Modulens publika adress. Samma regel som `ENEO_PUBLIC_URL`. Ger callback-URL:en och den tillåtna `Origin`. |
@@ -90,6 +183,7 @@ Modulen svarar på vanlig HTTP och läser inga `X-Forwarded-*`-headers. Proxyn f
   - Webbläsaren skickar högst 4 MiB per request, och 60 s räcker då ner till ungefär 0,6 Mbit/s. En klient som använder multipart-rutten direkt skickar hela filen i ett anrop: 1800 s räcker för 1 GiB över 5 Mbit/s.
   - När filen är hos modulen gäller `UPLOAD_PROXY_TIMEOUT_SECONDS` för vägen vidare till Eneo.
   - En eventuell `maxRequestBodyBytes` i proxyn ska rymma `MAX_UPLOAD_BYTES`. Svarar modulen 413 medan webbläsaren fortfarande skickar kan en proxy göra det till ett 502.
+- **I Kubernetes:** [Krav på ingressen](#krav-på-ingressen).
 - **WebSocket.** Uppgraderingen till `/api/live/...` ska släppas igenom med webbläsarens `Origin` oförändrad. Traefik v3.7 gör det utan extra konfiguration. Går `ENEO_BACKEND_URL` via en proxy ska den också släppa igenom uppgraderingar. Traefiks varning om `aliasHeadersStrategy` vid start är ofarlig för modulen.
 - **Rate limiting**, om ni vill ha det. Modulen har ingen egen.
 
@@ -148,7 +242,7 @@ En aktuell Chrome, Edge, Safari eller Firefox och tillstånd till mikrofonen. Al
 
 ## Uppladdningens tillfälliga lagring
 
-Modulen tar emot en uppladdning hel innan den skickar den vidare. Containern är skrivskyddad, och `/tmp` är den enda skrivbara platsen: volymen `spool` i `docker-compose.yml`, alltså disk och inte minne. Disken ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES` plus systemets övriga temporärfiler. En full disk ger ett fel på uppladdningen.
+Modulen tar emot en uppladdning hel innan den skickar den vidare. Containern är skrivskyddad, och `/tmp` är den enda skrivbara platsen: volymen `spool` i `docker-compose.yml`, alltså disk och inte minne. I Kubernetes är den en `emptyDir` med `spool.sizeLimit`. Disken ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES` plus systemets övriga temporärfiler. En full disk ger ett fel på uppladdningen.
 
 - Återupptagbara uppladdningar skrivs direkt till en temporärfil, och multipart-filer större än 1 MB också.
 - `UPLOAD_RECEIVE_TIMEOUT_SECONDS` räknas från starten och omfattar avbrotten mellan delarna. En avbruten del skrivs om.
@@ -173,7 +267,7 @@ I en Eneo-installation ger Eneos Compose-overlay modulen bara nätverket `module
 
 ## Loggar
 
-Modulen loggar till containerns stdout och stderr: `docker compose logs speech-to-text`. Det finns ingen accesslogg. Fel och varningar har tydliga etiketter (upstream-fel, misslyckad ticketväxling, en logga som inte kunde läsas), men ingen token och ingen URL med query. Proxyns logg ska inte heller skriva callbackens query string: den bär en engångsticket.
+Modulen loggar till containerns stdout och stderr: `docker compose logs speech-to-text`, `podman compose logs speech-to-text` eller `kubectl logs deployment/tal-till-text`. Det finns ingen accesslogg. Fel och varningar har tydliga etiketter (upstream-fel, misslyckad ticketväxling, en logga som inte kunde läsas), men ingen token och ingen URL med query. Proxyns logg ska inte heller skriva callbackens query string: den bär en engångsticket.
 
 ## CI och utgåvor
 
@@ -181,7 +275,8 @@ Modulen loggar till containerns stdout och stderr: `docker compose logs speech-t
 
 - **Pages första gången:** en repoadministratör väljer **Settings → Pages → Build and deployment → Source: GitHub Actions**. Arbetsflödets token kan publicera men inte aktivera Pages; steget **Check GitHub Pages configuration** kontrollerar inställningen. Svarar publiceringen `404 Not Found`, kontrollera inställningen och kör jobbet igen, eller **Actions → Docs → Run workflow → main**. På andra grenar bygger och kontrollerar en manuell körning utan att publicera.
 - **Imagen:** jobbet `image` i `ci.yml` ger bygget commiten och en tidpunkt. `Dockerfile` skriver dem som imagens etiketter och i byggposten som `/health` svarar med, och imagens acceptans kräver att de stämmer överens.
-- **Utgåvan:** `release.yml` körs när en tagg `vX.Y.Z` pushas och bygger ingenting. Den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest`, kontrollerar att imagens `org.opencontainers.image.revision` är den taggade commiten och skapar en GitHub-utgåva med `docker-compose.yml` och `env.example`. En commit som inte gått igenom CI på `main` har ingen image, och taggen misslyckas: kör jobbet igen när CI är klart. Säger imagen en annan commit skapas ingen utgåva, men taggarna i registret pekar redan på imagen och rättas för hand.
+- **Helm-charten:** jobbet `chart` i `ci.yml` kör `helm lint` och prövar det charten renderar mot Kubernetes scheman med `kubeconform`. `backend/tests/test_deployment_chart.py` håller chartens variabler och härdning lika med `docker-compose.yml`.
+- **Utgåvan:** `release.yml` körs när en tagg `vX.Y.Z` pushas och bygger ingenting. Den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest`, kontrollerar att imagens `org.opencontainers.image.revision` är den taggade commiten och skapar en GitHub-utgåva med `docker-compose.yml`, `env.example` med `MODULE_VERSION=vX.Y.Z` och charten paketerad som den versionen. En commit som inte gått igenom CI på `main` har ingen image, och taggen misslyckas: kör jobbet igen när CI är klart. Säger imagen en annan commit skapas ingen utgåva, men taggarna i registret pekar redan på imagen och rättas för hand.
 
 ```
 git tag v1.2.3 <commit på main>
