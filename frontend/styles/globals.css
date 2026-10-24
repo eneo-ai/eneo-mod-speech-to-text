@@ -106,6 +106,15 @@
   .astryx-banner-description {
     text-wrap: pretty;
   }
+
+  /* A long press on a button (Pausa, Stoppa) presses it: it does not select its word and open the phone's copy menu, and
+     a button's word is left out of text copied by hand. A transcript's name and time stay in it (TranscriptPlayer.module.css);
+     the review editor's words are role="button" spans, and stay selectable. */
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
 }
 
 /* What is docked at the bottom of a phone's screen (the setup's primary action, a player) never hides what has the

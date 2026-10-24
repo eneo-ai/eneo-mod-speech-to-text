@@ -2,6 +2,7 @@
  * The result's two tabs below a laptop's width, as a person uses them: the keyboard's way along the strip, and the place
  * each tab keeps. Both are behaviour the design system's tab strip and layout must not change.
  */
+import { passagesQuote } from "./checks";
 import { expect, test } from "./gate";
 import { isLaptop, result, run } from "./screens";
 import ids from "../fixtures/ids.json";
@@ -124,4 +125,17 @@ test("the tab chosen is kept for the run through a reload, as a phone's browser 
   await page.getByRole("tab", { name: "Dokument" }).click();
   await page.reload();
   await expect(page.getByRole("tab", { name: "Dokument" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("a passage copied by hand on a phone keeps its speaker, its time and its words, without the buttons' words or the hidden notes", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "one phone");
+  await run(page, ids.runs.corrected);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  await expect(page.locator("[data-correction-note]").first()).toBeAttached();
+  const quote = await passagesQuote(page);
+  expect(quote).toContain("Talare 1");
+  expect(quote).toContain("0:00");
+  expect(quote).toContain("Fler turer börjar gälla efter höstlovet.");
+  expect(quote, "the passage's own button").not.toContain("Rätta");
+  expect(quote, "the corrected word's note, for a screen reader").not.toContain("rättad från");
 });

@@ -908,3 +908,20 @@ export function clippedFocus(page: Page): Promise<string | null> {
     return null;
   });
 }
+
+/**
+ * What a hand-copied quote of the transcript holds: the passages from the first to the one with a corrected word,
+ * selected as a mouse drag selects them, read as the clipboard gets them.
+ */
+export const passagesQuote = (page: Page) =>
+  page.evaluate(() => {
+    const passages = [...document.querySelectorAll("[data-turn-index]")];
+    const corrected = passages.find((passage) => passage.querySelector("[data-correction-note]"))!;
+    const range = document.createRange();
+    range.setStartBefore(passages[0]);
+    range.setEndAfter(corrected);
+    const selection = getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return selection.toString();
+  });

@@ -4,8 +4,10 @@
  * while the document scrolls past it. Below that width they are tabs (result-tabs.spec.ts).
  */
 import { type Locator } from "@playwright/test";
+import { passagesQuote } from "./checks";
 import { expect, test } from "./gate";
-import { isLaptop, result, STATES } from "./screens";
+import { isLaptop, result, run, STATES } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!isLaptop(info), "tabs below a laptop's width"));
 
@@ -135,4 +137,16 @@ test("on a failed run, Gå till transkriberingen brings the transcript's heading
     expect(at.end, "below the window's top only where the page ends").toBe(true);
     expect(at.bottom, "and the transcript under its heading in view").toBeLessThanOrEqual(at.height);
   }
+});
+
+test("a passage copied by hand keeps its speaker, its time and its words, without the buttons' words or the hidden notes", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "one laptop");
+  await run(page, ids.runs.corrected);
+  await expect(page.locator("[data-correction-note]").first()).toBeAttached();
+  const quote = await passagesQuote(page);
+  expect(quote).toContain("Talare 1");
+  expect(quote).toContain("0:00");
+  expect(quote).toContain("Fler turer börjar gälla efter höstlovet.");
+  expect(quote, "the passage's own button").not.toContain("Rätta");
+  expect(quote, "the corrected word's note, for a screen reader").not.toContain("rättad från");
 });

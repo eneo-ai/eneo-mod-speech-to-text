@@ -500,6 +500,14 @@
   color: var(--color-text-primary);
 }
 
+/* A passage's name and time are buttons, and belong in a quote copied by hand, as its words do (globals.css leaves a
+   button's words out). */
+.name,
+.clock {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .quiet {
   color: var(--color-text-secondary);
 }
@@ -642,6 +650,13 @@
   box-decoration-break: clone;
   /* A word passed settles into the lighter tone of the words already said: short, and only its colour. */
   transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+/* A corrected word's note is for a screen reader: a quote copied by hand keeps the word alone. The design system's own
+   rule is unprefixed, which Safari does not read. */
+.word > [data-correction-note] {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Pressing the text plays from it: under a mouse, the word that would play shows it, or the sentence where words have no

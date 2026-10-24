@@ -30,6 +30,7 @@ for (const state of ["recording", "stromma"]) {
     for (const button of [pausa, stoppa]) {
       const box = (await button.boundingBox())!;
       expect(Math.min(box.width, box.height), "the house's 44 px target").toBeGreaterThanOrEqual(44);
+      expect(await button.evaluate((element) => getComputedStyle(element).userSelect), "a long press does not select its word").toBe("none");
     }
   });
 }
