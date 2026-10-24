@@ -366,7 +366,7 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
 
 test("the delete question holds focus and gives it back", async ({ page }, info) => {
   await STATES.find((s) => s.name === "ready")!.go(page, info);
-  await holdsFocus(page, page.getByRole("button", { name: "Ta bort" }), page.getByRole("alertdialog", { name: "Ta bort inspelningen?" }));
+  await holdsFocus(page, page.getByRole("button", { name: "Ta bort" }), page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" }));
 });
 
 test("the leave question holds focus and gives it back", async ({ page }, info) => {

@@ -50,6 +50,8 @@ test("a clipboard that refuses, or is not there, says so in words and returns to
   assert.equal(status(), "Det gick inte att kopiera. Markera texten och kopiera den själv.");
 
   await act(async () => t.mock.timers.tick(2_500));
+  assert.equal(button().textContent, "Kunde inte kopiera", "a failure stays long enough to be read, where Kopierat goes");
+  await act(async () => t.mock.timers.tick(5_500));
   assert.equal(button().textContent, "Kopiera");
   assert.equal(status(), "");
 });

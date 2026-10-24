@@ -500,6 +500,13 @@
   color: var(--color-text-primary);
 }
 
+/* A passage's name and time are buttons, and belong in a quote copied by hand, as its words do (globals.css leaves a
+   button's words out). The build adds the prefix Safari reads. */
+.name,
+.clock {
+  user-select: text;
+}
+
 .quiet {
   color: var(--color-text-secondary);
 }

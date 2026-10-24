@@ -292,7 +292,7 @@ test("the leave question can be answered with a mouse while the delete question 
   await record(page, "Spela in");
   await page.getByRole("button", { name: "Stoppa" }).click();
   await page.getByRole("button", { name: "Ta bort" }).click();
-  const deleting = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+  const deleting = page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" });
   await expect(deleting).toBeVisible();
 
   await page.goBack();
@@ -377,14 +377,14 @@ test("the delete question open when the login ends is covered with the page, and
   await stop(page);
   const trigger = page.getByRole("button", { name: "Ta bort", exact: true });
   await trigger.click();
-  const question = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+  const question = page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" });
   await expect(question).toBeVisible();
 
   await endLogin(page);
   await expect(question, "a native dialog would stay above the covered page").toBeHidden();
   const tree = await page.locator("body").ariaSnapshot();
   expect(tree).toContain("Du behöver logga in igen");
-  expect(tree).not.toMatch(/Ta bort inspelningen|Den går inte att få tillbaka/);
+  expect(tree).not.toMatch(/Ta bort inspelningen|Det går inte att ångra/);
   await tabStaysInSignIn(page);
 
   await page.unroute("**/api/auth/status");
@@ -467,7 +467,7 @@ for (const height of [256, 200]) {
 
 // The page's own questions (the design system's alert dialog, its buttons pinned under its words) at the same zoom: what
 // does not fit scrolls as a whole, as the sign-in dialog does, and not as a strip of words over the buttons.
-for (const [state, name] of [["stop-question", "Stoppa inspelningen?"], ["ready-delete-dialog", "Ta bort inspelningen?"], ["leave-dialog", "Lämna sidan?"]] as const) {
+for (const [state, name] of [["stop-question", "Stoppa inspelningen?"], ["ready-delete-dialog", "Ta bort inspelningen från enheten?"], ["leave-dialog", "Lämna sidan?"]] as const) {
   for (const height of [256, 200]) {
     test(`at 320 x ${height} "${name}" scrolls as a whole, its words and its buttons each in reach`, async ({ page }, info) => {
       test.skip(info.project.name !== "laptop-1440-light", "a desktop window zoomed in: the window is set here");
@@ -514,7 +514,7 @@ const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (
       await record(page, "Spela in");
       await stop(page);
       await page.getByRole("button", { name: "Ta bort", exact: true }).click();
-      const dialog = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+      const dialog = page.getByRole("alertdialog", { name: "Ta bort inspelningen från enheten?" });
       await expect(dialog).toBeVisible();
       return { dialog, kept: () => expect(dialog.getByRole("button", { name: "Behåll" }).or(dialog.getByRole("button", { name: "Avbryt" })).first()).toBeVisible() };
     },

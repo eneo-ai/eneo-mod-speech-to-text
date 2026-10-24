@@ -350,8 +350,9 @@ export function ReadyPanel({
       <AlertDialog
         isOpen={confirming && !signedOut}
         onOpenChange={setConfirming}
-        title="Ta bort inspelningen?"
-        description="Den går inte att få tillbaka."
+        // The words the unsent recordings ask it with (components/UnsentRecordings.tsx): one way to ask it.
+        title="Ta bort inspelningen från enheten?"
+        description="Det går inte att ångra."
         cancelLabel="Avbryt"
         actionLabel="Ta bort"
         onAction={() => {

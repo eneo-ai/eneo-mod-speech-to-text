@@ -17,10 +17,13 @@ export const SLOW_WAIT_MS = 15_000;
 export function SlowWait({
   onRetry,
   flows = true,
+  label = "Försök igen",
 }: {
   onRetry: () => void;
   /** The page is not the flow list itself, so it can offer the way back to it. */
   flows?: boolean;
+  /** "Försök nu" where the page already tries again by itself and says so: the button asks for it now. */
+  label?: string;
 }) {
   const [stage, setStage] = useState<"quiet" | "slow" | "retrying">("quiet");
   const [round, setRound] = useState(0);
@@ -47,7 +50,7 @@ export function SlowWait({
           <ActionRow>
             {flows && <BackToFlows size="md" />}
             <Button
-              label="Försök igen"
+              label={label}
               variant="primary"
               onClick={() => {
                 setStage("retrying");

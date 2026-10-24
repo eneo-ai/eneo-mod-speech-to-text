@@ -22,10 +22,7 @@ test("a stopped recording open in one tab is listed but not offered in another, 
   await expect(unsent.getByRole("button"), "nothing to send or delete it with").toHaveCount(0);
 
   await page.close({ runBeforeUnload: false });
-  // The lock ends with the tab: the recording is the other tab's to send or delete.
-  await expect(async () => {
-    await other.reload();
-    await expect(unsent.getByRole("button", { name: "Skapa dokument" })).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 15_000 });
+  // The lock ends with the tab: the recording is the other tab's to send or delete, which it sees by itself, unreloaded.
+  await expect(unsent.getByRole("button", { name: "Skapa dokument" })).toBeVisible({ timeout: 5_000 });
   await expect(unsent.getByText("Inspelningen används i en annan flik.")).toHaveCount(0);
 });

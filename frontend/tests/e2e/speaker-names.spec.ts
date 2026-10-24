@@ -72,6 +72,7 @@ test("names given to a finished run's speakers show in its transcript, its copy 
     "[00:00:00 - 00:00:03] Anna Berg: Välkomna till kommunstyrelsens möte.",
     "[00:00:03 - 00:00:06] Erik Lund: Första punkten gäller budgeten för nästa år.",
     "[00:00:06 - 00:00:11] Anna Berg: Ramen höjs med två procent och förvaltningen återkommer i oktober.",
+    "",
     "## Del 2",
     "",
     "[00:00:00 - 00:00:03] Erik Lund: Andra punkten är skolskjutsarna.",

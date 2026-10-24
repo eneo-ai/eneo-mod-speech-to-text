@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Pencil, Plus, UserX } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { usePopover } from "@astryxdesign/core/Popover";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -242,7 +243,7 @@ export function NameCombobox({
       <IconButton
         variant="ghost"
         label={open ? "Stäng listan" : "Visa namn"}
-        icon={<ChevronDown aria-hidden className={open ? styles.chevronOpen : styles.chevron} />}
+        icon={<Icon icon={ChevronDown} className={open ? styles.chevronOpen : styles.chevron} />}
         tabIndex={-1}
         isDisabled={disabled}
         className={styles.chevronButton}

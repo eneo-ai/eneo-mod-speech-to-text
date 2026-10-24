@@ -30,6 +30,7 @@ for (const state of ["recording", "stromma"]) {
     for (const button of [pausa, stoppa]) {
       const box = (await button.boundingBox())!;
       expect(Math.min(box.width, box.height), "the house's 44 px target").toBeGreaterThanOrEqual(44);
+      expect(await button.evaluate((element) => getComputedStyle(element).userSelect), "a long press does not select its word").toBe("none");
     }
   });
 }
@@ -61,3 +62,14 @@ test("a screen the browser will not keep on is said under the controls, and the 
   await expect(page.getByRole("status").filter({ hasText: "Låt skärmen vara tänd under inspelningen." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
 });
+
+// A pull at the page's top reloads it in a phone's browser: while a meeting is recorded or paused the page holds it, so a
+// stray pull does not ask to leave the recording. Elsewhere it reloads as a browser's own page does.
+for (const [state, held] of [["setup", false], ["recording", true], ["recording-paused", true], ["ready", false]] as const) {
+  test(`${state}: ${held ? "a pull at the page's top does not reload it" : "a pull at the page's top reloads it as the browser's own"}`, async ({ page }, info) => {
+    test.skip(info.project.name !== "phone-390-light", "a phone's pull to refresh");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const overscroll = await page.evaluate(() => [document.documentElement, document.body].map((element) => getComputedStyle(element).overscrollBehaviorY));
+    expect(overscroll).toEqual(held ? ["none", "none"] : ["auto", "auto"]);
+  });
+}

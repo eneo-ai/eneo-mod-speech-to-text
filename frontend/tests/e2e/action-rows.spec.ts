@@ -170,6 +170,18 @@ test("an unsent recording's open delete question keeps the focus on its button w
   await expect(card, "the recording is still on the device").toBeVisible();
 });
 
+test("an unsent recording's buttons keep the focus when the window crosses 640 px", async ({ page }, info) => {
+  await page.goto("/flows");
+  await keptRecording(page, 1_000);
+  await page.reload();
+  const card = page.getByRole("region", { name: "En inspelning har inte skickats" });
+  await keepsFocusAcross640(
+    page,
+    info,
+    ["Skapa dokument", "Fortsätt spela in", "Spara ljudfil", "Ta bort"].map((name) => card.getByRole("button", { name, exact: true })),
+  );
+});
+
 test("the ready recording's footer keeps the focus on its button when the window crosses 640 px", async ({ page }, info) => {
   await STATES.find((s) => s.name === "ready")!.go(page, info);
   await keepsFocusAcross640(

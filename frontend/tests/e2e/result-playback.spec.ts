@@ -1,5 +1,5 @@
 import { expect, test } from "./gate";
-import { isLaptop, playedFromWord, result, run, STATES } from "./screens";
+import { isLaptop, playedFromWord, result, run, scrollWhilePlaying, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 import { type Locator } from "@playwright/test";
 
@@ -403,12 +403,24 @@ test("a recording Safari wrote plays and seeks in Chromium once every block is a
   expect(played.marked.time, "and it plays on from where it was sought").toBeGreaterThan(1.7);
 });
 
+test("scrolling a paused transcript adds nothing to the player, and scrolling it while it plays offers Följ uppspelningen", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const dock = page.locator("[data-docked-player]");
+  const height = (await dock.boundingBox())!.height;
+  await page.locator("[data-turn-index]").first().dispatchEvent("wheel");
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.getByRole("button", { name: "Följ uppspelningen" }), "nothing plays to follow").toHaveCount(0);
+  expect((await dock.boundingBox())!.height, "the player keeps its height").toBe(height);
+  await scrollWhilePlaying(page);
+});
+
 test("Följ uppspelningen pressed from the keyboard leaves the focus in the player, on its position", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
   await result(page);
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-  await page.locator("[data-turn-index]").first().dispatchEvent("wheel");
-  const follow = page.getByRole("button", { name: "Följ uppspelningen" });
+  const follow = await scrollWhilePlaying(page);
   await follow.focus();
   await page.keyboard.press("Enter");
   await expect(follow).toHaveCount(0);

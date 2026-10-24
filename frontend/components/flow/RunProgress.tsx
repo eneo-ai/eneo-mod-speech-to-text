@@ -64,7 +64,8 @@ export function RunProgress({
   retrying?: { onRetry: () => void } | null;
   onCancel: () => Promise<void>;
 }) {
-  const heading = usePhaseHeading(`${makesText ? "Skapar text" : "Skapar dokument"} · ${flowName}`);
+  // The tab says what the heading says.
+  const heading = usePhaseHeading(`${creatingHeading(makesText)} · ${flowName}`);
   const [cancelling, setCancelling] = useState(false);
   // The cancel question is a page dialog: it is closed while the login has ended and asked again after the new one,
   // so `asking` lives here, above the dialog.
@@ -131,7 +132,7 @@ export function RunProgress({
               <Text as="p" aria-hidden>
                 Försöker igen. Körningen fortsätter i Eneo.
               </Text>
-              <SlowWait onRetry={retrying.onRetry} />
+              <SlowWait onRetry={retrying.onRetry} label="Försök nu" />
             </VStack>
           )}
         </VStack>
@@ -196,7 +197,7 @@ export function RunOpening({ onRetry, retrying = false }: { onRetry: () => void;
             Försöker igen.
           </Text>
         )}
-        <SlowWait onRetry={onRetry} />
+        <SlowWait onRetry={onRetry} label={retrying ? "Försök nu" : undefined} />
         <Skeleton width="66%" height={28} />
         <Skeleton width="50%" height={20} />
         <Skeleton width="100%" height={128} radius={4} />

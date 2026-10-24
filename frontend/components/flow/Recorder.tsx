@@ -177,6 +177,15 @@ export function RecordingBar({
   const running = phase === "recording";
   const settled = useSettled();
   const crowded = useCrowded();
+  // A pull at the page's top reloads it in a phone's browser, and a stray one would ask to leave the meeting: while the
+  // controls are here the page holds it. The flow list and the setup keep it.
+  useEffect(() => {
+    const page = [document.documentElement, document.body];
+    for (const element of page) element.style.overscrollBehaviorY = "none";
+    return () => {
+      for (const element of page) element.style.overscrollBehaviorY = "";
+    };
+  }, []);
   const caution = useSaidLater(cautions.join(" "));
   const marker = showStatus ? "" : undefined;
   const readout = (

@@ -106,6 +106,13 @@
   .astryx-banner-description {
     text-wrap: pretty;
   }
+
+  /* A long press on a button (Pausa, Stoppa) presses it: it does not select its word and open the phone's copy menu, and
+     a button's word is left out of text copied by hand. A transcript's name and time stay in it (TranscriptPlayer.module.css);
+     the review editor's words are role="button" spans, and stay selectable. The build adds the prefix Safari reads. */
+  button {
+    user-select: none;
+  }
 }
 
 /* What is docked at the bottom of a phone's screen (the setup's primary action, a player) never hides what has the
@@ -321,9 +328,11 @@ img[data-brand-logo][data-wordmark] {
 /* The bar's content stands in the page's column (--module-page-width, in the shell's 16 px gutter), so the brand or
    the way back starts where the page's content does and the account ends where it ends, at every width. The heading
    slot at the start adds its own 8 px, so that side takes 8 px less; the account at the end has no such slot. A hairline
-   closes the white bar over the tinted ground. */
+   closes the white bar over the tinted ground. The bar is as tall with the account's 36 px avatar as without it (a page
+   that is loading, a file going up), so the page under it does not move when the avatar comes. */
 .astryx-top-nav {
   padding-inline-start: max(var(--spacing-2), calc((100% - var(--module-page-width)) / 2 - var(--spacing-2)));
   padding-inline-end: max(var(--spacing-2), calc((100% - var(--module-page-width)) / 2));
+  min-block-size: calc(var(--spacing-9) + 2 * var(--spacing-2));
 }
 .astryx-app-shell-header { border-block-end: var(--border-width) solid var(--color-border); }

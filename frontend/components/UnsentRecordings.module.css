@@ -35,3 +35,9 @@
 .outlined > .quiet:first-child {
   margin-inline-start: calc(-1 * var(--spacing-3));
 }
+
+/* From 641 px the outlined actions stand in the first one's row: their group gives its place to them, so the buttons turn
+   at 640 px without being drawn again. */
+.row {
+  display: contents;
+}

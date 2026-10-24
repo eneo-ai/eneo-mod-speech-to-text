@@ -35,10 +35,11 @@ test("a run that is slow to open says so, and Försök igen opens it", async ({ 
   await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
 });
 
-test("a run whose status cannot be read says it tries again, and Försök igen reads it at once", async ({ page }) => {
+test("a run whose status cannot be read says it tries again, and Försök nu reads it at once", async ({ page }) => {
   const { mend } = await runReconnecting(page);
   mend();
-  await page.getByRole("button", { name: "Försök igen" }).click();
+  // The page is already trying again by itself: the button asks for it now.
+  await page.getByRole("button", { name: "Försök nu" }).click();
   await expect(page.getByText("Försöker igen. Körningen fortsätter i Eneo.")).toHaveCount(0);
   await pastSlowWait(page);
   await expect(page.getByText("Det tar längre tid än vanligt.")).toHaveCount(0);
