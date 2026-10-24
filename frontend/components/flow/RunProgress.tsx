@@ -64,7 +64,8 @@ export function RunProgress({
   retrying?: { onRetry: () => void } | null;
   onCancel: () => Promise<void>;
 }) {
-  const heading = usePhaseHeading(`${makesText ? "Skapar text" : "Skapar dokument"} · ${flowName}`);
+  // The tab says what the heading says.
+  const heading = usePhaseHeading(`${creatingHeading(makesText)} · ${flowName}`);
   const [cancelling, setCancelling] = useState(false);
   // The cancel question is a page dialog: it is closed while the login has ended and asked again after the new one,
   // so `asking` lives here, above the dialog.

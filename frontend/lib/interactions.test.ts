@@ -910,7 +910,7 @@ test("a run's tab title names its state and its flow, so tabs and history entrie
   const { RunProgress } = await import("../components/flow/RunProgress");
   const { RunFailure } = await import("../components/flow/RunFailure");
   const running = await mount(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined }));
-  assert.equal(document.title, "Skapar dokument · Nämndmöte · Tal till text");
+  assert.equal(document.title, "Dokumentet skapas · Nämndmöte · Tal till text", "the heading's own words");
   await running.unmount();
   const failed = await mount(
     createElement(RunFailure, { flowId: "flow-1", flowName: "Nämndmöte", run: { id: "run-1", status: "failed" }, failure: null, steps: [], stepResults: [], files: [] }),
