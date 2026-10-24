@@ -9,7 +9,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles, TEXT_SPACING } from "./checks";
-import { flows } from "./screens";
+import { flows, STATES } from "./screens";
 
 const GAP = 8;
 
@@ -103,3 +103,17 @@ for (const [width, height, root] of LARGE) {
     expect(await page.locator(".astryx-top-nav").evaluate((bar) => bar.scrollWidth <= bar.clientWidth), "nothing past the bar's edge").toBe(true);
   });
 }
+
+// A page with the account's avatar in its bar (the list, a run) and one without it (loading, a file going up): the bar keeps
+// one height, so what is under it does not move when the avatar comes or goes.
+test("the top bar is as tall on every page: loading, a file going up, a run under way and the flow list", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  const heights: Record<string, number> = {};
+  for (const name of ["page-loading", "sending", "run-progress", "flow-list"]) {
+    const tab = await page.context().newPage();
+    await STATES.find((state) => state.name === name)!.go(tab, info);
+    heights[name] = Math.round((await tab.getByRole("banner").boundingBox())!.height);
+    await tab.close();
+  }
+  expect(new Set(Object.values(heights)).size, JSON.stringify(heights)).toBe(1);
+});
