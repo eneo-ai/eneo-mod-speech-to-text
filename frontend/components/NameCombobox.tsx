@@ -44,7 +44,7 @@ export function NameCombobox({
 }: {
   /** What a phone's Enter key says it does: "next" where another field follows, "done" on the last. */
   enterKeyHint?: "next" | "done";
-  /** Enter on a name that is done (no row marked by the arrows or the pointer): the list closes, and this goes on. */
+  /** Enter on a name that is done (no row marked by the arrows or a mouse): the list closes, and this goes on. */
   onEnter?: () => void;
   /** The chosen or typed name, or null for none. */
   value: string | null;
@@ -82,7 +82,7 @@ export function NameCombobox({
   }, [triggerRef]);
   // A name is no word to spell-check; the design system's input takes no spellCheck prop.
   useEffect(() => inputRef.current?.setAttribute("spellcheck", "false"), []);
-  // The row the arrow keys or a moving pointer marked; until then the list marks the field's own name, so Enter
+  // The row the arrow keys or a moving mouse marked; until then the list marks the field's own name, so Enter
   // keeps what is in the field: a name opened by a click, and a name typed or pasted (never the first suggestion).
   const [moved, setMoved] = useState<number | null>(null);
   // The list is filtered only while the person types; opened by a click it shows every name, so another can be chosen.
@@ -146,7 +146,7 @@ export function NameCombobox({
       }
       setMoved(active < 0 ? (delta > 0 ? 0 : items.length - 1) : (active + delta + items.length) % items.length);
     } else if (e.key === "Enter") {
-      // A row the arrows or the pointer marked is chosen, and the field keeps the focus. Otherwise the name in the field
+      // A row the arrows or a mouse marked is chosen, and the field keeps the focus. Otherwise the name in the field
       // stands as it is (the list marks nothing else), and Enter ends it: the list closes and the focus goes on.
       const option = moved === null ? undefined : items[active];
       if (!open && !onEnter) return;
@@ -269,8 +269,9 @@ export function NameCombobox({
                   // The row Enter would take; the name in the field keeps its check beside it.
                   aria-selected={i === active}
                   data-kind={option.kind}
-                  // A pointer that moves marks its row; a list opening under a resting one marks nothing.
-                  onPointerMove={() => setMoved(i)}
+                  // A mouse that moves marks its row; a list opening under a resting one marks nothing, and nor does a
+                  // finger scrolling the list, so Enter then keeps the typed name.
+                  onPointerMove={(e) => e.pointerType === "mouse" && setMoved(i)}
                   onPointerDown={(e) => e.preventDefault()}
                   onClick={() => choose(option)}
                   className={styles.option}

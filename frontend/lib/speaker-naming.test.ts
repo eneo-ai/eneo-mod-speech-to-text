@@ -253,6 +253,33 @@ test("Enter ends a speaker's name and goes on to the next speaker's field; on th
   assert.equal(field("Talare 2").value, "Maja");
 });
 
+test("a finger that scrolls a name list marks no row, so Enter keeps the typed name and goes on; a mouse marks the row it is on, and a tap chooses", async () => {
+  const { view, field } = await dialog();
+  const enter = (input: HTMLInputElement) =>
+    view.act(async () => input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  const option = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.startsWith(name))!;
+  const over = (row: Element, pointerType: string) =>
+    view.act(async () => row.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, pointerType })));
+  await view.act(async () => field("Talare 1").focus());
+  await view.act(async () => type(field("Talare 1"), "Sven"));
+  // A swipe through the list on a phone: the finger passes over Inget namn.
+  await over(option("Inget namn"), "touch");
+  assert.equal(option("Inget namn").getAttribute("aria-selected"), "false", "a finger's move marks nothing");
+  await enter(field("Talare 1"));
+  assert.equal(field("Talare 1").value, "Sven", "the typed name stands");
+  assert.equal(document.activeElement, field("Talare 2"), "Enter goes on to the next speaker");
+  // A mouse over a row marks it, and Enter takes it.
+  await view.act(async () => type(field("Talare 2"), "Er"));
+  await over(option("Erik Lund"), "mouse");
+  assert.equal(option("Erik Lund").getAttribute("aria-selected"), "true", "a mouse marks the row it is on");
+  await enter(field("Talare 2"));
+  assert.equal(field("Talare 2").value, "Erik Lund");
+  // A tap on a row still chooses it.
+  await view.act(async () => field("Talare 1").click());
+  await view.act(async () => option("Sara Holm").click());
+  assert.equal(field("Talare 1").value, "Sara Holm");
+});
+
 test("a new name typed for a speaker is offered to add, not listed as a name already known", async () => {
   const { view, field } = await dialog();
   await view.act(async () => type(field("Talare 2"), "Sven"));
