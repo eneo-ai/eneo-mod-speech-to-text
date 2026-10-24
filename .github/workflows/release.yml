@@ -1,8 +1,9 @@
 name: Release
 
 # A tag vX.Y.Z on a commit of main. It gives that commit's tested image its version and `latest`, and creates the GitHub Release with the
-# compose file and the example settings attached. It builds nothing: the image is the one ci.yml tested and publish.yml pushed as
-# sha-<commit>, copied registry to registry under the new tags with its digest kept, and the digest is checked after each copy.
+# compose file, the example settings set to this version and the Helm chart packaged as this version attached; nothing is committed
+# back. It builds nothing: the image is the one ci.yml tested and publish.yml pushed as sha-<commit>, copied registry to registry
+# under the new tags with its digest kept, and the digest is checked after each copy.
 # The release checks itself first: the tested image has to say, in its revision label, the commit the tag is on.
 # A commit CI has not passed on main has no such image, and its tag fails here: run the job again once CI has passed.
 # Every action is pinned to the commit of a release, and the image skopeo runs in to a digest (docs/operations.md has the routine).
@@ -32,6 +33,9 @@ jobs:
       packages: write # the version tags in the registry
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
       - id: promote
         name: Give the tested image of this commit its version and latest
         env:
@@ -73,12 +77,17 @@ jobs:
           assets="$RUNNER_TEMP/assets"
           mkdir "$assets"
           cp docker-compose.yml "$assets/docker-compose.yml"
-          # GitHub renames an asset whose name starts with a dot (".env.example" would be "default.env.example").
-          cp .env.example "$assets/env.example"
+          # GitHub renames an asset whose name starts with a dot (".env.example" would be "default.env.example"). The copy runs
+          # this release: an operator fills in the rest.
+          sed "s/^MODULE_VERSION=.*/MODULE_VERSION=$GITHUB_REF_NAME/" .env.example > "$assets/env.example"
+          grep -qx "MODULE_VERSION=$GITHUB_REF_NAME" "$assets/env.example"
+          # The chart's image tag is its appVersion: this release.
+          helm package deploy/helm/eneo-mod-speech-to-text --version "${GITHUB_REF_NAME#v}" --app-version "$GITHUB_REF_NAME" --destination "$assets"
+          chart="$assets/eneo-mod-speech-to-text-${GITHUB_REF_NAME#v}.tgz"
           {
             echo "Image: \`$IMAGE:$GITHUB_REF_NAME\` (\`$DIGEST\`). Samma image som CI testade för commit $(git rev-parse --short=7 HEAD); den är inte ombyggd."
             echo
-            echo "Driftsättning med Dokploy eller Portainer: ladda ner \`docker-compose.yml\` och \`env.example\` nedan, spara den andra som \`.env\`, fyll i den och sätt \`MODULE_VERSION=$GITHUB_REF_NAME\`. Se [Driftsätt med Dokploy eller Portainer](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/operations.md#driftsätt-med-dokploy-eller-portainer)."
+            echo "Docker Compose, Dokploy, Portainer och Podman: ladda ner \`docker-compose.yml\` och \`env.example\` nedan, spara den andra som \`.env\` och fyll i den; \`MODULE_VERSION=$GITHUB_REF_NAME\` står redan där. Kubernetes: Helm-charten \`$(basename "$chart")\`. Se [Driftsätt](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/operations.md#driftsätt)."
           } > "$RUNNER_TEMP/notes.md"
-          gh release create "$GITHUB_REF_NAME" "$assets/docker-compose.yml" "$assets/env.example" \
+          gh release create "$GITHUB_REF_NAME" "$assets/docker-compose.yml" "$assets/env.example" "$chart" \
             --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes --verify-tag
