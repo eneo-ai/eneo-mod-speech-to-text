@@ -112,7 +112,9 @@ test("the top bar is as tall on every page: loading, a file going up, a run unde
   for (const name of ["page-loading", "sending", "run-progress", "flow-list"]) {
     const tab = await page.context().newPage();
     await STATES.find((state) => state.name === name)!.go(tab, info);
-    heights[name] = Math.round((await tab.getByRole("banner").boundingBox())!.height);
+    const banner = tab.getByRole("banner");
+    await expect(banner).toBeVisible();
+    heights[name] = Math.round((await banner.boundingBox())!.height);
     await tab.close();
   }
   expect(new Set(Object.values(heights)).size, JSON.stringify(heights)).toBe(1);
