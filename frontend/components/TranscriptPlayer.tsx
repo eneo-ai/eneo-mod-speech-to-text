@@ -1652,7 +1652,8 @@ function SpeakerPicker({
         onOpenChange={(next) => !next && close()}
         width="22rem"
         maxHeight="calc(100dvh - 2 * var(--spacing-4))"
-        purpose="form"
+        // Untouched, a press beside it closes it, as a menu's would; once a choice is made only Avbryt, × or Esc does.
+        purpose={choice !== (current ?? "") || scope !== "one" ? "form" : "info"}
       >
         {/* A long meeting has hundreds of passages; only the open dialog needs its controls. */}
         {open && (

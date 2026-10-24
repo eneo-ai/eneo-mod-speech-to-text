@@ -185,6 +185,25 @@ test("in the review, Byt namn på in a passage's Ändra talare opens Namnge tala
   await expect(passage).toBeFocused();
 });
 
+test("an untouched Ändra talare closes on a press beside it, with the focus back on the passage; a changed one stays open", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await STATES.find((state) => state.name === "result-change-speaker")!.go(page, info);
+  const picker = page.getByRole("dialog", { name: "Ändra talare" });
+  const trigger = page.getByRole("button", { name: "Talare 1, ändra talare" }).first();
+  // Above the dialog, on the page it covers.
+  const beside = async () => {
+    const box = (await picker.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y / 2);
+  };
+  await beside();
+  await expect(picker, "nothing chosen to lose").toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await picker.getByRole("radio", { name: /^Talare 2\b/ }).click();
+  await beside();
+  await expect(picker, "a choice made is not thrown away by a press beside it").toBeVisible();
+});
+
 test("the player's row keeps the position slider a usable width on a phone, with Följ uppspelningen shown", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);
