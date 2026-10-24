@@ -93,18 +93,45 @@ test("a copy from the transcript's menu that the clipboard refuses says so besid
 test("the head's lines: the flow's name and when it was made on one line from 360 px, each on its own under it, and the details in two lines at most", async ({ page }, info) => {
   test.skip(!info.project.name.startsWith("phone"), "a phone's widths, the narrowest and the common one");
   await result(page);
-  const flow = page.getByRole("main").locator("p", { hasText: /^Nämndmöte till rapport$/ }).first();
+  const flow = page.getByRole("main").locator("p", { hasText: /^Nämndmöte till rapport/ }).first();
   const made = page.getByRole("main").locator("p", { hasText: /^Skapad / }).first();
   const [a, b] = [await flow.boundingBox(), await made.boundingBox()];
   const narrowest = info.project.use.viewport!.width < 360;
   if (narrowest) {
     expect(b!.y, "when it was made, under the flow's name").toBeGreaterThanOrEqual(a!.y + a!.height - 1);
-    await expect(page.getByRole("main").getByText("・", { exact: true }), "no dot left at the end of a line").toHaveCount(0);
+    await expect(page.getByRole("main").getByText("·", { exact: true }), "no dot left at the end of a line").toHaveCount(0);
   } else {
     expect(Math.abs(b!.y - a!.y), "beside each other").toBeLessThan(4);
   }
   const details = page.getByRole("main").locator("p", { hasText: /^Deltagare: / }).first();
   expect(await details.evaluate((line) => getComputedStyle(line).webkitLineClamp), "two lines at most").toBe("2");
+});
+
+test("the dot after the flow's name stays beside its last word, also where a long name wraps", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone's line");
+  const name = "Nämndmöte till strukturerat protokoll med beslut och bilagor";
+  await page.route("**/api/eneo/flows/*/published/", async (route) => route.fulfill({ json: { ...(await (await route.fetch()).json()), name } }));
+  await result(page);
+  const dot = page.getByRole("main").getByText(/^\s*[·・]\s*$/).first();
+  const flow = page.getByRole("main").locator("p", { hasText: name }).first();
+  const end = await flow.evaluate((line) => {
+    const range = document.createRange();
+    range.selectNodeContents(line.firstChild!);
+    const rects = range.getClientRects();
+    return { right: rects[rects.length - 1].right, top: rects[rects.length - 1].top, lines: rects.length };
+  });
+  const glyph = await dot.evaluate((element) => {
+    const text = element.firstChild as Text;
+    const range = document.createRange();
+    const at = text.data.search(/[·・]/);
+    range.setStart(text, at);
+    range.setEnd(text, at + 1);
+    return range.getBoundingClientRect();
+  });
+  expect(end.lines, "the name wraps on a phone").toBeGreaterThan(1);
+  expect(Math.abs(glyph.top - end.top), "on the name's last line").toBeLessThan(4);
+  expect(glyph.left - end.right, "right after its last word").toBeLessThanOrEqual(8);
+  expect(await dot.textContent(), "the middle dot, not a katakana one from a fallback font").toContain("·");
 });
 
 test("the tab strip owns only its tabs, also while the document can be made again with the corrections", async ({ page }) => {
