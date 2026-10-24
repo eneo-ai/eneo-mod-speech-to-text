@@ -63,7 +63,8 @@ test("nothing of Next.js is left: no package, no script, no file", () => {
 
 test("an icon given to a button is the design system's Icon, sized as the rest, never a bare 24 px drawing", () => {
   // A drawing passed as is keeps its own 24 px: the button's icon slot grows with what it holds (styles/globals.css).
-  const bare = /icon=\{<(?!Icon\b)[A-Z]\w* aria-hidden(?: className=\{[^}]*\})? \/>\}/g;
+  // Also a drawing chosen by a condition: icon={playing ? <Pause aria-hidden /> : <Headphones aria-hidden />}.
+  const bare = /icon=\{[^{}]*?<(?!Icon\b)[A-Z]\w* aria-hidden(?: className=\{[^}]*\})? \/>/g;
   const found = readdirSync("components", { recursive: true, encoding: "utf8" })
     .filter((file) => file.endsWith(".tsx"))
     .flatMap((file) => [...readFileSync(`components/${file}`, "utf8").matchAll(bare)].map((match) => `${file}: ${match[0]}`));
