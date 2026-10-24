@@ -26,9 +26,9 @@ RUN python -m venv /opt/venv
 COPY backend/requirements.lock ./
 RUN /opt/venv/bin/pip install --no-cache-dir --require-hashes --no-deps -r requirements.lock
 
-# ---- what runs. The code is owned by root: the process (user `module`) can read it and cannot change it.
+# ---- what runs. The code is owned by root: the process (user `module`, uid and gid 999) can read it and cannot change it.
 FROM python:3.14.8-slim@sha256:3353bb7e9ae99c7cce6cad2b2f2b174e8f22813ac43e3b13e7a742627d2b01d8
-RUN groupadd --system module && useradd --system --gid module --home-dir /app module
+RUN groupadd --system --gid 999 module && useradd --system --uid 999 --gid module --home-dir /app module
 COPY --from=python-packages /opt/venv /opt/venv
 WORKDIR /app
 COPY backend/app ./backend/app
@@ -44,7 +44,8 @@ LABEL org.opencontainers.image.source="https://github.com/eneo-ai/eneo-mod-speec
 RUN python -c "import json, sys; json.dump({'revision': sys.argv[1] or None, 'build_date': sys.argv[2] or None}, open('backend/app/build_record.json', 'w'))" "$SOURCE_REVISION" "$BUILD_DATE"
 ENV PATH=/opt/venv/bin:$PATH PYTHONPATH=/app/backend STATIC_DIR=/app/web \
     PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-USER module
+# Numeric, so Kubernetes' runAsNonRoot can verify it (the Helm chart's runAsUser is the same number).
+USER 999:999
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/health', timeout=3)"
