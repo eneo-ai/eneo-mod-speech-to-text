@@ -1185,7 +1185,7 @@ export function TranscriptPlayer(
                   "Alla osäkra ord är bekräftade."
                 )}
                 {uncertain.confirmed > 0 && uncertain.remaining > 0 && (
-                  <span> {uncertain.confirmed} bekräftade.</span>
+                  <span> {uncertain.confirmed} {uncertain.confirmed === 1 ? "bekräftat" : "bekräftade"}.</span>
                 )}
               </Text>
             )}

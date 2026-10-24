@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import { computeAccessibleName } from "dom-accessibility-api";
+import { wordKey } from "./confirmed-words";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
 import type { CorrectionSet, SpeakerNames } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
@@ -276,6 +277,23 @@ test("one Rätta per passage, in the same place on every passage: its head row; 
   const editor = view.container.querySelector("textarea");
   opened.push(editor ? computeAccessibleName(editor) : "");
   assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
+});
+
+test("the uncertain words' line counts the confirmed in Swedish: 1 bekräftat, 2 bekräftade", async () => {
+  const word = (text: string, start: number, charStart: number) => ({ word: text, start, end: start + 0.5, probability: 0, charStart, charEnd: charStart + text.length, uncertain: true });
+  const words = [word("Välkomna", 0, 0), word("alla", 0.5, 9), word("hit", 1, 14)];
+  const segments: TranscriptSegment[] = [{ fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna alla hit", words }];
+  const said = async (confirmed: number) => {
+    const view = await player(segments, {
+      confirmedWords: new Set(words.slice(0, confirmed).map((w) => wordKey(0, w))),
+      onToggleConfirmed: () => undefined,
+    });
+    const line = view.container.textContent?.match(/\d+ (bekräftat|bekräftade)\./)?.[0];
+    await view.unmount();
+    return line;
+  };
+  assert.equal(await said(1), "1 bekräftat.");
+  assert.equal(await said(2), "2 bekräftade.");
 });
 
 test("two parts that both start at 0:00 name their passages' and sentences' corrections by the part", async () => {
