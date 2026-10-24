@@ -50,29 +50,34 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentLis
     let unsubscribe = () => {};
     void recordingStore().then((store) => {
       if (cancelled) return;
-      const load = () =>
+      // Another tab that lets a recording go (closed, say) says nothing to this one: while one is listed as used there,
+      // the list is read again every few seconds, a look at the locks that takes none, so its actions come by themselves.
+      let again: ReturnType<typeof setTimeout> | undefined;
+      const load = (): Promise<void> =>
         store.listUnsentGroups(ownerId).then(
           ({ offered, elsewhere }) => {
             if (cancelled) return;
             setUnreadable(false);
-            setRecordings(
-              [
-                ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id), refused: store.refused(r.id) })),
-                ...elsewhere.map((r) => ({ ...r, elsewhere: true })),
-              ]
-                .filter((r) => !flowId || r.flowId === flowId)
-                .sort((a, b) => b.startedAt - a.startedAt),
-            );
+            const listed = [
+              ...offered.map((r) => ({ ...r, exportOnly: !store.mayChange(r.id), refused: store.refused(r.id) })),
+              ...elsewhere.map((r) => ({ ...r, elsewhere: true })),
+            ]
+              .filter((r) => !flowId || r.flowId === flowId)
+              .sort((a, b) => b.startedAt - a.startedAt);
+            setRecordings(listed);
+            clearTimeout(again);
+            if (listed.some((r) => "elsewhere" in r)) again = setTimeout(() => void load(), 3_000);
           },
-          () => !cancelled && setUnreadable(true),
+          () => void (!cancelled && setUnreadable(true)),
         );
-      // Another tab that lets a recording go says nothing to this one: back in view, the list is read again.
+      // Back in view, the list is read again at once.
       const shown = () => document.visibilityState === "visible" && void load();
       const unfollow = store.subscribe(() => void load());
       document.addEventListener("visibilitychange", shown);
       unsubscribe = () => {
         unfollow();
         document.removeEventListener("visibilitychange", shown);
+        clearTimeout(again);
       };
       void load();
     });
