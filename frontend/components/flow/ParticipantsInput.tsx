@@ -116,6 +116,31 @@ export function ParticipantsInput({
     [],
   );
 
+  // A field offering earlier names, Safari on a phone on its side leaves under the keyboard's bar of suggestions, without
+  // moving the visible part to it (a field offering nothing it shows). Once the keyboard is open, the page scrolls the
+  // field a spacing (1rem at the browser's default size) above it, where what is left visible can hold it: with Safari's
+  // own bars shown, the keyboard leaves nothing.
+  const offers = offered.length > 0;
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport || !offers) return;
+    let frame = 0;
+    const reveal = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const field = input.current;
+        if (!field || document.activeElement !== field || viewport.offsetTop > 0) return;
+        const { top, bottom } = field.getBoundingClientRect();
+        if (bottom > viewport.height && viewport.height >= bottom - top + 32) window.scrollBy(0, bottom - viewport.height + 16);
+      });
+    };
+    viewport.addEventListener("resize", reveal);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", reveal);
+    };
+  }, [offers]);
+
   return (
     <VStack gap={2}>
       {/* Leaving the field and its "Lägg till" together adds what was typed; moving between them does not. */}

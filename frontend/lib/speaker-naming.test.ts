@@ -4,7 +4,7 @@ import test, { afterEach } from "node:test";
 import { ApiError } from "./api";
 import { buildEditedMapping, namingRefusal, withSplitLabels, type SpeakerMappingRow } from "./speaker-mapping";
 import { computeAccessibleDescription, computeAccessibleName } from "dom-accessibility-api";
-import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
 
 installDom();
 afterEach(cleanup);
@@ -518,25 +518,6 @@ test("while the login has ended the dialog is closed, and it is back with its ty
   assert.ok(trigger.isConnected);
 });
 
-/**
- * The part of the window a phone's keyboard leaves visible (window.visualViewport), moved as the browser moves it, in a
- * window whose layout is as tall as jsdom's window (jsdom lays nothing out, so its clientHeight is 0).
- */
-function visualViewport(t: import("node:test").TestContext) {
-  const listeners = new Set<() => void>();
-  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
-  Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
-  Object.defineProperty(document.documentElement, "clientHeight", { value: window.innerHeight, configurable: true });
-  t.after(() => {
-    Reflect.deleteProperty(window, "visualViewport");
-    Reflect.deleteProperty(document.documentElement, "clientHeight");
-  });
-  const move = (height: number, offsetTop: number) => {
-    Object.assign(viewport, { height, offsetTop });
-    listeners.forEach((listener) => listener());
-  };
-  return move;
-}
 const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
 
 test("the dialog follows the part of the screen the phone's keyboard leaves: its height, and its top where the browser moves it", async (t) => {
