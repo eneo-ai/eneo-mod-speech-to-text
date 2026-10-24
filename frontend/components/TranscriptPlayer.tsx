@@ -740,9 +740,11 @@ export function TranscriptPlayer(
     el.scrollIntoView({ block: "center", behavior: "instant" });
   }, [currentHit, searched]);
 
+  // Only while something plays: a paused transcript scrolled to read has nothing to follow, and Följ uppspelningen would
+  // add a row to the player for nothing. Pressing play follows the playhead from there.
   function onUserScroll() {
     if (Date.now() < programmaticScrollUntil.current) return;
-    if (follow) setFollow(false);
+    if (follow && playback.getSnapshot().playing) setFollow(false);
   }
 
   function stepHit(by: number) {
