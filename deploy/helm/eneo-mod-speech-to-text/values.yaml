@@ -1,0 +1,40 @@
+# Tal till text på Kubernetes: docs/operations.md, "Driftsätt med Kubernetes och Helm".
+
+image:
+  repository: ghcr.io/eneo-ai/eneo-mod-speech-to-text
+  # Tom: chartens appVersion, utgåvan charten paketerades med. Taggen skickas också in som MODULE_VERSION.
+  tag: ""
+
+# Modulens miljö, med samma namn som i docker-compose.yml och .env.example. Värdena är text: citera tal och true/false.
+# Ett tomt värde sätts inte, och modulen använder då sin standard. MODULE_VERSION, ENEO_API_KEY och SESSION_SECRET
+# sätter charten själv.
+env:
+  ENEO_BACKEND_URL: ""
+  ENEO_PUBLIC_URL: ""
+  MODULE_PUBLIC_URL: ""
+  MODULE_KEY: speech-to-text
+
+# En befintlig Secret med nycklarna ENEO_API_KEY och SESSION_SECRET. Tom: charten skapar en av värdena under secret.
+existingSecret: ""
+secret:
+  ENEO_API_KEY: ""
+  SESSION_SECRET: ""
+
+branding:
+  # En befintlig ConfigMap med loggorna, monterad skrivskyddad i mappen som env.ORGANIZATION_LOGO pekar på.
+  configMap: ""
+
+spool:
+  # /tmp, där en uppladdning mellanlagras: nodens disk. Minst MAX_CONCURRENT_UPLOADS × MAX_UPLOAD_BYTES; över gränsen
+  # vräks podden.
+  sizeLimit: 2Gi
+
+resources: {}
+
+ingress:
+  enabled: false
+  className: ""
+  # Kroppsstorlek och tidsgränser för den ingress som används: docs/operations.md, "Krav på ingressen".
+  annotations: {}
+  # Värden är den i env.MODULE_PUBLIC_URL. Tom: inget tls-block.
+  tlsSecretName: ""

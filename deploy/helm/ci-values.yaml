@@ -1,0 +1,16 @@
+# What CI renders the chart with (ci.yml, backend/tests/test_deployment_chart.py): every optional part on.
+env:
+  ENEO_BACKEND_URL: http://backend.eneo:8000
+  ENEO_PUBLIC_URL: https://eneo.example.org
+  MODULE_PUBLIC_URL: https://transkribering.example.org
+  ORGANIZATION_NAME: Exempels kommun
+  ORGANIZATION_LOGO: /branding/logo.svg
+secret:
+  ENEO_API_KEY: sk_ci_only
+  SESSION_SECRET: ci-only-session-secret-of-48-characters-0123456
+branding:
+  configMap: tal-till-text-logga
+ingress:
+  enabled: true
+  className: nginx
+  tlsSecretName: tal-till-text-tls

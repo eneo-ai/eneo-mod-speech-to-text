@@ -31,6 +31,10 @@ jobs:
       # The lock the image installs, with its hashes: what is tested and audited here is what ships.
       - name: Install backend dependencies
         run: python -m pip install --require-hashes --no-deps -r backend/requirements.lock
+      # The chart's tests (backend/tests/test_deployment_chart.py) render it; without helm they are skipped.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
       - name: Run backend tests
         working-directory: backend
         run: python -m unittest discover -s tests
@@ -213,6 +217,25 @@ jobs:
         run: |
           docker compose -f docker-compose.yml --env-file .env.example config -q
           docker compose --env-file .env.example config -q
+
+  # The Helm chart, as an operator installs it: linted, and rendered with every optional part on and checked against Kubernetes'
+  # schemas. No cluster: what it renders is backend/tests/test_deployment_chart.py's.
+  chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CHART: deploy/helm/eneo-mod-speech-to-text
+      KUBECONFORM: ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: Lint the chart and validate what it renders
+        run: |
+          set -euo pipefail
+          helm lint --strict "$CHART" -f deploy/helm/ci-values.yaml
+          helm template stt "$CHART" -f deploy/helm/ci-values.yaml | docker run --rm -i "$KUBECONFORM" -strict -summary
 
   # The image is built once. The acceptance runs on that build, by its digest, and those same bytes are what publish pushes:
   # nothing is rebuilt after the acceptance, and nothing reaches a registry before it. The candidate lives in this job's own registry.
