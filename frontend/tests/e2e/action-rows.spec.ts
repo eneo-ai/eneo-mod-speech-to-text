@@ -2,9 +2,10 @@
  * A step's decision is one row with one rule (components/ActionRow.tsx, as the design system's alert dialog has it): up to
  * 640 px wide its buttons stack across the whole row, the main one on top and first for the keyboard; wider, they stand
  * in one row at its end, the main one last. An editor's own buttons are no decision: small, in the text's header above
- * it, and Spara ändring only while there is a change to save. A long text keeps the header and the decision in view.
+ * it, and Spara ändring only while there is a change to save. A long text keeps the header and the decision in view. A
+ * window crossing 640 px moves the buttons to their other places, and a focused one keeps the focus.
  */
-import { type Locator } from "@playwright/test";
+import { type Locator, type Page, type TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 import { expect, test } from "./gate";
 import { keptRecording, run, STATES } from "./screens";
@@ -139,6 +140,43 @@ test("a stopped unsent recording's send is its one filled way on, across its car
 
   await card.getByRole("button", { name: "Ta bort" }).click();
   followsTheRule(await layout(card.getByRole("button", { name: "Ta bort" }), card.getByRole("button", { name: "Avbryt" })), stacked);
+});
+
+/**
+ * Over 640 px and back from the project's width (a phone turned on its side and back, a window made narrower and wider
+ * again), with the focus on each of `buttons` in turn: the layout changes, the focused button keeps the focus.
+ */
+async function keepsFocusAcross640(page: Page, info: TestInfo, buttons: Locator[]) {
+  const { width, height } = info.project.use.viewport!;
+  for (const button of buttons) {
+    await button.focus();
+    for (const to of width > 640 ? [640, 641, width] : [641, 640, width]) {
+      await page.setViewportSize({ width: to, height });
+      await expect(button, `${await button.textContent()} keeps the focus at ${to} px`).toBeFocused({ timeout: 2_000 });
+    }
+  }
+}
+
+test("an unsent recording's open delete question keeps the focus on its button when the window crosses 640 px, and deletes nothing", async ({ page }, info) => {
+  await page.goto("/flows");
+  await keptRecording(page, 1_000);
+  await page.reload();
+  const card = page.getByRole("region", { name: "En inspelning har inte skickats" });
+  await card.getByRole("button", { name: "Ta bort" }).click();
+  const question = card.getByRole("group", { name: /^Ta bort inspelningen från enheten\?/ });
+  await expect(question.getByRole("button", { name: "Avbryt" })).toBeFocused();
+  await keepsFocusAcross640(page, info, [question.getByRole("button", { name: "Avbryt" }), question.getByRole("button", { name: "Ta bort" })]);
+  await expect(question, "the question is still open").toBeVisible();
+  await expect(card, "the recording is still on the device").toBeVisible();
+});
+
+test("the ready recording's footer keeps the focus on its button when the window crosses 640 px", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "ready")!.go(page, info);
+  await keepsFocusAcross640(
+    page,
+    info,
+    ["Fortsätt spela in", "Skapa dokument", "Spara ljudfil", "Ta bort"].map((name) => page.getByRole("button", { name, exact: true })),
+  );
 });
 
 test("the text review's editor: its buttons stand small in the text's header, Spara ändring only with a change", async ({ page }) => {

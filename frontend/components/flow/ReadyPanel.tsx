@@ -6,6 +6,7 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
+import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow, STACKED } from "@/components/ActionRow";
@@ -242,7 +243,7 @@ export function ReadyPanel({
   // The quiet ways: keeping the audio as a file and deleting it. A ghost button's own padding would set its icon in from
   // the card's content edge, where the words above start: the group stands out by that much.
   const quiet = (
-    <HStack gap={2} wrap="wrap" className={audio || !sent ? styles.quiet : undefined}>
+    <HStack key="quiet" gap={2} wrap="wrap" className={audio || !sent ? styles.quiet : undefined}>
       {audio && (
         <Button
           label={saving.label}
@@ -264,7 +265,7 @@ export function ReadyPanel({
   );
   // Which one is main follows the recording: a very short one was most likely stopped by mistake.
   const decision = (create || onContinue) && (
-    <ActionRow>{(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}</ActionRow>
+    <ActionRow key="decision">{(moment ? [createButton, continueButton] : [continueButton, createButton]).filter(Boolean)}</ActionRow>
   );
 
   async function save() {
@@ -326,19 +327,18 @@ export function ReadyPanel({
           </Text>
         ))}
       {/* One footer: the quiet ways at its start and the decision at its end; on a phone the decision on top, its main
-          action first, and the quiet ways under it at their own widths. */}
+          action first, and the quiet ways under it at their own widths. One stack that turns, so a window crossing 640 px
+          moves the buttons instead of drawing them again, and a focused one keeps the focus. */}
       <VStack gap={0}>
-        {stacked ? (
-          <VStack gap={2}>
-            {decision}
-            {quiet}
-          </VStack>
-        ) : (
-          <HStack hAlign="between" vAlign="center" gap={2} wrap="wrap">
-            {quiet}
-            {decision}
-          </HStack>
-        )}
+        <Stack
+          direction={stacked ? "vertical" : "horizontal"}
+          hAlign={stacked ? undefined : "between"}
+          vAlign={stacked ? undefined : "center"}
+          gap={2}
+          wrap={stacked ? undefined : "wrap"}
+        >
+          {stacked ? [decision, quiet] : [quiet, decision]}
+        </Stack>
         {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
         {(create || onContinue) && (
           <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
