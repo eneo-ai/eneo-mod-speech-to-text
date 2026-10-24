@@ -267,6 +267,7 @@ test("the text names each speaker as the page does, and keeps the brackets of wh
     "",
     "[00:00:00 - 00:00:04] Anna Berg: Hej och välkomna.",
     "[00:00:04 - 00:00:06] [Överlappande tal – osäker talare]: Ja.",
+    "",
     "## Del 2",
     "",
     "[00:00:00 - 00:00:03] Talare 2: Tack.",

@@ -577,7 +577,7 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
   const multiple = new Set(out.map((s) => s.fileIndex)).size > 1;
   for (const segment of out) {
     if (!segment.text.trim()) continue;
-    if (multiple && segment.fileIndex !== file) { lines.push(`## Del ${segment.fileIndex + 1}`, ""); file = segment.fileIndex; }
+    if (multiple && segment.fileIndex !== file) { lines.push(...(lines.length ? [""] : []), `## Del ${segment.fileIndex + 1}`, ""); file = segment.fileIndex; }
     const label = effectiveSpeakerLabel(segment, (s) => s ? speakerName(s, names) : "");
     const marker = label === OVERLAP_SPEAKER || label === UNDECIDED_SPEAKER;
     lines.push(`[${textTimestamp(segment.start)} - ${textTimestamp(segment.end)}] ${label ? (marker ? `[${label}]` : label) + ": " : ""}${segment.text.trim()}`);
