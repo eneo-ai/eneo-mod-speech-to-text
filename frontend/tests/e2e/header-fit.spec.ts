@@ -113,8 +113,10 @@ test("the top bar is as tall on every page: loading, a file going up, a run unde
     const tab = await page.context().newPage();
     await STATES.find((state) => state.name === name)!.go(tab, info);
     const banner = tab.getByRole("banner");
-    await expect(banner).toBeVisible();
-    heights[name] = Math.round((await banner.boundingBox())!.height);
+    // A state on its way (loading, a file going up) can replace its bar between two reads: measure until a read lands.
+    let height: number | undefined;
+    await expect.poll(async () => (height = (await banner.boundingBox())?.height)).toBeTruthy();
+    heights[name] = Math.round(height!);
     await tab.close();
   }
   expect(new Set(Object.values(heights)).size, JSON.stringify(heights)).toBe(1);
