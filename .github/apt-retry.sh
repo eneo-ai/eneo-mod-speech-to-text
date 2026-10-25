@@ -36,9 +36,16 @@ try_install() {
     # Playwright 1.63 prints "Missing system dependencies (N):" and then one package a line, indented by two spaces, and
     # exits 1; or "All system dependencies are installed." and exits 0.
     report=$(npx playwright install-deps --dry-run "${@:2}")
-    grep -qx 'All system dependencies are installed.' <<<"$report" && return 0
-    read -ra packages <<<"$(sed -n 's/^  \([^ ][^ ]*\)$/\1/p' <<<"$report" | tr '\n' ' ')"
-    [ "${#packages[@]}" -gt 0 ] || { echo "$report"; return 1; }
+    packages=()
+    if ! grep -qx 'All system dependencies are installed.' <<<"$report"; then
+      read -ra packages <<<"$(sed -n 's/^  \([^ ][^ ]*\)$/\1/p' <<<"$report" | tr '\n' ' ')"
+      [ "${#packages[@]}" -gt 0 ] || { echo "$report"; return 1; }
+    fi
+    # Playwright 1.63 counts on the runner image for WebKit's ICU (libicudata.so.74); an image without it starts no WebKit.
+    if [[ " ${*:2} " == *" webkit "* ]] && ! dpkg-query -W -f='${Status}' libicu74 2>/dev/null | grep -q 'ok installed'; then
+      packages+=(libicu74)
+    fi
+    [ "${#packages[@]}" -gt 0 ] || return 0
   fi
   sudo timeout -k 20 180 apt-get install -y --no-install-recommends "${packages[@]}"
 }

@@ -71,6 +71,7 @@ exit 1
 EOF
   printf '#!/usr/bin/env bash\necho "$(basename "$0") $*" >>"$T/log"\n' >"$T/bin/dpkg"
   cp "$T/bin/dpkg" "$T/bin/pkill"
+  printf '#!/usr/bin/env bash\n[ "$STUB_ICU" = missing ] && exit 1\necho "install ok installed"\n' >"$T/bin/dpkg-query"
   printf '#!/usr/bin/env bash\nexit 1\n' >"$T/bin/pgrep"
   chmod +x "$T"/bin/*
   : >"$T/log"
@@ -80,7 +81,7 @@ EOF
 # run <installs> <dry-run> <args...>: apt-retry.sh's exit code in $code, its seconds in $took.
 run() {
   local start=$SECONDS
-  STUB_INSTALLS=$1 STUB_DRY_RUN=$2 APT_ETC=$T/etc PATH="$T/bin:$PATH" bash "$script" "${@:3}" >"$T/out" 2>&1
+  STUB_INSTALLS=$1 STUB_DRY_RUN=$2 STUB_ICU=${STUB_ICU:-} APT_ETC=$T/etc PATH="$T/bin:$PATH" bash "$script" "${@:3}" >"$T/out" 2>&1
   code=$?
   took=$((SECONDS - start))
 }
@@ -118,6 +119,13 @@ check "the tries run on the runner's mirror, archive.ubuntu.com and mirrors.edge
 check "every URIs line in ubuntu.sources names the last mirror" \
   '[ "$(grep -c "^URIs: http://mirrors.edge.kernel.org/ubuntu$" "$T/etc/sources.list.d/ubuntu.sources")" = 2 ]'
 check "three warnings" '[ "$(grep -c "::warning::" "$T/out")" = 3 ]'
+
+echo "# Playwright counts WebKit's ICU as the image's, and this image has none"
+setup wired
+STUB_ICU=missing run "ok" none --playwright webkit
+check "exits 0" '[ "$code" = 0 ]'
+check "installs libicu74 although the dry run found nothing missing" \
+  'grep -qx "timeout 180 apt-get install -y --no-install-recommends libicu74" "$T/log"'
 
 echo "# Playwright's libraries already installed"
 setup wired
