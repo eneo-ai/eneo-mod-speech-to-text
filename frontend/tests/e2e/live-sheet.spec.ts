@@ -53,9 +53,9 @@ test("long live text scrolls inside its sheet above the recording bar, follows t
   await expect(latest).toBeHidden();
 });
 
-test("a word of live text renders the paragraph it joins, not the meeting's paragraphs before it", async ({ page }, info) => {
+test("a word of live text renders the paragraph it joins, not the meeting's paragraphs before it nor the sheet's head", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "counts renders on the dev profile, on a phone and a laptop");
-  const texts = await countRenders(page, "Text");
+  const texts = await countRenders(page, "Text", "Heading", "Token");
   let relay: WebSocketRoute | null = null;
   await page.routeWebSocket(/\/api\/live\//, (ws) => {
     relay = ws;
@@ -77,6 +77,8 @@ test("a word of live text renders the paragraph it joins, not the meeting's para
   // The paragraph the word joins (its text and the words still arriving) and the sheet's own lines; every paragraph
   // before it rendered again was twenty more.
   expect(await texts.settled(), `Text rendered for one word, with ${await paragraphs()} paragraphs`).toBeLessThanOrEqual(6);
+  // The head says what the text is ("Preliminär"), which no word changes.
+  expect({ heading: await texts.renders("Heading"), pill: await texts.renders("Token") }, "the sheet's head rendered for one word").toEqual({ heading: 0, pill: 0 });
 });
 
 test("with the flow's details unfolded the page is taller than the window: the region scrolls to the bar, whose controls are then in reach", async ({ page }, info) => {

@@ -11,21 +11,21 @@
  *   set. A memo that bails out is cloned without the flag, so it is not counted;
  * - a subtree whose `child` is the alternate's was not visited by the commit, and is not walked.
  *
- * The component is found by its function's name, which the dev server keeps. Production builds minify it, so the spec
- * that uses this runs on the dev profile only.
+ * The components are found by their functions' names, which the dev server keeps. Production builds minify them, so the
+ * specs that use this run on the dev profile only.
  */
 import { expect, test, type Page } from "@playwright/test";
 
 interface Counter {
   injected: boolean;
   commits: number;
-  renders: number;
+  renders: Record<string, number>;
   error: string | null;
 }
 type Win = typeof globalThis & { __renderCounter: Counter };
 
-function installHook(name: string) {
-  const counter: Counter = { injected: false, commits: 0, renders: 0, error: null };
+function installHook(names: string[]) {
+  const counter: Counter = { injected: false, commits: 0, renders: Object.fromEntries(names.map((name) => [name, 0])), error: null };
   (window as unknown as Win).__renderCounter = counter;
   interface Fiber {
     tag: number;
@@ -35,13 +35,17 @@ function installHook(name: string) {
     sibling: Fiber | null;
     alternate: Fiber | null;
   }
-  const isTarget = (fiber: Fiber) => (fiber.tag === 0 || fiber.tag === 15) && typeof fiber.type === "function" && (fiber.type as { name: string }).name === name;
+  const count = (fiber: Fiber) => {
+    if ((fiber.tag !== 0 && fiber.tag !== 15) || typeof fiber.type !== "function") return;
+    const name = (fiber.type as { name: string }).name;
+    if (name in counter.renders) counter.renders[name]++;
+  };
   const mounted = (fiber: Fiber) => {
-    if (isTarget(fiber)) counter.renders++;
+    count(fiber);
     for (let child = fiber.child; child; child = child.sibling) mounted(child);
   };
   const updated = (next: Fiber, previous: Fiber) => {
-    if (isTarget(next) && (next.flags & 1) === 1) counter.renders++;
+    if ((next.flags & 1) === 1) count(next);
     if (next.child === previous.child) return;
     for (let child = next.child; child; child = child.sibling) {
       if (child.alternate) updated(child, child.alternate);
@@ -75,33 +79,38 @@ function installHook(name: string) {
 }
 
 /**
- * Starts counting the renders of the component `name` in `page`: call it before the page is opened. `renders()` is the
- * count since the last `reset()`; `settled()` waits until no render has come for a while, so a render that React defers
- * (a deferred value, a transition) is counted before the count is read.
+ * Starts counting the renders of the components `names` in `page`: call it once, before the page is opened. `renders(name)`
+ * is the count since the last `reset()` (of the first name when none is given); `settled(name)` waits until no render of
+ * it has come for a while, so a render that React defers (a deferred value, a transition) is counted before the count is
+ * read.
  */
-export async function countRenders(page: Page, name: string) {
-  await page.addInitScript(installHook, name);
-  const renders = async () => {
+export async function countRenders(page: Page, ...names: [string, ...string[]]) {
+  await page.addInitScript(installHook, names);
+  const renders = async (name = names[0]) => {
     const counter = await page.evaluate(() => ({ ...(window as unknown as Win).__renderCounter }));
     // Never a silent zero: a count that cannot see React says so.
     if (!counter.injected || counter.commits === 0 || counter.error) {
       throw new Error(
-        `The render counting broke, so a count of ${counter.renders} means nothing: React ${counter.injected ? "injected into" : "never found"} the DevTools hook, ` +
+        `The render counting broke, so a count of ${counter.renders[name]} means nothing: React ${counter.injected ? "injected into" : "never found"} the DevTools hook, ` +
           `${counter.commits} commits were seen${counter.error ? `, and the walk failed: ${counter.error}` : ""}. Check the fiber tags and flags in tests/e2e/react-renders.ts against the React version.`,
       );
     }
-    return counter.renders;
+    return counter.renders[name];
   };
   return {
     renders,
-    reset: () => page.evaluate(() => void ((window as unknown as Win).__renderCounter.renders = 0)),
-    settled: async () => {
+    reset: () =>
+      page.evaluate(() => {
+        const counted = (window as unknown as Win).__renderCounter.renders;
+        for (const name in counted) counted[name] = 0;
+      }),
+    settled: async (name = names[0]) => {
       let last = -1;
       let quiet = 0;
       await expect
         .poll(
           async () => {
-            const now = await renders();
+            const now = await renders(name);
             quiet = now === last ? quiet + 1 : 0;
             last = now;
             return quiet;
