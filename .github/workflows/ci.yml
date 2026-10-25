@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,7 +50,7 @@ jobs:
           pip-audit --requirement backend/requirements.lock --require-hashes --disable-pip
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -79,7 +79,7 @@ jobs:
 
   frontend-browser:
     name: frontend-browser (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # About 20 minutes for the longest shard; a hang ends here with its report rather than at GitHub's six hours.
     timeout-minutes: 40
     strategy:
@@ -208,7 +208,7 @@ jobs:
           path: frontend/test-results
 
   compose:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -221,7 +221,7 @@ jobs:
   # The Helm chart, as an operator installs it: linted, and rendered with every optional part on and checked against Kubernetes'
   # schemas. No cluster: what it renders is backend/tests/test_deployment_chart.py's.
   chart:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       CHART: deploy/helm/eneo-mod-speech-to-text
@@ -240,7 +240,7 @@ jobs:
   # The image is built once. The acceptance runs on that build, by its digest, and those same bytes are what publish pushes:
   # nothing is rebuilt after the acceptance, and nothing reaches a registry before it. The candidate lives in this job's own registry.
   image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # About 17 minutes.
     timeout-minutes: 40
     services:

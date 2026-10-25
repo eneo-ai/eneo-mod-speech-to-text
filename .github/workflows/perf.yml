@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   perf:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       # In a pull request the two sides are labelled; otherwise the label is the short commit, which is what the trend wants.

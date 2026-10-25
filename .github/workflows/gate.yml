@@ -40,7 +40,7 @@ jobs:
   # Whether a pull request runs the gate: it changes the projects, the sharding or this file, or it carries full-gate.
   decide:
     if: github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name == 'full-gate')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       run: ${{ steps.decide.outputs.run }}
@@ -59,7 +59,7 @@ jobs:
     name: gate (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     needs: decide
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.decide.outputs.run == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     # A newer push to a pull request replaces the older run; a nightly or a manual run is never cancelled.
     concurrency:
@@ -212,7 +212,7 @@ jobs:
   report:
     needs: [gate, webkit-mac]
     if: ${{ always() && github.event_name == 'schedule' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       issues: write

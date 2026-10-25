@@ -23,6 +23,17 @@ def triggers(parsed: dict) -> dict:
     return parsed.get("on", parsed.get(True))  # YAML reads a bare `on` as the boolean True
 
 
+class RunnerTests(unittest.TestCase):
+    def test_every_linux_job_runs_on_the_ubuntu_the_pinned_playwright_supports(self) -> None:
+        # ubuntu-latest moves on its own (to 26.04 in October 2026), where Playwright 1.63's WebKit finds no libicu74.
+        for path in sorted(WORKFLOWS.glob("*.yml")):
+            for name, job in yaml.safe_load(path.read_text())["jobs"].items():
+                runner = job.get("runs-on", "")
+                if isinstance(runner, str) and runner.startswith("ubuntu"):
+                    with self.subTest(workflow=path.name, job=name):
+                        self.assertEqual(runner, "ubuntu-24.04")
+
+
 class ReleasePathTests(unittest.TestCase):
     def test_compose_publish_and_release_name_the_same_image(self) -> None:
         compose = yaml.safe_load((REPOSITORY / "docker-compose.yml").read_text())["services"]["speech-to-text"]["image"]
