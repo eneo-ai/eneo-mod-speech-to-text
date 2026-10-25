@@ -1,5 +1,5 @@
 import { Minimize2, Presentation } from "lucide-react";
-import { memo, type RefObject, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, type RefObject, useCallback, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -57,6 +57,52 @@ const Paragraph = memo(
 );
 
 const TABLET = "(min-width: 768px)";
+
+/**
+ * What the text is, and the room view's button. It renders again when the room view comes or goes, never with a word of
+ * the text: `onRoom` is stable, and given only where the room view is offered.
+ */
+const SheetHead = memo(function SheetHead({
+  id,
+  forRoom,
+  speakers,
+  onRoom,
+}: {
+  id: string;
+  forRoom: boolean;
+  speakers: boolean;
+  onRoom?: () => void;
+}) {
+  return (
+    <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} className={styles.head}>
+      <Heading level={2} color="secondary" weight="normal" id={id} data-phase-heading tabIndex={-1} className={styles.heading}>
+        {forRoom ? (
+          "Preliminär text, kan innehålla fel"
+        ) : (
+          // What the text is, as a pill, and when the final one comes, as the line beside it, or under it on a phone
+          // (LiveSheet.module.css). Read as one sentence: "Preliminär text. …".
+          <>
+            <Token size="sm" label="Preliminär" className={styles.pill} />
+            <VisuallyHidden> text.</VisuallyHidden>{" "}
+            <span className={styles.when}>
+              {speakers ? "Talare och den slutliga texten kommer när du är klar." : "Den slutliga texten skapas när du är klar."}
+            </span>
+          </>
+        )}
+      </Heading>
+      {onRoom && (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Icon icon={forRoom ? Minimize2 : Presentation} />}
+          label={forRoom ? "Lämna helskärm" : "Visa i helskärm"}
+          onClick={onRoom}
+          className={styles.roomButton}
+        />
+      )}
+    </HStack>
+  );
+});
 
 /**
  * Where "Visa i helskärm" is offered: from a tablet's width (on a phone its button would take a line of the text's
@@ -117,10 +163,11 @@ export function LiveSheet({
     if (following && element) element.scrollTop = element.scrollHeight;
   }, [snapshot.pieces, snapshot.pending, following, forRoom]);
 
-  function showForRoom() {
+  const toggleRoom = fullscreen.toggle;
+  const showForRoom = useCallback(() => {
     setFollowing(true);
-    fullscreen.toggle();
-  }
+    toggleRoom();
+  }, [toggleRoom]);
 
   function showLatest() {
     const element = scroller.current;
@@ -132,35 +179,7 @@ export function LiveSheet({
     element.focus();
   }
 
-  const head = (
-      <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} className={styles.head}>
-        <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
-          {forRoom ? (
-            "Preliminär text, kan innehålla fel"
-          ) : (
-            // What the text is, as a pill, and when the final one comes, as the line beside it, or under it on a phone
-            // (LiveSheet.module.css). Read as one sentence: "Preliminär text. …".
-            <>
-              <Token size="sm" label="Preliminär" className={styles.pill} />
-              <VisuallyHidden> text.</VisuallyHidden>{" "}
-              <span className={styles.when}>
-                {speakers ? "Talare och den slutliga texten kommer när du är klar." : "Den slutliga texten skapas när du är klar."}
-              </span>
-            </>
-          )}
-        </Heading>
-        {room && offered && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={<Icon icon={forRoom ? Minimize2 : Presentation} />}
-            label={forRoom ? "Lämna helskärm" : "Visa i helskärm"}
-            onClick={showForRoom}
-            className={styles.roomButton}
-          />
-        )}
-      </HStack>
-  );
+  const head = <SheetHead id={headingId} forRoom={forRoom} speakers={speakers} onRoom={room && offered ? showForRoom : undefined} />;
 
   return (
     <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet} data-room={forRoom || undefined}>
