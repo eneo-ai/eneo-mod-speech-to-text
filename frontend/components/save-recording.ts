@@ -5,10 +5,10 @@ import { NOT_ON_DEVICE, recordingStore, type RecordingStore } from "@/lib/record
 /** "Spara ljudfil": the recording in one download, every part with audio that survived, read when it is pressed. */
 export async function saveRecording(
   recordingId: string,
-  openStore: () => Promise<Pick<RecordingStore, "readParts">> = recordingStore,
+  openStore: () => Promise<Pick<RecordingStore, "readPartsToSave">> = recordingStore,
 ): Promise<void> {
   // A failed database read throws, and is said as one; a recording whose audio is gone is said as that.
-  const files = await (await openStore()).readParts(recordingId);
+  const files = await (await openStore()).readPartsToSave(recordingId);
   if (files.length === 0) throw new Error(NOT_ON_DEVICE);
   const { blob, filename } = await asOneFile(files);
   downloadBlob(blob, filename);

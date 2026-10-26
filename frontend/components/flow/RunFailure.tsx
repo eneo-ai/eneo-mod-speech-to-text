@@ -10,9 +10,10 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
-import { ASK_ENEO_OWNER, fileProblem } from "@/lib/errors";
+import { ASK_ENEO_OWNER, FILE_GONE, fileGone, fileProblem } from "@/lib/errors";
 import { readInputFileAudio, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { asOneFile, downloadBlob } from "@/lib/download";
+import type { Problem } from "@/lib/flow-session";
 import type { NamedBlob } from "@/lib/zip";
 import { formatRelativeDate } from "@/lib/format";
 import { runInputFiles, transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -223,11 +224,11 @@ export function RunFailure({
  * "Spara ljudfil": the run's recording as Eneo has it, in one press. One file is asked for first and saved as the
  * browser streams it, so that a file Eneo no longer has is said in words. The parts of a recording are read into the
  * page and saved together in a zip, since a browser may block a second download a press starts; each part is at most
- * the flow's largest file.
+ * the flow's largest file. A part Eneo no longer has keeps none of the others from being saved, and is named.
  */
 function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: string; fileIds: readonly string[] }) {
   const access = useFileAccess(flowId, runId, "given");
-  const [parts, setParts] = useState<{ busy: boolean; problem: string | null }>({ busy: false, problem: null });
+  const [parts, setParts] = useState<{ busy: boolean; problem: Problem | null }>({ busy: false, problem: null });
   // Set at once, so a second press in the same moment finds the first one reading.
   const reading = useRef(false);
   // A screen left while the parts are read reads no more of them and saves nothing, as useFileAccess does.
@@ -244,22 +245,30 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
     setParts({ busy: true, problem: null });
     try {
       const files: NamedBlob[] = [];
+      const missing: number[] = [];
       // One part at a time: the module streams a person's files a few at once.
       for (const [index, fileId] of fileIds.entries()) {
         if (gone.current) return;
-        files.push(await readInputFileAudio(flowId, runId, fileId, index));
+        try {
+          files.push(await readInputFileAudio(flowId, runId, fileId, index));
+        } catch (error) {
+          // Asking again cannot bring back a part Eneo no longer has: the others are saved, and it is named.
+          if (!fileGone(error)) throw error;
+          missing.push(index + 1);
+        }
       }
+      if (files.length === 0) return setParts({ busy: false, problem: { title: FILE_GONE, retry: true } });
       const { blob, filename } = await asOneFile(files);
       if (gone.current) return;
       downloadBlob(blob, filename);
-      setParts({ busy: false, problem: null });
+      setParts({ busy: false, problem: missing.length ? partsMissing(missing, fileIds.length) : null });
     } catch (error) {
-      setParts({ busy: false, problem: fileProblem(error) });
+      setParts({ busy: false, problem: { title: fileProblem(error), retry: true } });
     } finally {
       reading.current = false;
     }
   }
-  const problem = one ? access.problem?.message : parts.problem;
+  const problem = one ? access.problem && { title: access.problem.message, retry: true } : parts.problem;
   return (
     <VStack gap={2}>
       <HStack>
@@ -272,9 +281,15 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
           className={styles.quietStart}
         />
       </HStack>
-      {problem && <ProblemAlert problem={{ title: problem, retry: true }} onRetry={() => void save()} />}
+      {problem && <ProblemAlert problem={problem} onRetry={() => void save()} />}
     </VStack>
   );
+}
+
+/** "Del 2 av 3 finns inte kvar hos Eneo.": the parts a save left out, which no new try brings back. */
+function partsMissing(missing: readonly number[], of: number): Problem {
+  const which = new Intl.ListFormat("sv", { type: "conjunction" }).format(missing.map(String));
+  return { title: `Del ${which} av ${of} finns inte kvar hos Eneo.`, detail: "De andra delarna sparades." };
 }
 
 /** For support: the run id to quote, and Eneo's own technical description folded away. */

@@ -194,6 +194,26 @@ test("an active lease keeps a recording from recovery and other tabs from writin
   assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["audio"]);
 });
 
+test("a recording saved as a file is read under its lease: another tab cannot delete it between the batches, and the file holds all of it", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const savingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  // More chunks than one read takes, so the save reads it in two batches.
+  for (let seq = 0; seq < 300; seq += 1) await recordingTab.append(recording.id, 0, new Blob(["a"]), 10);
+  recordingTab.release(recording.id);
+  await settle();
+
+  const saving = savingTab.readPartsToSave(recording.id);
+  await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
+  assert.deepEqual((await texts(await saving)).map((text) => text.length), [300]);
+  await settle();
+  await otherTab.remove(recording.id);
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "and once saved, it is the other tab's to delete");
+});
+
 test("a stopped recording the page still shows is held by its tab: no other tab offers or deletes it until it is let go", async () => {
   const env = device();
   const recordingTab = await openRecordingStore(env);

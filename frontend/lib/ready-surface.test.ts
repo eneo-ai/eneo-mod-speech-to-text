@@ -98,17 +98,17 @@ test("one line by the actions says where the recording is until then, where Skap
   };
   assert.match(
     await words({ onContinue: () => {} }),
-    /Skapa dokument skickar inspelningen till Eneo\. Efteråt kan du inte fortsätta spela in\. Den finns kvar på enheten tills dokumentet är skapat\./,
+    /Skapa dokument skickar inspelningen till Eneo\. Efteråt kan du inte fortsätta spela in\. Den finns kvar på enheten tills Eneo har tagit emot den\./,
   );
   // Nothing to go on with: the send is said, the ending is not.
   const alone = await words({});
-  assert.match(alone, /Skapa dokument skickar inspelningen till Eneo\. Den finns kvar på enheten tills dokumentet är skapat\./);
+  assert.match(alone, /Skapa dokument skickar inspelningen till Eneo\. Den finns kvar på enheten tills Eneo har tagit emot den\./);
   assert.doesNotMatch(alone, /fortsätta spela in/);
-  assert.match(await words({ makesText: true }), /Skapa text skickar inspelningen till Eneo\. Den finns kvar på enheten tills texten är skapad\./);
+  assert.match(await words({ makesText: true }), /Skapa text skickar inspelningen till Eneo\. Den finns kvar på enheten tills Eneo har tagit emot den\./);
   assert.match(await words({ persistent: false }), /Skapa dokument skickar inspelningen till Eneo\. Den finns bara i den här fliken, så stäng inte fliken innan dokumentet är skapat\./);
   // No send to speak of: only where the recording is.
   const kept = await words({ onCreate: undefined });
-  assert.match(kept, /Inspelningen finns kvar på enheten tills dokumentet är skapat\./);
+  assert.match(kept, /Inspelningen finns kvar på enheten\./);
   assert.doesNotMatch(kept, /Eneo/);
 });
 
@@ -124,9 +124,9 @@ test("a recording that cannot be saved as a file says so, and Spara ljudfil is s
   // The device has the parts, and the browser cannot turn them into a download.
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const readParts = store.readParts;
+  const readPartsToSave = store.readPartsToSave;
   const createObjectURL = URL.createObjectURL;
-  store.readParts = async () => [{ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]), whole: true }];
+  store.readPartsToSave = async () => [{ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]), whole: true }];
   try {
     const view = await ready();
     await view.act(async () => undefined);
@@ -138,7 +138,7 @@ test("a recording that cannot be saved as a file says so, and Spara ljudfil is s
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
     assert.ok(named(view.container, "Spara ljudfil"), "and the button is still there");
   } finally {
-    store.readParts = readParts;
+    store.readPartsToSave = readPartsToSave;
     URL.createObjectURL = createObjectURL;
   }
 });
@@ -146,7 +146,7 @@ test("a recording that cannot be saved as a file says so, and Spara ljudfil is s
 test("a recording of two files says so on Spara ljudfil and saves both in one press, as one zip: a press while it saves adds none, and a failed save is tried again whole", async () => {
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const { readParts } = store;
+  const { readPartsToSave } = store;
   const { createObjectURL } = URL;
   const { click } = HTMLAnchorElement.prototype;
   const files = [
@@ -155,7 +155,7 @@ test("a recording of two files says so on Spara ljudfil and saves both in one pr
   ];
   let reading = Promise.resolve();
   let failing = false;
-  store.readParts = async () => {
+  store.readPartsToSave = async () => {
     await reading;
     if (failing) throw new Error("the database is not readable");
     return files;
@@ -202,7 +202,7 @@ test("a recording of two files says so on Spara ljudfil and saves both in one pr
     assert.doesNotMatch(view.container.textContent ?? "", /kunde inte sparas/);
     assert.equal(downloads.length, 2, "the save tried again saves both again");
   } finally {
-    store.readParts = readParts;
+    store.readPartsToSave = readPartsToSave;
     URL.createObjectURL = createObjectURL;
     HTMLAnchorElement.prototype.click = click;
   }

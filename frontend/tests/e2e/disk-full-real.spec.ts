@@ -38,7 +38,7 @@ test("a device that fills up for real: said while recording, and once there is r
   await device.lift();
   await expect(page.getByText("Det finns plats igen, och inspelningen sparas på enheten.")).toBeVisible({ timeout: 45_000 });
   await stop(page);
-  await expect(page.getByText("finns kvar på enheten tills dokumentet är skapat.")).toBeVisible();
+  await expect(page.getByText("finns kvar på enheten tills Eneo har tagit emot den.")).toBeVisible();
 });
 
 test("a recording the full device stopped keeping is not said to be on the device by the flow list in the same tab", async ({ page, context }) => {

@@ -1,7 +1,7 @@
 /**
  * Several files as one zip, so that one press saves them all: a browser saves one download a press and may block the
  * ones after it. Stored as they are (audio does not shrink), and assembled from the files' own Blobs: each file is
- * read once, alone, for its checksum.
+ * read once for its checksum, a slice at a time, so a long part is never held whole in the page.
  */
 
 export interface NamedBlob {
@@ -15,10 +15,19 @@ const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   return c >>> 0;
 });
 
-export function crc32(bytes: Uint8Array): number {
-  let crc = 0xffffffff;
+/** The CRC-32 of `bytes`, going on from the running value `from` (a slice after the ones before it). */
+export function crc32(bytes: Uint8Array, from = 0): number {
+  let crc = (from ^ 0xffffffff) >>> 0;
   for (let i = 0; i < bytes.length; i += 1) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+const SLICE = 1024 * 1024;
+
+export async function blobCrc32(blob: Blob, slice = SLICE): Promise<number> {
+  let crc = 0;
+  for (let at = 0; at < blob.size; at += slice) crc = crc32(new Uint8Array(await blob.slice(at, at + slice).arrayBuffer()), crc);
+  return crc;
 }
 
 // General purpose flag 11: the names are UTF-8 ("Nämndmöte").
@@ -38,7 +47,7 @@ export async function zipFiles(files: readonly NamedBlob[], at = new Date()): Pr
   for (const file of files) {
     // A name is never a path: a separator in it would place the file outside where the zip is unpacked.
     const name = encoder.encode(file.filename.replace(/[\u0000-\u001f\u007f\\/]+/g, "-"));
-    const crc = crc32(new Uint8Array(await file.blob.arrayBuffer()));
+    const crc = await blobCrc32(file.blob);
     // The fields a file's local header and its directory entry share, in the same order: from "version needed".
     const shared = (view: DataView, from: number) => {
       view.setUint16(from, 20, true);

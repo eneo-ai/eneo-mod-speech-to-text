@@ -546,6 +546,21 @@ export class RecordingStore {
   }
 
   /**
+   * The parts to save as a file (readParts), read under the recording's lease: no other tab deletes or sends it between
+   * the batches it is read in, so a save is never a silently cut copy. An operation of this tab already using it runs in
+   * this store's own order; without Web Locks there is no other tab to keep out.
+   */
+  async readPartsToSave(id: string): Promise<RecordingFile[]> {
+    if (this.inUse.has(id) || !this.env.locks) return this.readParts(id);
+    if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
+    try {
+      return await this.readParts(id);
+    } finally {
+      this.release(id);
+    }
+  }
+
+  /**
    * The parts to send: each part with every chunk the recording counted (sequence 0 up to its last, and as many bytes),
    * or the integrity error, so that what is left on the device never goes to Eneo as if it were all of it, and the local
    * copy is never deleted for it. A part with no chunk left is a gap too, not a part to leave out.

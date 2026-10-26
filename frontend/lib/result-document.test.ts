@@ -1159,10 +1159,10 @@ test("a run that failed or was stopped keeps its recording: Spara 3 ljudfiler (z
   }
 });
 
-test("a part Eneo no longer has is said in words, with Försök igen, and nothing is saved until every part is there", async (t) => {
-  let gone = true;
+test("a part Eneo no longer has keeps none of the others from being saved, and is named; with none left it is said, with Försök igen", async (t) => {
+  let gone = (url: string) => url.includes("part-2");
   filesAnswer(t, (url) =>
-    gone && url.includes("part-2") ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : partAnswer(url),
+    gone(url) ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : partAnswer(url),
   );
   const started = downloads(t);
   const { createElement } = await import("react");
@@ -1174,12 +1174,19 @@ test("a part Eneo no longer has is said in words, with Försök igen, and nothin
     }),
   );
   await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
+  assert.deepEqual((await savedZip(started)).map(([name]) => name), ["Möte-del-1.webm", "Möte-del-3.webm"], "the parts Eneo has");
+  assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\.De andra delarna sparades\./);
+  assert.equal(button(view.container, "Försök igen"), null, "a new try brings no part back");
+
+  started.length = 0;
+  gone = () => true;
+  await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
   assert.match(view.container.textContent ?? "", /Filen finns inte kvar hos Eneo\./);
-  assert.deepEqual(started, []);
-  gone = false;
+  assert.deepEqual(started, [], "nothing to save");
+  gone = () => false;
   await view.act(async () => button(view.container, "Försök igen")!.click());
   assert.equal((await savedZip(started)).length, 3);
-  assert.doesNotMatch(view.container.textContent ?? "", /Filen finns inte kvar/);
+  assert.doesNotMatch(view.container.textContent ?? "", /finns inte kvar/);
 });
 
 test("a screen left while a recording's parts are read reads no more of them and saves nothing", async (t) => {

@@ -7,7 +7,7 @@ import { fakeWebLocks } from "./fake-web-locks";
 import { NOT_ON_DEVICE, openRecordingStore } from "./recording-store";
 import { installDom } from "./test-dom";
 import { unzippedText } from "./test-zip";
-import { crc32, zipFiles } from "./zip";
+import { blobCrc32, crc32, zipFiles } from "./zip";
 
 // The download is an anchor's click.
 installDom();
@@ -47,11 +47,27 @@ async function recordingOf(parts: string[]) {
   return { store, recording };
 }
 
-test("the checksum is the zip format's CRC-32", () => {
+test("the checksum is the zip format's CRC-32, also read a slice at a time", async () => {
   for (const text of ["", "123456789", "Nämndmöte", "x".repeat(70_000)]) {
     const bytes = new TextEncoder().encode(text);
     assert.equal(crc32(bytes), nodeCrc32(bytes), text.slice(0, 12));
+    // Slices that end inside a character and inside the text, and one larger than it.
+    for (const slice of [1, 7, 4096, 1 << 20]) assert.equal(await blobCrc32(new Blob([bytes]), slice), nodeCrc32(bytes), `${text.slice(0, 12)} by ${slice}`);
   }
+});
+
+test("a part's checksum reads it a slice at a time, never whole", async (t) => {
+  const part = new Blob([new Uint8Array(3 * 1024 * 1024 + 5).fill(7)]);
+  const read: number[] = [];
+  const { slice } = Blob.prototype;
+  t.mock.method(Blob.prototype, "slice", function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+    const piece = slice.apply(this, args);
+    read.push(piece.size);
+    return piece;
+  });
+  t.mock.method(part, "arrayBuffer", () => assert.fail("the whole part read at once"));
+  await zipFiles([{ filename: "del-1.webm", blob: part }, { filename: "del-2.webm", blob: new Blob(["b"]) }]);
+  assert.deepEqual(read.slice(0, 4), [1 << 20, 1 << 20, 1 << 20, 5]);
 });
 
 test("a zip of files is read back whole by unzip, Swedish names included", async () => {
@@ -72,7 +88,7 @@ test("a zip of files is read back whole by unzip, Swedish names included", async
 
 test("Spara ljudfil on a recording that is gone from the device says so instead of doing nothing", async () => {
   const { saveRecording } = await import("../components/save-recording");
-  await assert.rejects(saveRecording("gone", async () => ({ readParts: async () => [] })), { message: NOT_ON_DEVICE });
+  await assert.rejects(saveRecording("gone", async () => ({ readPartsToSave: async () => [] })), { message: NOT_ON_DEVICE });
 });
 
 test("Spara ljudfil saves a recording of one file as that file", async (t) => {
@@ -106,7 +122,7 @@ test("Spara ljudfil saves every part of a recording in one press, as one zip nam
 test("a failed database read fails the save, and saves nothing", async (t) => {
   const started = downloads(t);
   const { saveRecording } = await import("../components/save-recording");
-  const store = { readParts: async () => Promise.reject(new Error("database unavailable")) };
+  const store = { readPartsToSave: async () => Promise.reject(new Error("database unavailable")) };
   await assert.rejects(saveRecording("rec", async () => store), /database unavailable/);
   assert.deepEqual(started, []);
 });
