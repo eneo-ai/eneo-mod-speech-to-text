@@ -546,20 +546,6 @@ export class RecordingStore {
   }
 
   /**
-   * The recording's file at `nth` of its files (its parts with audio, filesIn), read alone: Spara ljudfil saves one a
-   * press. Null when the recording has no such file, or its audio is gone from the device.
-   */
-  readFile(id: string, nth: number): Promise<RecordingFile | null> {
-    return this.serial(async () => {
-      const recording = await this.load(id);
-      const part = recording?.parts.filter((p) => p.bytes > 0)[nth];
-      if (!recording || !part) return null;
-      const file = await this.readPart(recording, part);
-      return file.blob.size > 0 ? file : null;
-    });
-  }
-
-  /**
    * The parts to send: each part with every chunk the recording counted (sequence 0 up to its last, and as many bytes),
    * or the integrity error, so that what is left on the device never goes to Eneo as if it were all of it, and the local
    * copy is never deleted for it. A part with no chunk left is a gap too, not a part to leave out.

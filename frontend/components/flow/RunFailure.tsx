@@ -1,4 +1,4 @@
-import { useContext, useId, useState, type MouseEvent } from "react";
+import { useContext, useId, useRef, useState, type MouseEvent } from "react";
 import { ArrowDown, Download, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -10,8 +10,10 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
-import { ASK_ENEO_OWNER } from "@/lib/errors";
-import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
+import { ASK_ENEO_OWNER, fileProblem } from "@/lib/errors";
+import { readInputFileAudio, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
+import { downloadFiles } from "@/lib/download";
+import type { NamedBlob } from "@/lib/zip";
 import { formatRelativeDate } from "@/lib/format";
 import { runInputFiles, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { runOutcome, type StepView } from "@/lib/run-progress";
@@ -218,30 +220,48 @@ export function RunFailure({
 }
 
 /**
- * "Spara ljudfil": the run's recording as Eneo has it, one file to a press as on the device (a browser may block a
- * second download a press starts), each asked for first so that one Eneo no longer has is said in words.
+ * "Spara ljudfil": the run's recording as Eneo has it, in one press. One file is asked for first and saved as the
+ * browser streams it, so that a file Eneo no longer has is said in words. The parts of a recording are read into the
+ * page and saved together in a zip, since a browser may block a second download a press starts; each part is at most
+ * the flow's largest file.
  */
 function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: string; fileIds: readonly string[] }) {
   const access = useFileAccess(flowId, runId, "given");
-  const [next, setNext] = useState(0);
-  const at = next < fileIds.length ? next : 0;
-  const fileId = fileIds[at];
+  const [parts, setParts] = useState<{ busy: boolean; problem: string | null }>({ busy: false, problem: null });
+  // Set at once, so a second press in the same moment finds the first one reading.
+  const reading = useRef(false);
+  const one = fileIds.length === 1;
   async function save() {
-    if (await access.start(fileId, "download")) setNext(at + 1);
+    if (one) return void access.start(fileIds[0], "download");
+    if (reading.current) return;
+    reading.current = true;
+    setParts({ busy: true, problem: null });
+    try {
+      const files: NamedBlob[] = [];
+      // One part at a time: the module streams a person's files a few at once.
+      for (const [index, fileId] of fileIds.entries()) files.push(await readInputFileAudio(flowId, runId, fileId, index));
+      await downloadFiles(files);
+      setParts({ busy: false, problem: null });
+    } catch (error) {
+      setParts({ busy: false, problem: fileProblem(error) });
+    } finally {
+      reading.current = false;
+    }
   }
+  const problem = one ? access.problem?.message : parts.problem;
   return (
     <VStack gap={2}>
       <HStack>
         <Button
           variant="ghost"
-          label={saveLabel(fileIds.length, at)}
+          label={saveLabel(fileIds.length)}
           icon={<Icon icon={Download} size="sm" color="inherit" />}
-          {...waiting(access, fileId, "download")}
+          {...(one ? waiting(access, fileIds[0], "download") : { isLoading: parts.busy, isInterruptible: true })}
           onClick={() => void save()}
           className={styles.quietStart}
         />
       </HStack>
-      {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={() => void save()} />}
+      {problem && <ProblemAlert problem={{ title: problem, retry: true }} onRetry={() => void save()} />}
     </VStack>
   );
 }

@@ -6,6 +6,7 @@ import { loginState } from "./login-state";
 import type { RunContract } from "./api";
 import type { StoredRecording } from "./recording-store";
 import { cleanup, installDom, mount } from "./test-dom";
+import { unzippedText } from "./test-zip";
 
 // The ready state where it is acted on: focus, presses and the delete question, which static markup cannot show.
 installDom();
@@ -123,9 +124,9 @@ test("a recording that cannot be saved as a file says so, and Spara ljudfil is s
   // The device has the parts, and the browser cannot turn them into a download.
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const readFile = store.readFile;
+  const readParts = store.readParts;
   const createObjectURL = URL.createObjectURL;
-  store.readFile = async () => ({ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]) });
+  store.readParts = async () => [{ index: 0, filename: "inspelning.webm", blob: new Blob(["x"]), whole: true }];
   try {
     const view = await ready();
     await view.act(async () => undefined);
@@ -137,27 +138,27 @@ test("a recording that cannot be saved as a file says so, and Spara ljudfil is s
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
     assert.ok(named(view.container, "Spara ljudfil"), "and the button is still there");
   } finally {
-    store.readFile = readFile;
+    store.readParts = readParts;
     URL.createObjectURL = createObjectURL;
   }
 });
 
-test("a recording of two files says so on Spara ljudfil and saves one file a press, each once: a press while one saves adds none, and a failed one is the one tried again", async () => {
+test("a recording of two files says so on Spara ljudfil and saves both in one press, as one zip: a press while it saves adds none, and a failed save is tried again whole", async () => {
   const { recordingStore } = await import("./recording-store");
   const store = await recordingStore();
-  const { readFile } = store;
+  const { readParts } = store;
   const { createObjectURL } = URL;
   const { click } = HTMLAnchorElement.prototype;
   const files = [
-    { index: 0, filename: "inspelning-del-1.webm", blob: new Blob(["a"]) },
-    { index: 1, filename: "inspelning-del-2.webm", blob: new Blob(["b"]) },
+    { index: 0, filename: "inspelning-del-1.webm", blob: new Blob(["a"]), whole: true },
+    { index: 1, filename: "inspelning-del-2.webm", blob: new Blob(["b"]), whole: true },
   ];
   let reading = Promise.resolve();
   let failing = false;
-  store.readFile = async (_id, nth) => {
+  store.readParts = async () => {
     await reading;
     if (failing) throw new Error("the database is not readable");
-    return files[nth] ?? null;
+    return files;
   };
   const blobs = new Map<string, Blob>();
   const downloads: Array<{ name: string; blob: Blob }> = [];
@@ -173,40 +174,35 @@ test("a recording of two files says so on Spara ljudfil and saves one file a pre
     const part = recording.parts[0];
     const view = await ready({ recording: { ...recording, parts: [part, { ...part, index: 1 }] } });
     await view.act(async () => undefined);
-    const save = named(view.container, "Spara som 2 ljudfiler")!;
-    assert.ok(save, "the number of files, before the first is saved");
+    const save = named(view.container, "Spara 2 ljudfiler (zip)")!;
+    assert.ok(save, "how many files, and that they come together as a zip, before the press");
 
     let read = () => {};
     reading = new Promise((resolve) => (read = resolve));
     await view.act(async () => {
       save.click();
-      save.click(); // a second press while the first file is read
+      save.click(); // a second press while the files are read
     });
     assert.equal(save.getAttribute("aria-busy"), "true", "it says it is saving");
     assert.equal(save.disabled, false, "and keeps the focus a disabled button would lose");
     await view.act(async () => read());
-    assert.deepEqual(downloads.map((download) => download.name), ["inspelning-del-1.webm"], "one file for the two presses");
-    assert.equal(save.textContent?.trim(), "Spara ljudfil 2 av 2");
+    assert.deepEqual(downloads.map((download) => download.name), ["inspelning.zip"], "one download for the two presses");
+    assert.deepEqual(await unzippedText(downloads[0].blob), [
+      ["inspelning-del-1.webm", "a"],
+      ["inspelning-del-2.webm", "b"],
+    ]);
+    assert.equal(save.textContent?.trim(), "Spara 2 ljudfiler (zip)", "the same press saves them all again");
     assert.equal(save.hasAttribute("aria-busy"), false);
 
     failing = true;
     await view.act(async () => save.click());
     assert.match(view.container.textContent ?? "", /Inspelningen kunde inte sparas som fil\./);
-    assert.equal(save.textContent?.trim(), "Spara ljudfil 2 av 2", "a file that failed is still the next");
     failing = false;
     await view.act(async () => save.click());
     assert.doesNotMatch(view.container.textContent ?? "", /kunde inte sparas/);
-    assert.equal(save.textContent?.trim(), "Spara som 2 ljudfiler", "and from the first again");
-    assert.deepEqual(
-      await Promise.all(downloads.map(async ({ name, blob }) => [name, await blob.text()])),
-      [
-        ["inspelning-del-1.webm", "a"],
-        ["inspelning-del-2.webm", "b"],
-      ],
-      "each file once, in order",
-    );
+    assert.equal(downloads.length, 2, "the save tried again saves both again");
   } finally {
-    store.readFile = readFile;
+    store.readParts = readParts;
     URL.createObjectURL = createObjectURL;
     HTMLAnchorElement.prototype.click = click;
   }

@@ -6,10 +6,12 @@ import { loginState } from "./login-state";
 import { limitedToModule } from "./upload-limit";
 import { onlineStatus } from "./online-status";
 import {
+  extensionForAudioMime,
   resolveRuntimeUploadIdleTimeoutMs,
   resolveRuntimeUploadInitialTimeoutMs,
   resolveRuntimeUploadResponseTimeoutMs,
 } from "./upload";
+import type { NamedBlob } from "./zip";
 
 export type Json = Record<string, unknown>;
 
@@ -1197,6 +1199,31 @@ export async function checkRunArtifact(flowId: string, runId: string, fileId: st
 export async function checkInputFileAudio(flowId: string, runId: string, fileId: string): Promise<void> {
   await request<void>(inputFileAudioUrl(flowId, runId, fileId), { headers: { Accept: "*/*", Range: "bytes=0-0" } }, false,
     async (response) => { await response.body?.cancel(); });
+}
+
+/** The name a download's Content-Disposition gives it: the UTF-8 `filename*` before the plain `filename` (RFC 6266). */
+function dispositionName(header: string | null): string | null {
+  const encoded = header && /filename\*\s*=\s*UTF-8''([^;\s]+)/i.exec(header)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // A malformed escape: the plain name follows.
+    }
+  }
+  return (header && /filename\s*=\s*"?([^";]+)"?/i.exec(header)?.[1].trim()) || null;
+}
+
+/**
+ * Part `index` of the audio a run was given, read whole into the page with the name Eneo gave it, to be saved with the
+ * other parts in one download. A part is at most the flow's largest file.
+ */
+export async function readInputFileAudio(flowId: string, runId: string, fileId: string, index: number): Promise<NamedBlob> {
+  return request(inputFileAudioUrl(flowId, runId, fileId), { headers: { Accept: "*/*" } }, false, async (response) => {
+    const blob = await response.blob();
+    const filename = dispositionName(response.headers.get("content-disposition"));
+    return { blob, filename: filename ?? `inspelning-del-${index + 1}.${extensionForAudioMime(blob.type)}` };
+  });
 }
 
 /**
