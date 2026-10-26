@@ -1,6 +1,6 @@
 /**
  * Spara ljudfil saves a whole recording in one press, as each engine saves a download the page makes: a recording in
- * parts as one zip of every part, from the device and from Eneo's copy when the run failed.
+ * parts as one zip of every part, from the device and from Eneo's copy after a run, failed or finished.
  */
 import { readFile } from "node:fs/promises";
 import ids from "../fixtures/ids.json";
@@ -28,15 +28,17 @@ test("a recording on the device in two parts is saved in one press, as one zip o
   expect(files.map(([, bytes]) => [bytes.length, bytes[0]])).toEqual([[1_000, 0], [1_000, 1]]);
 });
 
-test("a failed run's recording in two parts is saved from Eneo in one press, as one zip of both", async ({ page }, info) => {
-  await STATES.find((state) => state.name === "failure")!.go(page, info);
-  const saving = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Spara 2 ljudfiler (zip)" }).click();
-  const download = await saving;
-  expect(download.suggestedFilename()).toMatch(/\.zip$/);
-  const files = await unzipped(await readFile((await download.path())!));
-  const audio = async (file: string) =>
-    (await page.request.get(`/api/eneo/flows/${ids.flows.flow1}/runs/${ids.runs.failed}/input-files/${file}/audio`)).body();
-  const parts = [await audio(ids.files.audioA), await audio(ids.files.audioB)];
-  expect(files.map(([, bytes], at) => bytes.equals(parts[at])), "each part as the module serves it, in order").toEqual([true, true]);
-});
+for (const [state, run, what] of [["failure", ids.runs.failed, "failed"], ["result", ids.runs.done, "finished"]] as const) {
+  test(`a ${what} run's recording in two parts is saved from Eneo in one press, as one zip of both`, async ({ page }, info) => {
+    await STATES.find((each) => each.name === state)!.go(page, info);
+    const saving = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Spara 2 ljudfiler (zip)" }).click();
+    const download = await saving;
+    expect(download.suggestedFilename()).toMatch(/\.zip$/);
+    const files = await unzipped(await readFile((await download.path())!));
+    const audio = async (file: string) =>
+      (await page.request.get(`/api/eneo/flows/${ids.flows.flow1}/runs/${run}/input-files/${file}/audio`)).body();
+    const parts = [await audio(ids.files.audioA), await audio(ids.files.audioB)];
+    expect(files.map(([, bytes], at) => bytes.equals(parts[at])), "each part as the module serves it, in order").toEqual([true, true]);
+  });
+}

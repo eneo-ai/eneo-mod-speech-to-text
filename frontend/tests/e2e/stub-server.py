@@ -257,9 +257,11 @@ SEGMENTS = [
     (1, 3.5, 7.5, "SPEAKER_00", "Nya turer börjar gälla efter höstlovet."),
 ]
 SEGMENTS_HASH = hashlib.sha256(json.dumps(SEGMENTS, ensure_ascii=False).encode()).hexdigest()
+# Its recording stays in Eneo whatever became of the run: the audio the step took, as Eneo lists it.
 TRANSCRIBE_STEP = {
     "id": RESULT["transcribe"], "step_id": AUDIO_STEP_ID, "step_order": 1, "status": "completed",
     "started_at": "2026-09-24T09:00:00Z", "finished_at": "2026-09-24T09:01:00Z",
+    "runtime_input_file_ids": [FILE["audioA"], FILE["audioB"]],
     "input_payload_json": {"transcription": {"file_ids": [FILE["audioA"], FILE["audioB"]], "segments": [
         {"file_index": f, "start": a, "end": b, "speaker": sp, "text": t, "words": words(t, a, b)} for f, a, b, sp, t in SEGMENTS],
         "segments_hash": SEGMENTS_HASH}},
@@ -272,7 +274,7 @@ TIMED_SEGMENTS = [
     (0, 3.0, 6.5, "Första punkten gäller budgeten för nästa år."),
     (0, 6.5, 11.5, "Ramen höjs med två procent och förvaltningen återkommer i oktober."),
 ]
-TIMED_STEP = dict(TRANSCRIBE_STEP, input_payload_json={"transcription": {
+TIMED_STEP = dict(TRANSCRIBE_STEP, runtime_input_file_ids=[FILE["audioA"]], input_payload_json={"transcription": {
     "file_ids": [FILE["audioA"]], "alignment": "forced", "word_timing": {"status": "done"},
     "segments": [{"file_index": f, "start": a, "end": b, "speaker": None, "text": t,
                   "words": [dict(w, probability=0.0 if w["word"] == "förvaltningen" else 0.92) for w in words(t, a, b)]}
@@ -280,7 +282,7 @@ TIMED_STEP = dict(TRANSCRIBE_STEP, input_payload_json={"transcription": {
     "segments_hash": hashlib.sha256(json.dumps(TIMED_SEGMENTS, ensure_ascii=False).encode()).hexdigest()}})
 # A meeting of about two hours: 2,000 passages of three speakers, the meeting's sentences over and over, every word timed.
 LONG_SEGMENTS = [(0, i * 3.6, i * 3.6 + 3.4, f"SPEAKER_0{i % 3}", SEGMENTS[i % len(SEGMENTS)][4]) for i in range(2000)]
-LONG_STEP = dict(TRANSCRIBE_STEP, input_payload_json={"transcription": {
+LONG_STEP = dict(TRANSCRIBE_STEP, runtime_input_file_ids=[FILE["audioA"]], input_payload_json={"transcription": {
     "file_ids": [FILE["audioA"]],
     "segments": [{"file_index": f, "start": a, "end": b, "speaker": sp, "text": t, "words": words(t, a, b)}
                  for f, a, b, sp, t in LONG_SEGMENTS],
@@ -352,8 +354,7 @@ RUNS = {
     RUN["table"]: dict(DONE, steps=[TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": TABLE_REPORT})]),
     RUN["plain"]: {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
                   "steps": [dict(REPORT_STEP, step_id=AUDIO_STEP_ID, input_payload_json={})], "step_status": ["completed", "completed"]},
-    # Its recording stays in Eneo whatever became of the run: the audio its first step took, as Eneo lists it.
-    RUN["failed"]: {"status": "failed", "steps": [dict(TRANSCRIBE_STEP, runtime_input_file_ids=[FILE["audioA"], FILE["audioB"]])], "step_status": ["completed", "failed"],
+    RUN["failed"]: {"status": "failed", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", "failed"],
                    "error": {"code": "flow_step_failed", "retryable": True, "step_id": REPORT_STEP_ID, "step_order": 2,
                              "message": "Step 2 failed: the model provider returned 503 Service Unavailable."}},
     RUN["running"]: {"status": "running", "steps": [], "step_status": ["completed", "running"]},

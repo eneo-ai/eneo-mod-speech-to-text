@@ -1,5 +1,5 @@
-import { useContext, useEffect, useId, useRef, useState, type MouseEvent } from "react";
-import { ArrowDown, Download, Plus, RotateCcw, Upload } from "lucide-react";
+import { useContext, useId, useState, type MouseEvent } from "react";
+import { ArrowDown, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Code } from "@astryxdesign/core/Code";
@@ -10,26 +10,21 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
-import { ASK_ENEO_OWNER, FILE_GONE, fileGone, fileProblem } from "@/lib/errors";
-import { readInputFileAudio, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
-import { asOneFile, downloadBlob } from "@/lib/download";
-import type { Problem } from "@/lib/flow-session";
-import type { NamedBlob } from "@/lib/zip";
+import { ASK_ENEO_OWNER } from "@/lib/errors";
+import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
-import { runInputFiles, transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { runOutcome, type StepView } from "@/lib/run-progress";
 import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
-import { saveLabel } from "@/components/save-recording";
 import { CopyButton } from "./CopyButton";
-import { ProblemAlert } from "./ProblemAlert";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
+import { SaveRunRecording } from "./SaveRunRecording";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 // The result's quiet ghost start: a ghost button's icon on the edge the card's words start from.
 import styles from "./RunResult.module.css";
 import { usePhaseHeading } from "./usePhaseHeading";
-import { useFileAccess, waiting } from "./useFileAccess";
 import { LeaveContext } from "./useLeaveQuestion";
 
 /**
@@ -84,10 +79,6 @@ export function RunFailure({
   const offerChooseInput = Boolean(onChooseInput) && (Boolean(failure?.inputMustChange) || cancelled);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
-  // The audio the run was given: Eneo keeps it whatever became of the run, and it is the meeting. Only a step its own
-  // version reads as audio gave a recording; a document is not offered as one.
-  const given = runInputFiles(stepResults);
-  const recording = given && steps.some((step) => step.order === given.step.step_order && step.transcribes) ? given : null;
 
   // The transcript's heading takes the focus and comes to the window's top, as a jump does; focus alone scrolls only as
   // far as shows it, which on a laptop is its first line at the window's foot. Before it is read the link is a plain one.
@@ -188,7 +179,8 @@ export function RunFailure({
                 <Button href="#run-transcript" variant="ghost" label="Gå till transkriberingen" icon={<Icon icon={ArrowDown} size="sm" color="inherit" />} onClick={toTranscript} className={styles.quietStart} />
               </HStack>
             )}
-            {recording && <SaveRunRecording flowId={flowId} runId={run.id} fileIds={recording.fileIds} />}
+            {/* The audio the run was given: Eneo keeps it whatever became of the run, and it is the meeting. */}
+            <SaveRunRecording flowId={flowId} runId={run.id} steps={steps} stepResults={stepResults} iconSize="sm" />
           </VStack>
         </VStack>
       </StateCard>
@@ -218,83 +210,6 @@ export function RunFailure({
       )}
     </>
   );
-}
-
-/**
- * "Spara ljudfil": the run's recording as Eneo has it, in one press. One file is asked for first and saved as the
- * browser streams it, so that a file Eneo no longer has is said in words. The parts of a recording are read into the
- * page and saved together in a zip, since a browser may block a second download a press starts; each part is at most
- * the flow's largest file. A part Eneo no longer has keeps none of the others from being saved, and is named.
- */
-function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: string; fileIds: readonly string[] }) {
-  const access = useFileAccess(flowId, runId, "given");
-  const [parts, setParts] = useState<{ busy: boolean; problem: Problem | null }>({ busy: false, problem: null });
-  // Set at once, so a second press in the same moment finds the first one reading.
-  const reading = useRef(false);
-  // A screen left while the parts are read ends the read under way, reads no more of them and saves nothing.
-  const gone = useRef(false);
-  const reads = useRef<AbortController | null>(null);
-  useEffect(() => {
-    gone.current = false;
-    return () => {
-      gone.current = true;
-      reads.current?.abort();
-    };
-  }, []);
-  const one = fileIds.length === 1;
-  async function save() {
-    if (one) return void access.start(fileIds[0], "download");
-    if (reading.current) return;
-    reading.current = true;
-    reads.current = new AbortController();
-    setParts({ busy: true, problem: null });
-    try {
-      const files: NamedBlob[] = [];
-      const missing: number[] = [];
-      // One part at a time: the module streams a person's files a few at once.
-      for (const [index, fileId] of fileIds.entries()) {
-        if (gone.current) return;
-        try {
-          files.push(await readInputFileAudio(flowId, runId, fileId, index, reads.current.signal));
-        } catch (error) {
-          // Asking again cannot bring back a part Eneo no longer has: the others are saved, and it is named.
-          if (!fileGone(error)) throw error;
-          missing.push(index + 1);
-        }
-      }
-      if (files.length === 0) return setParts({ busy: false, problem: { title: FILE_GONE, retry: true } });
-      const { blob, filename } = await asOneFile(files);
-      if (gone.current) return;
-      downloadBlob(blob, filename);
-      setParts({ busy: false, problem: missing.length ? partsMissing(missing, fileIds.length) : null });
-    } catch (error) {
-      if (!gone.current) setParts({ busy: false, problem: { title: fileProblem(error), retry: true } });
-    } finally {
-      reading.current = false;
-    }
-  }
-  const problem = one ? access.problem && { title: access.problem.message, retry: true } : parts.problem;
-  return (
-    <VStack gap={2}>
-      <HStack>
-        <Button
-          variant="ghost"
-          label={saveLabel(fileIds.length)}
-          icon={<Icon icon={Download} size="sm" color="inherit" />}
-          {...(one ? waiting(access, fileIds[0], "download") : { isLoading: parts.busy, isInterruptible: true })}
-          onClick={() => void save()}
-          className={styles.quietStart}
-        />
-      </HStack>
-      {problem && <ProblemAlert problem={problem} onRetry={() => void save()} />}
-    </VStack>
-  );
-}
-
-/** "Del 2 av 3 finns inte kvar hos Eneo.": the parts a save left out, which no new try brings back. */
-function partsMissing(missing: readonly number[], of: number): Problem {
-  const which = new Intl.ListFormat("sv", { type: "conjunction" }).format(missing.map(String));
-  return { title: `Del ${which} av ${of} finns inte kvar hos Eneo.`, detail: "Filen innehåller de andra delarna." };
 }
 
 /** For support: the run id to quote, and Eneo's own technical description folded away. */

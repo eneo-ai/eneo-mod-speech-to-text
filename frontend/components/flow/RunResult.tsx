@@ -33,6 +33,7 @@ import { correctionsNewerThanDocument, namesOnly, regenerationOffer, savedTransc
 import { RegenerateNotice } from "./RegenerateNotice";
 import { LAPTOP, ResultFiles } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
+import { SaveRunRecording } from "./SaveRunRecording";
 import { StepDetails } from "./StepDetails";
 import { usePlayback, usePlaybackState } from "./AudioPlayer";
 import styles from "./RunResult.module.css";
@@ -308,6 +309,10 @@ export function RunResult({
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
+      {/* The meeting itself, as Eneo keeps it: the device's copy went when Eneo took the run. A quiet way after what the
+          run made, at every width in the document's column, where its wait and what Eneo no longer has are said; the
+          transcript's own actions would fold into their menu for it. */}
+      <SaveRunRecording flowId={flowId} runId={run.id} steps={steps} stepResults={stepResults} />
       {metaStacked && <HStack>{newRun}</HStack>}
       <StepDetails steps={steps} version={run.flow_version} className={styles.steps} />
     </>
