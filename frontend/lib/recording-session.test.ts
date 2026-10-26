@@ -343,32 +343,45 @@ test("a device's storage that never answers does not hold Stoppa: after a while 
 
 test("Stoppa whose last audio the device has not taken yet keeps the browser's question on closing the tab, until the device has it, and the recording on this page until it lets it go", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
-  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const device = {
+    indexedDB: new IDBFactory(),
+    keyRange: IDBKeyRange,
+    locks: fakeWebLocks(),
+    timer: (run: () => void, ms: number) => void setTimeout(run, ms),
+  };
   const store = await openRecordingStore(device);
   const otherTab = await openRecordingStore(device);
   const { capture, recorders } = await setup({ store });
   await capture.start(meeting);
   recorders[0].emit("a");
-  // The device stops answering at the next audio (WebKit's IndexedDB has hung instead of failing): its write waits.
-  let land: (() => void) | undefined;
+  // The device stops answering at the next audio (WebKit's IndexedDB can after the page was in the background), until
+  // `answers`: its write waits.
+  let asked = false;
+  let answers = false;
   const late = new Blob(["b"]);
   const stuck = Object.assign(new Blob(["b"]), {
-    arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => (land = () => void late.arrayBuffer().then(resolve))),
+    arrayBuffer: () => {
+      asked = true;
+      return answers ? late.arrayBuffer() : new Promise<ArrayBuffer>(() => undefined);
+    },
   });
   recorders[0].dispatchEvent(Object.assign(new Event("dataavailable"), { data: stuck }));
   const stopping = capture.stop();
-  await until(() => land !== undefined, "the write that waits");
+  await until(() => asked, "the write that waits");
   for (let i = 0; i < 5; i += 1) await settle();
-  t.mock.timers.tick(10_000);
+  t.mock.timers.tick(4_000); // the time a write has, well within the time Stoppa waits for the device
   await stopping;
   const closing = () => {
     const { persistent, refused } = capture.getSnapshot();
     return asksBeforeClosing({ phase: "ready", persistent, refused, finishing: false, sending: false, unstored: false });
   };
   assert.equal(capture.getSnapshot().status, "stopped");
+  assert.equal(capture.getSnapshot().error, null, "stopped as asked, not unconfirmed");
+  assert.equal(capture.getSnapshot().refused, "failed", "the last audio is only in this tab, and that is said");
   assert.equal(closing(), true, "closing the tab asks: the device has not said it has the last audio");
-  // The device answers after all: it keeps the whole recording, and closing the tab loses nothing.
-  land!();
+  // The device answers again: its next try puts what this tab held on it, and closing the tab loses nothing.
+  answers = true;
+  t.mock.timers.tick(20_000);
   await until(() => !closing(), "the device's word");
   const { id } = capture.getSnapshot().recording!;
   assert.deepEqual(await texts(await store.readPartsToSend(id)), ["ab."]);

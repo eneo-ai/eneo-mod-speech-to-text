@@ -1,7 +1,8 @@
 /**
  * The device fills up while a recording runs: the bar says so and what to do, the recording goes on in the tab, and
  * leaving says it is only there. Once the person has freed room, the next try puts it on the device again, a note says
- * so, and the finished recording is kept on the device.
+ * so, and the finished recording is kept on the device. A device that leaves a write unanswered is said the same way
+ * within seconds, and holds neither the recording nor Stoppa.
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
@@ -48,5 +49,42 @@ test("a full device is said with what to do, and once there is room the recordin
   await expect(page.getByText("Det finns plats igen, och inspelningen sparas på enheten."), "said for a moment").toHaveCount(0);
 
   await stop(page);
+  await expect(page.getByText("finns kvar på enheten tills Eneo har tagit emot den.")).toBeVisible();
+});
+
+/** A device that leaves its writes unanswered while `window.deviceSilent` is set (WebKit can, after the page was in the background). */
+const silenceable = (page: Page) =>
+  page.addInitScript(() => {
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<IDBDatabase["transaction"]>) {
+      if (!(window as unknown as { deviceSilent?: boolean }).deviceSilent || args[1] !== "readwrite") return transaction.apply(this, args);
+      return { objectStore: () => ({ put() {} }), abort() {} } as unknown as IDBTransaction;
+    };
+  });
+const deviceSilent = (page: Page, silent: boolean) =>
+  page.evaluate((on) => ((window as unknown as { deviceSilent?: boolean }).deviceSilent = on), silent);
+
+test("a device that leaves a write unanswered is said within seconds, Stoppa still ends with Spara ljudfil, and the recording goes onto the device once it answers", async ({ page }) => {
+  await page.clock.install();
+  await silenceable(page);
+  await setup(page);
+  await record(page, "Spela in");
+
+  await deviceSilent(page, true);
+  const silent = page.getByRole("alert").filter({ hasText: "Enheten kan inte spara mer av inspelningen." });
+  // The recorder's next chunk waits on the device, and counts as refused after the 4 seconds a write has.
+  await expect
+    .poll(async () => {
+      await page.clock.fastForward(1_000);
+      return silent.count();
+    }, { timeout: 15_000 })
+    .toBe(1);
+  await expect(silent).toContainText("Inspelningen fortsätter, men välj Spara ljudfil när du stoppar.");
+
+  await stop(page);
+  await expect(page.getByRole("button", { name: "Spara ljudfil" }), "nothing waits on the device").toBeVisible();
+
+  await deviceSilent(page, false);
+  await page.clock.fastForward(20_000); // the store's next try
   await expect(page.getByText("finns kvar på enheten tills Eneo har tagit emot den.")).toBeVisible();
 });
