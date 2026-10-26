@@ -33,6 +33,7 @@ function useLevel(t: TestContext) {
   class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
+    suspend = async () => undefined;
     close = async () => undefined;
     createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
     createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(level.peak) });

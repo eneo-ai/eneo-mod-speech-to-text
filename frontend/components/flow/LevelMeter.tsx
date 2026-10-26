@@ -27,17 +27,37 @@ export function keepRunning(
   };
 }
 
-/** The input through an analyser, or null where the browser gives no audio for it (too many contexts, no audio track). */
-function analyse(AudioCtor: typeof AudioContext, stream: MediaStream) {
-  let context: AudioContext | null = null;
+/**
+ * The one audio context that reads every input level on the page. WebKit starts an audio context only in the user's
+ * gesture or while the page already captures, and does not try again a start it refused: a context made when the
+ * stream arrives, after the browser has asked for the microphone, stays silent for the whole recording.
+ * `readyInputLevel` starts it in the press that asks for the microphone; from then on it rests while nothing is read and
+ * starts again for the next stream without a gesture.
+ */
+let levels: AudioContext | null = null;
+
+/** The page's level context, made by the window's own AudioContext; null where the browser gives none (too many open). */
+function levelContext(): AudioContext | null {
+  const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtor) return null;
+  if (levels instanceof AudioCtor && levels.state !== "closed") return levels;
   try {
-    context = new AudioCtor();
-    const source = context.createMediaStreamSource(stream);
-    return { context, source, analyser: context.createAnalyser() };
+    levels = new AudioCtor();
   } catch {
-    void context?.close().catch(() => undefined);
-    return null;
+    levels = null;
   }
+  return levels;
+}
+
+/** In the press that asks for the microphone (Starta, Fortsätt spela in, Testa mikrofonen): the level's audio may start from here. */
+export function readyInputLevel(): void {
+  if (typeof window === "undefined") return;
+  void levelContext()?.resume().then(rest, () => undefined);
+}
+
+/** Nothing is read: the level's audio rests, and may start again without a gesture. */
+function rest() {
+  if (readings.size === 0) void levels?.suspend().catch(() => undefined);
 }
 
 type LevelListener = (level: number, running: boolean, peak: number, now: number) => void;
@@ -47,10 +67,17 @@ const readings = new Map<MediaStream, { listeners: Set<RefObject<LevelListener>>
 
 /** Reads `stream`'s level about fifteen times a second for `listeners`; what stops it, or null without audio for it. */
 function read(stream: MediaStream, listeners: Set<RefObject<LevelListener>>): (() => void) | null {
-  const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  const audio = AudioCtor ? analyse(AudioCtor, stream) : null;
-  if (!audio) return null;
-  const { context, source, analyser } = audio;
+  const context = levelContext();
+  if (!context) return null;
+  let source: MediaStreamAudioSourceNode;
+  let analyser: AnalyserNode;
+  try {
+    source = context.createMediaStreamSource(stream);
+    analyser = context.createAnalyser();
+  } catch {
+    // No audio track to read.
+    return null;
+  }
   void context.resume().catch(() => undefined);
   const stopResuming = keepRunning(context);
   analyser.fftSize = 1024;
@@ -73,7 +100,6 @@ function read(stream: MediaStream, listeners: Set<RefObject<LevelListener>>): ((
     clearInterval(timer);
     stopResuming();
     source.disconnect();
-    void context.close().catch(() => undefined);
   };
 }
 
@@ -84,7 +110,7 @@ function read(stream: MediaStream, listeners: Set<RefObject<LevelListener>>): ((
  * audio context suspended and the level means nothing. Without audio for it,
  * there is no level, and the recording goes on. A stream is read once for all
  * that listen to it (the meter and the silence watch, the test's meter and its
- * "heard"): one audio context and one timer, not one each.
+ * "heard"): one timer, not one each, on the page's one level context.
  */
 export function useInputLevel(
   stream: MediaStream | null,
@@ -111,6 +137,7 @@ export function useInputLevel(
       if (listeners.size === 0) {
         stop();
         readings.delete(stream);
+        rest();
       }
       // Paused or gone: the display settles instead of freezing mid-word.
       listener.current(0, false, 0, 0);

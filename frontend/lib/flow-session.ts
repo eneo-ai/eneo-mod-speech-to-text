@@ -941,14 +941,14 @@ export class FlowSession {
    */
   async continueCutOff(recording: StoredRecording): Promise<void> {
     if (this.snapshot.phase !== "setup" || this.countInvalid() || this.blocked()) return;
-    await this.recordOn(recording, (id, limits) => this.capture.adopt(id, limits));
+    await this.recordOn(recording, (shown, limits) => this.capture.adopt(shown, limits));
   }
 
   /** "Fortsätt spela in" after Stoppa: a new part of the same recording, until a send of it has begun. */
   async continueStopped(): Promise<void> {
     const recording = this.ready;
     if (this.snapshot.phase !== "ready" || !recording || this.blocked()) return;
-    await this.recordOn(recording, (id, limits) => this.capture.continueStopped(id, limits));
+    await this.recordOn(recording, (shown, limits) => this.capture.continueStopped(shown, limits));
   }
 
   togglePause(): void {
@@ -1080,7 +1080,7 @@ export class FlowSession {
    */
   private async recordOn(
     recording: StoredRecording,
-    takeOver: (recordingId: string, limits: CaptureLimits) => Promise<void>,
+    takeOver: (recording: StoredRecording, limits: CaptureLimits) => Promise<void>,
   ) {
     const live = recording.inputMode === "stream" && this.modes.includes("stromma");
     this.mode = live ? "stromma" : "spela-in";
@@ -1092,7 +1092,7 @@ export class FlowSession {
     this.closeLive();
     if (live) this.openLive(recording.stepId, { earlier: earlier?.getSnapshot().pieces });
     this.emit();
-    await takeOver(recording.id, this.limits());
+    await takeOver(recording, this.limits());
     const { status, error } = this.capture.getSnapshot();
     if (status === "recording") return;
     this.closeLive();
