@@ -13,7 +13,7 @@ import { ActionRow } from "@/components/ActionRow";
 import { ASK_ENEO_OWNER } from "@/lib/errors";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
-import { runInputAudio, transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { runInputFiles, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { runOutcome, type StepView } from "@/lib/run-progress";
 import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
 import { saveLabel } from "@/components/save-recording";
@@ -81,8 +81,10 @@ export function RunFailure({
   const offerChooseInput = Boolean(onChooseInput) && (Boolean(failure?.inputMustChange) || cancelled);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
-  // The audio the run was given: Eneo keeps it whatever became of the run, and it is the meeting.
-  const recording = runInputAudio(stepResults);
+  // The audio the run was given: Eneo keeps it whatever became of the run, and it is the meeting. Only a step its own
+  // version reads as audio gave a recording; a document is not offered as one.
+  const given = runInputFiles(stepResults);
+  const recording = given && steps.some((step) => step.order === given.step.step_order && step.transcribes) ? given : null;
 
   // The transcript's heading takes the focus and comes to the window's top, as a jump does; focus alone scrolls only as
   // far as shows it, which on a laptop is its first line at the window's foot. Before it is read the link is a plain one.

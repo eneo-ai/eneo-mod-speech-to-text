@@ -111,10 +111,10 @@ export function fileText(file: ResultFileView, steps: readonly FlowRunStep[]): s
 }
 
 /**
- * The audio the run was given, as Eneo keeps it whatever became of the run: the files its first input step took, in
- * order, and that step. Null for a run without audio of its own.
+ * The files the run was given, as Eneo keeps them whatever became of the run: those its first input step took, in
+ * order, and that step. Null for a run given none. Whether they are audio is the step's to say (its graph node).
  */
-export function runInputAudio(steps: readonly FlowRunStep[]): { step: FlowRunStep; fileIds: string[] } | null {
+export function runInputFiles(steps: readonly FlowRunStep[]): { step: FlowRunStep; fileIds: string[] } | null {
   const step = [...steps]
     .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0))
     .find((s) => Array.isArray(s.runtime_input_file_ids) && s.runtime_input_file_ids.length > 0);

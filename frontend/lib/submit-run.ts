@@ -26,7 +26,7 @@ import { filledValue, labelsSpeakers, oneRecordingLimitSeconds, speakerLabelsFor
 import type { OnlineStatus } from "./online-status";
 import { formatBytes, formatDuration } from "./format";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
-import { runInputAudio } from "./run-files";
+import { runInputFiles } from "./run-files";
 import { selectRuntimeInputStep } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
@@ -484,7 +484,7 @@ export function startAgainRequest(
   steps: readonly FlowRunStep[],
   contract: RunContract,
 ): RunRequest | { review: string } | null {
-  const audio = runInputAudio(steps);
+  const audio = runInputFiles(steps);
   if (!audio) return null;
   const { step: inputStep, fileIds } = audio;
   const step = selectRuntimeInputStep(contract);
