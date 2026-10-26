@@ -352,7 +352,8 @@ RUNS = {
     RUN["table"]: dict(DONE, steps=[TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": TABLE_REPORT})]),
     RUN["plain"]: {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
                   "steps": [dict(REPORT_STEP, step_id=AUDIO_STEP_ID, input_payload_json={})], "step_status": ["completed", "completed"]},
-    RUN["failed"]: {"status": "failed", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", "failed"],
+    # Its recording stays in Eneo whatever became of the run: the audio its first step took, as Eneo lists it.
+    RUN["failed"]: {"status": "failed", "steps": [dict(TRANSCRIBE_STEP, runtime_input_file_ids=[FILE["audioA"], FILE["audioB"]])], "step_status": ["completed", "failed"],
                    "error": {"code": "flow_step_failed", "retryable": True, "step_id": REPORT_STEP_ID, "step_order": 2,
                              "message": "Step 2 failed: the model provider returned 503 Service Unavailable."}},
     RUN["running"]: {"status": "running", "steps": [], "step_status": ["completed", "running"]},

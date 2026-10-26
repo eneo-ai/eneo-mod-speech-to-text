@@ -49,6 +49,7 @@ En inspelning som inte har skickats visas i flödeslistan och på flödets sida,
 - **Knapparna:** **Skapa text** eller **Skapa dokument** (efter flödets resultat), **Spara ljudfil**, **Ta bort**, och för en avbruten inspelning **Fortsätt spela in**. Upp till 640 px bredd står den första över hela kortet. De inramade efter den (skickandet efter **Fortsätt spela in**, och **Spara ljudfil**) delar en rad där de får plats och står annars under varandra, och **Ta bort** står sist i deras rad i sin egen bredd. Bredare står alla i en rad, med **Ta bort** sist.
 - **Flera inspelningar:** flödeslistan visar den senaste avbrutna, eller annars den senaste. De andra ligger under till exempel **2 inspelningar till**, stängt från början.
 - **Spara ljudfil** sparar en fil per del och per tryck, eftersom webbläsare stoppar flera nedladdningar på ett tryck. En inspelning i delar säger **Spara som 2 ljudfiler** och sedan **Spara ljudfil 2 av 2**.
+- När Eneo har tagit emot körningen finns inspelningen inte längre på enheten, utan i Eneo. En körning som misslyckades eller avbröts har **Spara ljudfil** i sitt kort och hämtar ljudet därifrån (`frontend/components/flow/RunFailure.tsx`). Har Eneo rensat filen säger sidan **Filen finns inte kvar hos Eneo.**
 - **Inget ljud sparades i den här inspelningen.** En sådan inspelning kan bara fortsättas eller tas bort.
 - **Ta bort** säger **Inspelningen togs bort.** till skärmläsare. Fokus går till rubriken där en ny inspelning börjar, eller i listan till listans rubrik, och till sidans rubrik när listan är tom.
 

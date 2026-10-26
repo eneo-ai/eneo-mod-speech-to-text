@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { checkRunArtifact, runArtifactUrl } from "@/lib/api";
+import { checkInputFileAudio, checkRunArtifact, inputFileAudioUrl, runArtifactUrl } from "@/lib/api";
 import { fileProblem } from "@/lib/errors";
 
 /** How a person gets a run's file: saved, opened in a tab of its own, or by the caller's own way (the preview dialog). */
@@ -8,15 +8,22 @@ export type FileWay = "download" | "tab" | { open: () => void };
 type WayName = "download" | "tab" | "open";
 const nameOf = (way: FileWay): WayName => (typeof way === "string" ? way : "open");
 
+/** Which of a run's files: what it made, or the audio it was given (its recording, kept whatever became of the run). */
+export type RunFiles = "made" | "given";
+const SOURCES: Record<RunFiles, { check: typeof checkRunArtifact; url: (flowId: string, runId: string, fileId: string, inline?: boolean) => string }> = {
+  made: { check: checkRunArtifact, url: runArtifactUrl },
+  given: { check: checkInputFileAudio, url: inputFileAudioUrl },
+};
+
 export interface FileAccess {
   /** Why the file last asked for could not be had, and which file it was; null while nothing failed. */
   problem: { fileId: string; message: string } | null;
   /** The file being asked for and the way, until the answer has come (`waiting`). */
   pending: { fileId: string; way: WayName } | null;
-  /** Gets the file the way asked once it is known to be there. Call it inside the person's press. */
-  start(fileId: string, way: FileWay): void;
+  /** Gets the file the way asked once it is known to be there; true once it was. Call it inside the person's press. */
+  start(fileId: string, way: FileWay): Promise<boolean>;
   /** Asks again for what failed last. Call it inside the person's press. */
-  again(): void;
+  again(): Promise<boolean>;
 }
 
 /**
@@ -43,12 +50,13 @@ export function savingWay(file: { kind: string }): "download" | "tab" {
 }
 
 /**
- * The one way a result's file reaches a person: asked for before they are sent to it, so that a file Eneo no longer
+ * The one way a run's file reaches a person: asked for before they are sent to it, so that a file Eneo no longer
  * has is said in words, never shown as the module's raw answer in a viewer, a tab or a download under the file's
  * name. A tab is opened by the press itself (a blocker stops one that opens later) and sent to the file once it is
  * there, or closed again.
  */
-export function useFileAccess(flowId: string, runId: string): FileAccess {
+export function useFileAccess(flowId: string, runId: string, files: RunFiles = "made"): FileAccess {
+  const { check, url } = SOURCES[files];
   const [problem, setProblem] = useState<FileAccess["problem"]>(null);
   const [pending, setPending] = useState<FileAccess["pending"]>(null);
   const last = useRef<{ fileId: string; way: FileWay } | null>(null);
@@ -62,30 +70,32 @@ export function useFileAccess(flowId: string, runId: string): FileAccess {
 
   const start = useCallback(
     (fileId: string, way: FileWay) => {
-      if (busy.current) return;
+      if (busy.current) return Promise.resolve(false);
       busy.current = true;
       last.current = { fileId, way };
       setPending({ fileId, way: nameOf(way) });
       const tab = way === "tab" ? window.open("", "_blank") : null;
-      checkRunArtifact(flowId, runId, fileId)
+      return check(flowId, runId, fileId)
         .then(
           () => {
             setProblem(null);
             if (way === "download") {
-              if (!gone.current) save(runArtifactUrl(flowId, runId, fileId));
+              if (!gone.current) save(url(flowId, runId, fileId));
             }
             else if (way === "tab") {
-              const inline = runArtifactUrl(flowId, runId, fileId, true);
+              const inline = url(flowId, runId, fileId, true);
               if (tab) {
                 // A tab that cannot reach back to this page.
                 tab.opener = null;
                 tab.location.replace(inline);
               } else window.open(inline, "_blank", "noopener,noreferrer");
             } else way.open();
+            return true;
           },
           (error: unknown) => {
             tab?.close();
             setProblem({ fileId, message: fileProblem(error) });
+            return false;
           },
         )
         .finally(() => {
@@ -93,9 +103,12 @@ export function useFileAccess(flowId: string, runId: string): FileAccess {
           setPending(null);
         });
     },
-    [flowId, runId],
+    [flowId, runId, check, url],
   );
-  const again = useCallback(() => last.current && start(last.current.fileId, last.current.way), [start]);
+  const again = useCallback(
+    () => (last.current ? start(last.current.fileId, last.current.way) : Promise.resolve(false)),
+    [start],
+  );
   return { problem, pending, start, again };
 }
 

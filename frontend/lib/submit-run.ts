@@ -26,6 +26,7 @@ import { filledValue, labelsSpeakers, oneRecordingLimitSeconds, speakerLabelsFor
 import type { OnlineStatus } from "./online-status";
 import { formatBytes, formatDuration } from "./format";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
+import { runInputAudio } from "./run-files";
 import { selectRuntimeInputStep } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
@@ -483,13 +484,9 @@ export function startAgainRequest(
   steps: readonly FlowRunStep[],
   contract: RunContract,
 ): RunRequest | { review: string } | null {
-  const inputStep = [...steps]
-    .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0))
-    .find((step) => Array.isArray(step.runtime_input_file_ids) && step.runtime_input_file_ids.length > 0);
-  const fileIds = (inputStep?.runtime_input_file_ids as unknown[] | undefined)?.filter(
-    (id): id is string => typeof id === "string",
-  );
-  if (!inputStep || !fileIds?.length) return null;
+  const audio = runInputAudio(steps);
+  if (!audio) return null;
+  const { step: inputStep, fileIds } = audio;
   const step = selectRuntimeInputStep(contract);
   const payload = failed.input_payload_json ?? {};
   const fits =
