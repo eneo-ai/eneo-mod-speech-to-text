@@ -214,6 +214,30 @@ test("a recording saved as a file is read under its lease: another tab cannot de
   assert.deepEqual(await otherTab.listUnsent("user-1"), [], "and once saved, it is the other tab's to delete");
 });
 
+test("a save keeps the lease it found in its tab until it has read all of it, also when the operation that held it lets go", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const savingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  for (let seq = 0; seq < 300; seq += 1) await recordingTab.append(recording.id, 0, new Blob(["a"]), 10);
+  recordingTab.release(recording.id);
+  await settle();
+
+  // A send in the saving tab holds it ("Startar flödet"), and the person saves it as a file meanwhile.
+  assert.equal(await savingTab.lease(recording.id), true);
+  const saving = savingTab.readPartsToSave(recording.id);
+  // Avbryt starten: the send lets go before the save has read it all.
+  savingTab.release(recording.id);
+  await settle(); // a lock let go is free for another tab a moment later
+  await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
+  assert.deepEqual((await texts(await saving)).map((text) => text.length), [300]);
+  await settle();
+  await otherTab.remove(recording.id);
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "once saved, the lease is let go");
+});
+
 test("a stopped recording the page still shows is held by its tab: no other tab offers or deletes it until it is let go", async () => {
   const env = device();
   const recordingTab = await openRecordingStore(env);

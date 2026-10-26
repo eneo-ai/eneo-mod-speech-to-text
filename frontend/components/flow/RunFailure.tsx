@@ -231,17 +231,22 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
   const [parts, setParts] = useState<{ busy: boolean; problem: Problem | null }>({ busy: false, problem: null });
   // Set at once, so a second press in the same moment finds the first one reading.
   const reading = useRef(false);
-  // A screen left while the parts are read reads no more of them and saves nothing, as useFileAccess does.
+  // A screen left while the parts are read ends the read under way, reads no more of them and saves nothing.
   const gone = useRef(false);
+  const reads = useRef<AbortController | null>(null);
   useEffect(() => {
     gone.current = false;
-    return () => void (gone.current = true);
+    return () => {
+      gone.current = true;
+      reads.current?.abort();
+    };
   }, []);
   const one = fileIds.length === 1;
   async function save() {
     if (one) return void access.start(fileIds[0], "download");
     if (reading.current) return;
     reading.current = true;
+    reads.current = new AbortController();
     setParts({ busy: true, problem: null });
     try {
       const files: NamedBlob[] = [];
@@ -250,7 +255,7 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
       for (const [index, fileId] of fileIds.entries()) {
         if (gone.current) return;
         try {
-          files.push(await readInputFileAudio(flowId, runId, fileId, index));
+          files.push(await readInputFileAudio(flowId, runId, fileId, index, reads.current.signal));
         } catch (error) {
           // Asking again cannot bring back a part Eneo no longer has: the others are saved, and it is named.
           if (!fileGone(error)) throw error;
@@ -263,7 +268,7 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
       downloadBlob(blob, filename);
       setParts({ busy: false, problem: missing.length ? partsMissing(missing, fileIds.length) : null });
     } catch (error) {
-      setParts({ busy: false, problem: { title: fileProblem(error), retry: true } });
+      if (!gone.current) setParts({ busy: false, problem: { title: fileProblem(error), retry: true } });
     } finally {
       reading.current = false;
     }
@@ -289,7 +294,7 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
 /** "Del 2 av 3 finns inte kvar hos Eneo.": the parts a save left out, which no new try brings back. */
 function partsMissing(missing: readonly number[], of: number): Problem {
   const which = new Intl.ListFormat("sv", { type: "conjunction" }).format(missing.map(String));
-  return { title: `Del ${which} av ${of} finns inte kvar hos Eneo.`, detail: "De andra delarna sparades." };
+  return { title: `Del ${which} av ${of} finns inte kvar hos Eneo.`, detail: "Filen innehåller de andra delarna." };
 }
 
 /** For support: the run id to quote, and Eneo's own technical description folded away. */

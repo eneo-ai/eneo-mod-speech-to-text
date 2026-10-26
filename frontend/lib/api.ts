@@ -1214,13 +1214,45 @@ function dispositionName(header: string | null): string | null {
   return (header && /filename\s*=\s*"?([^";]+)"?/i.exec(header)?.[1].trim()) || null;
 }
 
+/** How long a body may send nothing before its read ends as a timeout to try again. */
+export const BODY_IDLE_MS = 60_000;
+
+/**
+ * A response's body read to its end, while bytes keep coming: one that stops for BODY_IDLE_MS fails as a timeout, never
+ * a wait without end, and `signal` cancels it at any point. A healthy large body takes as long as it takes.
+ */
+async function readBody(response: Response, signal?: AbortSignal): Promise<Blob> {
+  const reader = response.body!.getReader();
+  const parts: BlobPart[] = [];
+  let stalled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancel = () => void reader.cancel().catch(() => undefined);
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    for (;;) {
+      if (signal?.aborted) throw signal.reason;
+      timer = setTimeout(() => ((stalled = true), cancel()), BODY_IDLE_MS);
+      const { done, value } = await reader.read();
+      clearTimeout(timer);
+      if (signal?.aborted) throw signal.reason;
+      if (stalled) throw requestTimedOut();
+      if (done) return new Blob(parts, { type: response.headers.get("content-type") ?? "" });
+      // A body's bytes are an ArrayBuffer's, never shared memory.
+      parts.push(value as Uint8Array<ArrayBuffer>);
+    }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
+  }
+}
+
 /**
  * Part `index` of the audio a run was given, read whole into the page with the name Eneo gave it, to be saved with the
- * other parts in one download. A part is at most the flow's largest file.
+ * other parts in one download. A part is at most the flow's largest file. `signal` ends the read, its body included.
  */
-export async function readInputFileAudio(flowId: string, runId: string, fileId: string, index: number): Promise<NamedBlob> {
-  return request(inputFileAudioUrl(flowId, runId, fileId), { headers: { Accept: "*/*" } }, false, async (response) => {
-    const blob = await response.blob();
+export async function readInputFileAudio(flowId: string, runId: string, fileId: string, index: number, signal?: AbortSignal): Promise<NamedBlob> {
+  return request(inputFileAudioUrl(flowId, runId, fileId), { headers: { Accept: "*/*" }, signal }, false, async (response) => {
+    const blob = await readBody(response, signal);
     const filename = dispositionName(response.headers.get("content-disposition"));
     return { blob, filename: filename ?? `inspelning-del-${index + 1}.${extensionForAudioMime(blob.type)}` };
   });

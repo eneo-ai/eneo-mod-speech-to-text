@@ -1175,7 +1175,7 @@ test("a part Eneo no longer has keeps none of the others from being saved, and i
   );
   await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
   assert.deepEqual((await savedZip(started)).map(([name]) => name), ["Möte-del-1.webm", "Möte-del-3.webm"], "the parts Eneo has");
-  assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\.De andra delarna sparades\./);
+  assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\.Filen innehåller de andra delarna\./);
   assert.equal(button(view.container, "Försök igen"), null, "a new try brings no part back");
 
   started.length = 0;
@@ -1194,9 +1194,13 @@ test("a screen left while a recording's parts are read reads no more of them and
   const first = new Promise<Response>((resolve) => (answer = () => resolve(partAnswer(audioOf("part-1")))));
   const asked = filesAnswer(t, partAnswer);
   const real = globalThis.fetch;
+  let read: AbortSignal | undefined;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    return url.includes("part-1") ? (asked.push({ url, range: null }), first) : real(input, init);
+    if (!url.includes("part-1")) return real(input, init);
+    asked.push({ url, range: null });
+    read = init?.signal ?? undefined;
+    return first;
   }) as typeof fetch;
   const started = downloads(t);
   const { createElement } = await import("react");
@@ -1209,10 +1213,57 @@ test("a screen left while a recording's parts are read reads no more of them and
   );
   await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
   await view.unmount();
+  assert.equal(read?.aborted, true, "the read under way is ended");
   answer();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(asked.map((a) => a.url), [audioOf("part-1")], "no part after the screen was left");
   assert.deepEqual(started, []);
+});
+
+/** A part whose body sends its first byte and then nothing, and says when its read is cancelled. */
+function stalledPart(t: TestContext) {
+  const body = { cancelled: false };
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      new ReadableStream({
+        start: (stream) => stream.enqueue(new Uint8Array([1])),
+        cancel: () => void (body.cancelled = true),
+      }),
+      { headers: { "content-type": "audio/webm" } },
+    )) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  return body;
+}
+
+const turns = async (n = 5) => {
+  for (let i = 0; i < n; i += 1) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test("a part whose body stops coming fails as a timeout after a minute of nothing, to be tried again, and its read is cancelled", async (t) => {
+  const body = stalledPart(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { BODY_IDLE_MS, readInputFileAudio } = await import("./api");
+  const reading = readInputFileAudio("flow-1", "run-1", "part-1", 0);
+  const failed = assert.rejects(reading, { status: 408, message: "Det tog för lång tid att få svar. Försök igen." });
+  await turns();
+  t.mock.timers.tick(BODY_IDLE_MS - 1);
+  await turns();
+  assert.equal(body.cancelled, false, "a body still within its minute is waited for");
+  t.mock.timers.tick(1);
+  await failed;
+  assert.equal(body.cancelled, true);
+});
+
+test("a part's read ends at once when its signal aborts, its body included", async (t) => {
+  const body = stalledPart(t);
+  const { readInputFileAudio } = await import("./api");
+  const reads = new AbortController();
+  const reading = readInputFileAudio("flow-1", "run-1", "part-1", 0, reads.signal);
+  await turns();
+  reads.abort(new Error("the screen was left"));
+  await assert.rejects(reading, /the screen was left/);
+  assert.equal(body.cancelled, true);
 });
 
 test("a recording of one file is asked for first and saved as the browser streams it, never read into the page", async (t) => {

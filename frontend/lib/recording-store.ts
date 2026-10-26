@@ -2,8 +2,9 @@
  * The one owner of recordings on the device. Every MediaRecorder chunk is
  * stored in IndexedDB as it arrives, under the recording id, part and
  * sequence number; a part is a valid audio file when its chunks are joined in
- * order. A crash, reload, power cut or expired session therefore loses at most
- * the latest chunk. Without IndexedDB, or when the device refuses a write, the
+ * order. A crash, reload, power cut or expired session therefore loses only
+ * audio not yet written: chunks the recorder has not delivered yet and writes
+ * not yet done. Without IndexedDB, or when the device refuses a write, the
  * audio is kept in memory and `persistent` turns false: the recording then
  * lives only in this tab. A device that refused (full, or failing) is tried
  * again until it takes what this tab holds, and the recording is kept on it again.
@@ -190,7 +191,7 @@ function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: 
         chunks.map(async (chunk) => ({ ...chunk, data: chunk.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk.data })),
       );
       await use(async (db) => {
-        // Strict: on the disk before the write counts as done, so a power cut loses at most the chunk being written. A
+        // Strict: on the disk before the write counts as done, so a power cut loses no write that counted as done. A
         // browser without the option ignores it and keeps its own default.
         const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite", { durability: "strict" });
         const done = completion(tx);
@@ -330,6 +331,8 @@ export class RecordingStore {
   private held = new Set<string>();
   // Recorders that can still deliver final audio, including after the page stopped waiting or left the view.
   private writers = new Map<string, number>();
+  // Saves as a file still reading the recording: its lease stays until they have all of it, whoever took it.
+  private saving = new Map<string, number>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
@@ -547,16 +550,26 @@ export class RecordingStore {
 
   /**
    * The parts to save as a file (readParts), read under the recording's lease: no other tab deletes or sends it between
-   * the batches it is read in, so a save is never a silently cut copy. An operation of this tab already using it runs in
-   * this store's own order; without Web Locks there is no other tab to keep out.
+   * the batches it is read in, so a save is never a silently cut copy. A lease this tab already has (an operation's, or a
+   * shown recording's) is kept until the read ends, also when that operation lets go meanwhile; an operation of this tab
+   * waits for the read in this store's own order. Without Web Locks no other tab is kept out.
    */
   async readPartsToSave(id: string): Promise<RecordingFile[]> {
-    if (this.inUse.has(id) || !this.env.locks) return this.readParts(id);
-    if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
+    if (!this.env.locks) return this.readParts(id);
+    if (!this.leases.has(id)) {
+      if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
+      // The save keeps it from here on, not as an operation: one of this tab may still delete or send it after the read.
+      this.inUse.delete(id);
+    }
+    this.saving.set(id, (this.saving.get(id) ?? 0) + 1);
     try {
       return await this.readParts(id);
     } finally {
-      this.release(id);
+      const left = (this.saving.get(id) ?? 1) - 1;
+      if (left > 0) this.saving.set(id, left);
+      else this.saving.delete(id);
+      this.releaseUnusedLease(id);
+      this.notify();
     }
   }
 
@@ -757,7 +770,7 @@ export class RecordingStore {
   }
 
   private releaseUnusedLease(id: string): void {
-    if (!this.inUse.has(id) && !this.overflowed.has(id) && !this.held.has(id) && !this.writers.has(id)) this.dropLease(id);
+    if (!this.inUse.has(id) && !this.overflowed.has(id) && !this.held.has(id) && !this.writers.has(id) && !this.saving.has(id)) this.dropLease(id);
   }
 
   private dropLease(id: string): void {
