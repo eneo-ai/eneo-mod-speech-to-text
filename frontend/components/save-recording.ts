@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { downloadFiles } from "@/lib/download";
+import { asOneFile, downloadBlob } from "@/lib/download";
 import { NOT_ON_DEVICE, recordingStore, type RecordingStore } from "@/lib/recording-store";
 
 /** "Spara ljudfil": the recording in one download, every part with audio that survived, read when it is pressed. */
@@ -10,7 +10,8 @@ export async function saveRecording(
   // A failed database read throws, and is said as one; a recording whose audio is gone is said as that.
   const files = await (await openStore()).readParts(recordingId);
   if (files.length === 0) throw new Error(NOT_ON_DEVICE);
-  await downloadFiles(files);
+  const { blob, filename } = await asOneFile(files);
+  downloadBlob(blob, filename);
 }
 
 /** "Spara ljudfil" for a recording of `files` files: one press saves them all, several together in a zip. */

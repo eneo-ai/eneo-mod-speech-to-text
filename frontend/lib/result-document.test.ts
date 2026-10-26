@@ -1182,6 +1182,32 @@ test("a part Eneo no longer has is said in words, with Försök igen, and nothin
   assert.doesNotMatch(view.container.textContent ?? "", /Filen finns inte kvar/);
 });
 
+test("a screen left while a recording's parts are read reads no more of them and saves nothing", async (t) => {
+  let answer!: () => void;
+  const first = new Promise<Response>((resolve) => (answer = () => resolve(partAnswer(audioOf("part-1")))));
+  const asked = filesAnswer(t, partAnswer);
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    return url.includes("part-1") ? (asked.push({ url, range: null }), first) : real(input, init);
+  }) as typeof fetch;
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const view = await inProviders(
+    createElement(RunFailure, {
+      flowId: "flow-1", flowName: "Nämndmöte till rapport", run: { id: "run-1", flow_id: "flow-1", status: "failed" } as never,
+      failure: null, steps: readsAudio(), stepResults: RECORDING_STEPS, files: [],
+    }),
+  );
+  await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
+  await view.unmount();
+  answer();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(asked.map((a) => a.url), [audioOf("part-1")], "no part after the screen was left");
+  assert.deepEqual(started, []);
+});
+
 test("a recording of one file is asked for first and saved as the browser streams it, never read into the page", async (t) => {
   let gone = true;
   const asked = filesAnswer(t, () => (gone ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : present()));

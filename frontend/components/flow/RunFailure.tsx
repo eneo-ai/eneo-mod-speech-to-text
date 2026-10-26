@@ -1,4 +1,4 @@
-import { useContext, useId, useRef, useState, type MouseEvent } from "react";
+import { useContext, useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { ArrowDown, Download, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -12,7 +12,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { ActionRow } from "@/components/ActionRow";
 import { ASK_ENEO_OWNER, fileProblem } from "@/lib/errors";
 import { readInputFileAudio, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
-import { downloadFiles } from "@/lib/download";
+import { asOneFile, downloadBlob } from "@/lib/download";
 import type { NamedBlob } from "@/lib/zip";
 import { formatRelativeDate } from "@/lib/format";
 import { runInputFiles, transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -230,6 +230,12 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
   const [parts, setParts] = useState<{ busy: boolean; problem: string | null }>({ busy: false, problem: null });
   // Set at once, so a second press in the same moment finds the first one reading.
   const reading = useRef(false);
+  // A screen left while the parts are read reads no more of them and saves nothing, as useFileAccess does.
+  const gone = useRef(false);
+  useEffect(() => {
+    gone.current = false;
+    return () => void (gone.current = true);
+  }, []);
   const one = fileIds.length === 1;
   async function save() {
     if (one) return void access.start(fileIds[0], "download");
@@ -239,8 +245,13 @@ function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: s
     try {
       const files: NamedBlob[] = [];
       // One part at a time: the module streams a person's files a few at once.
-      for (const [index, fileId] of fileIds.entries()) files.push(await readInputFileAudio(flowId, runId, fileId, index));
-      await downloadFiles(files);
+      for (const [index, fileId] of fileIds.entries()) {
+        if (gone.current) return;
+        files.push(await readInputFileAudio(flowId, runId, fileId, index));
+      }
+      const { blob, filename } = await asOneFile(files);
+      if (gone.current) return;
+      downloadBlob(blob, filename);
       setParts({ busy: false, problem: null });
     } catch (error) {
       setParts({ busy: false, problem: fileProblem(error) });
