@@ -11,6 +11,7 @@
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - link "Gå till transkriberingen":
     - /url: "#run-transcript"
+  - button "Spara som 2 ljudfiler"
   - region "Stegen":
     - heading "Stegen" [level=2]
     - list "Flödets steg":

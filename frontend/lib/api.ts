@@ -1193,6 +1193,12 @@ export async function checkRunArtifact(flowId: string, runId: string, fileId: st
     async (response) => { await response.body?.cancel(); });
 }
 
+/** Whether Eneo still has the audio the run was given (retention may have purged it), reading none of it. */
+export async function checkInputFileAudio(flowId: string, runId: string, fileId: string): Promise<void> {
+  await request<void>(inputFileAudioUrl(flowId, runId, fileId), { headers: { Accept: "*/*", Range: "bytes=0-0" } }, false,
+    async (response) => { await response.body?.cancel(); });
+}
+
 /**
  * Same-origin address of a file the run generated. The module backend streams
  * it from Eneo the same way, under the name Eneo gave it; a PDF can open

@@ -1,5 +1,5 @@
 import { useContext, useId, useState, type MouseEvent } from "react";
-import { ArrowDown, Plus, RotateCcw, Upload } from "lucide-react";
+import { ArrowDown, Download, Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Code } from "@astryxdesign/core/Code";
@@ -13,10 +13,12 @@ import { ActionRow } from "@/components/ActionRow";
 import { ASK_ENEO_OWNER } from "@/lib/errors";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
-import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { runInputFiles, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { runOutcome, type StepView } from "@/lib/run-progress";
 import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
+import { saveLabel } from "@/components/save-recording";
 import { CopyButton } from "./CopyButton";
+import { ProblemAlert } from "./ProblemAlert";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
@@ -24,6 +26,7 @@ import { StateCard } from "./StateCard";
 // The result's quiet ghost start: a ghost button's icon on the edge the card's words start from.
 import styles from "./RunResult.module.css";
 import { usePhaseHeading } from "./usePhaseHeading";
+import { useFileAccess, waiting } from "./useFileAccess";
 import { LeaveContext } from "./useLeaveQuestion";
 
 /**
@@ -78,6 +81,10 @@ export function RunFailure({
   const offerChooseInput = Boolean(onChooseInput) && (Boolean(failure?.inputMustChange) || cancelled);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
+  // The audio the run was given: Eneo keeps it whatever became of the run, and it is the meeting. Only a step its own
+  // version reads as audio gave a recording; a document is not offered as one.
+  const given = runInputFiles(stepResults);
+  const recording = given && steps.some((step) => step.order === given.step.step_order && step.transcribes) ? given : null;
 
   // The transcript's heading takes the focus and comes to the window's top, as a jump does; focus alone scrolls only as
   // far as shows it, which on a laptop is its first line at the window's foot. Before it is read the link is a plain one.
@@ -178,6 +185,7 @@ export function RunFailure({
                 <Button href="#run-transcript" variant="ghost" label="Gå till transkriberingen" icon={<Icon icon={ArrowDown} size="sm" color="inherit" />} onClick={toTranscript} className={styles.quietStart} />
               </HStack>
             )}
+            {recording && <SaveRunRecording flowId={flowId} runId={run.id} fileIds={recording.fileIds} />}
           </VStack>
         </VStack>
       </StateCard>
@@ -206,6 +214,35 @@ export function RunFailure({
         />
       )}
     </>
+  );
+}
+
+/**
+ * "Spara ljudfil": the run's recording as Eneo has it, one file to a press as on the device (a browser may block a
+ * second download a press starts), each asked for first so that one Eneo no longer has is said in words.
+ */
+function SaveRunRecording({ flowId, runId, fileIds }: { flowId: string; runId: string; fileIds: readonly string[] }) {
+  const access = useFileAccess(flowId, runId, "given");
+  const [next, setNext] = useState(0);
+  const at = next < fileIds.length ? next : 0;
+  const fileId = fileIds[at];
+  async function save() {
+    if (await access.start(fileId, "download")) setNext(at + 1);
+  }
+  return (
+    <VStack gap={2}>
+      <HStack>
+        <Button
+          variant="ghost"
+          label={saveLabel(fileIds.length, at)}
+          icon={<Icon icon={Download} size="sm" color="inherit" />}
+          {...waiting(access, fileId, "download")}
+          onClick={() => void save()}
+          className={styles.quietStart}
+        />
+      </HStack>
+      {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={() => void save()} />}
+    </VStack>
   );
 }
 

@@ -1110,6 +1110,81 @@ test("a flow that makes text that failed says the text could not be made", async
   assert.equal(await heading("json", "outbound_http"), "Resultatet kunde inte skapas");
 });
 
+// A recording's audio as its run took it into Eneo: three parts of one recording, on the run's first step.
+const RECORDING_STEPS = [{ step_id: "step-1", step_order: 1, runtime_input_file_ids: ["part-1", "part-2", "part-3"] }] as never;
+// The run's own graph says what its first step reads: audio, or a document.
+const readsAudio = (transcribes = true) => [{ order: 1, label: "Transkribera", state: "failed", transcribes, note: null }] as never;
+const audioOf = (fileId: string) => `/api/eneo/flows/flow-1/runs/run-1/input-files/${fileId}/audio`;
+
+test("a run that failed or was stopped keeps its recording: Spara som 3 ljudfiler saves Eneo's copy, one file to a press, each asked for first", async (t) => {
+  const asked = filesAnswer(t, present);
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  for (const status of ["failed", "cancelled"] as const) {
+    asked.length = 0;
+    started.length = 0;
+    const view = await inProviders(
+      createElement(RunFailure, {
+        flowId: "flow-1", flowName: "Nämndmöte till rapport",
+        run: { id: "run-1", flow_id: "flow-1", status } as never,
+        failure: null, steps: readsAudio(), stepResults: RECORDING_STEPS, files: [],
+      }),
+    );
+    // A browser starts one download for a press without asking, and may block the ones after it.
+    for (const [label, part] of [["Spara som 3 ljudfiler", "part-1"], ["Spara ljudfil 2 av 3", "part-2"], ["Spara ljudfil 3 av 3", "part-3"]]) {
+      const save = button(view.container, label);
+      assert.ok(save, `${status}: ${label}`);
+      await view.act(async () => save.click());
+      assert.equal(asked.at(-1)?.url, audioOf(part), `${status}: asked for first`);
+      assert.equal(started.at(-1), `${audioOf(part)} (download)`, `${status}: saved as the browser streams it`);
+    }
+    assert.ok(button(view.container, "Spara som 3 ljudfiler"), `${status}: and from the start again`);
+    await view.unmount();
+  }
+});
+
+test("a recording Eneo no longer has is said in words, with Försök igen, and nothing is saved", async (t) => {
+  let gone = true;
+  filesAnswer(t, () => (gone ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : present()));
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const steps = [{ step_id: "step-1", step_order: 1, runtime_input_file_ids: ["part-1"] }] as never;
+  const view = await inProviders(
+    createElement(RunFailure, {
+      flowId: "flow-1", flowName: "Nämndmöte till rapport", run: { id: "run-1", flow_id: "flow-1", status: "failed" } as never,
+      failure: null, steps: readsAudio(), stepResults: steps, files: [],
+    }),
+  );
+  await view.act(async () => button(view.container, "Spara ljudfil")!.click());
+  assert.match(view.container.textContent ?? "", /Filen finns inte kvar hos Eneo\./);
+  assert.deepEqual(started, []);
+  gone = false;
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.deepEqual(started, [`${audioOf("part-1")} (download)`]);
+  assert.doesNotMatch(view.container.textContent ?? "", /Filen finns inte kvar/);
+});
+
+test("a run without audio of its own offers no recording to save, a document it was given included", async () => {
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  for (const [what, steps, stepResults] of [
+    ["no input files", readsAudio(), [{ step_id: "step-1", step_order: 1 }]],
+    ["a document", readsAudio(false), [{ step_id: "step-1", step_order: 1, runtime_input_file_ids: ["document-1"] }]],
+    ["no graph of its own", [], RECORDING_STEPS],
+  ] as const) {
+    const view = await inProviders(
+      createElement(RunFailure, {
+        flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", flow_id: "flow-1", status: "failed" } as never,
+        failure: null, steps: steps as never, stepResults: stepResults as never, files: [],
+      }),
+    );
+    assert.doesNotMatch(view.container.textContent ?? "", /Spara ljudfil|ljudfiler/, what);
+    await view.unmount();
+  }
+});
+
 test("a long text in one paragraph shows its first part too, cut between two words", async () => {
   const paragraph = "Nämnden diskuterade ärendet och beslutade enligt förslaget. ".repeat(125).trim();
   const view = await document_({ text: null, file: pdf, preview: paragraph });

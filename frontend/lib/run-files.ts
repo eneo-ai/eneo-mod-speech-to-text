@@ -1,6 +1,6 @@
 /**
- * A run's generated files as people see them: the name Eneo gave each file, its type and size in Swedish, and whether
- * the browser's own viewer can show it.
+ * A run's files as people see them: the name Eneo gave each file it generated, its type and size in Swedish, and whether
+ * the browser's own viewer can show it; and the audio it was given.
  */
 
 import type { FlowRunStep, ResultFile } from "./api";
@@ -108,4 +108,16 @@ export function fileText(file: ResultFileView, steps: readonly FlowRunStep[]): s
   if (!laidOut || !output || typeof output.text !== "string" || "structured" in output || output.text_overflow) return null;
   const pdfBytes = file.kind === "pdf" && output.text.trimStart().startsWith("%PDF-");
   return output.text.trim() && !pdfBytes ? output.text : null;
+}
+
+/**
+ * The files the run was given, as Eneo keeps them whatever became of the run: those its first input step took, in
+ * order, and that step. Null for a run given none. Whether they are audio is the step's to say (its graph node).
+ */
+export function runInputFiles(steps: readonly FlowRunStep[]): { step: FlowRunStep; fileIds: string[] } | null {
+  const step = [...steps]
+    .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0))
+    .find((s) => Array.isArray(s.runtime_input_file_ids) && s.runtime_input_file_ids.length > 0);
+  const fileIds = (step?.runtime_input_file_ids as unknown[] | undefined)?.filter((id): id is string => typeof id === "string");
+  return step && fileIds?.length ? { step, fileIds } : null;
 }

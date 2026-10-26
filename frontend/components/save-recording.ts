@@ -21,6 +21,12 @@ export async function saveRecordingFile(
   throw new Error(NOT_ON_DEVICE);
 }
 
+/** "Spara ljudfil" for a recording of `files` files whose next file to save is `at`: how many before the first, then which. */
+export function saveLabel(files: number, at: number): string {
+  if (files <= 1) return "Spara ljudfil";
+  return at === 0 ? `Spara som ${files} ljudfiler` : `Spara ljudfil ${at + 1} av ${files}`;
+}
+
 /**
  * "Spara ljudfil", one file to a press: a browser starts one download for a press without asking, and may block the
  * ones after it. A recording of several files says how many before the first, and which comes next after it, once
@@ -33,7 +39,7 @@ export function useSaveRecording(recordingId: string, files: number) {
   // Set at once, so a second press in the same moment finds the first one saving.
   const saving = useRef(false);
   const at = next < files ? next : 0;
-  const label = files > 1 ? (at === 0 ? `Spara som ${files} ljudfiler` : `Spara ljudfil ${at + 1} av ${files}`) : "Spara ljudfil";
+  const label = saveLabel(files, at);
   async function save(): Promise<boolean> {
     if (saving.current) return true;
     saving.current = true;
