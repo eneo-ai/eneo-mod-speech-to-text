@@ -303,7 +303,7 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
 
   assert.equal(await otherTab.lease(recording.id), false, "nothing keeps the two tabs apart");
   await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
-  assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["a"], "Spara ljudfil still reads it");
+  assert.deepEqual(await texts(await otherTab.readPartsToSave(recording.id)), ["a"], "Spara ljudfil still reads it");
   assert.equal(await recordingTab.lease(recording.id), true, "the tab that made it sends or continues it");
   recordingTab.release(recording.id);
 
@@ -311,6 +311,7 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
   const reloaded = await openRecordingStore(env);
   assert.deepEqual((await reloaded.listUnsent("user-1")).map((r) => r.id), [recording.id]);
   assert.equal(await reloaded.lease(recording.id), false);
+  assert.deepEqual(await texts(await reloaded.readPartsToSave(recording.id)), ["a"], "Spara ljudfil saves it");
 }
 
 test("the unsent list knows up front which recordings this tab may change", async () => {
