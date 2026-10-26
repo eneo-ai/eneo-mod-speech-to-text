@@ -4,7 +4,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { LevelMeter, useInputLevel } from "@/components/flow/LevelMeter";
+import { LevelMeter, readyInputLevel, useInputLevel } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { microphoneProblem, type Problem } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
@@ -130,6 +130,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     setMuted(false);
     setTested(false);
     setAsking(true);
+    readyInputLevel();
     try {
       const next = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints(id || null, { channelCount: SPEECH_RECORDING.channelCount }),

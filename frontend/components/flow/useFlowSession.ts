@@ -7,6 +7,7 @@ import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import { probeLength } from "@/lib/playback";
 import { mayContinue, type CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, sealed } from "@/lib/recording-store";
+import { readyInputLevel } from "@/components/flow/LevelMeter";
 import { browserLiveClient, supportsLiveText } from "@/components/flow/live-audio";
 import { useEvictable } from "@/components/UnsentRecordings";
 import { pickSupportedAudioMimetype, selectRuntimeInputStep } from "@/lib/upload";
@@ -28,15 +29,18 @@ function probeDuration(file: Blob): Promise<number | null> {
 
 function browserCaptureDeps(): CaptureDeps {
   return {
-    // The capture asks for mono speech; the chosen microphone joins its constraints.
-    getStream: (constraints) =>
-      navigator.mediaDevices.getUserMedia({
+    // The capture asks for mono speech; the chosen microphone joins its constraints. It asks in the press, where the
+    // level meter's audio is readied too.
+    getStream: (constraints) => {
+      readyInputLevel();
+      return navigator.mediaDevices.getUserMedia({
         ...constraints,
         audio: audioConstraints(
           preferredMicrophone(browserStorage()),
           typeof constraints.audio === "object" ? constraints.audio : {},
         ),
-      }),
+      });
+    },
     // The capture's options: the format and SPEECH_RECORDING's bit rate.
     createRecorder: (stream, options) => new MediaRecorder(stream, options),
     requestWakeLock: async () =>

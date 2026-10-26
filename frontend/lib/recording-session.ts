@@ -360,18 +360,19 @@ export class RecordingCapture {
   /**
    * Takes over a recording whose capture ended without a stop (the tab was
    * reloaded or killed) and records on in a new part of it, like a new
-   * recording, so the meeting still becomes one run.
+   * recording, so the meeting still becomes one run. `recording` is the copy
+   * the page shows.
    */
-  adopt(recordingId: string, limits: CaptureLimits = {}): Promise<void> {
-    return this.takeOver(recordingId, limits, (found) => (continuable(found) ? null : NOT_CONTINUABLE));
+  adopt(recording: StoredRecording, limits: CaptureLimits = {}): Promise<void> {
+    return this.takeOver(recording, limits, (found) => (continuable(found) ? null : NOT_CONTINUABLE));
   }
 
   /**
    * "Fortsätt spela in" on a recording the user stopped too early: records on
    * in a new part of it, as `adopt()` does, until a send of it has begun.
    */
-  continueStopped(recordingId: string, limits: CaptureLimits = {}): Promise<void> {
-    return this.takeOver(recordingId, limits, (found) => (sealed(found) ? SEND_BEGUN : null));
+  continueStopped(recording: StoredRecording, limits: CaptureLimits = {}): Promise<void> {
+    return this.takeOver(recording, limits, (found) => (sealed(found) ? SEND_BEGUN : null));
   }
 
   /** Whether a stop now can be taken back with "Fortsätt spela in": not once the flow takes no further part. */
@@ -517,18 +518,29 @@ export class RecordingCapture {
 
   /**
    * Leases a stored recording and records on in a new part of it, unless
-   * `refusal` names a reason; a refusal leaves the capture as it was.
+   * `refusal` names a reason; a refusal leaves the capture as it was. What the
+   * page's copy shows refuses it before the microphone is asked for.
    */
   private async takeOver(
-    recordingId: string,
+    recording: StoredRecording,
     limits: CaptureLimits,
     refusal: (found: StoredRecording) => string | null,
   ): Promise<void> {
     const before = this.snapshot;
     if (this.starting !== null || (before.status !== "idle" && before.status !== "stopped")) return;
+    const reason = (found: StoredRecording) => refusal(found) ?? noFurtherPart(limits, filesIn(found), found.durationMs);
+    const shown = reason(recording);
+    if (shown) return this.set({ error: shown });
+    const recordingId = recording.id;
     this.starting = this.generation;
     this.set({ error: null, limitReached: false });
     const generation = this.generation;
+    // Asked for in the press, as a first start asks: WebKit lets only a request made in the user's gesture use the page's
+    // earlier answer, and asks again for one made once the device's storage has answered (after a minute without
+    // recording), or refuses it without asking once it was refused. The device's checks run meanwhile; a refusal there
+    // lets the microphone go.
+    const microphone = this.openMicrophone();
+    microphone.catch(() => undefined);
     try {
       const store = await this.openedStore();
       // Read before the lease, so a send in progress gives its own reason, and
@@ -536,15 +548,17 @@ export class RecordingCapture {
       const eligible = async () => {
         const found = await store.get(recordingId);
         if (!found) throw new Refusal(NOT_ON_DEVICE);
-        const reason = refusal(found) ?? noFurtherPart(limits, filesIn(found), found.durationMs);
-        if (reason) throw new Refusal(reason);
+        const refused = reason(found);
+        if (refused) throw new Refusal(refused);
         return found;
       };
       await eligible();
       if (!(await store.lease(recordingId))) throw new Refusal(IN_USE_ELSEWHERE);
+      // Stoppa or a page leave while the device answered: its microphone has gone, and the lease goes with it.
+      if (generation !== this.generation) return store.release(recordingId);
       this.release = () => store.release(recordingId);
       const found = await eligible();
-      const stream = await this.openMicrophone().catch((error) => {
+      const stream = await microphone.catch((error) => {
         throw new Refusal(microphoneError(error));
       });
       const lowSpace = await store.lowOnSpace();

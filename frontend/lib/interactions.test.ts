@@ -1438,6 +1438,7 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
   class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
+    suspend = async () => undefined;
     close = async () => undefined;
     createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
     createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(0).fill(peak, 0, 1) });
@@ -1545,6 +1546,7 @@ test("with reduced motion, the level meter still shows the microphone's level, w
   class FakeAudioContext extends (window as unknown as { EventTarget: typeof EventTarget }).EventTarget {
     state = "running";
     resume = async () => undefined;
+    suspend = async () => undefined;
     close = async () => undefined;
     createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
     createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak) });
@@ -1584,6 +1586,7 @@ function listening(t: import("node:test").TestContext, peak: { value: number } |
       contexts.push(this);
     }
     resume = async () => void (this.state = "running");
+    suspend = async () => void (this.state = "suspended");
     close = async () => void (this.state = "closed");
     createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
     createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(typeof peak === "object" ? (peak?.value ?? 0) : 0) });
@@ -1622,7 +1625,7 @@ test("the level meter goes quiet when the stream ends, whichever way it is drawn
   }
 });
 
-test("a stream is read once for the meter and the silence watch that listen to it: one audio context, closed with the last", async (t) => {
+test("a stream is read once for the meter and the silence watch that listen to it: one audio context, at rest with the last", async (t) => {
   const { createElement, Fragment } = await import("react");
   const { LevelMeter } = await import("../components/flow/LevelMeter");
   const { useSilence } = await import("../components/flow/recording-hooks");
@@ -1642,8 +1645,62 @@ test("a stream is read once for the meter and the silence watch that listen to i
     await view.act(async () => view.rerender(createElement(Fragment, null, createElement(LevelMeter, { stream: null, bars: 8, variant: "steps" }), createElement(Watch))));
     assert.equal(contexts[0].state, "running", "still read for the watch");
     await view.unmount();
-    assert.equal(contexts[0].state, "closed", "closed with the last that listened");
+    assert.equal(contexts[0].state, "suspended", "at rest with the last that listened");
   } finally {
+    restore();
+  }
+});
+
+test("the level's audio is readied in the press that asks for the microphone, so a browser that starts audio only in a gesture shows the level of every part", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter, readyInputLevel } = await import("../components/flow/LevelMeter");
+  const { restore, contexts } = listening(t, { value: 0.5 });
+  // WebKit: an audio context starts only in the user's gesture, or while the page already captures, and a start it
+  // refused is not tried again. One started in a gesture may start again later without one.
+  const gesture = { now: false };
+  const started = new WeakSet<object>();
+  type Context = { state: string; resume(): Promise<void>; createAnalyser(): { getFloatTimeDomainData(samples: Float32Array): void } };
+  const page = window as unknown as { AudioContext: new () => Context };
+  const Browser = page.AudioContext;
+  page.AudioContext = class extends (Browser as new () => Context) {
+    constructor() {
+      super();
+      this.state = "suspended";
+      const resume = this.resume.bind(this);
+      this.resume = () => {
+        if (!gesture.now && !started.has(this)) return new Promise<void>(() => undefined);
+        started.add(this);
+        return resume();
+      };
+      const analyser = this.createAnalyser.bind(this);
+      // A context that does not run reads nothing.
+      this.createAnalyser = () => {
+        const node = analyser();
+        const read = node.getFloatTimeDomainData.bind(node);
+        node.getFloatTimeDomainData = (samples) => (this.state === "running" ? read(samples) : void samples.fill(0));
+        return node;
+      };
+    }
+  };
+  const lit = (view: { container: Element }) => [...view.container.querySelectorAll<HTMLElement>("span")].some((bar) => bar.dataset.lit === "true");
+  try {
+    // Fortsätt spela in: the press asks for the microphone, whose stream comes after the browser's prompt, out of the gesture.
+    gesture.now = true;
+    readyInputLevel();
+    gesture.now = false;
+    const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant: "steps" }));
+    await view.act(async () => t.mock.timers.tick(66));
+    assert.ok(lit(view), "the new part's level shows");
+    // Stoppa, and Fortsätt spela in again: a new stream, and still one audio context for the page.
+    await view.act(async () => view.rerender(createElement(LevelMeter, { stream: null, bars: 8, variant: "steps" })));
+    assert.equal(contexts[0].state, "suspended", "at rest while nothing is read");
+    await view.act(async () => view.rerender(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant: "steps" })));
+    await view.act(async () => t.mock.timers.tick(66));
+    assert.ok(lit(view), "the next part's level shows too");
+    assert.equal(contexts.length, 1);
+    await view.unmount();
+  } finally {
+    page.AudioContext = Browser;
     restore();
   }
 });

@@ -39,6 +39,7 @@ Efteråt står det hur länge ljud saknades: **Mikrofonen var avstängd i …** 
 - **Pausa** och **Stoppa** gör ingenting de första 0,7 sekunderna efter att de visats, så att ett tryck som var menat för något annat inte avslutar mötet. Medan inspelningen sparas står **Sparar…** på knappen.
 - Efter **Stoppa** väntar appen högst fyra sekunder på att webbläsaren bekräftar slutet. Ljud som kommer senare sparas ändå. Utan bekräftelse visas **Webbläsaren har inte bekräftat inspelningens stopp.**, och inspelningen kan inte skickas: spara den med **Spara ljudfil** och ladda upp filen.
 - **Fortsätt spela in** fungerar också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd och fortsätter i en ny del. På telefon och surfplatta står den först, under flödets namn. Efter **Stoppa** finns knappen bredvid **Skapa dokument** tills inspelningen börjar skickas.
+- **Fortsätt spela in** ber om mikrofonen i samma tryck som **Starta inspelning**, så att Safari använder sitt tidigare svar och frågar igen efter ett nej. Nivåmätarens ljud startas i samma tryck, eftersom Safari bara startar ljud i ett tryck: mätaren visar ljudet också när webbläsaren först har frågat om mikrofonen (`frontend/components/flow/LevelMeter.tsx`).
 - En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
 
 ## Inspelningar som inte har skickats

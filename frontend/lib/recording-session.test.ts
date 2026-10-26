@@ -146,8 +146,11 @@ async function setup(
   const constraints: MediaStreamConstraints[] = [];
   const recorders: FakeRecorder[] = [];
   const wakeLocks = { requested: 0, released: 0 };
+  // Every request for the microphone, counted as it is made: in the same task as the press, or later.
+  let requests = 0;
   const deps: CaptureDeps = {
     getStream: async (asked) => {
+      requests += 1;
       if (options.microphone?.denied) throw new DOMException("Permission denied", "NotAllowedError");
       if (options.microphone?.refusal) throw new DOMException("The microphone could not start", options.microphone.refusal);
       await options.microphone?.wait;
@@ -178,7 +181,7 @@ async function setup(
   };
   const capture = new RecordingCapture(() => store, deps);
   captures.push(capture);
-  return { capture, store, streams, constraints, recorders, wakeLocks };
+  return { capture, store, streams, constraints, recorders, wakeLocks, requests: () => requests };
 }
 
 test("losing the microphone pauses the recording, keeps what was recorded, and 'Fortsätt spela in' records a new part", async () => {
@@ -694,7 +697,7 @@ test("a recording cut off by a reload records on at once in a new part of the sa
   let now = 90_000; // the new page's own clock
   const store = await openRecordingStore(device);
   const { capture, constraints, recorders } = await setup({ store, now: () => now });
-  await capture.adopt(id);
+  await capture.adopt((await store.get(id))!); // as the unsent list shows it
   assert.equal(capture.getSnapshot().status, "recording", "the same surface as a new recording");
   assert.deepEqual(constraints, [{ audio: { channelCount: 1 } }]);
   assert.equal(capture.getSnapshot().recording?.id, id);
@@ -725,7 +728,7 @@ test("a recording the person stopped, on a page since left, records on in a new 
   let now = 90_000;
   const store = await openRecordingStore(device);
   const { capture, recorders } = await setup({ store, now: () => now });
-  await capture.adopt(stoppedFirst!.id);
+  await capture.adopt(stoppedFirst!);
   assert.equal(capture.getSnapshot().status, "recording", "Fortsätt spela in, as for a recording a reload cut off");
   assert.equal(capture.getSnapshot().recording?.id, stoppedFirst!.id);
   assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
@@ -748,19 +751,24 @@ test("only a recording no send has begun of, that no other tab holds, and that t
   await otherTab.append(full.id, 0, new Blob(["a"]), 1_000);
   otherTab.release(full.id);
 
-  const { capture, streams } = await setup({ store: await openRecordingStore(device) });
-  await capture.adopt(held.id);
-  assert.equal(capture.getSnapshot().status, "idle");
-  assert.equal(capture.getSnapshot().error, "Inspelningen används i en annan flik.");
-  await capture.adopt(finished.id);
+  // Each as the unsent list shows it.
+  const [heldCopy, finishedCopy, fullCopy] = await Promise.all([held, finished, full].map(async ({ id }) => (await otherTab.get(id))!));
+  const { capture, streams, requests } = await setup({ store: await openRecordingStore(device) });
+  // What the page shows refuses it at once, with no microphone: a send of it has begun, or the flow takes no more files.
+  await capture.adopt(finishedCopy);
   assert.equal(capture.getSnapshot().error, "Inspelningen är avslutad och kan inte fortsätta.");
-  await capture.adopt(full.id, { maxBytes: LIMIT, maxFiles: 1 });
+  await capture.adopt(fullCopy, { maxBytes: LIMIT, maxFiles: 1 });
   assert.equal(capture.getSnapshot().status, "idle");
   assert.equal(
     capture.getSnapshot().error,
     "Flödet tar emot högst 1 fil, och inspelningen har redan så många delar.",
   );
-  assert.equal(streams.length, 0, "the microphone was never opened");
+  assert.equal(requests(), 0, "the microphone was never asked for");
+  // Another tab holding it shows only under the lease: the microphone, asked for in the press, goes at once.
+  await capture.adopt(heldCopy);
+  assert.equal(capture.getSnapshot().status, "idle");
+  assert.equal(capture.getSnapshot().error, "Inspelningen används i en annan flik.");
+  assert.ok(streams.every((stream) => stream.track.readyState === "ended"), "and let go at once");
 
   // Reading it fails after the lease was taken: the lease is let go again.
   const reopened = await openRecordingStore(device);
@@ -775,7 +783,7 @@ test("only a recording no send has begun of, that no other tab holds, and that t
   try {
     otherTab.release(held.id);
     await settle();
-    await unreadable.capture.adopt(held.id);
+    await unreadable.capture.adopt(heldCopy);
   } finally {
     IDBObjectStore.prototype.get = get;
   }
@@ -786,7 +794,7 @@ test("only a recording no send has begun of, that no other tab holds, and that t
   // A page that goes away while it opens one leaves it for recovery.
   await settle();
   const leaving = await setup({ store: await openRecordingStore(device) });
-  const adopting = leaving.capture.adopt(held.id);
+  const adopting = leaving.capture.adopt(heldCopy);
   leaving.capture.dispose();
   await adopting;
   await settle();
@@ -811,6 +819,28 @@ async function stoppedCapture(options: Parameters<typeof setup>[0] = {}) {
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 const GONE = "Inspelningen finns inte längre på enheten.";
 
+test("'Fortsätt spela in' asks for the microphone in the press itself, as Starta does, not once the device's storage has answered", async () => {
+  // WebKit lets only a request made in the user's gesture use the page's earlier answer: one made later, after the
+  // storage has answered, is asked again after a minute without recording, and refused without asking once refused.
+  const limits = { maxBytes: LIMIT, maxFiles: 3 };
+  const { capture, store, requests, stopped, recorders } = await stoppedCapture();
+  const continuing = capture.continueStopped(stopped, limits);
+  assert.equal(requests(), 2, "asked in the same task as the press");
+  await continuing;
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(recorders.length, 2, "a new part");
+
+  // A cut-off recording from the unsent list, the same.
+  capture.dispose();
+  await until(async () => (await store.get(stopped.id))?.state === "paused", "kept for recovery");
+  const id = stopped.id;
+  const reopened = await setup({ store });
+  const adopting = reopened.capture.adopt((await reopened.store.get(id))!, limits);
+  assert.equal(reopened.requests(), 1, "asked in the same task as the press");
+  await adopting;
+  assert.equal(reopened.capture.getSnapshot().status, "recording");
+});
+
 test("after Stoppa, 'Fortsätt spela in' records on in a new part of the same recording", async () => {
   let now = 0;
   const { capture, store, recorders } = await setup({ now: () => now });
@@ -820,7 +850,7 @@ test("after Stoppa, 'Fortsätt spela in' records on in a new part of the same re
   recorders[0].emit("a");
   const stopped = (await capture.stop())!;
 
-  await capture.continueStopped(stopped.id, limits);
+  await capture.continueStopped(stopped, limits);
   assert.equal(capture.getSnapshot().status, "recording");
   assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
   assert.equal(capture.timeLeftMs(), 8_350, "in the last file the flow takes");
@@ -851,22 +881,26 @@ test("a stopped recording is not continued once a send of it has begun, and stay
       startRun: async () => ({ id: "run-1", flow_id: "flow-1", status: "queued" }),
     },
   );
-  await until(async () => (await store.get(stopped.id))?.state === "uploading", "the send");
-  await capture.continueStopped(stopped.id, limits);
+  // The page shows the send as the device has it.
+  await until(() => capture.getSnapshot().recording?.state === "uploading", "the send");
+  await capture.continueStopped(capture.getSnapshot().recording!, limits);
   const refused = capture.getSnapshot();
   assert.deepEqual([refused.status, refused.recording?.id, refused.error], ["stopped", stopped.id, SEND_BEGUN]);
   assert.equal(streams.length, 1, "no microphone opened");
 
+  // Sent while the page still showed it stopped: the device's word, and the microphone asked for in the press goes at once.
   finishUpload();
   await sending;
-  await capture.continueStopped(stopped.id, limits);
+  await capture.continueStopped(stopped, limits);
   assert.equal(capture.getSnapshot().error, GONE, "sent, and its copy deleted");
+  assert.ok(streams.every((stream) => stream.track.readyState === "ended"));
 
   // A send whose tab died while Eneo made the run, and a sent one whose copy could not be deleted.
   for (const state of ["uploaded", "submitted"] as const) {
     const left = await stoppedCapture();
     await left.store.setState(left.stopped.id, state);
-    await left.capture.continueStopped(left.stopped.id, limits);
+    await until(() => left.capture.getSnapshot().recording?.state === state, state);
+    await left.capture.continueStopped(left.capture.getSnapshot().recording!, limits);
     assert.equal(left.capture.getSnapshot().error, SEND_BEGUN, state);
     assert.equal(left.streams.length, 1, state);
   }
@@ -881,7 +915,7 @@ test("a stopped recording is not continued while another tab holds it, once it i
   store.letGo(stopped.id);
   for (let i = 0; i < 5; i += 1) await settle();
   assert.equal(await otherTab.lease(stopped.id), true);
-  await capture.continueStopped(stopped.id, limits);
+  await capture.continueStopped(stopped, limits);
   assert.deepEqual(
     [capture.getSnapshot().status, capture.getSnapshot().error],
     ["stopped", "Inspelningen används i en annan flik."],
@@ -894,21 +928,23 @@ test("a stopped recording is not continued while another tab holds it, once it i
     await otherTab.remove(id);
     return lease(id);
   };
-  await capture.continueStopped(stopped.id, limits);
+  await capture.continueStopped(stopped, limits);
   assert.equal(capture.getSnapshot().error, GONE);
-  assert.equal(streams.length, 1, "no microphone opened");
+  // Neither shows on the page before the lease: the microphone, asked for in the press, is let go at once.
+  assert.ok(streams.every((stream) => stream.track.readyState === "ended"), "the microphone let go");
 
   const full = await stoppedCapture();
-  await full.capture.continueStopped(full.stopped.id, { maxBytes: LIMIT, maxFiles: 1 });
+  await full.capture.continueStopped(full.stopped, { maxBytes: LIMIT, maxFiles: 1 });
   assert.equal(
     full.capture.getSnapshot().error,
     "Flödet tar emot högst 1 fil, och inspelningen har redan så många delar.",
   );
+  assert.equal(full.requests(), 1, "known from the page: no microphone asked for");
 
   const microphone = { denied: false };
   const denied = await stoppedCapture({ microphone });
   microphone.denied = true;
-  await denied.capture.continueStopped(denied.stopped.id, limits);
+  await denied.capture.continueStopped(denied.stopped, limits);
   assert.deepEqual(
     [denied.capture.getSnapshot().status, denied.capture.getSnapshot().error],
     ["stopped", "Tillåt mikrofonen i webbläsaren för att spela in."],
@@ -919,7 +955,7 @@ test("a stopped recording is not continued while another tab holds it, once it i
   const taken: { refusal?: string } = {};
   const inUse = await stoppedCapture({ microphone: taken });
   taken.refusal = "NotReadableError";
-  await inUse.capture.continueStopped(inUse.stopped.id, limits);
+  await inUse.capture.continueStopped(inUse.stopped, limits);
   assert.equal(inUse.capture.getSnapshot().error, "Mikrofonen kunde inte startas. Stäng andra appar som använder mikrofonen och försök igen.");
 });
 
@@ -1006,7 +1042,7 @@ test("a page left while the store opens starts no recorder and leaves no recordi
       return new FakeRecorder(second, { mimeType: "audio/webm" }) as unknown as MediaRecorder;
     },
   });
-  const continuing = later.continueStopped(made.id);
+  const continuing = later.continueStopped(made);
   await until(() => asked, "the microphone asked for");
   later.dispose();
   assert.equal(second.track.readyState, "ended", "the microphone is let go before the space is checked");
@@ -1015,6 +1051,34 @@ test("a page left while the store opens starts no recorder and leaves no recordi
   assert.equal(recorders, 0);
   assert.equal(second.track.readyState, "ended");
   assert.equal(await slow.lease(made.id), true, "nothing holds the recording");
+});
+
+test("a page left while 'Fortsätt spela in' waits for the device's lease and the microphone lets both go", async () => {
+  const microphone: { wait?: Promise<void> } = {};
+  const { capture, store, streams, recorders, requests, stopped } = await stoppedCapture({ microphone });
+  // The microphone is asked for in the press, and the browser still asks; the lease comes meanwhile.
+  let grant = () => {};
+  microphone.wait = new Promise((resolve) => (grant = resolve));
+  let lease = () => {};
+  const leased = new Promise<void>((resolve) => (lease = resolve));
+  const take = store.lease.bind(store);
+  store.lease = async (id) => {
+    await leased;
+    return take(id);
+  };
+  const continuing = capture.continueStopped(stopped, { maxBytes: LIMIT, maxFiles: 3 });
+  assert.equal(requests(), 2);
+  capture.dispose();
+  lease();
+  await continuing;
+  grant();
+  await until(() => streams.length === 2, "the browser's late answer");
+  assert.equal(streams[1].track.readyState, "ended", "the microphone let go");
+  assert.equal(recorders.length, 1, "no new part");
+  store.lease = take;
+  store.letGo(stopped.id); // the page has gone
+  await settle();
+  assert.equal(await store.lease(stopped.id), true, "nothing holds the recording");
 });
 
 /** Holds one store call pending until the returned function runs: the device's storage being slow, or never answering. */
@@ -1279,7 +1343,7 @@ test("without Web Locks, another tab cannot send a stopped recording while its o
 
   let grant = () => {};
   microphone.wait = new Promise((resolve) => (grant = resolve));
-  const continuing = capture.continueStopped(stopped.id); // waits for the microphone
+  const continuing = capture.continueStopped(stopped); // waits for the microphone
   const otherTab = await openRecordingStore(device);
   let asked = 0;
   await assert.rejects(
@@ -1574,7 +1638,7 @@ test("when the file slots run out before the time, the stop says so rather than 
   now = 60_000;
   recorders[0].emit("a");
   const stopped = (await capture.stop())!; // stopped by mistake after a minute
-  await capture.continueStopped(stopped.id, ONE_RECORDING);
+  await capture.continueStopped(stopped, ONE_RECORDING);
   for (let part = 2; part <= 10; part += 1) {
     now += 30 * 60_000;
     recorders.at(-1)!.emit("x");
@@ -1623,7 +1687,7 @@ test("a recording with no time left is not continued, and no microphone is opene
   const stopped = (await capture.stop())!;
   assert.equal(streams.length, 1);
 
-  await capture.continueStopped(stopped.id, ONE_RECORDING);
+  await capture.continueStopped(stopped, ONE_RECORDING);
 
   assert.deepEqual([capture.getSnapshot().status, capture.getSnapshot().error], ["stopped", OUT_OF_TIME]);
   assert.equal(streams.length, 1, "no microphone opened");
@@ -1875,7 +1939,7 @@ test("a part that got no audio is no file, so the recording still continues, or 
   store.release(id);
 
   const reloaded = await setup({ store: await openRecordingStore(device) });
-  await reloaded.capture.adopt(id, limits);
+  await reloaded.capture.adopt((await reloaded.store.get(id))!, limits);
   assert.equal(reloaded.capture.getSnapshot().status, "recording", "still one file");
   reloaded.recorders[0].emit("b");
   await reloaded.capture.stop();
