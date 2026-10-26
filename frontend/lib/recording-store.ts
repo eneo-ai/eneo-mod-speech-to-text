@@ -325,6 +325,8 @@ export class RecordingStore {
   private inUse = new Set<string>();
   // The recordings this tab made: without Web Locks, the only ones it may change.
   private made = new Set<string>();
+  // The browser has Web Locks and refused them here: no tab is kept out, as without them.
+  private locksRefused = false;
   private live = new Map<string, StoredRecording>();
   // Stopped recordings this page still shows: their lease stays with this tab between its operations, so no other tab
   // offers or deletes one that is on this tab's screen (`hold`, until `letGo`).
@@ -552,12 +554,15 @@ export class RecordingStore {
    * The parts to save as a file (readParts), read under the recording's lease: no other tab deletes or sends it between
    * the batches it is read in, so a save is never a silently cut copy. A lease this tab already has (an operation's, or a
    * shown recording's) is kept until the read ends, also when that operation lets go meanwhile; an operation of this tab
-   * waits for the read in this store's own order. Without Web Locks no other tab is kept out.
+   * waits for the read in this store's own order. Without Web Locks, or where the browser refuses them, no other tab is
+   * kept out and the save only reads: a recording recovered after a reload is saved as it was before.
    */
   async readPartsToSave(id: string): Promise<RecordingFile[]> {
     if (!this.env.locks) return this.readParts(id);
     if (!this.leases.has(id)) {
-      if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
+      const leased = await this.lease(id);
+      if (!leased && this.locksRefused) return this.readParts(id);
+      if (!leased) throw new Error(IN_USE_ELSEWHERE);
       // The save keeps it from here on, not as an operation: one of this tab may still delete or send it after the read.
       this.inUse.delete(id);
     }
@@ -730,7 +735,10 @@ export class RecordingStore {
           });
         })
         // A browser that refuses Web Locks here still leases within this tab.
-        .catch(() => resolve(inThisTab()));
+        .catch(() => {
+          this.locksRefused = true;
+          resolve(inThisTab());
+        });
     });
   }
 
