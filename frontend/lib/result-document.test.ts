@@ -3,6 +3,7 @@ import test, { afterEach, type TestContext } from "node:test";
 import type { ReactElement } from "react";
 
 import { asPerson, button, cleanup, installDom, mount } from "./test-dom";
+import { unzippedText } from "./test-zip";
 import { withRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 
@@ -58,12 +59,12 @@ const ATTACHMENT = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?d
 const present = () => new Response("%", { status: 206, headers: { "content-type": "application/pdf" } });
 const missing = () => Response.json({ detail: "File not found" }, { status: 404 });
 
-function filesAnswer(t: TestContext, answer: () => Response) {
+function filesAnswer(t: TestContext, answer: (url: string) => Response) {
   const asked: { url: string; range: string | null }[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     asked.push({ url: String(input), range: new Headers(init?.headers).get("Range") });
-    return answer();
+    return answer(String(input));
   }) as typeof fetch;
   t.after(() => void (globalThis.fetch = real));
   return asked;
@@ -1115,9 +1116,24 @@ const RECORDING_STEPS = [{ step_id: "step-1", step_order: 1, runtime_input_file_
 // The run's own graph says what its first step reads: audio, or a document.
 const readsAudio = (transcribes = true) => [{ order: 1, label: "Transkribera", state: "failed", transcribes, note: null }] as never;
 const audioOf = (fileId: string) => `/api/eneo/flows/flow-1/runs/run-1/input-files/${fileId}/audio`;
+// A part as the module streams it from Eneo, under the name Eneo gave it; the last in RFC 6266's UTF-8 form.
+const partAnswer = (url: string) => {
+  const n = /part-(\d)/.exec(url)![1];
+  const name = n === "3" ? `filename*=UTF-8''M%C3%B6te-del-${n}.webm` : `filename="Möte-del-${n}.webm"`;
+  return new Response(`del ${n}`, { headers: { "content-type": "audio/webm", "content-disposition": `attachment; ${name}` } });
+};
 
-test("a run that failed or was stopped keeps its recording: Spara som 3 ljudfiler saves Eneo's copy, one file to a press, each asked for first", async (t) => {
-  const asked = filesAnswer(t, present);
+/** The one download a press started from a Blob the page made, read back as unzip sees it. */
+async function savedZip(started: string[]) {
+  const { resolveObjectURL } = await import("node:buffer");
+  assert.equal(started.length, 1, "one download for the press");
+  const [href, way] = started[0].split(" ");
+  assert.equal(way, "(download)");
+  return unzippedText(resolveObjectURL(href) as Blob);
+}
+
+test("a run that failed or was stopped keeps its recording: Spara 3 ljudfiler (zip) saves Eneo's copy of every part in one press, as one zip", async (t) => {
+  const asked = filesAnswer(t, partAnswer);
   const started = downloads(t);
   const { createElement } = await import("react");
   const { RunFailure } = await import("../components/flow/RunFailure");
@@ -1131,22 +1147,128 @@ test("a run that failed or was stopped keeps its recording: Spara som 3 ljudfile
         failure: null, steps: readsAudio(), stepResults: RECORDING_STEPS, files: [],
       }),
     );
-    // A browser starts one download for a press without asking, and may block the ones after it.
-    for (const [label, part] of [["Spara som 3 ljudfiler", "part-1"], ["Spara ljudfil 2 av 3", "part-2"], ["Spara ljudfil 3 av 3", "part-3"]]) {
-      const save = button(view.container, label);
-      assert.ok(save, `${status}: ${label}`);
-      await view.act(async () => save.click());
-      assert.equal(asked.at(-1)?.url, audioOf(part), `${status}: asked for first`);
-      assert.equal(started.at(-1), `${audioOf(part)} (download)`, `${status}: saved as the browser streams it`);
-    }
-    assert.ok(button(view.container, "Spara som 3 ljudfiler"), `${status}: and from the start again`);
+    await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
+    assert.deepEqual(asked.map((a) => a.url), ["part-1", "part-2", "part-3"].map(audioOf), `${status}: each part, in order`);
+    assert.deepEqual(await savedZip(started), [
+      ["Möte-del-1.webm", "del 1"],
+      ["Möte-del-2.webm", "del 2"],
+      ["Möte-del-3.webm", "del 3"],
+    ], `${status}: under the names Eneo gave them`);
+    assert.match(started[0], /^blob:/);
     await view.unmount();
   }
 });
 
-test("a recording Eneo no longer has is said in words, with Försök igen, and nothing is saved", async (t) => {
+test("a part Eneo no longer has keeps none of the others from being saved, and is named; with none left it is said, with Försök igen", async (t) => {
+  let gone = (url: string) => url.includes("part-2");
+  filesAnswer(t, (url) =>
+    gone(url) ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : partAnswer(url),
+  );
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const view = await inProviders(
+    createElement(RunFailure, {
+      flowId: "flow-1", flowName: "Nämndmöte till rapport", run: { id: "run-1", flow_id: "flow-1", status: "failed" } as never,
+      failure: null, steps: readsAudio(), stepResults: RECORDING_STEPS, files: [],
+    }),
+  );
+  await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
+  assert.deepEqual((await savedZip(started)).map(([name]) => name), ["Möte-del-1.webm", "Möte-del-3.webm"], "the parts Eneo has");
+  assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\.Filen innehåller de andra delarna\./);
+  assert.equal(button(view.container, "Försök igen"), null, "a new try brings no part back");
+
+  started.length = 0;
+  gone = () => true;
+  await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
+  assert.match(view.container.textContent ?? "", /Filen finns inte kvar hos Eneo\./);
+  assert.deepEqual(started, [], "nothing to save");
+  gone = () => false;
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.equal((await savedZip(started)).length, 3);
+  assert.doesNotMatch(view.container.textContent ?? "", /finns inte kvar/);
+});
+
+test("a screen left while a recording's parts are read reads no more of them and saves nothing", async (t) => {
+  let answer!: () => void;
+  const first = new Promise<Response>((resolve) => (answer = () => resolve(partAnswer(audioOf("part-1")))));
+  const asked = filesAnswer(t, partAnswer);
+  const real = globalThis.fetch;
+  let read: AbortSignal | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.includes("part-1")) return real(input, init);
+    asked.push({ url, range: null });
+    read = init?.signal ?? undefined;
+    return first;
+  }) as typeof fetch;
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const view = await inProviders(
+    createElement(RunFailure, {
+      flowId: "flow-1", flowName: "Nämndmöte till rapport", run: { id: "run-1", flow_id: "flow-1", status: "failed" } as never,
+      failure: null, steps: readsAudio(), stepResults: RECORDING_STEPS, files: [],
+    }),
+  );
+  await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
+  await view.unmount();
+  assert.equal(read?.aborted, true, "the read under way is ended");
+  answer();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(asked.map((a) => a.url), [audioOf("part-1")], "no part after the screen was left");
+  assert.deepEqual(started, []);
+});
+
+/** A part whose body sends its first byte and then nothing, and says when its read is cancelled. */
+function stalledPart(t: TestContext) {
+  const body = { cancelled: false };
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      new ReadableStream({
+        start: (stream) => stream.enqueue(new Uint8Array([1])),
+        cancel: () => void (body.cancelled = true),
+      }),
+      { headers: { "content-type": "audio/webm" } },
+    )) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  return body;
+}
+
+const turns = async (n = 5) => {
+  for (let i = 0; i < n; i += 1) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test("a part whose body stops coming fails as a timeout after a minute of nothing, to be tried again, and its read is cancelled", async (t) => {
+  const body = stalledPart(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { BODY_IDLE_MS, readInputFileAudio } = await import("./api");
+  const reading = readInputFileAudio("flow-1", "run-1", "part-1", 0);
+  const failed = assert.rejects(reading, { status: 408, message: "Det tog för lång tid att få svar. Försök igen." });
+  await turns();
+  t.mock.timers.tick(BODY_IDLE_MS - 1);
+  await turns();
+  assert.equal(body.cancelled, false, "a body still within its minute is waited for");
+  t.mock.timers.tick(1);
+  await failed;
+  assert.equal(body.cancelled, true);
+});
+
+test("a part's read ends at once when its signal aborts, its body included", async (t) => {
+  const body = stalledPart(t);
+  const { readInputFileAudio } = await import("./api");
+  const reads = new AbortController();
+  const reading = readInputFileAudio("flow-1", "run-1", "part-1", 0, reads.signal);
+  await turns();
+  reads.abort(new Error("the screen was left"));
+  await assert.rejects(reading, /the screen was left/);
+  assert.equal(body.cancelled, true);
+});
+
+test("a recording of one file is asked for first and saved as the browser streams it, never read into the page", async (t) => {
   let gone = true;
-  filesAnswer(t, () => (gone ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : present()));
+  const asked = filesAnswer(t, () => (gone ? Response.json({ code: "flow_run_input_file_content_unavailable" }, { status: 410 }) : present()));
   const started = downloads(t);
   const { createElement } = await import("react");
   const { RunFailure } = await import("../components/flow/RunFailure");
@@ -1162,6 +1284,7 @@ test("a recording Eneo no longer has is said in words, with Försök igen, and n
   assert.deepEqual(started, []);
   gone = false;
   await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.deepEqual(asked.at(-1), { url: audioOf("part-1"), range: "bytes=0-0" }, "asked for first, by its first byte");
   assert.deepEqual(started, [`${audioOf("part-1")} (download)`]);
   assert.doesNotMatch(view.container.textContent ?? "", /Filen finns inte kvar/);
 });

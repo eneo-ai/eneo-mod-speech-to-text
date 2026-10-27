@@ -6,7 +6,7 @@
     - button "Spela upp"
     - slider "Position i inspelningen"
     - text: /0:\d+ \/ 0:\d+/
-  - paragraph: Skapa dokument skickar inspelningen till Eneo. Efteråt kan du inte fortsätta spela in. Den finns kvar på enheten tills dokumentet är skapat.
+  - paragraph: Skapa dokument skickar inspelningen till Eneo. Efteråt kan du inte fortsätta spela in. Den finns kvar på enheten tills Eneo har tagit emot den.
   - button "Spara ljudfil"
   - button "Ta bort"
   - button "Fortsätt spela in"

@@ -194,6 +194,50 @@ test("an active lease keeps a recording from recovery and other tabs from writin
   assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["audio"]);
 });
 
+test("a recording saved as a file is read under its lease: another tab cannot delete it between the batches, and the file holds all of it", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const savingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  // More chunks than one read takes, so the save reads it in two batches.
+  for (let seq = 0; seq < 300; seq += 1) await recordingTab.append(recording.id, 0, new Blob(["a"]), 10);
+  recordingTab.release(recording.id);
+  await settle();
+
+  const saving = savingTab.readPartsToSave(recording.id);
+  await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
+  assert.deepEqual((await texts(await saving)).map((text) => text.length), [300]);
+  await settle();
+  await otherTab.remove(recording.id);
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "and once saved, it is the other tab's to delete");
+});
+
+test("a save keeps the lease it found in its tab until it has read all of it, also when the operation that held it lets go", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const savingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  for (let seq = 0; seq < 300; seq += 1) await recordingTab.append(recording.id, 0, new Blob(["a"]), 10);
+  recordingTab.release(recording.id);
+  await settle();
+
+  // A send in the saving tab holds it ("Startar flödet"), and the person saves it as a file meanwhile.
+  assert.equal(await savingTab.lease(recording.id), true);
+  const saving = savingTab.readPartsToSave(recording.id);
+  // Avbryt starten: the send lets go before the save has read it all.
+  savingTab.release(recording.id);
+  await settle(); // a lock let go is free for another tab a moment later
+  await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
+  assert.deepEqual((await texts(await saving)).map((text) => text.length), [300]);
+  await settle();
+  await otherTab.remove(recording.id);
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "once saved, the lease is let go");
+});
+
 test("a stopped recording the page still shows is held by its tab: no other tab offers or deletes it until it is let go", async () => {
   const env = device();
   const recordingTab = await openRecordingStore(env);
@@ -259,7 +303,7 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
 
   assert.equal(await otherTab.lease(recording.id), false, "nothing keeps the two tabs apart");
   await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
-  assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["a"], "Spara ljudfil still reads it");
+  assert.deepEqual(await texts(await otherTab.readPartsToSave(recording.id)), ["a"], "Spara ljudfil still reads it");
   assert.equal(await recordingTab.lease(recording.id), true, "the tab that made it sends or continues it");
   recordingTab.release(recording.id);
 
@@ -267,6 +311,7 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
   const reloaded = await openRecordingStore(env);
   assert.deepEqual((await reloaded.listUnsent("user-1")).map((r) => r.id), [recording.id]);
   assert.equal(await reloaded.lease(recording.id), false);
+  assert.deepEqual(await texts(await reloaded.readPartsToSave(recording.id)), ["a"], "Spara ljudfil saves it");
 }
 
 test("the unsent list knows up front which recordings this tab may change", async () => {

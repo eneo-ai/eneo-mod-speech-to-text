@@ -254,18 +254,19 @@ export async function leaveRecording(page: Page) {
 }
 
 /**
- * A recording of `bytes` bytes for flow 1, kept on this device as the recorder keeps one (lib/recording-store.ts): stopped,
- * or cut off by a reload ("recording"), under the name the flow had then. The page must be on the app's origin, whose
- * database it is.
+ * A recording of `parts` parts of `bytes` bytes each for flow 1, kept on this device as the recorder keeps one
+ * (lib/recording-store.ts): stopped, or cut off by a reload ("recording"), under the name the flow had then. The page
+ * must be on the app's origin, whose database it is.
  */
 export async function keptRecording(
   page: Page,
   bytes: number,
   state: "stopped" | "recording" = "stopped",
   flowName = "Nämndmöte till rapport",
+  parts = 1,
 ): Promise<string> {
   return page.evaluate(
-    async ({ bytes, flowId, flowName, stepId, state }) => {
+    async ({ bytes, flowId, flowName, stepId, state, parts }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const opening = indexedDB.open("tal-till-text", 1);
         opening.onupgradeneeded = () => {
@@ -281,9 +282,11 @@ export async function keptRecording(
       writing.objectStore("recordings").put({
         id, ownerId: "user-1", flowId, flowName, stepId, inputMode: "record", mimeType: "audio/wav",
         startedAt, durationMs: 280_000, state, runId: null,
-        parts: [{ index: 0, startedAt, durationMs: 280_000, bytes, chunks: 1, fileId: null }],
+        parts: Array.from({ length: parts }, (_, index) => ({ index, startedAt, durationMs: 280_000, bytes, chunks: 1, fileId: null })),
       });
-      writing.objectStore("chunks").put({ recordingId: id, part: 0, seq: 0, data: new ArrayBuffer(bytes) });
+      for (let part = 0; part < parts; part += 1) {
+        writing.objectStore("chunks").put({ recordingId: id, part, seq: 0, data: new Uint8Array(bytes).fill(part).buffer });
+      }
       await new Promise((resolve, reject) => {
         writing.oncomplete = resolve;
         writing.onerror = () => reject(writing.error);
@@ -291,7 +294,7 @@ export async function keptRecording(
       db.close();
       return id;
     },
-    { bytes, flowId: ids.flows.flow1, flowName, stepId: ids.steps.audio, state },
+    { bytes, flowId: ids.flows.flow1, flowName, stepId: ids.steps.audio, state, parts },
   );
 }
 

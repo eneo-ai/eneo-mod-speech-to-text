@@ -4,7 +4,7 @@ Inspelaren sparar mötet på enheten medan det spelas in, säger till direkt nä
 
 ## Inspelningen sparas på enheten
 
-Varannan sekund skrivs en ljudbit till webbläsarens IndexedDB (`frontend/lib/recording-store.ts`), och skrivningen räknas som klar först när den ligger på disken (`durability: "strict"` där webbläsaren har det). Inspelningen finns därför kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session; bara den senaste biten kan gå förlorad.
+Varannan sekund skrivs en ljudbit till webbläsarens IndexedDB (`frontend/lib/recording-store.ts`), och skrivningen räknas som klar först när den ligger på disken (`durability: "strict"` där webbläsaren har det). Inspelningen finns därför kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session. Det som går förlorat är ljud som ännu inte har skrivits: vanligen de sista sekunderna, men mer om webbläsaren håller inne ljudet (till exempel när en telefon låser skärmen) eller om skrivningen till enheten dröjer.
 
 - **Utloggning tar inte bort inspelningar.** Logga in med samma konto i samma webbläsarprofil för att fortsätta; inloggningssidan säger det efter utloggning. Ljudet ligger i profilen, så den som delar dator bör ha en egen profil.
 - **Utan IndexedDB** (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
@@ -48,8 +48,8 @@ En inspelning som inte har skickats visas i flödeslistan och på flödets sida,
 
 - **Knapparna:** **Skapa text** eller **Skapa dokument** (efter flödets resultat), **Spara ljudfil**, **Ta bort**, och för en avbruten inspelning **Fortsätt spela in**. Upp till 640 px bredd står den första över hela kortet. De inramade efter den (skickandet efter **Fortsätt spela in**, och **Spara ljudfil**) delar en rad där de får plats och står annars under varandra, och **Ta bort** står sist i deras rad i sin egen bredd. Bredare står alla i en rad, med **Ta bort** sist.
 - **Flera inspelningar:** flödeslistan visar den senaste avbrutna, eller annars den senaste. De andra ligger under till exempel **2 inspelningar till**, stängt från början.
-- **Spara ljudfil** sparar en fil per del och per tryck, eftersom webbläsare stoppar flera nedladdningar på ett tryck. En inspelning i delar säger **Spara som 2 ljudfiler** och sedan **Spara ljudfil 2 av 2**.
-- När Eneo har tagit emot körningen finns inspelningen inte längre på enheten, utan i Eneo. En körning som misslyckades eller avbröts har **Spara ljudfil** i sitt kort och hämtar ljudet därifrån (`frontend/components/flow/RunFailure.tsx`). Har Eneo rensat filen säger sidan **Filen finns inte kvar hos Eneo.**
+- **Spara ljudfil** sparar hela inspelningen på ett tryck. En inspelning i delar sparas som en zip-fil med alla delar, eftersom webbläsare stoppar eller frågar om flera nedladdningar på ett tryck; knappen säger då till exempel **Spara 3 ljudfiler (zip)**. Zip-filen heter som inspelningen, till exempel `inspelning-2026-10-26-1103.zip`, och delarna i den heter som de skulle ha hetat var för sig (`frontend/lib/zip.ts`). Medan inspelningen sparas kan ingen annan flik ta bort eller skicka den, i webbläsare med Web Locks.
+- När Eneo har tagit emot körningen finns inspelningen inte längre på enheten, utan i Eneo. En körning som misslyckades eller avbröts har **Spara ljudfil** i sitt kort och hämtar ljudet därifrån, delarna i en zip-fil som på enheten (`frontend/components/flow/RunFailure.tsx`). Har Eneo rensat filen säger sidan **Filen finns inte kvar hos Eneo.** Saknas bara någon del sparas de andra, och sidan säger till exempel **Del 2 av 3 finns inte kvar hos Eneo.**
 - **Inget ljud sparades i den här inspelningen.** En sådan inspelning kan bara fortsättas eller tas bort.
 - **Ta bort** säger **Inspelningen togs bort.** till skärmläsare. Fokus går till rubriken där en ny inspelning börjar, eller i listan till listans rubrik, och till sidans rubrik när listan är tom.
 

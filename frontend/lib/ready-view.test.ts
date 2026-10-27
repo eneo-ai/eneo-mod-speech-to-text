@@ -44,7 +44,7 @@ test("for a flow that makes text, the ready state speaks of the text, never the 
     renderToStaticMarkup(createElement(ReadyPanel, { recording, persistent, problem: null, live, makesText: true, onCreate: noop, onDiscard: noop }));
   const kept = view(true);
   assert.ok(hasButton(kept, "Skapa text"));
-  assert.match(kept, /Skapa text skickar inspelningen till Eneo\. Den finns kvar på enheten tills texten är skapad\./);
+  assert.match(kept, /Skapa text skickar inspelningen till Eneo\. Den finns kvar på enheten tills Eneo har tagit emot den\./);
   assert.match(kept, /Den slutliga texten skapas när du väljer Skapa text\./);
   assert.match(view(false), /Den finns bara i den här fliken, så stäng inte fliken innan texten är skapad\./);
   assert.doesNotMatch(kept + view(false), /[Dd]okument/);
@@ -57,7 +57,7 @@ test("the ready state names the recording for people, never as a file or a type,
   assert.equal(parse(html).querySelector("h2")?.textContent, "Inspelningen är klar");
   assert.match(html, /Inspelning 23 sep 16:13 · 32\u00a0min/);
   for (const name of ["Skapa dokument", "Spara ljudfil", "Ta bort"]) assert.ok(hasButton(html, name), name);
-  assert.match(html, /Skapa dokument skickar inspelningen till Eneo\. Den finns kvar på enheten tills dokumentet är skapat\./);
+  assert.match(html, /Skapa dokument skickar inspelningen till Eneo\. Den finns kvar på enheten tills Eneo har tagit emot den\./);
   assert.doesNotMatch(html, /audio\/|webm|\.webm|recording-\d|<audio[^>]*controls/i, "no MIME type, file name or native controls");
   assert.doesNotMatch(html, /Fortsätt spela in/, "offered only when the recorder can continue a stopped recording");
 

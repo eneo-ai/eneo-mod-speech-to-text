@@ -2,8 +2,9 @@
  * The one owner of recordings on the device. Every MediaRecorder chunk is
  * stored in IndexedDB as it arrives, under the recording id, part and
  * sequence number; a part is a valid audio file when its chunks are joined in
- * order. A crash, reload, power cut or expired session therefore loses at most
- * the latest chunk. Without IndexedDB, or when the device refuses a write, the
+ * order. A crash, reload, power cut or expired session therefore loses only
+ * audio not yet written: chunks the recorder has not delivered yet and writes
+ * not yet done. Without IndexedDB, or when the device refuses a write, the
  * audio is kept in memory and `persistent` turns false: the recording then
  * lives only in this tab. A device that refused (full, or failing) is tried
  * again until it takes what this tab holds, and the recording is kept on it again.
@@ -190,7 +191,7 @@ function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: 
         chunks.map(async (chunk) => ({ ...chunk, data: chunk.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk.data })),
       );
       await use(async (db) => {
-        // Strict: on the disk before the write counts as done, so a power cut loses at most the chunk being written. A
+        // Strict: on the disk before the write counts as done, so a power cut loses no write that counted as done. A
         // browser without the option ignores it and keeps its own default.
         const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite", { durability: "strict" });
         const done = completion(tx);
@@ -328,8 +329,12 @@ export class RecordingStore {
   // Stopped recordings this page still shows: their lease stays with this tab between its operations, so no other tab
   // offers or deletes one that is on this tab's screen (`hold`, until `letGo`).
   private held = new Set<string>();
+  // The browser has Web Locks but refused them here: as without them, nothing keeps two tabs apart.
+  private locksRefused = false;
   // Recorders that can still deliver final audio, including after the page stopped waiting or left the view.
   private writers = new Map<string, number>();
+  // Saves as a file still reading the recording: its lease stays until they have all of it, whoever took it.
+  private saving = new Map<string, number>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
@@ -546,17 +551,33 @@ export class RecordingStore {
   }
 
   /**
-   * The recording's file at `nth` of its files (its parts with audio, filesIn), read alone: Spara ljudfil saves one a
-   * press. Null when the recording has no such file, or its audio is gone from the device.
+   * The parts to save as a file (readParts), read under the recording's lease: no other tab deletes or sends it between
+   * the batches it is read in, so a save is never a silently cut copy. A lease this tab already has (an operation's, or a
+   * shown recording's) is kept until the read ends, also when that operation lets go meanwhile; an operation of this tab
+   * waits for the read in this store's own order. Without Web Locks, or where the browser refuses them, no other tab is
+   * kept out.
    */
-  readFile(id: string, nth: number): Promise<RecordingFile | null> {
-    return this.serial(async () => {
-      const recording = await this.load(id);
-      const part = recording?.parts.filter((p) => p.bytes > 0)[nth];
-      if (!recording || !part) return null;
-      const file = await this.readPart(recording, part);
-      return file.blob.size > 0 ? file : null;
-    });
+  async readPartsToSave(id: string): Promise<RecordingFile[]> {
+    if (!this.env.locks) return this.readParts(id);
+    if (!this.leases.has(id)) {
+      if (!(await this.lease(id))) {
+        // Web Locks refused: a save reads it as one does without them.
+        if (this.locksRefused) return this.readParts(id);
+        throw new Error(IN_USE_ELSEWHERE);
+      }
+      // The save keeps it from here on, not as an operation: one of this tab may still delete or send it after the read.
+      this.inUse.delete(id);
+    }
+    this.saving.set(id, (this.saving.get(id) ?? 0) + 1);
+    try {
+      return await this.readParts(id);
+    } finally {
+      const left = (this.saving.get(id) ?? 1) - 1;
+      if (left > 0) this.saving.set(id, left);
+      else this.saving.delete(id);
+      this.releaseUnusedLease(id);
+      this.notify();
+    }
   }
 
   /**
@@ -716,7 +737,10 @@ export class RecordingStore {
           });
         })
         // A browser that refuses Web Locks here still leases within this tab.
-        .catch(() => resolve(inThisTab()));
+        .catch(() => {
+          this.locksRefused = true;
+          resolve(inThisTab());
+        });
     });
   }
 
@@ -756,7 +780,7 @@ export class RecordingStore {
   }
 
   private releaseUnusedLease(id: string): void {
-    if (!this.inUse.has(id) && !this.overflowed.has(id) && !this.held.has(id) && !this.writers.has(id)) this.dropLease(id);
+    if (!this.inUse.has(id) && !this.overflowed.has(id) && !this.held.has(id) && !this.writers.has(id) && !this.saving.has(id)) this.dropLease(id);
   }
 
   private dropLease(id: string): void {

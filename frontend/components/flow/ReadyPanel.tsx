@@ -305,7 +305,7 @@ export function ReadyPanel({
 
       {moment && audio && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
       {/* One paragraph by the actions: what the filled action does that its name does not say (the audio leaves the
-          device, and nothing more can be recorded on it), then where the recording is until the result is made. */}
+          device, and nothing more can be recorded on it), then where the recording is until Eneo has it. */}
       {audio &&
         (create ? (
           // What the filled action does is read before it is pressed: at the body's size, at a reading measure.
@@ -314,7 +314,7 @@ export function ReadyPanel({
               {`${createActionLabel(makesText)} skickar inspelningen till Eneo.`}
               {onContinue ? " Efteråt kan du inte fortsätta spela in." : ""}
               {persistent
-                ? ` Den finns kvar på enheten tills ${made}.`
+                ? " Den finns kvar på enheten tills Eneo har tagit emot den."
                 : ` Den finns bara i den här fliken, så stäng inte fliken innan ${made}.`}
               {forwarded ? ` ${forwarded}` : ""}
             </Text>
@@ -322,7 +322,7 @@ export function ReadyPanel({
         ) : (
           <Text as="p" type="supporting">
             {persistent
-              ? `Inspelningen finns kvar på enheten tills ${made}.`
+              ? "Inspelningen finns kvar på enheten."
               : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
           </Text>
         ))}

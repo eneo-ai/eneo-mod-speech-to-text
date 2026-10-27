@@ -68,7 +68,7 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     await page.waitForTimeout(3500);
     await page.getByRole("button", { name: "Stoppa" }).click();
     await expect(page.getByRole("heading", { name: "Inspelningen är klar" })).toBeVisible();
-    await expect(page.getByText("finns kvar på enheten tills dokumentet är skapat.")).toBeVisible();
+    await expect(page.getByText("finns kvar på enheten tills Eneo har tagit emot den.")).toBeVisible();
 
     const saved = await savedFile(page).catch((error) => {
       // A save that needs a script the page does not have gets no file: say which script, not that the file never came.

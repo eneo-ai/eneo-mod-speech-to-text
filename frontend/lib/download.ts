@@ -1,3 +1,5 @@
+import { zipFiles, type NamedBlob } from "./zip";
+
 /** The object URL outlives the click for as long as a large download may take to start. */
 const REVOKE_AFTER_MS = 60_000;
 
@@ -9,4 +11,13 @@ export function downloadBlob(blob: Blob, filename: string): void {
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), REVOKE_AFTER_MS);
+}
+
+/**
+ * Every file as one download: one file as it is, several as a zip named after the first without its part
+ * ("inspelning-2026-10-26-1103-del-1.webm" gives "inspelning-2026-10-26-1103.zip").
+ */
+export async function asOneFile(files: readonly NamedBlob[]): Promise<NamedBlob> {
+  if (files.length === 1) return files[0];
+  return { blob: await zipFiles(files), filename: files[0].filename.replace(/(-del-\d+)?(\.[^.]*)?$/, ".zip") };
 }

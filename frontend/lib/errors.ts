@@ -240,7 +240,12 @@ export function reviewPauseEnded(err: unknown): boolean {
 
 export const FILE_GONE = "Filen finns inte kvar hos Eneo.";
 
+/** Eneo no longer has the file: asking again cannot bring it back. */
+export function fileGone(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 410);
+}
+
 /** What a file that could not be fetched says: gone from Eneo, or whatever the failure is; trying again is always offered. */
 export function fileProblem(err: unknown): string {
-  return err instanceof ApiError && (err.status === 404 || err.status === 410) ? FILE_GONE : friendlyError(err);
+  return fileGone(err) ? FILE_GONE : friendlyError(err);
 }
