@@ -347,18 +347,18 @@ test("a stop the device's storage answers late shows no empty recording meanwhil
   session.selectMode("spela-in");
   await session.start();
   recorders[0].hand(new Blob(["a"]));
-  // The device stops answering at the next audio (WebKit's IndexedDB has hung instead of failing): its write, and every
-  // read and write after it, waits.
-  let land: (() => void) | undefined;
-  const late = new Blob(["b"]);
-  recorders[0].hand(
-    Object.assign(new Blob(["b"]), {
-      arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => (land = () => void late.arrayBuffer().then(resolve))),
-    }),
-  );
+  recorders[0].hand(new Blob(["b"]));
+  // The device answers Stoppa later than Stoppa waits for it: slow, but never so slow that a call counts as failed.
+  const answers: Array<() => void> = [];
+  const get = store.get.bind(store);
+  store.get = (id) => new Promise((resolve, reject) => answers.push(() => void get(id).then(resolve, reject)));
+  const land = () => {
+    store.get = get;
+    answers.splice(0).forEach((answer) => answer());
+  };
   const stopping = session.stop();
-  for (let i = 0; i < 1_000 && !land; i += 1) await settle();
-  assert.ok(land, "the write that waits");
+  for (let i = 0; i < 1_000 && answers.length === 0; i += 1) await settle();
+  assert.ok(answers.length > 0, "the read that waits");
   for (let i = 0; i < 5; i += 1) await settle();
   t.mock.timers.tick(10_000);
   await stopping;
@@ -387,7 +387,7 @@ test("a stop the device's storage answers late shows no empty recording meanwhil
     assert.equal(named(view.container, "Fortsätt spela in"), null, "and nothing is offered on a recording not yet read back");
 
     // The device answers: the recording as it holds it, and the ways on with it.
-    await view.act(async () => land!());
+    await view.act(async () => land());
     for (let i = 0; i < 100 && !named(view.container, "Spara ljudfil"); i += 1) await view.act(settle);
     assert.ok(named(view.container, "Spara ljudfil"), "Spara ljudfil is back");
     assert.ok(named(view.container, "Skapa dokument"), "and Skapa dokument");

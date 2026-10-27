@@ -4,7 +4,7 @@ Inspelaren sparar mötet på enheten medan det spelas in, säger till direkt nä
 
 ## Inspelningen sparas på enheten
 
-Varannan sekund skrivs en ljudbit till webbläsarens IndexedDB (`frontend/lib/recording-store.ts`), och skrivningen räknas som klar först när den ligger på disken (`durability: "strict"` där webbläsaren har det). Inspelningen finns därför kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session. Det som går förlorat är ljud som ännu inte har skrivits: vanligen de sista sekunderna, men mer om webbläsaren håller inne ljudet (till exempel när en telefon låser skärmen) eller om skrivningen till enheten dröjer.
+Varannan sekund skrivs en ljudbit till webbläsarens IndexedDB (`frontend/lib/recording-store.ts`), och skrivningen räknas som klar först när den ligger på disken (`durability: "strict"` där webbläsaren har det). Inspelningen finns därför kvar efter en omladdning, en krasch, ett strömavbrott eller en utgången session. Det som går förlorat är ljud som ännu inte har skrivits: vanligen de sista sekunderna, men mer om webbläsaren håller inne ljudet (till exempel när en telefon låser skärmen). En skrivning som enheten inte svarar på inom fyra sekunder räknas som misslyckad, och ljudet hålls då i fliken med en varning (se nedan).
 
 - **Utloggning tar inte bort inspelningar.** Logga in med samma konto i samma webbläsarprofil för att fortsätta; inloggningssidan säger det efter utloggning. Ljudet ligger i profilen, så den som delar dator bör ha en egen profil.
 - **Utan IndexedDB** (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
@@ -21,7 +21,7 @@ Inspelningen fortsätter i alla lägen nedan utom när ljudspåret avslutas. Tex
 | **Ljudet sparas inte just nu.** | Inget ljud har kommit på sex sekunder, inte heller när webbläsaren ombads om det. | Kontrollera mikrofonen. Står varningen kvar: **Stoppa**, och spela in vidare. |
 | **Vi hör inget från mikrofonen.** | Digital tystnad i 15 s. | Kontrollera att mikrofonen inte är avstängd. |
 | **Enheten är full.** | Diskskrivningen nekades. Ljudet hålls i flikens minne. | Frigör utrymme och stäng inte fliken. |
-| **Enheten kan inte spara mer av inspelningen.** | En skrivning misslyckades två gånger av annat skäl. | Välj **Spara ljudfil** efter **Stoppa** om varningen står kvar. |
+| **Enheten kan inte spara mer av inspelningen.** | En skrivning misslyckades två gånger av annat skäl, eller fick inget svar på fyra sekunder (Safari och webbläsarna på iPhone kan lämna en skrivning obesvarad när sidan har legat i bakgrunden). Ljudet hålls i flikens minne. | Välj **Spara ljudfil** efter **Stoppa** om varningen står kvar. |
 | **Inspelningen kan inte längre sparas på enheten.** | Webbplatsdata rensades. Tidigare ljud kan vara borta och går inte att återställa. | **Spara ljudfil** efter **Stoppa**. |
 | **Det finns lite lagringsutrymme kvar på enheten.** | Webbläsarens uppskattning av lagringen är låg. | Frigör utrymme före ett långt möte. |
 | **Mindre än 5 minuter kvar till flödets maxlängd.** | En notis från 15 minuter, en varning från 5. Vid gränsen stoppas och sparas inspelningen. | Inget. |

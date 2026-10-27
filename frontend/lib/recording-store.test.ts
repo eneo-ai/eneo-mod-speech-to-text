@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
+import { IDBDatabase, IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import { fakeWebLocks } from "./fake-web-locks";
 import {
@@ -756,24 +756,37 @@ test("a recording deleted while the device is full leaves nothing to try again",
 
 /**
  * A device whose open connections a test can close for real, as a browser does when it drops one, and whose next opens it
- * can refuse. The database underneath is fake-indexeddb's: a closed connection throws InvalidStateError on its next
- * transaction, as a browser's does.
+ * can refuse, or keep waiting (`hold` of them) until `answer`. The database underneath is fake-indexeddb's: a closed
+ * connection throws InvalidStateError on its next transaction, as a browser's does.
  */
-function closable() {
+function closable(extra: Partial<StoreEnv> = {}) {
   let underneath = new IDBFactory();
   const connections: IDBDatabase[] = [];
-  const state = { refuse: false };
+  const state = { refuse: false, hold: 0 };
+  const waiting: Array<() => void> = [];
   const factory = {
     open(name: string, version?: number) {
       if (state.refuse) throw new DOMException("The browser will not open the database.", "UnknownError");
       const request = underneath.open(name, version);
       request.addEventListener("success", () => connections.push(request.result));
-      return request;
+      if (state.hold === 0) return request;
+      state.hold -= 1;
+      // The connection is there, but the browser says so only when it answers.
+      const late = { result: undefined as unknown, onsuccess: null as (() => void) | null, onerror: null, onupgradeneeded: null };
+      request.addEventListener("success", () =>
+        waiting.push(() => {
+          late.result = request.result;
+          late.onsuccess?.();
+        }),
+      );
+      return late;
     },
   } as unknown as IDBFactory;
   return {
-    env: device({ indexedDB: factory }),
+    env: device({ indexedDB: factory, ...extra }),
     state,
+    /** The browser answers the opens it kept waiting. */
+    answer: () => waiting.splice(0).forEach((open) => open()),
     /** Every connection the store has open is closed now. */
     closeConnections: () => connections.splice(0).forEach((connection) => connection.close()),
     /** The browser cleared the site's storage: the next connection is to an empty database. */
@@ -853,6 +866,124 @@ test("a database that keeps failing is tried again as a full device is, and take
   assert.equal(store.refused(recording.id), null, "kept on the device again");
   assert.equal(store.persistent, true);
   assert.deepEqual(await texts(await (await openRecordingStore(env)).readPartsToSend(recording.id)), ["ab"], "the device alone has all of it");
+});
+
+/**
+ * The device leaves the next write unanswered, as WebKit's IndexedDB can after the page was in the background: it neither
+ * lands nor fails until `land`, which writes it then, after whatever was written meanwhile, unless the store aborted it.
+ */
+function holdNextWrite(factory: IDBFactory) {
+  const transaction = IDBDatabase.prototype.transaction;
+  const writes: Array<[string, unknown]> = [];
+  const write = { aborted: false, land: async () => {} };
+  IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<IDBDatabase["transaction"]>) {
+    if (args[1] !== "readwrite") return transaction.apply(this, args);
+    IDBDatabase.prototype.transaction = transaction;
+    const held = {
+      error: null,
+      oncomplete: null as (() => void) | null,
+      onerror: null,
+      onabort: null as (() => void) | null,
+      objectStore: (name: string) => ({ put: (value: unknown) => void writes.push([name, value]) }),
+      abort() {
+        write.aborted = true;
+        setImmediate(() => held.onabort?.());
+      },
+    };
+    write.land = async () => {
+      if (write.aborted) return;
+      const request = factory.open("tal-till-text");
+      const db = await new Promise<IDBDatabase>((resolve) => (request.onsuccess = () => resolve(request.result as unknown as IDBDatabase)));
+      const tx = transaction.call(db, args[0], "readwrite");
+      for (const [name, value] of writes) tx.objectStore(name).put(value);
+      await new Promise((resolve) => (tx.oncomplete = resolve));
+      db.close();
+      held.oncomplete?.();
+    };
+    return held as unknown as ReturnType<IDBDatabase["transaction"]>;
+  };
+  return write;
+}
+
+const settleWrites = async () => {
+  for (let i = 0; i < 5; i += 1) await settle();
+};
+
+test("a write the device leaves unanswered fails after 4 seconds: the recording goes on in this tab, the person is told, and a save gets all of it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const later = testTimer();
+  const env = device({ timer: later.timer });
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+
+  holdNextWrite(env.indexedDB!);
+  const unanswered = store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  const next = store.append(recording.id, 0, new Blob(["c"]), 3_000); // the recorder does not wait for the device
+  const saved = store.readParts(recording.id); // Spara ljudfil
+  await settleWrites();
+  assert.equal(store.refused(recording.id), null, "a write may take a moment");
+  t.mock.timers.tick(4_000);
+  await Promise.all([unanswered, next]);
+  assert.equal(store.refused(recording.id), "failed", "then it is said at once: Enheten kan inte spara mer av inspelningen");
+  assert.equal(store.persistent, false);
+  assert.deepEqual(await texts(await saved), ["abc"], "the save waits for no more than that, and has all of it");
+  assert.deepEqual(later.waits, [20_000], "and the device is tried again");
+});
+
+test("a write the device answers only after newer ones never puts an older state of the recording back", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const later = testTimer();
+  const env = device({ timer: later.timer });
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+
+  const unanswered = holdNextWrite(env.indexedDB!);
+  const appended = store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  await settleWrites();
+  t.mock.timers.tick(4_000);
+  await appended;
+  await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+  await store.setState(recording.id, "stopped");
+  later.fire(); // the device answers again, and takes what this tab held
+  await store.get(recording.id);
+  assert.equal(store.refused(recording.id), null);
+
+  await unanswered.land(); // and the write it left unanswered comes at last
+  const kept = await (await openRecordingStore(env)).get(recording.id);
+  assert.deepEqual([kept?.state, kept?.parts[0].chunks], ["stopped", 3], "the device keeps the newest state");
+  assert.deepEqual(await texts(await (await openRecordingStore(env)).readPartsToSend(recording.id)), ["abc"]);
+});
+
+test("a delete given up while it waited for the browser's connection begins nothing once the connection comes: what was recorded since is kept", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { env, state, closeConnections, answer } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  await settle();
+
+  // Ta bort, while the browser has dropped the connection and keeps the next one waiting.
+  closeConnections();
+  state.hold = 1;
+  const removing = store.remove(recording.id);
+  await settleWrites();
+  t.mock.timers.tick(4_000);
+  await assert.rejects(removing, { name: "TimeoutError" });
+  // It is still there, and the person records on into it, on a connection the browser gives at once.
+  assert.equal(await store.lease(recording.id), true);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 1, new Blob(["b"]), 1_000);
+
+  answer(); // the connection the delete waited for comes after all
+  await settleWrites();
+  assert.deepEqual(await texts(await (await openRecordingStore(env)).readParts(recording.id)), ["a", "b"], "none of it is deleted");
 });
 
 test("a recording's parts are read one at a time, so a long recording's audio is never in memory all at once", async () => {

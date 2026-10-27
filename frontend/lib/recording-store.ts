@@ -106,6 +106,12 @@ const LOW_SPACE_BYTES = 100 * 1024 * 1024;
 const RETRY_MS = 20_000;
 // How many of a part's chunks are read from the device at a time: about 2 MB of a recorder's 2-second chunks.
 const READ_BATCH = 256;
+// How long a call on the database may go unanswered before it counts as failed (WebKit can leave one unanswered after the
+// page was in the background). Two unanswered calls (a chunk's read of the recording, and its write) send the rest of the
+// recording to this tab: 8 seconds, within the 10 Stoppa waits for the device (`recording-session.ts`). A write of what
+// this tab held gets a second more for every 4 MB.
+const CALL_MS = 4_000;
+const WRITE_BYTES_PER_SECOND = 4 * 1024 * 1024;
 
 interface Chunk {
   recordingId: string;
@@ -158,68 +164,101 @@ function quotaExceeded(error: unknown): boolean {
   return (error as { name?: string } | null)?.name === "QuotaExceededError";
 }
 
+const size = (data: Chunk["data"]) => (data instanceof Blob ? data.size : data.byteLength);
+
 /**
  * The database, over a connection that is reopened when a call on it fails for any reason but a full device: the browser
  * may have closed it (to free memory or clean a profile) or lost it (WebKit's "Connection to Indexed Database server
- * lost"). A failed call reopens it once (one reopening for every call that fails on the same connection) and tries again;
- * every call here can be repeated, and a reopening that fails is the call's own failure, never an empty answer.
+ * lost"). A failed call reopens it once and tries again; every call here can be repeated, and a reopening that fails is
+ * the call's own failure, never an empty answer.
+ *
+ * A call the browser leaves unanswered fails in CALL_MS, and nothing of it can land after a later write: its transaction
+ * is aborted, it begins none once its time is up (also when the connection it waited for comes), and its connection is
+ * never used again.
  */
 function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: () => Promise<IDBDatabase>): Backend {
-  let db = initial;
-  let reopening: Promise<IDBDatabase> | null = null;
-  async function use<T>(work: (db: IDBDatabase) => Promise<T>): Promise<T> {
-    const used = db;
-    try {
-      return await work(used);
-    } catch (error) {
-      if (quotaExceeded(error)) throw error;
-      if (db === used) {
-        reopening ??= reopen().finally(() => {
-          reopening = null;
-        });
-        db = await reopening;
-        // It may still be open: what runs on it finishes, and nothing new starts there.
-        used.close();
+  let connection: Promise<IDBDatabase> | null = Promise.resolve(initial);
+  // Nothing new starts on a connection that goes; it closes once what runs on it has ended, and the next call opens another.
+  const drop = (gone: Promise<IDBDatabase>) => {
+    if (connection !== gone) return;
+    connection = null;
+    gone.then((db) => db.close(), () => undefined);
+  };
+  function use<T>(work: (begin: IDBDatabase["transaction"]) => Promise<T>, ms = CALL_MS): Promise<T> {
+    let over = false;
+    let used: Promise<IDBDatabase> | null = null;
+    const begun: IDBTransaction[] = [];
+    const attempt = async (): Promise<T> => {
+      for (let tries = 0; ; tries += 1) {
+        const current = (used = connection ??= reopen());
+        try {
+          const db = await current;
+          return await work((...args) => {
+            if (over) throw new DOMException("The call on the database has ended.", "TimeoutError");
+            const tx = db.transaction(...args);
+            begun.push(tx);
+            return tx;
+          });
+        } catch (error) {
+          if (over || quotaExceeded(error) || tries > 0) throw error;
+          drop(current);
+        }
       }
-      return work(db);
-    }
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unanswered = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        over = true;
+        for (const tx of begun) {
+          try {
+            tx.abort();
+          } catch {
+            // It has ended already.
+          }
+        }
+        if (used) drop(used);
+        reject(new DOMException("The database did not answer.", "TimeoutError"));
+      }, ms);
+    });
+    return Promise.race([attempt(), unanswered]).finally(() => clearTimeout(timer));
   }
   return {
-    async put(recording, chunks = []) {
-      // Safari cannot always store a Blob in IndexedDB; an ArrayBuffer works everywhere.
-      const stored = await Promise.all(
-        chunks.map(async (chunk) => ({ ...chunk, data: chunk.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk.data })),
-      );
-      await use(async (db) => {
+    put(recording, chunks = []) {
+      let stored: Promise<Chunk[]> | undefined;
+      const bytes = chunks.reduce((sum, chunk) => sum + size(chunk.data), 0);
+      return use(async (begin) => {
+        // Safari cannot always store a Blob in IndexedDB; an ArrayBuffer works everywhere. Read once, also when tried again.
+        const data = await (stored ??= Promise.all(
+          chunks.map(async (chunk) => ({ ...chunk, data: chunk.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk.data })),
+        ));
         // Strict: on the disk before the write counts as done, so a power cut loses no write that counted as done. A
         // browser without the option ignores it and keeps its own default.
-        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite", { durability: "strict" });
+        const tx = begin([RECORDINGS, CHUNKS], "readwrite", { durability: "strict" });
         const done = completion(tx);
         try {
           tx.objectStore(RECORDINGS).put(recording);
-          for (const chunk of stored) tx.objectStore(CHUNKS).put(chunk);
+          for (const chunk of data) tx.objectStore(CHUNKS).put(chunk);
         } catch (error) {
           done.catch(() => undefined);
           tx.abort();
           throw error;
         }
         await done;
-      });
+      }, CALL_MS + Math.floor(bytes / WRITE_BYTES_PER_SECOND) * 1_000);
     },
-    get: (id) => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).get(id))),
-    list: () => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).getAll())),
+    get: (id) => use(async (begin) => result(begin(RECORDINGS).objectStore(RECORDINGS).get(id))),
+    list: () => use(async (begin) => result(begin(RECORDINGS).objectStore(RECORDINGS).getAll())),
     chunks: (id, part, from = 0, count) =>
-      use(async (db) =>
+      use(async (begin) =>
         result(
-          db
-            .transaction(CHUNKS)
+          begin(CHUNKS)
             .objectStore(CHUNKS)
             .getAll(keyRange.bound([id, part, from], [id, part, Infinity]), count),
         ),
       ),
     delete: (id) =>
-      use(async (db) => {
-        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+      use(async (begin) => {
+        const tx = begin([RECORDINGS, CHUNKS], "readwrite");
         tx.objectStore(CHUNKS).delete(keyRange.bound([id, 0, 0], [id, Infinity, Infinity]));
         tx.objectStore(RECORDINGS).delete(id);
         await completion(tx);
@@ -638,7 +677,7 @@ export class RecordingStore {
     const take = async (chunk: Chunk) => {
       inOrder &&= chunk.seq === count;
       count += 1;
-      bytes += chunk.data instanceof Blob ? chunk.data.size : chunk.data.byteLength;
+      bytes += size(chunk.data);
       held.push(chunk.data);
       if (held.length === READ_BATCH) await handOver();
     };
