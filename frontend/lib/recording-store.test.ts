@@ -311,7 +311,7 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
   const reloaded = await openRecordingStore(env);
   assert.deepEqual((await reloaded.listUnsent("user-1")).map((r) => r.id), [recording.id]);
   assert.equal(await reloaded.lease(recording.id), false);
-  assert.deepEqual(await texts(await reloaded.readPartsToSave(recording.id)), ["a"], "and Spara ljudfil saves it");
+  assert.deepEqual(await texts(await reloaded.readPartsToSave(recording.id)), ["a"], "Spara ljudfil saves it");
 }
 
 test("the unsent list knows up front which recordings this tab may change", async () => {
