@@ -1159,6 +1159,32 @@ test("a run that failed or was stopped keeps its recording: Spara 3 ljudfiler (z
   }
 });
 
+/** A finished run that made text, its transcript left out, as `RunResult` draws it for these steps. */
+async function finished(steps: unknown, stepResults: unknown) {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  return mount(
+    await asPerson(createElement(RunResult, {
+      flowId: "flow-1", flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text: "Protokollet." } } as never,
+      steps: steps as never, stepResults: stepResults as never, files: [], showTranscript: false,
+      onNewRecording: () => undefined, onRegenerated: () => undefined,
+    })),
+  );
+}
+
+test("a finished run keeps its recording too: Spara 3 ljudfiler (zip) after what it made saves Eneo's copy of every part in one press", async (t) => {
+  const asked = filesAnswer(t, (url) => (url.includes("/input-files/") ? partAnswer(url) : Response.json([])));
+  const started = downloads(t);
+  const view = await finished(readsAudio(), RECORDING_STEPS);
+  const save = button(view.container, "Spara 3 ljudfiler (zip)")!;
+  const how = [...view.container.querySelectorAll("button")].find((b) => b.textContent?.startsWith("Hur resultatet togs fram"))!;
+  assert.ok(save.compareDocumentPosition(how) & Node.DOCUMENT_POSITION_FOLLOWING, "before how the result was made");
+  await view.act(async () => save.click());
+  assert.deepEqual(asked.filter((a) => a.url.includes("/input-files/")).map((a) => a.url), ["part-1", "part-2", "part-3"].map(audioOf));
+  assert.deepEqual((await savedZip(started)).map(([name]) => name), ["Möte-del-1.webm", "Möte-del-2.webm", "Möte-del-3.webm"]);
+});
+
 test("a part Eneo no longer has keeps none of the others from being saved, and is named; with none left it is said, with Försök igen", async (t) => {
   let gone = (url: string) => url.includes("part-2");
   filesAnswer(t, (url) =>
@@ -1289,7 +1315,10 @@ test("a recording of one file is asked for first and saved as the browser stream
   assert.doesNotMatch(view.container.textContent ?? "", /Filen finns inte kvar/);
 });
 
-test("a run without audio of its own offers no recording to save, a document it was given included", async () => {
+test("a run without audio of its own offers no recording to save, a document it was given included, failed or finished", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  globalThis.fetch = (async () => Response.json([])) as typeof fetch;
   const { createElement } = await import("react");
   const { RunFailure } = await import("../components/flow/RunFailure");
   for (const [what, steps, stepResults] of [
@@ -1297,14 +1326,17 @@ test("a run without audio of its own offers no recording to save, a document it 
     ["a document", readsAudio(false), [{ step_id: "step-1", step_order: 1, runtime_input_file_ids: ["document-1"] }]],
     ["no graph of its own", [], RECORDING_STEPS],
   ] as const) {
-    const view = await inProviders(
+    const failed = await inProviders(
       createElement(RunFailure, {
         flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", flow_id: "flow-1", status: "failed" } as never,
         failure: null, steps: steps as never, stepResults: stepResults as never, files: [],
       }),
     );
-    assert.doesNotMatch(view.container.textContent ?? "", /Spara ljudfil|ljudfiler/, what);
-    await view.unmount();
+    assert.doesNotMatch(failed.container.textContent ?? "", /Spara ljudfil|ljudfiler/, `failed, ${what}`);
+    await failed.unmount();
+    const done = await finished(steps, stepResults);
+    assert.doesNotMatch(done.container.textContent ?? "", /Spara ljudfil|ljudfiler/, `finished, ${what}`);
+    await done.unmount();
   }
 });
 

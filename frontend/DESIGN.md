@@ -170,8 +170,10 @@ switches round. One-pixel borders are `var(--border-width)`.
   labels wrap instead of truncating. A dialog has one too: what else stays in reach in it (a recording's Pausa and
   Stoppa while the login is renewed) is secondary.
 - **Secondary:** outlined, never a grey slab: the card's colour inside a control's edge, for side actions (Testa
-  mikrofonen, Öppna, Spara ljudfil, Dela). Disabled keeps a hairline and the disabled text.
-- **Ghost:** the bar's way back, icon actions, and a view's quiet way to start over (the result's Ny inspelning). A
+  mikrofonen, Öppna, a ready recording's Spara ljudfil, Dela). Disabled keeps a hairline and the disabled text.
+- **Ghost:** the bar's way back, icon actions, and a view's quiet ways: to start over (the result's Ny inspelning), and
+  to keep a run's recording from Eneo (Spara ljudfil in a failed run's card, and under a finished run's document and
+  files, never among the transcript's own actions, which would fold into their menu for it). A
   ghost button that starts or ends a row keeps its padding outside the column: its icon or its words stand on the
   content's edge, where the heading or the field above starts or ends.
 - **Decisions** (a review's Avvisa and its approval, a ready recording's Fortsätt spela in and Skapa dokument, a

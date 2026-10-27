@@ -49,5 +49,6 @@
           - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx Word, \d+ kB/
           - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
             - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/1fef2b78-5d86-42cb-8979-64050a1c9ec8/artifacts/126f349f-46fc-461a-8876-bf8e8603767e/content?disposition=attachment
+    - button "Spara 2 ljudfiler (zip)"
     - button "Ny inspelning"
     - button "Hur resultatet togs fram 2 steg"
