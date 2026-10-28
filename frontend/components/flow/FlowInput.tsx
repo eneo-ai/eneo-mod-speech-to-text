@@ -244,7 +244,9 @@ export function FlowInput({
             compact={holdsAudio}
             described={!descriptionInGuide}
             guide={columns ? guide : null}
-            lead={recoveryFirst ? unsentRecordings : undefined}
+            // From a laptop's width the way to the earlier runs stands under the flow's name, so the working card keeps its
+            // action on the first screen.
+            lead={recoveryFirst ? unsentRecordings : group === "setup" && columns && !short ? <ToEarlierRuns list={earlierRuns} /> : undefined}
             // In the setup the details are the working card's; while the page holds audio they are the flow's, folded on
             // a phone or tablet. The blocked setup asks for nothing: its details would be filled in for no run. What was
             // typed before stays with the session.
@@ -275,8 +277,9 @@ export function FlowInput({
           {group === "setup" && <PendingReview list={earlierRuns} onOpen={onOpenRun} />}
           {/* The recordings to go on with or send stand above the working card, a card of their own beside it, never in it. */}
           {group === "setup" && !blocked && !recoveryFirst && unsentRecordings}
-          {/* The list of earlier runs ends the working card: from its top, one press away. */}
-          {group === "setup" && !short && <ToEarlierRuns list={earlierRuns} />}
+          {/* The list of earlier runs ends the working card: from its top, one press away (in the flow's column from a
+              laptop's width). */}
+          {group === "setup" && !columns && !short && <ToEarlierRuns list={earlierRuns} />}
           {guideAbove && <HowItWorks guide={guideAbove} lead={guideLead} />}
           {group === "setup" ? (
             <SetupWorkspace

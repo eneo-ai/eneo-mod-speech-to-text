@@ -42,7 +42,7 @@ export function FlowAside({
   compact?: boolean;
   /** False where the description is said elsewhere (a phone's setup, in "Så fungerar det" after the work). */
   described?: boolean;
-  /** What the page asks of the person first, under the flow's name (a recording to go on with, in one column). */
+  /** What comes first under the flow's name: a recording to go on with in one column, the way to the earlier runs beside the work. */
   lead?: ReactNode;
   /** "Så fungerar det", where the page asks for the audio (the setup); none while the page holds audio or a run. */
   guide?: Guide | null;
