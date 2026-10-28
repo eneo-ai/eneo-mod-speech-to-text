@@ -94,3 +94,17 @@ for (const [state, heading, action] of [
     });
   }
 }
+
+// A laptop's first screen holds the setup's action whole: the way to the earlier runs stands in the flow's column, under
+// its name, not above the working card, where it took a row from the first screen.
+test("on a laptop (1440 x 900) the setup's action is whole on the first screen, and Tidigare körningar stands in the flow's column", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const { STATES } = await import("./screens");
+  await STATES.find((s) => s.name === "setup")!.go(page, info);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const start = (await page.getByRole("button", { name: "Starta strömning" }).boundingBox())!;
+  expect(start.y + start.height, "Starta strömning whole on the first screen").toBeLessThanOrEqual(900);
+  const jump = (await page.getByRole("button", { name: "Tidigare körningar" }).boundingBox())!;
+  const card = (await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).boundingBox())!;
+  expect(jump.x + jump.width, "in the flow's column, beside the card").toBeLessThanOrEqual(card.x);
+});

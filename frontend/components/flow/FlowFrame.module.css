@@ -236,16 +236,11 @@
   hyphenate-limit-chars: 8 3 3;
 }
 
-/* "Så fungerar det" (HowItWorks): the steps and tips as native lists whose words wrap; the reset takes the markers away,
-   so they are given back here. A step's number stands on the column's edge, under its heading's first letter, and its
-   words hang beside it; the numbers keep one width from the tenth on. */
-.steps,
-.tips {
-  margin: 0;
-  padding-inline-start: var(--spacing-6);
-}
-
+/* "Så fungerar det" (HowItWorks): the steps as a native list whose words wrap; the reset takes the markers away, so they
+   are given back here. A step's number stands on the column's edge, under its heading's first letter, and its words hang
+   beside it; the numbers keep one width from the tenth on. */
 .steps {
+  margin: 0;
   padding-inline-start: var(--spacing-5);
   list-style: decimal;
 }
@@ -254,6 +249,3 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tips {
-  list-style: disc;
-}

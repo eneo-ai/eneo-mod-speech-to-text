@@ -7,7 +7,6 @@
       - listitem: Du spelar in eller laddar upp ljud.
       - listitem: Ljudet görs om till text.
       - listitem: Du får resultatet här när flödet är klart.
-    - button "Tips för bra ljud"
   - region "Ljudet":
     - status
     - status

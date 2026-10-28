@@ -1,11 +1,11 @@
-import { CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import { CheckCircle2, Clock, History, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { pendingReviews, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { formatRelativeDate } from "@/lib/format";
@@ -65,6 +65,24 @@ export function pendingReviewSaid(list: EarlierRunsSnapshot): string {
   return words ? `${words.title}. ${words.description}` : "";
 }
 
+/**
+ * "Tidigare körningar" at the setup's top, where the list itself ends the working card, below the form: a press brings
+ * the list into view and gives its heading the focus. Only while the list has runs to show.
+ */
+export function ToEarlierRuns({ list }: { list: EarlierRunsSnapshot }) {
+  if (!list.runs.some((run) => run.purpose !== "test")) return null;
+  const show = () => {
+    const heading = document.getElementById("earlier-runs");
+    heading?.scrollIntoView({ block: "start" });
+    heading?.focus({ preventScroll: true });
+  };
+  return (
+    <HStack>
+      <Button variant="ghost" icon={<Icon icon={History} />} label="Tidigare körningar" onClick={show} />
+    </HStack>
+  );
+}
+
 /** This flow's latest runs, so yesterday's document is one tap away, and more a page at a time. */
 export function EarlierRuns({
   list,
@@ -96,7 +114,7 @@ export function EarlierRuns({
   if (shown.length === 0 && !list.hasMore && !list.failed) return null;
   return (
     <VStack as="section" ref={section} aria-labelledby="earlier-runs" gap={3} className={className}>
-      <Heading level={2} id="earlier-runs">
+      <Heading level={2} id="earlier-runs" tabIndex={-1}>
         Tidigare körningar
       </Heading>
       <List hasDividers ref={room.ref}>

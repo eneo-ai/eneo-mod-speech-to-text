@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
@@ -45,7 +46,7 @@ const TEST_LIMIT_MS = 60_000;
  * every microphone by name. The chosen device is remembered and used when
  * recording starts; one that is gone falls back to Standard, and says so.
  */
-export function MicrophoneCheck({ active }: { active: boolean }) {
+export function MicrophoneCheck({ active, tips = [] }: { active: boolean; /** Tips for good sound (`howItWorks`), folded under the test. */ tips?: readonly string[] }) {
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [preferred, setPreferred] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -245,6 +246,18 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
         </Text>
       </HStack>
       {problem && <ProblemAlert problem={problem} onRetry={() => void test()} />}
+      {/* By the test, where the sound is thought of before the meeting, and only with a way that records. */}
+      {tips.length > 0 && (
+        <Collapsible trigger="Tips för bra ljud" defaultIsOpen={false}>
+          <VStack as="ul" gap={2} className={styles.tips}>
+            {tips.map((tip) => (
+              <li key={tip}>
+                <Text>{tip}</Text>
+              </li>
+            ))}
+          </VStack>
+        </Collapsible>
+      )}
     </VStack>
   );
 }

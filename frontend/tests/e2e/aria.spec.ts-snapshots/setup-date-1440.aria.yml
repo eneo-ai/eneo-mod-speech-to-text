@@ -6,7 +6,6 @@
     - list:
       - listitem: Du spelar in eller laddar upp ljud.
       - listitem: Du får resultatet här när flödet är klart.
-    - button "Tips för bra ljud"
   - region "Ljudet":
     - status
     - status
@@ -23,6 +22,7 @@
       - text: ""
       - status
     - status: Testet visar här om mikrofonen hör dig.
+    - button "Tips för bra ljud"
     - text: Mötesdatum Valfritt
     - button "Stäng kalender"
     - combobox "Mötesdatum Valfritt" [expanded]

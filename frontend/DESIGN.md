@@ -241,10 +241,15 @@ switches round. One-pixel borders are `var(--border-width)`.
 
 ### How it works
 - "Så fungerar det": the steps a run takes the person through, said only as the run contract states them
-  (`lib/flow-output.ts`, `howItWorks`), and tips for good sound folded under them. From 1024 px it is open under its own
-  heading, under the flow's description; below, one folded row like the details' fold after the work, so the choice of
-  way in comes first. On a phone the flow's description opens it, read once there rather than over the choice: the
+  (`lib/flow-output.ts`, `howItWorks`). From 1024 px it is open under its own heading, under the flow's description;
+  below, one folded row like the details' fold above the choice of way in, read before the meeting rather than after the
+  form. A short screen (at most 640 px high) keeps its first screen for the ways in and the docked action: there the
+  fold follows the work. On a phone the flow's description opens it, read once there rather than over the choice: the
   person read it in the flow's row of the list.
+- "Tips för bra ljud" is folded under the microphone test, with a way that records only.
+- "Tidigare körningar" ends the working card, under the form; while it lists runs, a ghost button of that name brings it
+  into view and gives its heading the focus. From 1024 px it stands under the flow's name in the flow's column, so the
+  card keeps its action on a laptop's first screen; below, above the working card, and not on a short screen.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose part of the meeting ("Om du låser skärmen eller byter app kan delar av mötet saknas i inspelningen", led by "Skärmen hålls tänd." while the page holds the screen's wake lock) a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it. There the live sheet's head is its log's first line: the Preliminär pill, and when the final text comes on a line of its own under it.

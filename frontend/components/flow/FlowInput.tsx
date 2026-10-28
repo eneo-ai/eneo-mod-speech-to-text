@@ -21,7 +21,7 @@ import {
   focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
-import { EarlierRuns, PendingReview, pendingReviewSaid } from "@/components/flow/EarlierRuns";
+import { EarlierRuns, PendingReview, pendingReviewSaid, ToEarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { HowItWorks } from "@/components/flow/HowItWorks";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
@@ -85,7 +85,8 @@ const PHONE = "(max-width: 767.98px)";
 // A small phone's window: the dock keeps to the action, so the ways in have the room above it.
 const SHORT = "(max-height: 640px)";
 // A touch screen, which locks and whose apps switch under a recording, tall enough that the bar's line about it leaves the
-// text its room; on a smaller one the line stands only among the tips before the start ("Så fungerar det").
+// text its room; on a smaller one the line stands only among the tips before the start ("Tips för bra ljud", under the
+// microphone's test).
 const TOUCH = "(pointer: coarse) and (min-height: 640px)";
 // From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
 const COLUMNS = "(min-width: 1024px)";
@@ -143,6 +144,7 @@ export function FlowInput({
   const [dockSlot, dockRef] = useDock();
   const phone = useMediaQuery(PHONE);
   const columns = useMediaQuery(COLUMNS);
+  const short = useMediaQuery(SHORT);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
@@ -183,12 +185,18 @@ export function FlowInput({
   // starts it; the flow's classification follows the choice there. The details stand in the working card at every width,
   // by the speaker controls they fill in, so a field being typed in never moves when the layout changes (a tablet turned).
   const choiceFirst = group === "setup" && !blocked && !columns;
-  // "Så fungerar det" is read once: beside the work from a laptop's width, after it in one column, where it would stand
-  // between the flow's name and the choice. On a phone the flow's description opens it instead of standing above the
-  // choice: the person has just read it in the flow's row of the list.
+  // "Så fungerar det" is read once, before the meeting: beside the work from a laptop's width, and in one column one folded
+  // row above the choice, with the way to the earlier runs. A short screen in one column (a small phone, one on its side)
+  // keeps its first screen for the ways in and the docked action: there the guide follows the work, and the list is reached
+  // by scrolling. A laptop's flow column has the room at any height.
+  // On a phone the flow's description opens the guide instead of standing above the choice: the person has just read it in
+  // the flow's row of the list.
   const guide = group === "setup" ? howItWorks(contract, snapshot.modes) : null;
-  const guideAfter = choiceFirst ? guide : null;
-  const descriptionInGuide = guideAfter !== null && phone && Boolean(published.description);
+  const guideInColumn = choiceFirst ? guide : null;
+  const guideAbove = short ? null : guideInColumn;
+  const guideAfter = short ? guideInColumn : null;
+  const descriptionInGuide = guideInColumn !== null && phone && Boolean(published.description);
+  const guideLead = descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>;
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
   useEffect(
@@ -238,7 +246,9 @@ export function FlowInput({
             compact={holdsAudio}
             described={!descriptionInGuide}
             guide={columns ? guide : null}
-            lead={recoveryFirst ? unsentRecordings : undefined}
+            // From a laptop's width the way to the earlier runs stands under the flow's name, so the working card keeps its
+            // action on the first screen.
+            lead={recoveryFirst ? unsentRecordings : group === "setup" && columns ? <ToEarlierRuns list={earlierRuns} /> : undefined}
             // In the setup the details are the working card's; while the page holds audio they are the flow's, folded on
             // a phone or tablet. The blocked setup asks for nothing: its details would be filled in for no run. What was
             // typed before stays with the session.
@@ -269,6 +279,10 @@ export function FlowInput({
           {group === "setup" && <PendingReview list={earlierRuns} onOpen={onOpenRun} />}
           {/* The recordings to go on with or send stand above the working card, a card of their own beside it, never in it. */}
           {group === "setup" && !blocked && !recoveryFirst && unsentRecordings}
+          {/* The list of earlier runs ends the working card: from its top, one press away (in the flow's column from a
+              laptop's width). */}
+          {group === "setup" && !columns && !short && <ToEarlierRuns list={earlierRuns} />}
+          {guideAbove && <HowItWorks guide={guideAbove} lead={guideLead} />}
           {group === "setup" ? (
             <SetupWorkspace
               contract={contract}
@@ -310,12 +324,7 @@ export function FlowInput({
               room={workspace}
             />
           )}
-          {guideAfter && (
-            <HowItWorks
-              guide={guideAfter}
-              lead={descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>}
-            />
-          )}
+          {guideAfter && <HowItWorks guide={guideAfter} lead={guideLead} />}
         </VStack>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
             form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
@@ -572,7 +581,7 @@ function SetupWorkspace({
 
       {/* The microphone right under the way it records with: tested before the meeting starts, not after the rest. The
           chosen file the same way: in view under Ladda upp, not under the details, out of sight of the action it sends. */}
-      {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+      {recordingMode && <MicrophoneCheck active={phase === "setup"} tips={howItWorks(contract, modes)?.tips} />}
       {mode === "ladda-upp" && (
         <UploadPanel
           step={step}
