@@ -82,4 +82,6 @@ test("a day is said as the list says dates, with its year when it is not this on
   // The day as written, whatever the time zone: no shift to the day before.
   assert.equal(formatDay("2026-01-01", now), "1 jan");
   assert.equal(formatDay("not a day", now), "");
+  assert.equal(formatDay("2026-02-31", now), "", "a day the calendar does not have");
+  assert.equal(formatDay("2026-13-01", now), "");
 });

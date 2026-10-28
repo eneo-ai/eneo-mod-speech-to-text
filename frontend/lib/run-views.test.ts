@@ -547,6 +547,10 @@ test("an earlier run with a name is listed by its name, with when and its state 
   // Two runs may share a name (a weekly meeting): the button says which by when too.
   assert.match(html, /aria-label="Öppna, Testmöte 2, i går 15:40"/);
   assert.match(html, /aria-label="Öppna, körningen i går 15:40"/);
+  // Without its start time a named row says its state alone, and its button no empty part.
+  const undated = markup(createElement(EarlierRuns, { list: listed([{ id: "run-9", flow_id: "flow-1", status: "completed", run_label: "Testmöte 3" }]), onOpen: () => undefined }));
+  assert.match(text(undated), /Testmöte 3 Klar Öppna/);
+  assert.match(undated, /aria-label="Öppna, Testmöte 3"/);
 });
 
 test("a named run waiting for review is named in the notice and its Granska", async () => {

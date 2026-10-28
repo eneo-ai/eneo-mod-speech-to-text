@@ -62,7 +62,7 @@ function pendingReviewWords(list: EarlierRunsSnapshot) {
   const started = when ? `startad ${when}` : "";
   const named = name ? [name, started].filter(Boolean).join(", ") : started.replace(/^./, (c) => c.toUpperCase());
   return {
-    which: name ? `Granska, ${name}, ${when}` : `Granska, körningen ${when}`,
+    which: name ? ["Granska", name, when].filter(Boolean).join(", ") : `Granska, körningen ${when}`,
     title: waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`,
     description: `${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`,
   };
@@ -108,9 +108,10 @@ export function EarlierRuns({
   // Test runs started from Eneo's editor are not this user's documents.
   const shown = list.runs.filter((run) => run.purpose !== "test");
   const section = useRef<HTMLElement>(null);
-  // A row is its icon, the date over the state, and the action at its end: 14 rem of the root text holds the longest of
-  // them. Narrower (the reader's largest text, a phone's 200 % zoom) the date and the state take the row's whole width
-  // and the action stands under them, so neither is cut off; the state's word says what the icon would.
+  // A row is its icon, its title (the meeting's name and day, or when it ran) over the state, and the action at its end:
+  // 14 rem of the root text holds a date over a state, and a longer name wraps beside the action. Narrower (the reader's
+  // largest text, a phone's 200 % zoom) the title and the state take the row's whole width and the action stands under
+  // them, so neither is cut off; the state's word says what the icon would.
   const room = useNarrowerThan(14);
   // After "Visa fler körningar", focus goes to the first run it added.
   const firstNew = useRef<number | null>(null);
@@ -139,12 +140,12 @@ export function EarlierRuns({
           // A node, not a string: Astryx cuts a string label to one line, and a meeting's name may be long, or the
           // reader's text large; it wraps instead.
           const title = <>{name || When}</>;
-          const state = name ? `${When} · ${runStatusLabel(run.status)}` : runStatusLabel(run.status);
+          const state = name ? [When, runStatusLabel(run.status)].filter(Boolean).join(" · ") : runStatusLabel(run.status);
           // The name says which run, for a screen reader that lists the buttons, by when too (a weekly meeting repeats
           // its name); the words say what it does.
           const open = (
             <Button
-              label={name ? `${action}, ${name}, ${when}` : `${action}, körningen ${when}`}
+              label={name ? [action, name, when].filter(Boolean).join(", ") : `${action}, körningen ${when}`}
               variant="secondary"
               size="sm"
               data-open-run

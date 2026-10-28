@@ -36,7 +36,8 @@ export function formatDay(value: string, now: Date = new Date()): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return "";
   const [year, month, day] = match.slice(1).map(Number);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  // A day the calendar has (no 31 feb), read where it is written, not as a moment in a time zone.
+  if (new Date(year, month - 1, day).getDate() !== day || month < 1 || month > 12) return "";
   return `${day} ${MONTHS[month - 1]}${year === now.getFullYear() ? "" : ` ${year}`}`;
 }
 
