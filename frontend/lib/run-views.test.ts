@@ -59,7 +59,7 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
   // The review ahead stops the run until the person answers: where to find it, and no promise that it finishes alone.
-  assert.match(words, /Körningen väntar på dig när det är dags att granska\. Om du stänger sidan hittar du den under Tidigare körningar i flödet\./);
+  assert.match(words, /Körningen väntar på dig när det är dags att granska\. Om du stänger sidan hittar du den bland körningarna i flödet\./);
   assert.doesNotMatch(words, /även om du stänger sidan/);
   assert.doesNotMatch(words, /Du kan stänga sidan/, "reassurance, not an instruction to close");
   assert.match(words, /Avbryt körningen/);
@@ -73,7 +73,7 @@ test("a run not known to finish alone is promised only to go on, with no review 
   const words = text(
     markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: unknown, stage: "Analysera mötesinnehållet", onCancel: async () => undefined })),
   );
-  assert.match(words, /Körningen fortsätter i Eneo om du stänger sidan\. Du hittar den under Tidigare körningar i flödet\./);
+  assert.match(words, /Körningen fortsätter i Eneo om du stänger sidan\. Du hittar den bland körningarna i flödet\./);
   assert.doesNotMatch(words, /blir klart|väntar på dig/);
 });
 
@@ -93,7 +93,7 @@ test("a flow that makes text says the text will be ready, as its action says Ska
     ),
   );
   assert.doesNotMatch(words, /väntar på dig/);
-  assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den sedan under Tidigare körningar i flödet\./);
+  assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den sedan bland körningarna i flödet\./);
   assert.doesNotMatch(words, /Dokumentet blir klart/);
   assert.match(words, /^Texten skapas /, "the heading");
   assert.doesNotMatch(words, /[Dd]okument/);

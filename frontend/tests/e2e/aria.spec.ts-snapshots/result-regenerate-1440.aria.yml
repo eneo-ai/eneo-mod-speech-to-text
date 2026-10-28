@@ -5,7 +5,7 @@
   - paragraph: /Skapad i dag \d+:\d+/
   - paragraph: "Deltagare: Anna Berg, Erik Lund"
   - note:
-    - text: Dokumentet skapades före dina ändringar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.
+    - text: Dokumentet skapades före dina ändringar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar bland körningarna i flödet.
     - button "Skapa dokumentet igen"
   - region "Dokumentet":
     - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf PDF, \d+ B/

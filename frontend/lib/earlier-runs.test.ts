@@ -119,6 +119,19 @@ test("reading the list again starts from the first page, and a page still coming
   assert.deepEqual(eneo.asked.at(-1), { limit: 10, offset: 0 });
 });
 
+test("a read that failed is said while it is tried again, and until one succeeds", async () => {
+  const eneo = eneoRuns(runs(3));
+  const earlier = new EarlierRunsList("flow-1", eneo.list);
+  eneo.failNextPage();
+  await earlier.reload();
+  const release = eneo.holdNextPage();
+  const retry = earlier.more(); // "Försök igen"
+  assert.deepEqual([earlier.getSnapshot().loading, earlier.getSnapshot().failed], [true, "first"], "the list and its words stay while it is read");
+  release();
+  await retry;
+  assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [3, null]);
+});
+
 test("the runs waiting for this person's review: newest first as Eneo lists them, never a test run from Eneo's editor", async () => {
   const { pendingReviews } = await import("./earlier-runs");
   const run = (id: string, status: string, purpose?: string): FlowRunSummary => ({ id, flow_id: "flow-1", status, ...(purpose ? { purpose } : {}) });

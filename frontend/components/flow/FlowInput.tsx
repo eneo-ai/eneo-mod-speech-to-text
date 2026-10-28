@@ -205,7 +205,9 @@ export function FlowInput({
   // The latest runs open the setup, under the flow's name at every width (beside the work from a laptop's width, so the
   // working card keeps its action on the first screen): three, and two on a phone, whose first screen then still reaches
   // the choice of way in under a browser's own bars. A short screen in one column shows only those waiting for review:
-  // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason.
+  // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason. Where the latest
+  // runs are all of them, they are the list: the working card lists the runs only while it has more (a read that landed
+  // later, more in Eneo, a read to try again).
   const waitingOnly = short && !columns;
   const latest = group === "setup" && !blocked ? latestRuns(opened.runs, { waitingOnly, count: phone ? 2 : 3 }) : [];
   const latestRunsShown = (
@@ -306,6 +308,7 @@ export function FlowInput({
               input={input}
               dock={columns ? null : dockSlot}
               earlierRuns={earlierRuns}
+              listsEarlier={listsMore(earlierRuns, latest)}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
               unsent={unsent}
@@ -463,6 +466,7 @@ function SetupWorkspace({
   input,
   dock,
   earlierRuns,
+  listsEarlier,
   onOpenRun,
   onMoreRuns,
   unsent,
@@ -475,6 +479,8 @@ function SetupWorkspace({
   /** In one column (a phone or tablet): the page's bottom edge, where the primary action docks. */
   dock: HTMLElement | null;
   earlierRuns: EarlierRunsSnapshot;
+  /** The list has runs the latest runs above do not show; else they are the list. */
+  listsEarlier: boolean;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   /** The unsent recordings, listed under the reason when the flow cannot run (only to save as files or delete). */
@@ -689,7 +695,9 @@ function SetupWorkspace({
           </VStack>,
         )}
 
-      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />
+      {listsEarlier && (
+        <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />
+      )}
     </StateCard>
   );
 }

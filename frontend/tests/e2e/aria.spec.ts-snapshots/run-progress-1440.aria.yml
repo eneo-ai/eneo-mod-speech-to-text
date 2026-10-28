@@ -6,5 +6,5 @@
     - list "Flödets steg":
       - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Pågår
-  - paragraph: Dokumentet blir klart även om du stänger sidan. Du hittar det sedan under Tidigare körningar i flödet.
+  - paragraph: Dokumentet blir klart även om du stänger sidan. Du hittar det sedan bland körningarna i flödet.
   - button "Avbryt körningen"

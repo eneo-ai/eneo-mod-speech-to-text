@@ -79,7 +79,8 @@ export class EarlierRunsList {
 
   private async read(offset: number, shown: readonly FlowRunSummary[]) {
     const generation = this.generation;
-    this.set({ loading: true, failed: null });
+    // A read that failed is said until one succeeds: another try keeps its words and the list that holds them.
+    this.set({ loading: true });
     try {
       const page = await this.list(this.flowId, { limit: EARLIER_RUNS_PAGE, offset });
       if (generation !== this.generation) return;
@@ -88,7 +89,7 @@ export class EarlierRunsList {
       // A run started since the first page moves older ones onto the next: each run is shown once.
       const known = new Set(shown.map((run) => run.id));
       const runs = [...shown, ...items.filter((run) => !known.has(run.id))];
-      this.set({ runs, hasMore: page.has_more, loading: false });
+      this.set({ runs, hasMore: page.has_more, loading: false, failed: null });
     } catch {
       if (generation !== this.generation) return;
       // What is shown stays; the view says the read failed.

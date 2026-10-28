@@ -8,7 +8,7 @@
     - tab "Transkribering"
   - tabpanel "Dokument":
     - note:
-      - text: Dokumentet skapades före dina ändringar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.
+      - text: Dokumentet skapades före dina ändringar Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar bland körningarna i flödet.
       - button "Skapa dokumentet igen"
     - region "Dokumentet":
       - link /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf i en ny flik/:

@@ -422,6 +422,10 @@ test("a run waiting for review opens the setup's latest runs, and Granska opens 
   const latest = page.getByRole("region", { name: "Senaste körningar" });
   await expect(latest.getByRole("listitem").first()).toContainText("Väntar på granskning");
   await expect(latest).toContainText("En körning som väntar på granskning avbryts om den inte granskas i tid.");
+  // The flow's one run: the latest runs are the list, so it is listed, and its Granska named, once.
+  await expect(page.getByRole("region", { name: "Senaste körningar" })).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Tidigare körningar" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Granska, körningen / })).toHaveCount(1);
   await latest.getByRole("button", { name: /^Granska, körningen / }).click();
   const heading = page.getByRole("heading", { name: "Vem är vem?", level: 1 });
   await expect(heading).toBeVisible();
@@ -475,6 +479,31 @@ for (const back of ["Back", "Ny inspelning"] as const) {
     expect(await at(), "the form where it was").toBe(before);
   });
 }
+
+test("where the latest runs are all of them, a read that lands later with one more brings the whole list under the form", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  await page.goto(`/flows/${ids.flows.flow2}`);
+  const latest = page.getByRole("region", { name: "Senaste körningar" });
+  await expect(latest.getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Tidigare körningar" })).toHaveCount(0);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow2}/runs/\\?`), async (route) => {
+    await held;
+    const response = await route.fetch();
+    const { items, ...list } = await response.json();
+    const started = { id: ids.runs.running, flow_id: ids.flows.flow2, status: "running", created_at: "2026-09-24T09:30:00Z" };
+    await route.fulfill({ response, json: { ...list, items: [started, ...items] } }).catch(() => undefined);
+  });
+  await latest.getByRole("button", { name: /^Granska, körningen / }).click();
+  await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Tidigare körningar" }), "the setup opened with the run it lists above").toHaveCount(0);
+  release();
+  await expect(page.getByRole("region", { name: "Tidigare körningar" }).getByRole("listitem"), "the new run, under the form").toHaveCount(2);
+  await expect(latest.getByRole("listitem"), "the rows above the form as the setup opened").toHaveCount(1);
+});
 
 test("a flow that must be published again says its heading once: the line under it says what to do", async ({ page, sentinel }) => {
   sentinel.expect({ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// });
