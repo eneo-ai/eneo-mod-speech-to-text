@@ -540,17 +540,23 @@ test("an earlier run with a name is listed by its name, with when and its state 
   );
   const words = text(html);
 
-  assert.match(words, /Testmöte 2, 1 okt 2025 I går 15:40 · Klar Öppna/);
-  assert.match(html, /aria-label="Öppna, Testmöte 2, 1 okt 2025, i går 15:40"/);
-  assert.match(words, /Testmöte 2 I går 15:40 · Klar Öppna/);
+  // The meeting's name over its day and when it ran, each said for what it is, and the state on a line of its own
+  // (Kaltron's rows).
+  assert.match(words, /Testmöte 2 Möte 1 okt 2025 · startad i går 15:40 Klar Öppna/);
+  assert.match(html, /aria-label="Öppna, Testmöte 2, möte 1 okt 2025, startad i går 15:40"/);
+  assert.match(words, /Testmöte 2 Startad i går 15:40 Klar Öppna/);
   assert.match(words, /I går 15:40 Klar Öppna/, "a run without a name keeps when as its title");
   // Two runs may share a name (a weekly meeting): the button says which by when too.
-  assert.match(html, /aria-label="Öppna, Testmöte 2, i går 15:40"/);
+  assert.match(html, /aria-label="Öppna, Testmöte 2, startad i går 15:40"/);
   assert.match(html, /aria-label="Öppna, körningen i går 15:40"/);
   // Without its start time a named row says its state alone, and its button no empty part.
   const undated = markup(createElement(EarlierRuns, { list: listed([{ id: "run-9", flow_id: "flow-1", status: "completed", run_label: "Testmöte 3" }]), onOpen: () => undefined }));
   assert.match(text(undated), /Testmöte 3 Klar Öppna/);
   assert.match(undated, /aria-label="Öppna, Testmöte 3"/);
+  // A run dated by its form but not named keeps when it ran as its title, its meeting's day under it.
+  const dayOnly = markup(createElement(EarlierRuns, { list: listed([{ id: "run-8", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString(), run_date: "2025-10-01" }]), onOpen: () => undefined }));
+  assert.match(text(dayOnly), /I går 15:40 Möte 1 okt 2025 Klar Öppna/);
+  assert.match(dayOnly, /aria-label="Öppna, körningen i går 15:40, möte 1 okt 2025"/);
 });
 
 test("a named run waiting for review is named in the notice and its Granska", async () => {
@@ -564,7 +570,7 @@ test("a named run waiting for review is named in the notice and its Granska", as
   const html = markup(createElement(PendingReview, { list, onOpen: () => undefined }));
 
   assert.match(text(html), /Testmöte 2, startad i går 15:40\. Den avbryts om den inte granskas i tid\./);
-  assert.match(html, /aria-label="Granska, Testmöte 2, i går 15:40"/);
+  assert.match(html, /aria-label="Granska, Testmöte 2, startad i går 15:40"/);
   assert.match(pendingReviewSaid(list), /^En körning väntar på din granskning\. Testmöte 2, startad i går 15:40\./);
 });
 

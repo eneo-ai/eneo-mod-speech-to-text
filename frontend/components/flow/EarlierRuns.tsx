@@ -47,9 +47,23 @@ export function PendingReview({ list, onOpen }: { list: EarlierRunsSnapshot; onO
   );
 }
 
-/** Which run, by the name and the day its form gave it ("Testmöte 2, 1 okt"); empty when it has neither. */
-function runName(run: FlowRunSummary): string {
-  return [run.run_label, run.run_date ? formatDay(run.run_date) : ""].filter(Boolean).join(", ");
+const capital = (words: string) => words.replace(/^./, (c) => c.toUpperCase());
+
+/**
+ * Which run, in the words of its row: by the meeting's name its form gave it, else when it ran; each date said for what
+ * it is, "Möte 1 okt" and "startad i går 10:23" (Kaltron's rows). `which` names it for a button that opens it.
+ */
+function runWords(run: FlowRunSummary, action: string) {
+  const when = run.created_at ? formatRelativeDate(run.created_at) : "";
+  const day = run.run_date ? formatDay(run.run_date) : "";
+  const meeting = day && `möte ${day}`;
+  const started = run.run_label && when && `startad ${when}`;
+  return {
+    title: run.run_label || capital(when),
+    // What the title does not say yet; the state comes after it in the list.
+    about: capital([meeting, started].filter(Boolean).join(" · ")),
+    which: [action, run.run_label || `körningen ${when}`, meeting, started].filter(Boolean).join(", "),
+  };
 }
 
 /** What the notice of runs waiting for the person's review says, or null while none waits. */
@@ -58,11 +72,10 @@ function pendingReviewWords(list: EarlierRunsSnapshot) {
   const [newest] = waiting;
   if (!newest) return null;
   const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
-  const name = runName(newest);
-  const started = when ? `startad ${when}` : "";
-  const named = name ? [name, started].filter(Boolean).join(", ") : started.replace(/^./, (c) => c.toUpperCase());
+  const { which } = runWords(newest, "Granska");
+  const named = capital([newest.run_label, newest.run_date && `möte ${formatDay(newest.run_date)}`, when && `startad ${when}`].filter(Boolean).join(", "));
   return {
-    which: name ? ["Granska", name, when].filter(Boolean).join(", ") : `Granska, körningen ${when}`,
+    which,
     title: waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`,
     description: `${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`,
   };
@@ -133,19 +146,26 @@ export function EarlierRuns({
           const [glyph, color, action] = outcome
             ? [...OUTCOME[outcome], "Öppna"]
             : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
-          const when = run.created_at ? formatRelativeDate(run.created_at) : "";
-          const When = when.replace(/^./, (c) => c.toUpperCase());
-          // A named run (the meeting's name and day) is listed by them, and when it ran goes with its state.
-          const name = runName(run);
+          const words = runWords(run, action);
           // A node, not a string: Astryx cuts a string label to one line, and a meeting's name may be long, or the
           // reader's text large; it wraps instead.
-          const title = <>{name || When}</>;
-          const state = name ? [When, runStatusLabel(run.status)].filter(Boolean).join(" · ") : runStatusLabel(run.status);
-          // The name says which run, for a screen reader that lists the buttons, by when too (a weekly meeting repeats
-          // its name); the words say what it does.
+          const title = <>{words.title}</>;
+          // The meeting's day and when it ran on one line, the state under them (Kaltron's rows): a state that wrapped onto a
+          // line of its own would start it with the dot between them.
+          const state = words.about ? (
+            <>
+              {words.about}
+              <br />
+              {runStatusLabel(run.status)}
+            </>
+          ) : (
+            runStatusLabel(run.status)
+          );
+          // The name says which run, for a screen reader that lists the buttons, by its day and when too (a weekly
+          // meeting repeats its name); the words say what it does.
           const open = (
             <Button
-              label={name ? [action, name, when].filter(Boolean).join(", ") : `${action}, körningen ${when}`}
+              label={words.which}
               variant="secondary"
               size="sm"
               data-open-run

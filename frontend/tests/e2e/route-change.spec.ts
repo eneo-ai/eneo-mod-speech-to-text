@@ -317,7 +317,7 @@ test("an earlier run opened from the setup is an entry of its own: Back goes to 
   sentinel.expect(NO_CONFIRMED_WORDS);
   await setup(page);
   // The finished run, named and dated by its form.
-  await page.getByRole("button", { name: /^Öppna, Styrelsemöte, 22 sep, / }).click();
+  await page.getByRole("button", { name: /^Öppna, Styrelsemöte, möte 22 sep, / }).click();
   await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
 
   await page.goBack();

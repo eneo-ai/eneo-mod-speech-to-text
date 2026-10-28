@@ -251,8 +251,8 @@ switches round. One-pixel borders are `var(--border-width)`.
   person read it in the flow's row of the list.
 - "Tips för bra ljud" is folded under the microphone test, with a way that records only.
 - "Tidigare körningar" ends the working card, under the form. A run its form named and dated (the flow's fields with the
-  roles `run_label` and `run_date` in Eneo) is listed by them, "Styrelsemöte, 22 sep", with when it ran and its state
-  under them; one without, by when it ran. While it lists runs, a ghost button of that name brings it
+  roles `run_label` and `run_date` in Eneo) is listed by its name, with each date said for what it is under it: "Möte
+  22 sep · startad 23 sep 11:00", and its state on a line under them; one without a name, by when it ran. While it lists runs, a ghost button of that name brings it
   into view and gives its heading the focus. From 1024 px it stands under the flow's name in the flow's column, so the
   card keeps its action on a laptop's first screen; below, above the working card, and not on a short screen.
 

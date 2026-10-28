@@ -47,8 +47,8 @@
       - heading "Tidigare körningar" [level=2]
       - list:
         - listitem:
-          - text: /Styrelsemöte, 22 sep( \d{4})? I går \d+:\d+ · Klar/
-          - button /Öppna, Styrelsemöte, 22 sep( \d{4})?, i går \d+:\d+/:
+          - text: /Styrelsemöte Möte 22 sep( \d{4})? · startad i går \d+:\d+ Klar/
+          - button /Öppna, Styrelsemöte, möte 22 sep( \d{4})?, startad i går \d+:\d+/:
             - text: ""
             - status
         - listitem:
