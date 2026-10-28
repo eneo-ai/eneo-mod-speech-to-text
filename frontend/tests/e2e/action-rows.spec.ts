@@ -104,6 +104,24 @@ test("who is who: below a laptop's width, on the narrowest phone too, Godkänn o
   }), "nothing over it").toBe(true);
 });
 
+test("who is who at a reader's large text, on the narrowest phone at 125 % and a phone at 200 %: Godkänn och fortsätt stays docked", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-320-light", "the narrowest phone, then a phone at its largest text");
+  await run(page, ids.runs.review, ids.flows.flow2);
+  const dock = page.locator("[data-docked-action]");
+  await expect(dock.getByRole("button", { name: "Godkänn och fortsätt" })).toBeVisible();
+  // The decision has a third of the window; what it holds beyond Godkänn, the reminder and what stops it would take
+  // that share at these sizes, and the decision would end the transcript instead.
+  for (const [width, height, root] of [[320, 568, 20], [390, 844, 34]]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate((root) => {
+      const style = document.getElementById("reader-text") ?? document.head.appendChild(Object.assign(document.createElement("style"), { id: "reader-text" }));
+      style.textContent = `html { font-size: ${root}px !important; }`;
+    }, root);
+    await expect(dock, `${width} × ${height} at ${root} px`).not.toHaveAttribute("data-dock-too-tall");
+    await expect(dock).toHaveCSS("position", "sticky");
+  }
+});
+
 test("who is who: Godkänn och fortsätt and Avvisa körningen keep the focus when the window crosses a laptop's width", async ({ page }, info) => {
   test.skip(info.project.name !== "laptop-1440-light", "a window resized across 1024 px");
   await run(page, ids.runs.review, ids.flows.flow2);

@@ -59,7 +59,7 @@
 }
 
 /* The soft keyboard opens over the lower half of a touch screen: while a text field of the speaker review has the focus
-   (data-typing, ReviewView.tsx) its docked decision stays at the page's end, not over the text being typed. */
+   (data-typing, lib/dock.ts's whileTyping) its docked decision stays at the page's end, not over the text being typed. */
 @media (pointer: coarse) {
   [data-typing] ~ .dock {
     position: static;

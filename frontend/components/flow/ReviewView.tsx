@@ -70,7 +70,7 @@ import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
-import { useDock } from "@/lib/dock";
+import { useDock, whileTyping } from "@/lib/dock";
 import { useWorkspace } from "@/lib/workspace";
 import styles from "./ReviewView.module.css";
 
@@ -723,9 +723,8 @@ export function ReviewView({
         <div
           className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}
           // While a text field has the focus (a passage being corrected, the search) a touch screen's soft keyboard covers
-          // the window's lower half: the docked decision stays at the page's end then (ReviewView.module.css).
-          onFocus={(e) => e.currentTarget.toggleAttribute("data-typing", e.target.matches("input, textarea"))}
-          onBlur={(e) => e.currentTarget.removeAttribute("data-typing")}
+          // the window's lower half: the docked decision stays at the page's end then (ReviewView.module.css, lib/dock.ts).
+          {...whileTyping}
         >
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
@@ -750,8 +749,9 @@ export function ReviewView({
             <VStack gap={6}>
               {intro}
               {/* The card is the speakers, its heading and its action in one row as the transcript's card has them; the
-                  decision is the page's, under the card. Not docked on a phone: the transcript's player docks there,
-                  and two bars would cover a fifth of the screen. */}
+                  decision is the page's: under the card from a laptop's width, docked at the window's bottom narrower
+                  (Avvisa stays under the card). What Godkänn does to speakers without a name stays at the card's foot:
+                  in the dock it would make the decision too tall for a phone at a reader's large text. */}
               <Card padding={narrow ? 4 : 6} role="group" aria-labelledby="review-speakers">
                 <VStack gap={3}>
                   <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>

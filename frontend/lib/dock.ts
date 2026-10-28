@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FocusEvent as ReactFocusEvent } from "react";
 
 /**
  * What is docked at the bottom of a phone's window (the setup's primary action, a player) covers the page's last rows,
@@ -13,6 +13,34 @@ type DockEdge = "bottom" | "top";
 const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null; yields: boolean }>();
 /** The measures of the docks that yield, run again when a dock that does not yield changes what it covers. */
 const yielding = new Set<() => void>();
+/** Every dock's measure, run again when a region puts its docks in the page's flow for a soft keyboard (whileTyping). */
+const measures = new Set<() => void>();
+
+let typingMeasure = 0;
+
+function typing(region: HTMLElement, on: boolean) {
+  if (region.hasAttribute("data-typing") === on) return;
+  region.toggleAttribute("data-typing", on);
+  // In the next frame, once the page has laid out what the focus opened or closed (a passage's editor), not inside it:
+  // a long transcript read in the middle of that would be laid out twice.
+  typingMeasure ||= requestAnimationFrame(() => {
+    typingMeasure = 0;
+    measures.forEach((again) => again());
+  });
+}
+
+/**
+ * For the region whose docks stand in the page's flow while one of its text fields has the focus (a touch screen's soft
+ * keyboard opens over the window's lower half, and a dock there would cover the text being typed): spread on that
+ * region's element, it says so in `data-typing`, which the region's CSS reads (a coarse pointer only), and the docks are
+ * measured again in the next frame, so what they cover is what the page is told (iOS resizes no window for its
+ * keyboard). An attribute set by hand, not a render or a `:has()`: neither should touch two thousand passages for a
+ * focus.
+ */
+export const whileTyping = {
+  onFocus: (event: ReactFocusEvent<HTMLElement>) => typing(event.currentTarget, (event.target as Element).matches("input, textarea")),
+  onBlur: (event: ReactFocusEvent<HTMLElement>) => typing(event.currentTarget, false),
+};
 
 function publish() {
   const shown = [...docks.values()];
@@ -57,6 +85,7 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     if (!yields && before?.size !== size) yielding.forEach((again) => again());
   };
   const remeasure = () => measure(false);
+  measures.add(remeasure);
   if (yields) yielding.add(remeasure);
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
@@ -72,10 +101,9 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   const key = () => {
     pressed = false;
   };
-  // A page that puts its dock in its flow while a field has the focus (a touch screen's soft keyboard: ReviewView's and
-  // TranscriptPlayer's data-typing) changes no size. A dock measured then (the window resized for the keyboard) covered
-  // nothing: it is looked at again before a control is uncovered while it says none. Not on every focus that leaves a
-  // field: that runs inside a passage editor's closing, and a long transcript's would be laid out twice.
+  // A dock a region put in its flow for a soft keyboard (whileTyping) is measured once that has been laid out. One
+  // measured covering nothing (the window resized for the keyboard) is looked at again before a control is uncovered
+  // while it says it covers none.
   const uncover = ({ target }: FocusEvent) => {
     if (!docks.get(dock)?.size) remeasure();
     if (pressed || !docks.get(dock)?.size || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
@@ -107,6 +135,7 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
     yielding.delete(remeasure);
+    measures.delete(remeasure);
     docks.delete(dock);
     publish();
     if (!yields) yielding.forEach((again) => again());
