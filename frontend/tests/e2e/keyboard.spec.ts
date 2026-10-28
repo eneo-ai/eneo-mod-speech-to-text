@@ -702,6 +702,13 @@ test("the microphone picker is operated with the keyboard and gives the focus ba
 });
 
 test("Visa alla under the latest runs gives Tidigare körningar's heading the focus, in the window and under nothing", async ({ page }) => {
+  // A run waiting for review among the flow's runs: a short window's latest runs are only those, so Visa alla is there too.
+  await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow1}/runs/\\?`), async (route) => {
+    const response = await route.fetch();
+    const { items, ...list } = await response.json();
+    const waiting = { id: ids.runs.review, flow_id: ids.flows.flow1, status: "awaiting_review", created_at: "2026-09-24T09:00:00Z" };
+    await route.fulfill({ response, json: { ...list, items: [waiting, ...items] } });
+  });
   await setup(page);
   await page.getByRole("button", { name: "Visa alla körningar" }).focus();
   await page.keyboard.press("Enter");

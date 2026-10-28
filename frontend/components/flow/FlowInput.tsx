@@ -543,7 +543,7 @@ function SetupWorkspace({
               <BackToFlows variant="primary" size="md" />
             </HStack>
           </VStack>
-          {earlierRuns && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={`${styles.earlier} ${styles.runs}`} />}
+          {earlierRuns && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />}
         </StateCard>
         <UnsentRecordings list={unsent} sendLabel={sendLabel} evictable={input.evictable} />
       </VStack>
@@ -683,7 +683,7 @@ function SetupWorkspace({
           </VStack>,
         )}
 
-      {earlierRuns && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={`${styles.earlier} ${styles.runs}`} />}
+      {earlierRuns && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />}
     </StateCard>
   );
 }
