@@ -73,3 +73,15 @@ test("a percentage is whole and has a space before its sign, which keeps it with
   assert.equal(formatPercent(33), `33${nbsp}%`);
   assert.equal(formatPercent(100), `100${nbsp}%`);
 });
+
+test("a day is said as the list says dates, with its year when it is not this one", async () => {
+  const { formatDay } = await import("./format");
+  const now = new Date(2026, 9, 28, 9, 0);
+  assert.equal(formatDay("2026-10-01", now), "1 okt");
+  assert.equal(formatDay("2025-12-31", now), "31 dec 2025");
+  // The day as written, whatever the time zone: no shift to the day before.
+  assert.equal(formatDay("2026-01-01", now), "1 jan");
+  assert.equal(formatDay("not a day", now), "");
+  assert.equal(formatDay("2026-02-31", now), "", "a day the calendar does not have");
+  assert.equal(formatDay("2026-13-01", now), "");
+});

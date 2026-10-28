@@ -42,7 +42,9 @@
 .dock {
   position: sticky;
   inset-block-end: 0;
-  z-index: 1;
+  /* Over the transcript's player (TranscriptPlayer.module.css, z-index 10), whose dock stands where it is in the text
+     until the page is scrolled to it: on a phone's first screen that can be where the decision is docked. */
+  z-index: 11;
   margin-inline: calc(var(--spacing-4) * -1);
   padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));
   border-block-start: var(--border-width) solid var(--color-border);
@@ -52,6 +54,14 @@
 @media (max-height: 480px) {
   .cardHead,
   .dock {
+    position: static;
+  }
+}
+
+/* The soft keyboard opens over the lower half of a touch screen: while a text field of the speaker review has the focus
+   (data-typing, ReviewView.tsx) its docked decision stays at the page's end, not over the text being typed. */
+@media (pointer: coarse) {
+  [data-typing] ~ .dock {
     position: static;
   }
 }

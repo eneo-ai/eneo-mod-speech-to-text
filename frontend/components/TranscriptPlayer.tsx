@@ -501,6 +501,7 @@ export function TranscriptPlayer(
     onRenameSpeaker,
     ownerId,
     actions,
+    playerOnTop: playerOnTopOfPage = false,
   }: {
     /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
@@ -556,6 +557,11 @@ export function TranscriptPlayer(
      * for them (`fits`), folded into one menu where it has not.
      */
     actions?: (fits: boolean) => ReactNode;
+    /**
+     * The player docks above the text at every width below a laptop's, not only from a tablet's: the page docks its own
+     * action at the window's bottom (the speaker review's decision), and two bars there would stack.
+     */
+    playerOnTop?: boolean;
   },
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -563,8 +569,9 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const playerOnTop = useMediaQuery(PLAYER_ON_TOP);
-  const [dock, dockRef] = useDock(playerOnTop ? "top" : "bottom");
+  const playerOnTop = useMediaQuery(PLAYER_ON_TOP) || playerOnTopOfPage;
+  // It yields to a page's own dock (the speaker review's decision) when the two would cover too much of the window.
+  const [dock, dockRef] = useDock(playerOnTop ? "top" : "bottom", true);
   const phone = useMediaQuery(PHONE);
   const tiny = useMediaQuery(TINY);
   const [editingIndex, setEditingIndex] = useState(-1);

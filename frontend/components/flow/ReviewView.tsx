@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type FocusEvent,
   type RefObject,
 } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -93,6 +94,8 @@ const isReviewEdit = (value: unknown): value is ReviewEdit =>
   (value.text === undefined || typeof value.text === "string") &&
   (value.speakerRows === undefined || (Array.isArray(value.speakerRows) && value.speakerRows.every(isSpeakerRow)));
 
+/** From a laptop's width the speakers and the transcript stand side by side (ReviewView.module.css, .reviewSplit). */
+const SPLIT = "(min-width: 1024px)";
 const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klart och försök igen.";
 
 /** A review pause: the step's output (the speakers' names, or text) to look over, change and approve, or reject. */
@@ -138,6 +141,18 @@ export function ReviewView({
   const heading = usePhaseHeading(`${title} · ${flowName}`);
   const announce = useAnnounce();
   const narrow = useMediaQuery(STACKED);
+  const split = useMediaQuery(SPLIT);
+  // A window crossing a laptop's width (a tablet turned) moves Godkänn and Avvisa between the dock and the speakers'
+  // card: the one that had the focus keeps it. A focus that went elsewhere since is left alone.
+  const decisionFocus = useRef<RefObject<HTMLButtonElement | null> | null>(null);
+  const keepsFocus = (button: RefObject<HTMLButtonElement | null>) => ({
+    onFocus: () => void (decisionFocus.current = button),
+    onBlur: (event: FocusEvent<HTMLButtonElement>) => void (event.relatedTarget && (decisionFocus.current = null)),
+  });
+  useLayoutEffect(() => {
+    const had = decisionFocus.current?.current;
+    if (had && (document.activeElement === document.body || document.activeElement === null)) had.focus();
+  }, [split]);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   // A consequence, at the body's size: not a footnote. Its clock stands beside the first line when the words wrap.
@@ -188,6 +203,7 @@ export function ReviewView({
   // edit's Avbryt back to Redigera.
   const handOff = useRef<RefObject<HTMLElement | null> | null>(null);
   const rejectButton = useRef<HTMLButtonElement>(null);
+  const approveButton = useRef<HTMLButtonElement>(null);
   const reasonField = useRef<HTMLTextAreaElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const textField = useRef<HTMLTextAreaElement>(null);
@@ -491,46 +507,54 @@ export function ReviewView({
     </VStack>
   ) : null;
 
+  const rejectAction = !decided && (
+    <Button
+      ref={rejectButton}
+      {...keepsFocus(rejectButton)}
+      variant="secondary"
+      label="Avvisa körningen"
+      isDisabled={busy}
+      onClick={() => {
+        handOff.current = reasonField;
+        setShowReject(true);
+      }}
+    />
+  );
+  const approveAction = (
+    <Button
+      ref={approveButton}
+      {...keepsFocus(approveButton)}
+      variant="primary"
+      icon={<Icon icon={CheckCircle2} />}
+      label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
+      isLoading={working === "approve"}
+      isDisabled={busy || continueBlocked}
+      onClick={() => void saveAndApprove()}
+    />
+  );
+  const decidedNote = decided && (
+    <Text as="p" type="supporting">
+      {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+    </Text>
+  );
+
   // The choice as a pair of one height: Avvisa, then the action the page exists for (ActionRow places them).
   const actions = rejecting ? null : (
     <VStack gap={3}>
       {/* The text review's decision is docked: what stops it is said there, where it was pressed, not after a long
           text. The speaker review says it in its decision (below). */}
       {!isSpeakerMapping && runError && <Banner status="error" title={runError} collapsible={false} />}
-      {decided && (
-        <Text as="p" type="supporting">
-          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-        </Text>
-      )}
+      {decidedNote}
       <ActionRow>
-        {!decided && (
-          <Button
-            ref={rejectButton}
-            variant="secondary"
-            label="Avvisa körningen"
-            isDisabled={busy}
-            onClick={() => {
-              handOff.current = reasonField;
-              setShowReject(true);
-            }}
-          />
-        )}
-        <Button
-          variant="primary"
-          icon={<Icon icon={CheckCircle2} />}
-          label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
-          isLoading={working === "approve"}
-          isDisabled={busy || continueBlocked}
-          onClick={() => void saveAndApprove()}
-        />
+        {rejectAction}
+        {approveAction}
       </ActionRow>
     </VStack>
   );
 
-  // Who is who: the decision, and what stops it, under the speakers' card at every width, never after the whole
-  // transcript.
-  const decision = (
-    <VStack gap={4}>
+  // What stops the speaker review's decision, said with it; spaced by what holds it.
+  const decisionProblems = (
+    <>
       {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
       {hasDropped && <Button variant="secondary" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
       {saveState === "error" && (
@@ -539,9 +563,41 @@ export function ReviewView({
           <Button variant="secondary" size="sm" label="Hämta osparade rättningar" onClick={downloadUnsavedCorrections} />
         </HStack>
       )}
+    </>
+  );
+
+  // Who is who from a laptop's width: the decision, and what stops it, under the speakers' card beside the transcript.
+  const decision = (
+    <VStack gap={4}>
+      {decisionProblems}
       {rejectSection}
       {actions}
     </VStack>
+  );
+
+  // Narrower, the transcript follows the speakers' card: Godkänn, what stops it and a reminder to read first are docked
+  // at the window's bottom, in reach from the first screen however long the meeting, and the transcript's player docks
+  // above the text instead (TranscriptPlayer's playerOnTop), so the two bars never stack. Avvisa and its reason stay
+  // under the card. While the reason is written there is no decision to dock.
+  const dockedDecision = !rejecting && (
+    <VStack gap={2}>
+      {!decided && (
+        <Text as="p" type="supporting">
+          Läs igenom och rätta innan du godkänner.
+        </Text>
+      )}
+      {decisionProblems}
+      {decidedNote}
+      <ActionRow>{approveAction}</ActionRow>
+    </VStack>
+  );
+  const undockedDecision = rejecting ? (
+    <VStack gap={4}>
+      {decisionProblems}
+      {rejectSection}
+    </VStack>
+  ) : (
+    rejectAction && <ActionRow>{rejectAction}</ActionRow>
   );
 
   // The run's state, a still pill beside the heading from 640 px; under them, as the result's meta line has it, the
@@ -664,7 +720,13 @@ export function ReviewView({
         {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. Split
             from a laptop's width, the heading stands over the speakers, so the transcript beside them starts at the
             page's top and ends in the window; a workspace, whose column grows with a wide window (styles/globals.css). */}
-        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
+        <div
+          className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}
+          // While a text field has the focus (a passage being corrected, the search) a touch screen's soft keyboard covers
+          // the window's lower half: the docked decision stays at the page's end then (ReviewView.module.css).
+          onFocus={(e) => e.currentTarget.toggleAttribute("data-typing", e.target.matches("input, textarea"))}
+          onBlur={(e) => e.currentTarget.removeAttribute("data-typing")}
+        >
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
               {/* Folded, unless names typed earlier bring the dialog back: it is in this card, and opens by itself. */}
@@ -699,23 +761,14 @@ export function ReviewView({
                     {namingAction}
                   </HStack>
                   {speakerList}
-                  {!narrow && unmappedNote}
-                </VStack>
-              </Card>
-              {/* On a phone the note on speakers without a name stands under Godkänn, whose consequence it says: at the
-                  card's foot it pushed the decision off the first screen. */}
-              {narrow && unmappedNote ? (
-                <VStack gap={3}>
-                  {decision}
                   {unmappedNote}
                 </VStack>
-              ) : (
-                decision
-              )}
+              </Card>
+              {split ? decision : undockedDecision}
             </VStack>
           )}
           {/* There the card folds away, so the decision follows it instead. */}
-          {SPEAKER_REVIEW_ENABLED && decision}
+          {SPEAKER_REVIEW_ENABLED && (split ? decision : undockedDecision)}
 
           {/* The card's title, as the result's transcript has one: its parts ("Del 1") are h3s under it. */}
           <TranscriptPlayer
@@ -741,8 +794,14 @@ export function ReviewView({
             onToggleConfirmed={toggleConfirmed}
             onRenameSpeaker={namingAction ? (label, returnTo) => namingDialog.current?.open(label, returnTo) : undefined}
             ownerId={user.id}
+            playerOnTop={!split}
           />
         </div>
+        {!split && dockedDecision && (
+          <div ref={decisionDock} data-docked-action="" className={styles.dock}>
+            {dockedDecision}
+          </div>
+        )}
       </VStack>
     );
   }

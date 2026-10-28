@@ -160,3 +160,68 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   bar.remove();
   document.documentElement.style.removeProperty("scroll-padding-bottom");
 });
+
+test("a dock that yields stands in the page when it and the docks that do not yield would cover more than a third", async () => {
+  const { observeDock } = await import("./dock");
+  const third = Math.ceil(window.innerHeight / 3);
+  // The speaker review's decision at the bottom, its transcript's player on top (TranscriptPlayer).
+  const decision = dock(third - 60);
+  const stopDecision = observeDock(decision);
+  const player = dock(50);
+  const stopPlayer = observeDock(player, "top", true);
+  assert.ok(!player.hasAttribute("data-dock-too-tall"), "together within a third: both docked");
+  Object.defineProperty(decision, "offsetHeight", { configurable: true, get: () => third - 20 });
+  window.dispatchEvent(new window.Event("resize"));
+  assert.ok(player.hasAttribute("data-dock-too-tall"), "larger text: the player stands in the text");
+  assert.ok(!decision.hasAttribute("data-dock-too-tall"), "the decision stays in reach");
+  stopDecision();
+  assert.ok(!player.hasAttribute("data-dock-too-tall"), "the decision gone: the player is docked again");
+  stopPlayer();
+  [decision, player].forEach((element) => element.remove());
+});
+
+test("a dock that is stuck again after a field had the focus is measured again before a control is uncovered, with no resize", async (t) => {
+  const { observeDock } = await import("./dock");
+  const bar = dock(100);
+  const stop = observeDock(bar);
+  const field = document.createElement("textarea");
+  const button = document.createElement("button");
+  document.body.append(field, button);
+  // While a field has the focus a touch screen's soft keyboard is up and the page puts the dock in its flow
+  // (ReviewView's data-typing); Android resizes the window for the keyboard, so the dock is measured covering nothing.
+  field.focus();
+  bar.style.position = "static";
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(size(), "", "typing: in the page's flow");
+  // Done typing: the page docks it again, and the keyboard's next focus lands on a control under it.
+  bar.style.position = "sticky";
+  field.blur();
+  const box = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 100, width: 100, height, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+  t.mock.method(bar, "getBoundingClientRect", () => box(window.innerHeight - 100, 100));
+  t.mock.method(button, "getBoundingClientRect", () => box(window.innerHeight - 30, 24));
+  const scrolled: (number | undefined)[] = [];
+  t.mock.method(window, "scrollBy", (options: ScrollToOptions) => void scrolled.push(options.top));
+  button.focus();
+  assert.equal(size(), "100px", "measured again: focus stops short of it");
+  assert.equal(scrolled.length, 1, "and the covered control is scrolled clear");
+  stop();
+  [bar, field, button].forEach((element) => element.remove());
+  t.mock.restoreAll();
+});
+
+test("a focus that changes nothing about a dock writes nothing to the page's root, which every element inherits", async (t) => {
+  const { observeDock } = await import("./dock");
+  const bar = dock(100);
+  const stop = observeDock(bar);
+  const field = document.createElement("textarea");
+  document.body.append(field);
+  const writes = t.mock.method(document.documentElement.style, "setProperty");
+  const read = t.mock.fn(() => 100);
+  Object.defineProperty(bar, "offsetHeight", { configurable: true, get: read });
+  field.focus();
+  field.blur();
+  assert.equal(writes.mock.callCount(), 0, "the same dock: no write");
+  assert.equal(read.mock.callCount(), 0, "and no layout read: its height is the one last laid out");
+  stop();
+  [bar, field].forEach((element) => element.remove());
+});

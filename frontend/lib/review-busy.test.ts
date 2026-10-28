@@ -263,8 +263,13 @@ test("a control that removes or disables itself hands the focus on, never to the
   assert.ok(focused() === button(view.container, "Redigera"), `Spara ändring: on Redigera, not ${focused()?.tagName}`);
 });
 
-test("who is who: Namnge talarna stands in the speakers' card's heading row; Avvisa and Godkänn och fortsätt follow the card, before the transcript", async (t) => {
+test("who is who: Namnge talarna stands in the speakers' card's heading row; from a laptop's width Avvisa and Godkänn och fortsätt follow the card, beside the transcript", async (t) => {
   eneo(t);
+  const matchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: query === "(min-width: 1024px)" })) as typeof window.matchMedia;
+  t.after(() => {
+    window.matchMedia = matchMedia;
+  });
   const view = await review(speakers);
   const card = view.container.querySelector('[role="group"][aria-labelledby="review-speakers"]')!;
   assert.equal(card.querySelector("#review-speakers")?.textContent, "Talare");
@@ -274,12 +279,36 @@ test("who is who: Namnge talarna stands in the speakers' card's heading row; Avv
   const approve = button(view.container, "Godkänn och fortsätt")!;
   assert.ok(!card.contains(approve) && !card.contains(button(view.container, "Avvisa körningen")), "the decision is the page's, not the speakers' group");
   assert.ok(card.compareDocumentPosition(approve) & window.Node.DOCUMENT_POSITION_FOLLOWING, "after the card");
-  assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
+  assert.equal(approve.closest("[data-docked-action]"), null, "not docked");
   const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
   await view.act(async () => button(view.container, "Avvisa körningen")!.click());
   const confirm = button(view.container, "Bekräfta avvisning")!;
   assert.ok(!card.contains(confirm) && confirm.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "the reason form opens in the decision's place");
+});
+
+test("who is who below a laptop's width: Avvisa follows the card, Godkänn och fortsätt is docked at the page's end with a reminder to read first, and the player docks above the text", async (t) => {
+  eneo(t);
+  const view = await review(speakers);
+  const card = view.container.querySelector('[role="group"][aria-labelledby="review-speakers"]')!;
+  const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
+  const avvisa = button(view.container, "Avvisa körningen")!;
+  assert.ok(card.compareDocumentPosition(avvisa) & window.Node.DOCUMENT_POSITION_FOLLOWING, "Avvisa after the card");
+  assert.ok(avvisa.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "and before the transcript");
+  const approve = button(view.container, "Godkänn och fortsätt")!;
+  const dock = approve.closest("[data-docked-action]");
+  assert.ok(dock && !transcript.contains(dock) && transcript.compareDocumentPosition(dock) & window.Node.DOCUMENT_POSITION_FOLLOWING, "Godkänn in the page's dock, after the transcript");
+  assert.match(dock.textContent ?? "", /^Läs igenom och rätta innan du godkänner\./, "the reminder over it");
+  const player = transcript.querySelector("[data-docked-player]");
+  assert.ok(!player || player.hasAttribute("data-dock-edge"), "the player docked on top, not at the bottom with the decision");
+  assert.equal([...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Godkänn och fortsätt").length, 1, "one Godkänn on the page");
+  await view.act(async () => avvisa.click());
+  assert.equal(button(view.container, "Godkänn och fortsätt"), null, "while the reason is written there is no decision to dock");
+  const confirm = button(view.container, "Bekräfta avvisning")!;
+  assert.ok(card.compareDocumentPosition(confirm) & window.Node.DOCUMENT_POSITION_FOLLOWING && confirm.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "the reason form in Avvisa's place");
+  // The reason form's own Avbryt (the naming dialog, closed, has one too).
+  await view.act(async () => button(confirm.parentElement!, "Avbryt")!.click());
+  assert.ok(button(view.container, "Godkänn och fortsätt")?.closest("[data-docked-action]"), "Avbryt docks the decision again");
 });
 
 test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both the middle size; the reason form takes its place, with a destructive confirm", async (t) => {

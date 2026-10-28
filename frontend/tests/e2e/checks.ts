@@ -756,7 +756,7 @@ function probeFocus(page: Page) {
       return null;
     };
     const ownPin = pinnedBox(el);
-    let covered = 0, byPinned = 0, points = 0;
+    let covered = 0, byPinned = 0, byPinnedAtTop = 0, points = 0;
     let coveredBy: string | null = null;
     if (x1 > x0 && y1 > y0) {
       for (const fx of [0.1, 0.5, 0.9]) {
@@ -766,7 +766,10 @@ function probeFocus(page: Page) {
           if (!top || el.contains(top) || top.contains(el)) continue;
           covered++;
           const pin = pinnedBox(top);
-          if (pin && pin !== ownPin && !pin.contains(el)) byPinned++;
+          if (pin && pin !== ownPin && !pin.contains(el)) {
+            byPinned++;
+            if (fy === 0.1) byPinnedAtTop++;
+          }
           const cover = pin ?? top;
           coveredBy ??= `${cover.tagName.toLowerCase()}.${String(cover.className).split(" ").slice(0, 4).join(".")}`;
         }
@@ -791,7 +794,15 @@ function probeFocus(page: Page) {
       // of what shows: the indicator must then be inside it.
       perimeter: onScreenEdges(r),
       focusVisible,
-      obscured: (points > 0 && covered === points ? "full" : byPinned > 0 ? "partial" : "none") as FocusStop["obscured"],
+      // A region taller than the window (a phone's transcript) shows a part of itself whatever is pinned, and no scroll
+      // uncovers it: a bar over its lower part hides no more than the window's edge does. Its top, where its ring and
+      // name start, must still be clear. Only a region: a control (a field, a button, a passage's [role=button]) is held
+      // to the bar whatever its height.
+      obscured: (points > 0 && covered === points
+        ? "full"
+        : byPinned > 0 && !(r.height > innerHeight && byPinnedAtTop === 0 && el.matches('[role="region"], section'))
+          ? "partial"
+          : "none") as FocusStop["obscured"],
       coveredBy,
       offscreen: points === 0,
       pinned: ownPin !== null,

@@ -270,6 +270,33 @@ test("a region taller than the window is held to the ring on its edges that show
   expect((await focusStop(page))?.indicator, "no ring at all").toBe(false);
 });
 
+test("a bar pinned over the lower part of a region taller than the window passes; over its top, or over a field or a button that tall, it fails", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.setContent(`
+    <style>
+      body { margin: 0; background: #fff; }
+      .tall { display: block; box-sizing: border-box; margin: 40px; height: 1400px; width: 700px; border: 1px solid #ddd; }
+      .tall:focus-visible { outline: 2px solid #111; outline-offset: -2px; }
+      .bar { position: fixed; inset-inline: 0; height: 120px; background: #eee; }
+    </style>
+    <div class="tall" id="region" tabindex="0" role="region" aria-label="Transkribering"></div>
+    <textarea class="tall" id="field" aria-label="Text"></textarea>
+    <span class="tall" id="passage" tabindex="0" role="button" aria-label="Rätta repliken"></span>
+    <div class="bar" id="bar" style="bottom: 0"></div>`);
+  const under = async (id: string) => {
+    await page.evaluate((id) => {
+      document.getElementById(id)!.focus({ preventScroll: true });
+      document.getElementById(id)!.scrollIntoView({ block: "start" });
+    }, id);
+    return stopProblems([(await focusStop(page))!]).filter((problem) => problem.includes("partly under"));
+  };
+  expect(await under("region"), "a region's lower part under a bar at the window's bottom").toEqual([]);
+  expect(await under("field"), "a field is a control: no bar over it").toEqual([expect.stringContaining("partly under")]);
+  expect(await under("passage"), "so is a passage's [role=button], however tall").toEqual([expect.stringContaining("partly under")]);
+  await page.evaluate(() => Object.assign(document.getElementById("bar")!.style, { bottom: "auto", top: "0" }));
+  expect(await under("region"), "a bar over the region's top, where its ring and name start").toEqual([expect.stringContaining("partly under")]);
+});
+
 test("a main command under another layer is caught: no pointer presses it, and the keyboard's focus on it is hidden", async ({ browser, page }, info) => {
   const covered = fixture("covered", `
     <main><h1>Prov</h1><p id="said"></p><button onclick="document.getElementById('said').textContent = 'Skapat'">Skapa dokument</button></main>

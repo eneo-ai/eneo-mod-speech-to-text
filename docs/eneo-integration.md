@@ -23,6 +23,8 @@ Appen bygger körningen från Eneos publicerade flödeskontrakt:
 
 Uppladdning och start går genom `frontend/lib/submit-run.ts`, som provar om vid tillfälliga fel och startar körningen med samma idempotensnyckel vid varje försök: [Inspelaren](recording.md#uppladdning-och-nya-försök).
 
+Formulärets värden skickas som `input_payload_json`. Ett formulärfält kan i Eneos flödesbyggare få rollen `run_label` (ett textfält, "Namnge körningen efter fältet") eller `run_date` (ett datumfält). Eneo sätter då körningens `run_label` och `run_date` från fälten när körningen skapas, och dokumenten den skapar heter efter dem: `Styrelsemöte 2026-09-22.docx` i stället för flödets namn och startdagen. Listan över tidigare körningar (`GET …/runs/?mine=true`) har båda, och appen visar körningen med namn och datum utan att läsa varje körnings detaljer. Appen skickar själv ingen `run_label`.
+
 Webbläsaren anropar alltid modulens `/api/eneo/...`; vilka rutter som släpps igenom står i [API-referens](api-referens.md) och reglerna i [Backend](backend.md#tillåtelselistan-för-eneo-anrop).
 
 ## Granskning och talarmappning

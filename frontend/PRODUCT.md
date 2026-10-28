@@ -44,8 +44,8 @@ credited under the sign-in ("{name} använder Eneo.").
 
 ## Product Principles
 
-- One primary action per state, prominent and in reach (docked at the bottom on a phone; the speaker review keeps it
-  under the speakers, where the transcript's player docks).
+- One primary action per state, prominent and in reach (docked at the bottom on a phone and a tablet; in the speaker
+  review the transcript's player then docks at the top, so the two never stack).
 - Say what happens to the person's audio and data, in plain Swedish, where they decide.
 - Calm public-sector density: clear hierarchy and progressive disclosure, no decoration.
 

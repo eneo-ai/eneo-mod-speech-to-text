@@ -10,7 +10,9 @@ import { useEffect, useState } from "react";
  * whenever its passages change.
  */
 type DockEdge = "bottom" | "top";
-const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null }>();
+const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null; yields: boolean }>();
+/** The measures of the docks that yield, run again when a dock that does not yield changes what it covers. */
+const yielding = new Set<() => void>();
 
 function publish() {
   const shown = [...docks.values()];
@@ -32,15 +34,30 @@ const MOST_OF_WINDOW = 1 / 3;
 /**
  * Keeps a dock's height in `--dock-block-size` while it is on the page and covers it (stuck to the window's edge), and
  * its edge in `data-dock` while it is shown at all: one in the page's flow (a laptop's card) still ends what is read.
+ * A dock that `yields` (the transcript's player) counts the docks that do not (a page's action) into its share of the
+ * window: past it, the player stands in the text and the action stays in reach.
  */
-export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () => void {
-  const measure = () => {
-    const tooTall = dock.offsetHeight > window.innerHeight * MOST_OF_WINDOW;
+export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields = false): () => void {
+  // The dock's height as last laid out (its observer and the window say when it changes): a measure on a focus reads no
+  // layout, which on a long transcript would be laid out again for every focus that opens a passage's editor.
+  let height = 0;
+  const measure = (read = true) => {
+    if (read) height = dock.offsetHeight;
+    const others = yields ? [...docks].reduce((sum, [other, { size, yields: alsoYields }]) => sum + (other === dock || alsoYields ? 0 : size), 0) : 0;
+    const tooTall = height + others > window.innerHeight * MOST_OF_WINDOW;
+    const covers = !tooTall && height > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
+    const size = covers ? height : 0;
+    const shown = height > 0 ? edge : null;
+    const before = docks.get(dock);
+    // Nothing that changed, nothing written: the page's root holds what every element inherits.
+    if (before && before.size === size && before.edge === shown && dock.hasAttribute("data-dock-too-tall") === tooTall) return;
     dock.toggleAttribute("data-dock-too-tall", tooTall);
-    const covers = !tooTall && dock.offsetHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
-    docks.set(dock, { size: covers ? dock.offsetHeight : 0, edge: dock.offsetHeight > 0 ? edge : null });
+    docks.set(dock, { size, edge: shown, yields });
     publish();
+    if (!yields && before?.size !== size) yielding.forEach((again) => again());
   };
+  const remeasure = () => measure(false);
+  if (yields) yielding.add(remeasure);
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
   // in a dialog or a popover (a sheet over the dock) does not move with the page. One taller than the room the padding
@@ -55,7 +72,12 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
   const key = () => {
     pressed = false;
   };
+  // A page that puts its dock in its flow while a field has the focus (a touch screen's soft keyboard: ReviewView's and
+  // TranscriptPlayer's data-typing) changes no size. A dock measured then (the window resized for the keyboard) covered
+  // nothing: it is looked at again before a control is uncovered while it says none. Not on every focus that leaves a
+  // field: that runs inside a passage editor's closing, and a long transcript's would be laid out twice.
   const uncover = ({ target }: FocusEvent) => {
+    if (!docks.get(dock)?.size) remeasure();
     if (pressed || !docks.get(dock)?.size || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
     if (target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
@@ -69,22 +91,25 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
     const top = atTop ? box.top - above : box.bottom - window.innerHeight + below;
     window.scrollBy({ top, behavior: "instant" });
   };
-  const observer = new ResizeObserver(measure);
+  const observer = new ResizeObserver(() => measure());
   observer.observe(dock);
   // A dock that is no longer stuck (a window made wider or lower) can keep its size: the window says so.
-  window.addEventListener("resize", measure);
+  const resized = () => measure();
+  window.addEventListener("resize", resized);
   document.addEventListener("pointerdown", press, true);
   document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", uncover);
   measure();
   return () => {
     observer.disconnect();
-    window.removeEventListener("resize", measure);
+    window.removeEventListener("resize", resized);
     document.removeEventListener("pointerdown", press, true);
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
+    yielding.delete(remeasure);
     docks.delete(dock);
     publish();
+    if (!yields) yielding.forEach((again) => again());
   };
 }
 
@@ -92,8 +117,8 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
  * The dock's element, for the place that renders it to attach (as a ref) and to portal into, observed while it is there
  * at the window's `edge`.
  */
-export function useDock(edge: DockEdge = "bottom"): [HTMLElement | null, (element: HTMLElement | null) => void] {
+export function useDock(edge: DockEdge = "bottom", yields = false): [HTMLElement | null, (element: HTMLElement | null) => void] {
   const [dock, setDock] = useState<HTMLElement | null>(null);
-  useEffect(() => (dock ? observeDock(dock, edge) : undefined), [dock, edge]);
+  useEffect(() => (dock ? observeDock(dock, edge, yields) : undefined), [dock, edge, yields]);
   return [dock, setDock];
 }
