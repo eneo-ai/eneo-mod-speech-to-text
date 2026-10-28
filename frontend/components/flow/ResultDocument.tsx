@@ -128,12 +128,14 @@ function shareKind(name: string | null, mimeType: string, sizeBytes: number | nu
  * draw and waits there while the file is read: an action that arrived with the
  * file would move the document under a finger, seconds in on a slow line.
  */
-function useShare(file: ResultFileView | null, url: string | null, text: string | null): Share | null {
+function useShare(file: ResultFileView | null, url: string | null, text: string | null, fileRefused: boolean): Share | null {
   // The file's own facts, not the object: the page builds its file views anew at every draw, and the read must not start over for them.
   const name = file?.name ?? null;
   const mimeType = file?.mimeType ?? "";
   const sizeBytes = file?.sizeBytes ?? null;
-  const kind = useMemo(() => shareKind(name, mimeType, sizeBytes, url, text), [name, mimeType, sizeBytes, url, text]);
+  const offered = useMemo(() => shareKind(name, mimeType, sizeBytes, url, text), [name, mimeType, sizeBytes, url, text]);
+  // A file the browser refused once is not offered again: the text is, where there is text.
+  const kind = offered === "file" && fileRefused ? (text ? "text" : null) : offered;
   // The file once it is read; `file: null` when the read failed.
   const [read, setRead] = useState<{ file: File | null } | null>(null);
   useEffect(() => {
@@ -156,12 +158,16 @@ function useShare(file: ResultFileView | null, url: string | null, text: string 
   return read.file ? { kind: "file", file: read.file } : text ? { kind: "text" } : null;
 }
 
-async function runShare(share: Share, title: string, text: string | null): Promise<void> {
-  if (share.kind === "reading") return;
+/** How Dela ended: sent, the share sheet closed by the person, or refused by the browser. */
+async function runShare(share: Share, title: string, text: string | null): Promise<"shared" | "closed" | "refused"> {
+  if (share.kind === "reading") return "closed";
   try {
     await navigator.share(share.kind === "file" ? { files: [share.file], title } : { title, text: text ?? "" });
-  } catch {
-    // Closing the share sheet is a choice, not an error; a refused share leaves the other actions.
+    return "shared";
+  } catch (error) {
+    // Closing the share sheet is a choice, not an error. Anything else is the browser's refusal: Chrome on Android says
+    // it can share any file (canShare) and then refuses the types it does not send, a Word file among them.
+    return (error as Error | null)?.name === "AbortError" ? "closed" : "refused";
   }
 }
 
@@ -200,7 +206,26 @@ export function ResultDocument({
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
-  const share = useShare(file, download, text);
+  // What the browser refused to share: the file (Dela offers the text instead, where there is text), or the text.
+  const [refused, setRefused] = useState<"file" | "text" | null>(null);
+  const share = useShare(file, download, text, refused === "file");
+  // The download's link; the design system types a button's ref as a button's whatever it renders.
+  const downloadLink = useRef<HTMLButtonElement | null>(null);
+  const onShare = async (current: Share) => {
+    if ((await runShare(current, title, text)) !== "refused") return;
+    setRefused(current.kind === "file" ? "file" : "text");
+    // Without text no Dela is left: the focus goes on to the download, which still works.
+    if (current.kind === "file" && !text) downloadLink.current?.focus();
+  };
+  const refusal =
+    refused === "file" && file
+      ? {
+          title: `Webbläsaren kan inte dela ${file.typeLabel === "Text" ? "textfilen" : `${file.typeLabel}-filen`}.`,
+          detail: text ? "Tryck på Dela igen för att dela texten, eller ladda ner filen." : "Ladda ner den och dela den från enheten.",
+        }
+      : refused === "text"
+        ? { title: "Det gick inte att dela texten.", detail: "Kopiera den i stället." }
+        : null;
   const access = useFileAccess(flowId, runId);
   // The text as it is drawn, for a copy that keeps its headings, lists and bold.
   const article = useRef<HTMLElement | null>(null);
@@ -228,9 +253,13 @@ export function ResultDocument({
   // A PDF on an iPhone or an iPad opens in a tab of its own (savingWay): the button says so, and the line under it how to keep it.
   const opensInTab = !!file && savingWay(file) === "tab";
   const downloadLabel = file ? (opensInTab ? `Öppna ${file.typeLabel}` : `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}`) : null;
+  // In the card of a document that is only its file, the file's row right above names its type: the button says only
+  // Ladda ner, which keeps to one line beside Dela on a phone ("Ladda ner Word" wrapped). Its name still says the type.
+  const downloadWords = !wide && !text && !opensInTab ? "Ladda ner" : downloadLabel;
   const primaryDownload = file && download && (
     <Button
       as={DownloadLink}
+      ref={downloadLink}
       href={download}
       variant="primary"
       icon={<Icon icon={opensInTab ? ExternalLink : Download} />}
@@ -238,7 +267,7 @@ export function ResultDocument({
       onClick={pressing(access, file.fileId, savingWay(file))}
       {...waiting(access, file.fileId, savingWay(file))}
     >
-      {downloadLabel}
+      {downloadWords}
     </Button>
   );
   // A copy is confirmed where it was asked for: the button's check in place of its icon, or the menu's own button when
@@ -268,7 +297,7 @@ export function ResultDocument({
   // Dela wherever the device has a share sheet, at every width.
   const shareButton = (variant: "ghost" | "secondary", iconOnly = false) =>
     share && (
-      <Button variant={variant} isIconOnly={iconOnly} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
+      <Button variant={variant} isIconOnly={iconOnly} icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void onShare(share)} />
     );
 
   // Narrower: the download first, then the more actions. A document that is its file has them in its card, under the
@@ -289,7 +318,7 @@ export function ResultDocument({
               alignment="center"
             >
               {moreItem}
-              <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
+              <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void onShare(share)} />
             </DropdownMenu>
           ) : (
             <>
@@ -311,6 +340,7 @@ export function ResultDocument({
         </Text>
       )}
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
+      {refusal && <ProblemAlert problem={refusal} reveal />}
 
       <Card padding={0} role="region" aria-label={label}>
         {/* From a laptop's width: Dela, Kopiera and the one download on the document's top edge, above its text. A file
