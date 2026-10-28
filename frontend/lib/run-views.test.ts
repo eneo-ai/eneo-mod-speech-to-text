@@ -524,6 +524,46 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   assert.doesNotMatch(allShown, /Visa fler körningar/, "no more to show");
 });
 
+test("an earlier run with a name is listed by its name, with when and its state under it", () => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(15, 40, 0, 0);
+  const html = markup(
+    createElement(EarlierRuns, {
+      list: listed([
+        { id: "run-3", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString(), run_label: "Testmöte 2", run_date: "2025-10-01" },
+        { id: "run-2", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString(), run_label: "Testmöte 2" },
+        { id: "run-1", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString(), run_label: null },
+      ]),
+      onOpen: () => undefined,
+    }),
+  );
+  const words = text(html);
+
+  assert.match(words, /Testmöte 2, 1 okt 2025 I går 15:40 · Klar Öppna/);
+  assert.match(html, /aria-label="Öppna, Testmöte 2, 1 okt 2025, i går 15:40"/);
+  assert.match(words, /Testmöte 2 I går 15:40 · Klar Öppna/);
+  assert.match(words, /I går 15:40 Klar Öppna/, "a run without a name keeps when as its title");
+  // Two runs may share a name (a weekly meeting): the button says which by when too.
+  assert.match(html, /aria-label="Öppna, Testmöte 2, i går 15:40"/);
+  assert.match(html, /aria-label="Öppna, körningen i går 15:40"/);
+});
+
+test("a named run waiting for review is named in the notice and its Granska", async () => {
+  const { PendingReview, pendingReviewSaid } = await import("../components/flow/EarlierRuns");
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(15, 40, 0, 0);
+  const list = listed([
+    { id: "run-2", flow_id: "flow-1", status: "awaiting_review", created_at: yesterday.toISOString(), run_label: "Testmöte 2" },
+  ]);
+  const html = markup(createElement(PendingReview, { list, onOpen: () => undefined }));
+
+  assert.match(text(html), /Testmöte 2, startad i går 15:40\. Den avbryts om den inte granskas i tid\./);
+  assert.match(html, /aria-label="Granska, Testmöte 2, i går 15:40"/);
+  assert.match(pendingReviewSaid(list), /^En körning väntar på din granskning\. Testmöte 2, startad i går 15:40\./);
+});
+
 test("more earlier runs than a page: 'Visa fler körningar' below the list, with its own waiting and failure", () => {
   const run = { id: "run-1", flow_id: "flow-1", status: "completed", created_at: new Date().toISOString() };
   const render = (state: Partial<EarlierRunsSnapshot>) =>

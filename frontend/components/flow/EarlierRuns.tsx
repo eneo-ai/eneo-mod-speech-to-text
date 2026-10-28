@@ -8,7 +8,8 @@ import { List, ListItem } from "@astryxdesign/core/List";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { pendingReviews, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
-import { formatRelativeDate } from "@/lib/format";
+import type { FlowRunSummary } from "@/lib/api";
+import { formatDay, formatRelativeDate } from "@/lib/format";
 import { runOutcome, runStatusLabel } from "@/lib/run-progress";
 import { useNarrowerThan } from "./useRoomInRow";
 
@@ -38,12 +39,17 @@ export function PendingReview({ list, onOpen }: { list: EarlierRunsSnapshot; onO
       description={words.description}
       endContent={
         // Named as the list's own Granska, so the two say which run.
-        <Button label={`Granska, körningen ${words.when}`} variant="secondary" onClick={() => onOpen(newest.id)}>
+        <Button label={words.which} variant="secondary" onClick={() => onOpen(newest.id)}>
           Granska
         </Button>
       }
     />
   );
+}
+
+/** Which run, by the name and the day its form gave it ("Testmöte 2, 1 okt"); empty when it has neither. */
+function runName(run: FlowRunSummary): string {
+  return [run.run_label, run.run_date ? formatDay(run.run_date) : ""].filter(Boolean).join(", ");
 }
 
 /** What the notice of runs waiting for the person's review says, or null while none waits. */
@@ -52,10 +58,13 @@ function pendingReviewWords(list: EarlierRunsSnapshot) {
   const [newest] = waiting;
   if (!newest) return null;
   const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
+  const name = runName(newest);
+  const started = when ? `startad ${when}` : "";
+  const named = name ? [name, started].filter(Boolean).join(", ") : started.replace(/^./, (c) => c.toUpperCase());
   return {
-    when,
+    which: name ? `Granska, ${name}, ${when}` : `Granska, körningen ${when}`,
     title: waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`,
-    description: `${when ? `Startad ${when}. ` : ""}Den avbryts om den inte granskas i tid.`,
+    description: `${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`,
   };
 }
 
@@ -124,19 +133,33 @@ export function EarlierRuns({
             ? [...OUTCOME[outcome], "Öppna"]
             : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
           const when = run.created_at ? formatRelativeDate(run.created_at) : "";
-          // The name says which run, for a screen reader that lists the buttons; the words say what it does.
+          const When = when.replace(/^./, (c) => c.toUpperCase());
+          // A named run (the meeting's name and day) is listed by them, and when it ran goes with its state.
+          const name = runName(run);
+          // A node, not a string: Astryx cuts a string label to one line, and a meeting's name may be long, or the
+          // reader's text large; it wraps instead.
+          const title = <>{name || When}</>;
+          const state = name ? `${When} · ${runStatusLabel(run.status)}` : runStatusLabel(run.status);
+          // The name says which run, for a screen reader that lists the buttons, by when too (a weekly meeting repeats
+          // its name); the words say what it does.
           const open = (
-            <Button label={`${action}, körningen ${when}`} variant="secondary" size="sm" data-open-run onClick={() => onOpen(run.id)}>
+            <Button
+              label={name ? `${action}, ${name}, ${when}` : `${action}, körningen ${when}`}
+              variant="secondary"
+              size="sm"
+              data-open-run
+              onClick={() => onOpen(run.id)}
+            >
               {action}
             </Button>
           );
           return room.narrow ? (
             <ListItem
               key={run.id}
-              label={when.replace(/^./, (c) => c.toUpperCase())}
+              label={title}
               description={
                 <VStack gap={2} align="start">
-                  <span>{runStatusLabel(run.status)}</span>
+                  <span>{state}</span>
                   {open}
                 </VStack>
               }
@@ -144,8 +167,8 @@ export function EarlierRuns({
           ) : (
             <ListItem
               key={run.id}
-              label={when.replace(/^./, (c) => c.toUpperCase())}
-              description={runStatusLabel(run.status)}
+              label={title}
+              description={<>{state}</>}
               startContent={<Icon icon={glyph} color={color} />}
               endContent={open}
             />

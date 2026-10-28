@@ -887,6 +887,10 @@ export interface FlowRunSummary {
   trace_id?: string;
   created_at?: string;
   updated_at?: string;
+  /** The run's name: what its starter typed, or the value of the flow's form field that names runs. */
+  run_label?: string | null;
+  /** The day the run is about (a meeting's, "2026-10-01"), from the flow's form field that dates runs. */
+  run_date?: string | null;
   [k: string]: unknown;
 }
 

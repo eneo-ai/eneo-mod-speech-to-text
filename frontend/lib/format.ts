@@ -31,6 +31,15 @@ export function formatRelativeDate(value: string | Date, now: Date = new Date())
   return date.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${day} ${date.getFullYear()}`;
 }
 
+/** A day as written (a meeting's, "2026-10-01"): "1 okt", "31 dec 2025" in another year; empty for no day. */
+export function formatDay(value: string, now: Date = new Date()): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return "";
+  const [year, month, day] = match.slice(1).map(Number);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${day} ${MONTHS[month - 1]}${year === now.getFullYear() ? "" : ` ${year}`}`;
+}
+
 /** A deadline always with its time: "i dag 23:59", "29 dec 09:01", "3 jan 2027 09:01"; empty for an invalid date. */
 export function formatDeadline(value: string | Date, now: Date = new Date()): string {
   const date = value instanceof Date ? value : new Date(value);

@@ -993,7 +993,9 @@ class Handler(BaseHTTPRequestHandler):
         if rest == ["runs"]:
             # Intervju till sammanfattning has a run waiting for its review: the setup says so above its work.
             earlier = {
-                F1: [{"id": RUN["done"], "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z"},
+                # A run named and dated by its form (the meeting's name and day), and one without.
+                F1: [{"id": RUN["done"], "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z",
+                      "run_label": "Styrelsemöte", "run_date": "2026-09-22"},
                      {"id": RUN["failed"], "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"}],
                 F2: [{"id": RUN["review"], "flow_id": fid, "status": "awaiting_review", "created_at": "2026-09-24T09:00:00Z"}],
             }.get(fid, [])
