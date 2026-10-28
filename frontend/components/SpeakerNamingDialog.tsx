@@ -99,6 +99,7 @@ export function SpeakerNamingDialog({
   onSave,
   decided = false,
   draftKey,
+  onUnsavedChange,
   description = "Lyssna på ett exempel och välj vem som talar.",
   children,
 }: {
@@ -129,6 +130,8 @@ export function SpeakerNamingDialog({
   decided?: boolean;
   /** Keeps names typed but not saved for this person through a reload, the dialog open again with them. */
   draftKey?: { ownerId: string; name: string };
+  /** Told whether names are typed and not saved, as that changes: the page asks before it goes on without them. */
+  onUnsavedChange?: (unsaved: boolean) => void;
   /** What naming changes, under the title: the review's words unless the page has its own. */
   description?: string;
   /** The button that opens the dialog; focus returns to it on close. */
@@ -157,6 +160,9 @@ export function SpeakerNamingDialog({
   useEffect(() => {
     if (decided && draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
   }, [decided, draftKey?.ownerId, draftKey?.name]);
+  // Typed and not saved: a name in the dialog that differs from the saved one, the draft read back after a reload too.
+  const unsaved = !decided && typed !== null && draft.some((row, index) => (row.name?.trim() || null) !== (rows[index]?.name?.trim() || null));
+  useEffect(() => onUnsavedChange?.(unsaved), [unsaved]);
   const rename = (label: string, name: string | null) => {
     const next = draft.map((row) => (row.label === label ? { ...row, name } : row));
     setTyped(next);
