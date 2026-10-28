@@ -57,16 +57,13 @@ const REVIEWS = [
   { name: "the text review", id: ids.runs.reviewText, flow: ids.flows.flow1, heading: "Sammanfattning" },
 ];
 
-test("who is who: below a laptop's width, on the narrowest phone too, Godkänn och fortsätt is in the window from the first screen and as the transcript is read, with the reminder over it, nothing covers it and the player docks above the text; the note on speakers without a name goes with Godkänn", async ({ page }, info) => {
+test("who is who: below a laptop's width, on the narrowest phone too, Godkänn och fortsätt is in the window from the first screen and as the transcript is read, with the reminder over it, nothing covers it and the player docks above the text; the note on speakers without a name is in their card", async ({ page }, info) => {
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
   const approve = page.getByRole("button", { name: "Godkänn och fortsätt" });
   const card = page.getByRole("group", { name: "Talare" });
-  const note = page.getByText("Talare utan namn behåller sin etikett i transkriberingen.");
+  await expect(card.getByText("Talare utan namn behåller sin etikett i transkriberingen.")).toBeVisible();
   const { width, height } = info.project.use.viewport!;
-  // What Godkänn does to speakers without a name is said with it: beside it at the card's foot, or in the dock with it.
-  await expect(width >= 1024 ? card.getByText("Talare utan namn behåller sin etikett i transkriberingen.") : page.locator("[data-docked-action]").getByText("Talare utan namn behåller sin etikett i transkriberingen.")).toBeVisible();
-  await expect(note).toHaveCount(1);
   if (width >= 1024) {
     // Beside the transcript, under the speakers' card: in the page, not docked.
     expect(await approve.evaluate((button) => button.closest("[data-docked-action]") === null)).toBe(true);
@@ -105,6 +102,24 @@ test("who is who: below a laptop's width, on the narrowest phone too, Godkänn o
     const { left, top, width: w, height: h } = button.getBoundingClientRect();
     return button.contains(document.elementFromPoint(left + w / 2, top + h / 2));
   }), "nothing over it").toBe(true);
+});
+
+test("who is who at a reader's large text, on the narrowest phone at 125 % and a phone at 200 %: Godkänn och fortsätt stays docked", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-320-light", "the narrowest phone, then a phone at its largest text");
+  await run(page, ids.runs.review, ids.flows.flow2);
+  const dock = page.locator("[data-docked-action]");
+  await expect(dock.getByRole("button", { name: "Godkänn och fortsätt" })).toBeVisible();
+  // The decision has a third of the window; what it holds beyond Godkänn, the reminder and what stops it would take
+  // that share at these sizes, and the decision would end the transcript instead.
+  for (const [width, height, root] of [[320, 568, 20], [390, 844, 34]]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate((root) => {
+      const style = document.getElementById("reader-text") ?? document.head.appendChild(Object.assign(document.createElement("style"), { id: "reader-text" }));
+      style.textContent = `html { font-size: ${root}px !important; }`;
+    }, root);
+    await expect(dock, `${width} × ${height} at ${root} px`).not.toHaveAttribute("data-dock-too-tall");
+    await expect(dock).toHaveCSS("position", "sticky");
+  }
 });
 
 test("who is who: Godkänn och fortsätt and Avvisa körningen keep the focus when the window crosses a laptop's width", async ({ page }, info) => {

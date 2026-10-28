@@ -34,8 +34,8 @@ function typing(region: HTMLElement, on: boolean) {
  * keyboard opens over the window's lower half, and a dock there would cover the text being typed): spread on that
  * region's element, it says so in `data-typing`, which the region's CSS reads (a coarse pointer only), and the docks are
  * measured again in the next frame, so what they cover is what the page is told (iOS resizes no window for its
- * keyboard). An
- * attribute set by hand, not a render or a `:has()`: neither should touch two thousand passages for a focus.
+ * keyboard). An attribute set by hand, not a render or a `:has()`: neither should touch two thousand passages for a
+ * focus.
  */
 export const whileTyping = {
   onFocus: (event: ReactFocusEvent<HTMLElement>) => typing(event.currentTarget, (event.target as Element).matches("input, textarea")),

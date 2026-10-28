@@ -299,7 +299,13 @@ test("a bar pinned over the lower part of a region taller than the room the bars
     document.documentElement.style.scrollPaddingBottom = "120px";
   });
   expect(await under("region"), "a region taller than the room the bar leaves").toEqual([]);
-  await page.evaluate(() => (document.documentElement.style.scrollPaddingBottom = "0px"));
+  // The room is the window less the padding at both edges (a player docked at the top, a decision at the bottom).
+  await page.evaluate(() => {
+    document.getElementById("region")!.style.height = "520px";
+    Object.assign(document.documentElement.style, { scrollPaddingTop: "60px", scrollPaddingBottom: "60px" });
+  });
+  expect(await under("region"), "a region taller than the room both paddings leave").toEqual([]);
+  await page.evaluate(() => Object.assign(document.documentElement.style, { scrollPaddingTop: "0px", scrollPaddingBottom: "0px" }));
   expect(await under("region"), "with no padding for the bar, the room is the whole window").toEqual([expect.stringContaining("partly under")]);
   await page.evaluate(() => {
     document.getElementById("region")!.style.height = "";

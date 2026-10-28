@@ -575,14 +575,6 @@ export function ReviewView({
     </VStack>
   );
 
-  // What Godkänn does to speakers without a name: from a laptop's width at the speakers' card's foot, beside the decision;
-  // narrower in the dock with Godkänn.
-  const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
-    <Text as="p" type="supporting">
-      Talare utan namn behåller sin etikett i transkriberingen.
-    </Text>
-  );
-
   // Narrower, the transcript follows the speakers' card: Godkänn, what stops it and a reminder to read first are docked
   // at the window's bottom, in reach from the first screen however long the meeting, and the transcript's player docks
   // above the text instead (TranscriptPlayer's playerOnTop), so the two bars never stack. Avvisa and its reason stay
@@ -594,8 +586,6 @@ export function ReviewView({
           Läs igenom och rätta innan du godkänner.
         </Text>
       )}
-      {/* What Godkänn does to speakers without a name is said with it, not at the card's foot far above it. */}
-      {unmappedNote}
       {decisionProblems}
       {decidedNote}
       <ActionRow>{approveAction}</ActionRow>
@@ -717,6 +707,12 @@ export function ReviewView({
         {namingAction}
       </VStack>
     );
+    const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
+      <Text as="p" type="supporting">
+        Talare utan namn behåller sin etikett i transkriberingen.
+      </Text>
+    );
+
     return (
       <VStack gap={6}>
         {SPEAKER_REVIEW_ENABLED && intro}
@@ -753,8 +749,9 @@ export function ReviewView({
             <VStack gap={6}>
               {intro}
               {/* The card is the speakers, its heading and its action in one row as the transcript's card has them; the
-                  decision is the page's, under the card. Not docked on a phone: the transcript's player docks there,
-                  and two bars would cover a fifth of the screen. */}
+                  decision is the page's: under the card from a laptop's width, docked at the window's bottom narrower
+                  (Avvisa stays under the card). What Godkänn does to speakers without a name stays at the card's foot:
+                  in the dock it would make the decision too tall for a phone at a reader's large text. */}
               <Card padding={narrow ? 4 : 6} role="group" aria-labelledby="review-speakers">
                 <VStack gap={3}>
                   <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
@@ -764,7 +761,7 @@ export function ReviewView({
                     {namingAction}
                   </HStack>
                   {speakerList}
-                  {split && unmappedNote}
+                  {unmappedNote}
                 </VStack>
               </Card>
               {split ? decision : undockedDecision}

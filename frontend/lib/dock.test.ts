@@ -226,7 +226,7 @@ test("a focus that changes nothing about a dock writes nothing to the page's roo
   [bar, field].forEach((element) => element.remove());
 });
 
-test("a region whose docks stand in the page while a field has the focus says so once, and the docks are measured as it changes", async (t) => {
+test("a region whose docks stand in the page while a field has the focus says so, and the docks are measured a frame after it changes", async (t) => {
   const { observeDock, whileTyping } = await import("./dock");
   const region = document.createElement("section");
   const field = document.createElement("textarea");
@@ -245,12 +245,17 @@ test("a region whose docks stand in the page while a field has the focus says so
   const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
   field.focus();
   assert.ok(region.hasAttribute("data-typing"));
+  assert.equal(size(), "100px", "measured once the page has laid out what the focus opened, not inside the focus");
   await frame();
   assert.equal(size(), "", "typing: the dock covers nothing, and the page says so a frame later (iOS has no resize for it)");
-  button.focus();
-  assert.ok(!region.hasAttribute("data-typing"), "a button is no field");
+  // The focus leaves for no other element (the keyboard closed): nothing else measures the dock then.
+  field.blur();
+  assert.ok(!region.hasAttribute("data-typing"));
   await frame();
   assert.equal(size(), "100px", "done typing: docked and measured again");
+  field.focus();
+  button.focus();
+  assert.ok(!region.hasAttribute("data-typing"), "a button is no field");
   stop();
   [region, bar].forEach((element) => element.remove());
 });

@@ -69,7 +69,7 @@ Everything else stays quiet: no gradient, glow or wash, and nothing that moves t
   "Läs igenom och rätta innan du godkänner." over it: in reach from the first screen however long the meeting, pressed
   after the text rather than before it. The transcript's player docks above the text there, as from a tablet's width, so
   the two bars never stack. Avvisa körningen and its reason stay under the speakers' card, and what Godkänn does to
-  speakers without a name is said in the dock with it. From 1024 px the decision stands under the card, beside the
+  speakers without a name is said at the card's foot. From 1024 px the decision stands under the card, beside the
   transcript. A window crossing 1024 px (a tablet turned) moves them, and the one that had the focus keeps it.
 - The flow page is a column of 20 to 24 rem for the flow (name, description, how it works, classification) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's name

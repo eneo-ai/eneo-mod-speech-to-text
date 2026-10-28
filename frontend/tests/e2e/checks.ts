@@ -796,11 +796,11 @@ function probeFocus(page: Page) {
       // of what shows: the indicator must then be inside it.
       perimeter: onScreenEdges(r),
       focusVisible,
-      // A region taller than the room the window's bars leave (a transcript under a docked player and a docked decision)
-      // shows a part of itself whatever is pinned, and no scroll uncovers it (lib/dock.ts scrolls it nowhere): a bar
-      // over its lower part hides no more than the window's edge does. Its top, where its ring and name start, must
-      // still be clear. Only a region: a control (a field, a button, a passage's [role=button]) is held to the bar
-      // whatever its height.
+      // A region taller than the room the page's scroll padding leaves for its docked bars (a transcript under a docked
+      // player and a docked decision) is one lib/dock.ts scrolls nowhere: it shows a part of itself whatever is pinned,
+      // and a bar over its lower part hides no more than the window's edge does. Its top, where its ring and name
+      // start, must still be clear. Only a region: a control (a field, a button, a passage's [role=button]) is held to
+      // the bar whatever its height.
       obscured: (points > 0 && covered === points
         ? "full"
         : byPinned > 0 && !(r.height > room && byPinnedAtTop === 0 && el.matches('[role="region"], section'))
