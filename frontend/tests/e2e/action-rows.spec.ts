@@ -57,13 +57,16 @@ const REVIEWS = [
   { name: "the text review", id: ids.runs.reviewText, flow: ids.flows.flow1, heading: "Sammanfattning" },
 ];
 
-test("who is who: below a laptop's width, on the narrowest phone too, Godkänn och fortsätt is in the window from the first screen and as the transcript is read, with the reminder over it, nothing covers it and the player docks above the text; the note on speakers without a name is in their card", async ({ page }, info) => {
+test("who is who: below a laptop's width, on the narrowest phone too, Godkänn och fortsätt is in the window from the first screen and as the transcript is read, with the reminder over it, nothing covers it and the player docks above the text; the note on speakers without a name goes with Godkänn", async ({ page }, info) => {
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
   const approve = page.getByRole("button", { name: "Godkänn och fortsätt" });
   const card = page.getByRole("group", { name: "Talare" });
-  await expect(card.getByText("Talare utan namn behåller sin etikett i transkriberingen.")).toBeVisible();
+  const note = page.getByText("Talare utan namn behåller sin etikett i transkriberingen.");
   const { width, height } = info.project.use.viewport!;
+  // What Godkänn does to speakers without a name is said with it: beside it at the card's foot, or in the dock with it.
+  await expect(width >= 1024 ? card.getByText("Talare utan namn behåller sin etikett i transkriberingen.") : page.locator("[data-docked-action]").getByText("Talare utan namn behåller sin etikett i transkriberingen.")).toBeVisible();
+  await expect(note).toHaveCount(1);
   if (width >= 1024) {
     // Beside the transcript, under the speakers' card: in the page, not docked.
     expect(await approve.evaluate((button) => button.closest("[data-docked-action]") === null)).toBe(true);

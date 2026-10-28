@@ -70,7 +70,7 @@ import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
-import { useDock } from "@/lib/dock";
+import { useDock, whileTyping } from "@/lib/dock";
 import { useWorkspace } from "@/lib/workspace";
 import styles from "./ReviewView.module.css";
 
@@ -575,6 +575,14 @@ export function ReviewView({
     </VStack>
   );
 
+  // What Godkänn does to speakers without a name: from a laptop's width at the speakers' card's foot, beside the decision;
+  // narrower in the dock with Godkänn.
+  const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
+    <Text as="p" type="supporting">
+      Talare utan namn behåller sin etikett i transkriberingen.
+    </Text>
+  );
+
   // Narrower, the transcript follows the speakers' card: Godkänn, what stops it and a reminder to read first are docked
   // at the window's bottom, in reach from the first screen however long the meeting, and the transcript's player docks
   // above the text instead (TranscriptPlayer's playerOnTop), so the two bars never stack. Avvisa and its reason stay
@@ -586,6 +594,8 @@ export function ReviewView({
           Läs igenom och rätta innan du godkänner.
         </Text>
       )}
+      {/* What Godkänn does to speakers without a name is said with it, not at the card's foot far above it. */}
+      {unmappedNote}
       {decisionProblems}
       {decidedNote}
       <ActionRow>{approveAction}</ActionRow>
@@ -707,12 +717,6 @@ export function ReviewView({
         {namingAction}
       </VStack>
     );
-    const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
-      <Text as="p" type="supporting">
-        Talare utan namn behåller sin etikett i transkriberingen.
-      </Text>
-    );
-
     return (
       <VStack gap={6}>
         {SPEAKER_REVIEW_ENABLED && intro}
@@ -723,9 +727,8 @@ export function ReviewView({
         <div
           className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}
           // While a text field has the focus (a passage being corrected, the search) a touch screen's soft keyboard covers
-          // the window's lower half: the docked decision stays at the page's end then (ReviewView.module.css).
-          onFocus={(e) => e.currentTarget.toggleAttribute("data-typing", e.target.matches("input, textarea"))}
-          onBlur={(e) => e.currentTarget.removeAttribute("data-typing")}
+          // the window's lower half: the docked decision stays at the page's end then (ReviewView.module.css, lib/dock.ts).
+          {...whileTyping}
         >
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
@@ -761,7 +764,7 @@ export function ReviewView({
                     {namingAction}
                   </HStack>
                   {speakerList}
-                  {unmappedNote}
+                  {split && unmappedNote}
                 </VStack>
               </Card>
               {split ? decision : undockedDecision}

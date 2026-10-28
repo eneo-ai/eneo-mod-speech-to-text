@@ -280,6 +280,7 @@ test("who is who: Namnge talarna stands in the speakers' card's heading row; fro
   assert.ok(!card.contains(approve) && !card.contains(button(view.container, "Avvisa körningen")), "the decision is the page's, not the speakers' group");
   assert.ok(card.compareDocumentPosition(approve) & window.Node.DOCUMENT_POSITION_FOLLOWING, "after the card");
   assert.equal(approve.closest("[data-docked-action]"), null, "not docked");
+  assert.match(card.textContent ?? "", /Talare utan namn behåller sin etikett i transkriberingen\./, "beside the decision, at the card's foot");
   const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
   await view.act(async () => button(view.container, "Avvisa körningen")!.click());
@@ -299,6 +300,9 @@ test("who is who below a laptop's width: Avvisa follows the card, Godkänn och f
   const dock = approve.closest("[data-docked-action]");
   assert.ok(dock && !transcript.contains(dock) && transcript.compareDocumentPosition(dock) & window.Node.DOCUMENT_POSITION_FOLLOWING, "Godkänn in the page's dock, after the transcript");
   assert.match(dock.textContent ?? "", /^Läs igenom och rätta innan du godkänner\./, "the reminder over it");
+  // What Godkänn does to speakers without a name is said with it, not at the card's foot far above it.
+  assert.match(dock.textContent ?? "", /Talare utan namn behåller sin etikett i transkriberingen\./);
+  assert.doesNotMatch(card.textContent ?? "", /Talare utan namn/);
   const player = transcript.querySelector("[data-docked-player]");
   assert.ok(!player || player.hasAttribute("data-dock-edge"), "the player docked on top, not at the bottom with the decision");
   assert.equal([...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Godkänn och fortsätt").length, 1, "one Godkänn on the page");
