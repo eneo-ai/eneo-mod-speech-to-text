@@ -65,9 +65,12 @@ Everything else stays quiet: no gradient, glow or wash, and nothing that moves t
 **Key Characteristics:**
 - One primary action per state: a 48 px accent button, full width in its column, docked at the bottom in one column (a
   phone, a tablet upright). A review's decision is the design system's middle size (32 px with a mouse, 44 px on touch).
-  The speaker review keeps its decision in the page on a phone too, under the speakers: the transcript's player docks at
-  the bottom there, and two bars would cover a fifth of the screen. On a phone what Godkänn does to speakers without a
-  name is said under the decision, not at the speakers' card's foot, so the decision starts on a 320 px first screen.
+  Below 1024 px the speaker review docks Godkänn och fortsätt at the window's bottom, as the text review does, with
+  "Läs igenom och rätta innan du godkänner." over it: in reach from the first screen however long the meeting, pressed
+  after the text rather than before it. The transcript's player docks above the text there, as from a tablet's width, so
+  the two bars never stack. Avvisa körningen and its reason stay under the speakers' card, and what Godkänn does to
+  speakers without a name is said at the card's foot. From 1024 px the decision stands under the card, beside the
+  transcript.
 - The flow page is a column of 20 to 24 rem for the flow (name, description, how it works, classification) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's name
   (on a tablet its description too), how it works follows the work, and the classification follows the choice. The
@@ -188,7 +191,7 @@ switches round. One-pixel borders are `var(--border-width)`.
   bottom, with one page scroll.
 - **A card's own action** stands at the end of the card's heading row, never on a row of its own between rules:
   "Transkribering … Ladda ner", "Talare … Namnge talarna". The review's decision is the page's, under the speakers' card
-  and not in its group.
+  (Godkänn docked at the window's bottom below 1024 px) and not in its group.
 - **An action stands with what it acts on:** the microphone test under Spela in, the chosen file under Ladda upp.
 
 ### Inputs / Fields
@@ -247,7 +250,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   fold follows the work. On a phone the flow's description opens it, read once there rather than over the choice: the
   person read it in the flow's row of the list.
 - "Tips för bra ljud" is folded under the microphone test, with a way that records only.
-- "Tidigare körningar" ends the working card, under the form; while it lists runs, a ghost button of that name brings it
+- "Tidigare körningar" ends the working card, under the form. A run its form named and dated (the flow's fields with the
+  roles `run_label` and `run_date` in Eneo) is listed by them, "Styrelsemöte, 22 sep", with when it ran and its state
+  under them; one without, by when it ran. While it lists runs, a ghost button of that name brings it
   into view and gives its heading the focus. From 1024 px it stands under the flow's name in the flow's column, so the
   card keeps its action on a laptop's first screen; below, above the working card, and not on a short screen.
 
@@ -301,7 +306,7 @@ switches round. One-pixel borders are `var(--border-width)`.
 - A transcript that was read and is empty says so in its place ("Inget tal hittades i ljudet."): never an empty tab or
   column.
 - The player docks to the text. On a phone it is under the text and stays at the window's bottom, where a thumb reaches
-  it, one row high: its speed stands in the row, and under 400 px the time says the position alone, the speed its words
+  it (in the speaker review, whose decision docks there, it stays at the window's top), one row high: its speed stands in the row, and under 400 px the time says the position alone, the speed its words
   without a chevron, and the controls stand 8 px apart, so the slider keeps its 120 px. From 640 to 1023 px, where the
   page scrolls and a bottom player would cover the passages the window starts on, it stands above the text under the
   tools and stays at the window's top. From 1024 px it sits at the bottom of the transcript's card, and on a screen

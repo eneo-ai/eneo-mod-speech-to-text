@@ -791,7 +791,9 @@ function probeFocus(page: Page) {
       // of what shows: the indicator must then be inside it.
       perimeter: onScreenEdges(r),
       focusVisible,
-      obscured: (points > 0 && covered === points ? "full" : byPinned > 0 ? "partial" : "none") as FocusStop["obscured"],
+      // A stop taller than the window (a phone's transcript region) shows a part of itself whatever is pinned: a bar over
+      // that part hides no more than the window's edge does, and nothing can uncover it; only hiding it all counts.
+      obscured: (points > 0 && covered === points ? "full" : byPinned > 0 && r.height <= innerHeight ? "partial" : "none") as FocusStop["obscured"],
       coveredBy,
       offscreen: points === 0,
       pinned: ownPin !== null,

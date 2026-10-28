@@ -11,13 +11,10 @@
       - listitem: Anna Berg Talare 1
       - listitem: Erik Lund Talare 2 Osäkert förslag
       - listitem: Talare 3 Inget namn
-  - button "Godkänn och fortsätt":
-    - text: ""
-    - status
+    - paragraph: Talare utan namn behåller sin etikett i transkriberingen.
   - button "Avvisa körningen":
     - text: ""
     - status
-  - paragraph: Talare utan namn behåller sin etikett i transkriberingen.
   - region "Inspelning och transkribering":
     - heading "Transkribering" [level=2]
     - button "Ladda ner granskad transkribering":
@@ -28,6 +25,15 @@
     - textbox "Sök i transkriberingen"
     - status
     - status
+    - 'group "Uppspelning: Inspelningen"':
+      - button "Spela upp":
+        - status
+      - text: Position i inspelningen
+      - slider "Position i inspelningen"
+      - text: /^0:\d+$/
+      - button "Hastighet 1×":
+        - text: 1×
+        - status
     - link "Hoppa förbi transkriberingen":
       - /url: /#.+/
     - heading "Del 1" [level=3]
@@ -64,12 +70,7 @@
         - button /Spela från 0:\d+ i del 2/
         - button /Rätta repliken från 0:\d+ i del 2/
         - text: Nya turer börjar gälla efter höstlovet.
-    - 'group "Uppspelning: Inspelningen"':
-      - button "Spela upp":
-        - status
-      - text: Position i inspelningen
-      - slider "Position i inspelningen"
-      - text: /^0:\d+$/
-      - button "Hastighet 1×":
-        - text: 1×
-        - status
+  - paragraph: Läs igenom och rätta innan du godkänner.
+  - button "Godkänn och fortsätt":
+    - text: ""
+    - status

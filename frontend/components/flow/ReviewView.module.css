@@ -56,6 +56,14 @@
   }
 }
 
+/* The soft keyboard opens over the lower half of a touch screen: while a text field of the speaker review has the focus
+   (data-typing, ReviewView.tsx) its docked decision stays at the page's end, not over the text being typed. */
+@media (pointer: coarse) {
+  [data-typing] ~ .dock {
+    position: static;
+  }
+}
+
 /* The text review is a reading column from a laptop's width, and the decision's rule ends with it; below it, it has the
    whole column, as the speaker review and every result do, and the rule meets the window's edges. */
 @media (min-width: 1024px) {

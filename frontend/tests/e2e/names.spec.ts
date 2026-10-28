@@ -276,7 +276,7 @@ test("an approved text review shows the saved decision; a draft from before it i
   expect(writes).toEqual(["resume"]);
 });
 
-test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height: the middle size, 44 px under a finger", async ({ page }, info) => {
+test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt (apart in who is who below a laptop's width), of one height: the middle size, 44 px under a finger", async ({ page }, info) => {
   for (const state of ["review", "review-text-edit"]) {
     await STATES.find((s) => s.name === state)!.go(page, info);
     const avvisa = page.getByRole("button", { name: "Avvisa körningen" });
@@ -287,9 +287,12 @@ test("the decision is a pair at the end of its bar, Avvisa then Godkänn och for
     ]);
     expect(reject!.height, `${state}: one height`).toBe(approve!.height);
     expect(approve!.height, `${state}: the design system's middle size`).toBe(info.project.use.hasTouch ? 44 : 32);
-    expect(approve!.x + approve!.width, `${state}: Godkänn och fortsätt ends the bar`).toBeCloseTo(bar!.x + bar!.width, 0);
+    // Below a laptop's width who is who docks Godkänn at the page's end, at the end of a bar of its own.
+    const apart = state === "review" && info.project.use.viewport!.width < 1024;
+    const approveBar = apart ? await page.getByRole("button", { name: "Godkänn och fortsätt" }).locator("..").boundingBox() : bar;
+    expect(approve!.x + approve!.width, `${state}: Godkänn och fortsätt ends the bar`).toBeCloseTo(approveBar!.x + approveBar!.width, 0);
     // Beside it, or above it where the bar wraps: never at the bar's other end.
-    expect(approve!.x - (reject!.x + reject!.width), `${state}: Avvisa stands next to it`).toBeLessThanOrEqual(16);
+    if (!apart) expect(approve!.x - (reject!.x + reject!.width), `${state}: Avvisa stands next to it`).toBeLessThanOrEqual(16);
   }
 });
 

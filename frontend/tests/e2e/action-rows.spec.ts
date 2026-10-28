@@ -57,18 +57,32 @@ const REVIEWS = [
   { name: "the text review", id: ids.runs.reviewText, flow: ids.flows.flow1, heading: "Sammanfattning" },
 ];
 
-test("who is who: Godkänn och fortsätt is whole on the narrowest phone's first screen, and what it does to speakers without a name follows it on a phone", async ({ page }, info) => {
+test("who is who: below a laptop's width, on the narrowest phone too, Godkänn och fortsätt is in the window from the first screen and as the transcript is read, with the reminder over it, nothing covers it and the player docks above the text; the note on speakers without a name is in their card", async ({ page }, info) => {
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
-  const approve = (await page.getByRole("button", { name: "Godkänn och fortsätt" }).boundingBox())!;
-  const reject = (await page.getByRole("button", { name: "Avvisa körningen", exact: true }).boundingBox())!;
-  const note = (await page.getByText("Talare utan namn behåller sin etikett i transkriberingen.").boundingBox())!;
+  const approve = page.getByRole("button", { name: "Godkänn och fortsätt" });
+  const card = page.getByRole("group", { name: "Talare" });
+  await expect(card.getByText("Talare utan namn behåller sin etikett i transkriberingen.")).toBeVisible();
   const { width, height } = info.project.use.viewport!;
-  if (width < 640) {
-    expect(note.y, "the note under the decision's buttons").toBeGreaterThan(Math.max(approve.y + approve.height, reject.y + reject.height));
-    if (width < 360) expect(approve.y + approve.height, "Godkänn och fortsätt whole on the first screen").toBeLessThanOrEqual(height);
-  } else {
-    expect(note.y + note.height, "the note in the speakers' card, above the decision").toBeLessThan(approve.y);
+  if (width >= 1024) {
+    // Beside the transcript, under the speakers' card: in the page, not docked.
+    expect(await approve.evaluate((button) => button.closest("[data-docked-action]") === null)).toBe(true);
+    return;
+  }
+  await expect(page.getByText("Läs igenom och rätta innan du godkänner.")).toBeVisible();
+  const passages = page.locator('section[aria-label="Inspelning och transkribering"], section[aria-label="Transkribering"]').first();
+  for (const at of ["first screen", "center", "end"] as const) {
+    if (at !== "first screen") await passages.evaluate((section, block) => section.scrollIntoView({ block, behavior: "instant" }), at);
+    const box = (await approve.boundingBox())!;
+    expect(box.y >= 0 && box.y + box.height <= height, `whole in the window at the transcript's ${at}`).toBe(true);
+    const onTop = await approve.evaluate((button) => {
+      const { left, top, width: w, height: h } = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(left + w / 2, top + h / 2));
+    });
+    expect(onTop, `nothing over it at the transcript's ${at}`).toBe(true);
+    // The player docks on top: never a second bar over the decision.
+    const player = await page.locator("[data-docked-player]").first().boundingBox();
+    if (player && at !== "first screen") expect(player.y + player.height, "the player above the decision").toBeLessThanOrEqual(box.y);
   }
 });
 
@@ -76,8 +90,25 @@ for (const review of REVIEWS) {
   test(`${review.name}: Avvisa and Godkänn och fortsätt follow the decision's rule`, async ({ page }, info) => {
     await run(page, review.id, review.flow);
     await expect(page.getByRole("heading", { name: review.heading, level: 1 })).toBeVisible();
-    const found = await layout(page.getByRole("button", { name: "Godkänn och fortsätt" }), page.getByRole("button", { name: "Avvisa körningen", exact: true }));
-    followsTheRule(found, info.project.use.viewport!.width <= 640);
+    const width = info.project.use.viewport!.width;
+    const approve = page.getByRole("button", { name: "Godkänn och fortsätt" });
+    const reject = page.getByRole("button", { name: "Avvisa körningen", exact: true });
+    if (review.name === "who is who" && width < 1024) {
+      // Apart: Avvisa under the speakers' card, Godkänn docked at the page's end, each a row of its own by the rule.
+      for (const button of [approve, reject]) {
+        const { row, own } = await button.evaluate((element) => {
+          const box = (target: Element) => {
+            const { left, right } = target.getBoundingClientRect();
+            return { left: Math.round(left), right: Math.round(right) };
+          };
+          return { row: box(element.parentElement!), own: box(element) };
+        });
+        if (width <= 640) expect(own, "across its row").toEqual(row);
+        else expect(own.right, "at its row's end").toBe(row.right);
+      }
+      return;
+    }
+    followsTheRule(await layout(approve, reject), width <= 640);
   });
 }
 
