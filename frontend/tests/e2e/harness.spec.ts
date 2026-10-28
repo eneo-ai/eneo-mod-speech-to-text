@@ -305,7 +305,11 @@ test("a bar pinned over the lower part of a region taller than the room the bars
     Object.assign(document.documentElement.style, { scrollPaddingTop: "60px", scrollPaddingBottom: "60px" });
   });
   expect(await under("region"), "a region taller than the room both paddings leave").toEqual([]);
-  await page.evaluate(() => Object.assign(document.documentElement.style, { scrollPaddingTop: "0px", scrollPaddingBottom: "0px" }));
+  // The bar over the lower tenth of a region the window holds whole: no padding leaves room for it.
+  await page.evaluate(() => {
+    document.getElementById("region")!.style.height = "560px";
+    Object.assign(document.documentElement.style, { scrollPaddingTop: "0px", scrollPaddingBottom: "0px" });
+  });
   expect(await under("region"), "with no padding for the bar, the room is the whole window").toEqual([expect.stringContaining("partly under")]);
   await page.evaluate(() => {
     document.getElementById("region")!.style.height = "";
