@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type FocusEvent,
   type RefObject,
 } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -141,6 +142,17 @@ export function ReviewView({
   const announce = useAnnounce();
   const narrow = useMediaQuery(STACKED);
   const split = useMediaQuery(SPLIT);
+  // A window crossing a laptop's width (a tablet turned) moves Godkänn and Avvisa between the dock and the speakers'
+  // card: the one that had the focus keeps it. A focus that went elsewhere since is left alone.
+  const decisionFocus = useRef<RefObject<HTMLButtonElement | null> | null>(null);
+  const keepsFocus = (button: RefObject<HTMLButtonElement | null>) => ({
+    onFocus: () => void (decisionFocus.current = button),
+    onBlur: (event: FocusEvent<HTMLButtonElement>) => void (event.relatedTarget && (decisionFocus.current = null)),
+  });
+  useLayoutEffect(() => {
+    const had = decisionFocus.current?.current;
+    if (had && (document.activeElement === document.body || document.activeElement === null)) had.focus();
+  }, [split]);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   // A consequence, at the body's size: not a footnote. Its clock stands beside the first line when the words wrap.
@@ -191,6 +203,7 @@ export function ReviewView({
   // edit's Avbryt back to Redigera.
   const handOff = useRef<RefObject<HTMLElement | null> | null>(null);
   const rejectButton = useRef<HTMLButtonElement>(null);
+  const approveButton = useRef<HTMLButtonElement>(null);
   const reasonField = useRef<HTMLTextAreaElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const textField = useRef<HTMLTextAreaElement>(null);
@@ -497,6 +510,7 @@ export function ReviewView({
   const rejectAction = !decided && (
     <Button
       ref={rejectButton}
+      {...keepsFocus(rejectButton)}
       variant="secondary"
       label="Avvisa körningen"
       isDisabled={busy}
@@ -508,6 +522,8 @@ export function ReviewView({
   );
   const approveAction = (
     <Button
+      ref={approveButton}
+      {...keepsFocus(approveButton)}
       variant="primary"
       icon={<Icon icon={CheckCircle2} />}
       label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}

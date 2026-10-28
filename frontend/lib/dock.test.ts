@@ -160,3 +160,42 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   bar.remove();
   document.documentElement.style.removeProperty("scroll-padding-bottom");
 });
+
+test("a dock that yields stands in the page when it and the docks that do not yield would cover more than a third", async () => {
+  const { observeDock } = await import("./dock");
+  const third = Math.ceil(window.innerHeight / 3);
+  // The speaker review's decision at the bottom, its transcript's player on top (TranscriptPlayer).
+  const decision = dock(third - 60);
+  const stopDecision = observeDock(decision);
+  const player = dock(50);
+  const stopPlayer = observeDock(player, "top", true);
+  assert.ok(!player.hasAttribute("data-dock-too-tall"), "together within a third: both docked");
+  Object.defineProperty(decision, "offsetHeight", { configurable: true, get: () => third - 20 });
+  window.dispatchEvent(new window.Event("resize"));
+  assert.ok(player.hasAttribute("data-dock-too-tall"), "larger text: the player stands in the text");
+  assert.ok(!decision.hasAttribute("data-dock-too-tall"), "the decision stays in reach");
+  stopDecision();
+  assert.ok(!player.hasAttribute("data-dock-too-tall"), "the decision gone: the player is docked again");
+  stopPlayer();
+  [decision, player].forEach((element) => element.remove());
+});
+
+test("a dock that is stuck again when a field loses the focus is measured again, with no resize", async (t) => {
+  const { observeDock } = await import("./dock");
+  const bar = dock(100);
+  const stop = observeDock(bar);
+  const field = document.createElement("textarea");
+  document.body.append(field);
+  // While a field has the focus a touch screen's soft keyboard is up, and the page puts the dock in its flow
+  // (ReviewView's data-typing): it covers nothing then.
+  // As React's onFocus and onBlur, which listen for focusin and focusout above the page.
+  field.addEventListener("focusin", () => (bar.style.position = "static"));
+  field.addEventListener("focusout", () => (bar.style.position = "sticky"));
+  field.focus();
+  assert.equal(size(), "", "typing: in the page's flow");
+  field.blur();
+  assert.equal(size(), "100px", "done typing: docked and measured again, so focus stops short of it");
+  stop();
+  [bar, field].forEach((element) => element.remove());
+  t.mock.restoreAll();
+});

@@ -70,7 +70,7 @@ Everything else stays quiet: no gradient, glow or wash, and nothing that moves t
   after the text rather than before it. The transcript's player docks above the text there, as from a tablet's width, so
   the two bars never stack. Avvisa körningen and its reason stay under the speakers' card, and what Godkänn does to
   speakers without a name is said at the card's foot. From 1024 px the decision stands under the card, beside the
-  transcript.
+  transcript. A window crossing 1024 px (a tablet turned) moves them, and the one that had the focus keeps it.
 - The flow page is a column of 20 to 24 rem for the flow (name, description, how it works, classification) beside the
   working card from 1024 px; one column below it, where the setup's choice of way in comes right after the flow's name
   (on a tablet its description too), how it works follows the work, and the classification follows the choice. The
@@ -123,7 +123,7 @@ Words with no break point wrap (`overflowWrap: anywhere` on text and headings) r
 A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone, and a long
 compound in it is hyphenated (`hyphens: auto`, the page is `lang="sv"`): "Samtalssamman-ställning", not a break inside a
 syllable.
-Every size is in rem, so the text follows the reader's own size: the browser's setting and, on an iPhone or iPad, the text size set in iOS (17 px at the default size, through `-apple-system-body`). A dock (the phone's bottom action bar, the player) that large text makes taller than a third of the window stands at the page's end instead of over it.
+Every size is in rem, so the text follows the reader's own size: the browser's setting and, on an iPhone or iPad, the text size set in iOS (17 px at the default size, through `-apple-system-body`). A dock (the phone's bottom action bar, the player) that large text makes taller than a third of the window stands at the page's end instead of over it; the transcript's player counts a page's own dock into that third (the speaker review's decision), and stands in the text first.
 
 ## Layout
 

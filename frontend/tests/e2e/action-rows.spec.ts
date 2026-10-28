@@ -84,6 +84,32 @@ test("who is who: below a laptop's width, on the narrowest phone too, Godkänn o
     const player = await page.locator("[data-docked-player]").first().boundingBox();
     if (player && at !== "first screen") expect(player.y + player.height, "the player above the decision").toBeLessThanOrEqual(box.y);
   }
+  // A short screen (a phone on its side) docks nothing: the decision ends the page, whole and uncovered once reached.
+  await page.setViewportSize({ width: 844, height: 390 });
+  const dock = page.locator("[data-docked-action]");
+  await expect(dock).toHaveCSS("position", "static");
+  await approve.scrollIntoViewIfNeeded();
+  const reached = (await approve.boundingBox())!;
+  expect(reached.y >= 0 && reached.y + reached.height <= 390, "whole in the window once scrolled to").toBe(true);
+  expect(await approve.evaluate((button) => {
+    const { left, top, width: w, height: h } = button.getBoundingClientRect();
+    return button.contains(document.elementFromPoint(left + w / 2, top + h / 2));
+  }), "nothing over it").toBe(true);
+});
+
+test("who is who: Godkänn och fortsätt and Avvisa körningen keep the focus when the window crosses a laptop's width", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "a window resized across 1024 px");
+  await run(page, ids.runs.review, ids.flows.flow2);
+  await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
+  for (const name of ["Godkänn och fortsätt", "Avvisa körningen"]) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name, exact: true }).focus();
+    // Narrower Godkänn docks at the window's bottom and Avvisa stands alone under the card; wider, they are a pair again.
+    for (const width of [900, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole("button", { name, exact: true }), `${name} at ${width} px`).toBeFocused();
+    }
+  }
 });
 
 for (const review of REVIEWS) {

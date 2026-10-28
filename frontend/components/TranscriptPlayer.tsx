@@ -570,7 +570,8 @@ export function TranscriptPlayer(
 
   const [follow, setFollow] = useState(true);
   const playerOnTop = useMediaQuery(PLAYER_ON_TOP) || playerOnTopOfPage;
-  const [dock, dockRef] = useDock(playerOnTop ? "top" : "bottom");
+  // It yields to a page's own dock (the speaker review's decision) when the two would cover too much of the window.
+  const [dock, dockRef] = useDock(playerOnTop ? "top" : "bottom", true);
   const phone = useMediaQuery(PHONE);
   const tiny = useMediaQuery(TINY);
   const [editingIndex, setEditingIndex] = useState(-1);

@@ -10,7 +10,9 @@ import { useEffect, useState } from "react";
  * whenever its passages change.
  */
 type DockEdge = "bottom" | "top";
-const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null }>();
+const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null; yields: boolean }>();
+/** The measures of the docks that yield, run again when a dock that does not yield changes what it covers. */
+const yielding = new Set<() => void>();
 
 function publish() {
   const shown = [...docks.values()];
@@ -32,15 +34,22 @@ const MOST_OF_WINDOW = 1 / 3;
 /**
  * Keeps a dock's height in `--dock-block-size` while it is on the page and covers it (stuck to the window's edge), and
  * its edge in `data-dock` while it is shown at all: one in the page's flow (a laptop's card) still ends what is read.
+ * A dock that `yields` (the transcript's player) counts the docks that do not (a page's action) into its share of the
+ * window: past it, the player stands in the text and the action stays in reach.
  */
-export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () => void {
+export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields = false): () => void {
   const measure = () => {
-    const tooTall = dock.offsetHeight > window.innerHeight * MOST_OF_WINDOW;
+    const others = yields ? [...docks].reduce((sum, [other, { size, yields: alsoYields }]) => sum + (other === dock || alsoYields ? 0 : size), 0) : 0;
+    const tooTall = dock.offsetHeight + others > window.innerHeight * MOST_OF_WINDOW;
     dock.toggleAttribute("data-dock-too-tall", tooTall);
     const covers = !tooTall && dock.offsetHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
-    docks.set(dock, { size: covers ? dock.offsetHeight : 0, edge: dock.offsetHeight > 0 ? edge : null });
+    const size = covers ? dock.offsetHeight : 0;
+    const changed = docks.get(dock)?.size !== size;
+    docks.set(dock, { size, edge: dock.offsetHeight > 0 ? edge : null, yields });
     publish();
+    if (!yields && changed) yielding.forEach((again) => again());
   };
+  if (yields) yielding.add(measure);
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
   // in a dialog or a popover (a sheet over the dock) does not move with the page. One taller than the room the padding
@@ -55,7 +64,11 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
   const key = () => {
     pressed = false;
   };
+  // A page that puts its dock in its flow while a field has the focus (a touch screen's soft keyboard: ReviewView's and
+  // TranscriptPlayer's data-typing) changes no size: the dock is measured again as the focus comes and goes, after the
+  // page's own focus handlers, before a control is uncovered.
   const uncover = ({ target }: FocusEvent) => {
+    measure();
     if (pressed || !docks.get(dock)?.size || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
     if (target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
@@ -76,6 +89,7 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
   document.addEventListener("pointerdown", press, true);
   document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", uncover);
+  document.addEventListener("focusout", measure);
   measure();
   return () => {
     observer.disconnect();
@@ -83,8 +97,11 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
     document.removeEventListener("pointerdown", press, true);
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
+    document.removeEventListener("focusout", measure);
+    yielding.delete(measure);
     docks.delete(dock);
     publish();
+    if (!yields) yielding.forEach((again) => again());
   };
 }
 
@@ -92,8 +109,8 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom"): () =>
  * The dock's element, for the place that renders it to attach (as a ref) and to portal into, observed while it is there
  * at the window's `edge`.
  */
-export function useDock(edge: DockEdge = "bottom"): [HTMLElement | null, (element: HTMLElement | null) => void] {
+export function useDock(edge: DockEdge = "bottom", yields = false): [HTMLElement | null, (element: HTMLElement | null) => void] {
   const [dock, setDock] = useState<HTMLElement | null>(null);
-  useEffect(() => (dock ? observeDock(dock, edge) : undefined), [dock, edge]);
+  useEffect(() => (dock ? observeDock(dock, edge, yields) : undefined), [dock, edge, yields]);
   return [dock, setDock];
 }
