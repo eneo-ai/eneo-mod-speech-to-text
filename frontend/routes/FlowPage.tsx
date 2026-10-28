@@ -201,6 +201,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // This user's earlier runs of the flow, a page at a time.
   const [earlier] = useState(() => new EarlierRunsList(flowId));
   const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
+  // Read again as the run on screen starts, ends or waits for review, so the setup the person goes back to draws its latest
+  // runs as they are, rather than filling a row in above the form after it is shown.
+  const runOnScreen = "run" in run ? `${run.run.id} ${runOutcome(run.run.status) ?? run.run.status}` : null;
+  useEffect(() => {
+    if (runOnScreen) loadEarlierRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runOnScreen]);
   // Why Eneo would not continue the failed run on screen, and whether a new run is the way on.
   const [retryRefusal, setRetryRefusal] = useState<{ message: string; startAgain: boolean } | null>(null);
 

@@ -701,6 +701,20 @@ test("the microphone picker is operated with the keyboard and gives the focus ba
   await expect(picker, "Escape gives focus back to the combobox").toBeFocused();
 });
 
+test("Visa alla under the latest runs gives Tidigare körningar's heading the focus, in the window and under nothing", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Visa alla körningar" }).focus();
+  await page.keyboard.press("Enter");
+  const heading = page.getByRole("heading", { name: "Tidigare körningar" });
+  await expect(heading).toBeFocused();
+  const stop = (await focusStop(page))!;
+  expect(stop.offscreen, "in the window").toBe(false);
+  expect(stop.obscured, `not under ${stop.coveredBy} (the bar or the docked action)`).toBe("none");
+  // Tab goes on from the list, not from the top of the page.
+  await page.keyboard.press(tabKey(page));
+  await expect(page.getByRole("region", { name: "Tidigare körningar" }).getByRole("button").first()).toBeFocused();
+});
+
 test("the input modes change with the arrow keys", async ({ page }) => {
   needsRecording();
   await setup(page);

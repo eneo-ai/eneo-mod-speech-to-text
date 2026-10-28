@@ -16,6 +16,26 @@ export function pendingReviews(runs: readonly FlowRunSummary[]): FlowRunSummary[
   return runs.filter((run) => run.status === "awaiting_review" && run.purpose !== "test");
 }
 
+const LATEST = 3;
+
+/**
+ * The setup's latest runs, at its top: those waiting for this person's review first, then the newest, three at most; with
+ * `waitingOnly` (a short screen, whose first screen is the ways in's) only those waiting. Never a test run.
+ */
+export function latestRuns(runs: readonly FlowRunSummary[], { waitingOnly = false } = {}): FlowRunSummary[] {
+  const waiting = pendingReviews(runs);
+  const rest = waitingOnly ? [] : runs.filter((run) => run.purpose !== "test" && !waiting.includes(run));
+  return [...waiting, ...rest].slice(0, LATEST);
+}
+
+/**
+ * Whether the list of earlier runs has more to show than `latest`, the setup's latest runs: more runs, more in Eneo, or a
+ * read to try again. Where it has not, the latest runs are the list.
+ */
+export function listsMore(list: EarlierRunsSnapshot, latest: readonly FlowRunSummary[]): boolean {
+  return list.hasMore || list.failed !== null || list.runs.filter((run) => run.purpose !== "test").length > latest.length;
+}
+
 export interface EarlierRunsSnapshot {
   runs: readonly FlowRunSummary[];
   /** Eneo has more of them than are shown. */

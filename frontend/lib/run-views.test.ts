@@ -559,19 +559,53 @@ test("an earlier run with a name is listed by its name, with when and its state 
   assert.match(dayOnly, /aria-label="Öppna, körningen i går 15:40, möte 1 okt 2025"/);
 });
 
-test("a named run waiting for review is named in the notice and its Granska", async () => {
-  const { PendingReview, pendingReviewSaid } = await import("../components/flow/EarlierRuns");
+test("a named run waiting for review is said by its name in the setup's status", async () => {
+  const { pendingReviewSaid } = await import("../components/flow/EarlierRuns");
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   yesterday.setHours(15, 40, 0, 0);
   const list = listed([
     { id: "run-2", flow_id: "flow-1", status: "awaiting_review", created_at: yesterday.toISOString(), run_label: "Testmöte 2" },
   ]);
-  const html = markup(createElement(PendingReview, { list, onOpen: () => undefined }));
+  assert.equal(pendingReviewSaid(list), "En körning väntar på din granskning. Testmöte 2, startad i går 15:40. Den avbryts om den inte granskas i tid.");
+  assert.equal(pendingReviewSaid(listed([])), "");
+});
 
-  assert.match(text(html), /Testmöte 2, startad i går 15:40\. Den avbryts om den inte granskas i tid\./);
+test("the latest runs: those waiting for review first, then the newest, three at most, in the rows of the earlier runs", async () => {
+  const { LatestRuns } = await import("../components/flow/EarlierRuns");
+  const { latestRuns, listsMore } = await import("./earlier-runs");
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(15, 40, 0, 0);
+  const at = yesterday.toISOString();
+  const runs = [
+    { id: "new", flow_id: "flow-1", status: "completed", created_at: at, run_label: "Styrelsemöte", run_date: "2025-10-01" },
+    { id: "test", flow_id: "flow-1", status: "awaiting_review", created_at: at, purpose: "test" },
+    { id: "failed", flow_id: "flow-1", status: "failed", created_at: at },
+    { id: "waiting", flow_id: "flow-1", status: "awaiting_review", created_at: at, run_label: "Testmöte 2" },
+    { id: "old", flow_id: "flow-1", status: "completed", created_at: at },
+  ];
+  const ids = (list: { id: string }[]) => list.map((run) => run.id);
+  assert.deepEqual(ids(latestRuns(runs)), ["waiting", "new", "failed"], "waiting first, then the newest; a test run never");
+  assert.deepEqual(ids(latestRuns(runs, { waitingOnly: true })), ["waiting"], "a short screen: only those waiting");
+  assert.deepEqual(latestRuns(runs.filter((run) => run.status !== "awaiting_review"), { waitingOnly: true }), []);
+  assert.equal(listsMore(listed(runs), latestRuns(runs)), true, "a fourth run: the list has more");
+  const three = runs.slice(0, 4);
+  assert.equal(listsMore(listed(three), latestRuns(three)), false, "the latest runs are the list (a test run is none of it)");
+  assert.equal(listsMore({ ...listed(three), hasMore: true }, latestRuns(three)), true, "Eneo has more");
+  assert.equal(listsMore({ ...listed([]), failed: "first" }, []), true, "a read to try again");
+
+  const html = markup(createElement(LatestRuns, { runs: latestRuns(runs), more: true, onOpen: () => undefined }));
+  const words = text(html);
+  assert.match(words, /^Senaste körningar Testmöte 2 Startad i går 15:40 Väntar på granskning Granska Styrelsemöte Möte 1 okt 2025 · startad i går 15:40 Klar Öppna I går 15:40 Misslyckades Öppna Visa alla$/);
   assert.match(html, /aria-label="Granska, Testmöte 2, startad i går 15:40"/);
-  assert.match(pendingReviewSaid(list), /^En körning väntar på din granskning\. Testmöte 2, startad i går 15:40\./);
+  assert.match(html, /aria-label="Visa alla körningar"/);
+  assert.doesNotMatch(
+    text(markup(createElement(LatestRuns, { runs: latestRuns(three), more: false, onOpen: () => undefined }))),
+    /Visa alla/,
+    "nothing more to show",
+  );
+  assert.equal(markup(createElement(LatestRuns, { runs: [], more: true, onOpen: () => undefined })), "", "no runs, no list");
 });
 
 test("more earlier runs than a page: 'Visa fler körningar' below the list, with its own waiting and failure", () => {

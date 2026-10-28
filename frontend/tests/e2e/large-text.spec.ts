@@ -51,6 +51,14 @@ for (const size of [AX2, AX5, ZOOM]) {
     await expect(runs.getByRole("button", { name: /^Öppna, körningen/ }).first()).toBeVisible();
     expect(await cut(runs)).toEqual([]);
   });
+
+  // The zoomed phone's window is a short screen's, whose latest runs are only those waiting for review.
+  test(`the latest runs keep their date and state whole at ${name(size)}`, async ({ page }) => {
+    await at(page, size.height <= 640 ? "setup-review-waiting" : "setup", size);
+    const runs = page.getByRole("region", { name: "Senaste körningar" });
+    await expect(runs.getByRole("button").first()).toBeVisible();
+    expect(await cut(runs)).toEqual([]);
+  });
 }
 
 for (const size of [AX5, ZOOM]) {

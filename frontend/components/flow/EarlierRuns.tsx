@@ -1,6 +1,5 @@
-import { CheckCircle2, Clock, History, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import { ArrowDown, CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -18,34 +17,6 @@ const OUTCOME: Record<string, [LucideIcon, "success" | "error" | "secondary"]> =
   failed: [XCircle, "error"],
   cancelled: [MinusCircle, "secondary"],
 };
-
-/**
- * A run of this flow that waits for the person's review, said above the setup's work, where a person who came to start
- * another run sees it: Eneo cancels a review that is not done in time. The newest one is opened from here; the list of
- * earlier runs has them all.
- */
-export function PendingReview({ list, onOpen }: { list: EarlierRunsSnapshot; onOpen: (runId: string) => void }) {
-  const words = pendingReviewWords(list);
-  const newest = pendingReviews(list.runs)[0];
-  if (!words || !newest) return null;
-  return (
-    // A note, not a live region: it arrives with its words when the list does, which a screen reader does not reliably
-    // read out. The setup's own status region, there from the start, says it (FlowInput, pendingReviewSaid).
-    <Banner
-      role="note"
-      status="info"
-      collapsible={false}
-      title={words.title}
-      description={words.description}
-      endContent={
-        // Named as the list's own Granska, so the two say which run.
-        <Button label={words.which} variant="secondary" onClick={() => onOpen(newest.id)}>
-          Granska
-        </Button>
-      }
-    />
-  );
-}
 
 const capital = (words: string) => words.replace(/^./, (c) => c.toUpperCase());
 
@@ -66,46 +37,126 @@ function runWords(run: FlowRunSummary, action: string) {
   };
 }
 
-/** What the notice of runs waiting for the person's review says, or null while none waits. */
-function pendingReviewWords(list: EarlierRunsSnapshot) {
+/**
+ * The runs waiting for the person's review as one sentence for the setup's status region, or "" while none waits: the
+ * latest runs list them first, and Eneo cancels a review that is not done in time.
+ */
+export function pendingReviewSaid(list: EarlierRunsSnapshot): string {
   const waiting = pendingReviews(list.runs);
   const [newest] = waiting;
-  if (!newest) return null;
+  if (!newest) return "";
   const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
-  const { which } = runWords(newest, "Granska");
   const named = capital([newest.run_label, newest.run_date && `möte ${formatDay(newest.run_date)}`, when && `startad ${when}`].filter(Boolean).join(", "));
-  return {
-    which,
-    title: waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`,
-    description: `${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`,
-  };
-}
-
-/** The notice of runs waiting for the person's review as one sentence for a status region, or "" while none waits. */
-export function pendingReviewSaid(list: EarlierRunsSnapshot): string {
-  const words = pendingReviewWords(list);
-  return words ? `${words.title}. ${words.description}` : "";
+  const title = waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`;
+  return `${title}. ${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`;
 }
 
 /**
- * "Tidigare körningar" at the setup's top, where the list itself ends the working card, below the form: a press brings
- * the list into view and gives its heading the focus. Only while the list has runs to show.
+ * Runs as rows: each its icon, its title (the meeting's name and day, or when it ran) over the state, and the action at its
+ * end.
  */
-export function ToEarlierRuns({ list }: { list: EarlierRunsSnapshot }) {
-  if (!list.runs.some((run) => run.purpose !== "test")) return null;
-  const show = () => {
+function RunRows({ runs, onOpen }: { runs: readonly FlowRunSummary[]; onOpen: (runId: string) => void }) {
+  // 14 rem of the root text holds a date over a state, and a longer name wraps beside the action. Narrower (the reader's
+  // largest text, a phone's 200 % zoom) the title and the state take the row's whole width and the action stands under
+  // them, so neither is cut off; the state's word says what the icon would.
+  const room = useNarrowerThan(14);
+  return (
+    <List hasDividers ref={room.ref}>
+      {runs.map((run) => {
+        const outcome = runOutcome(run.status);
+        const [glyph, color, action] = outcome
+          ? [...OUTCOME[outcome], "Öppna"]
+          : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
+        const words = runWords(run, action);
+        // A node, not a string: Astryx cuts a string label to one line, and a meeting's name may be long, or the
+        // reader's text large; it wraps instead.
+        const title = <>{words.title}</>;
+        // The meeting's day and when it ran on one line, the state under them (Kaltron's rows): a state that wrapped onto a
+        // line of its own would start it with the dot between them.
+        const state = words.about ? (
+          <>
+            {words.about}
+            <br />
+            {runStatusLabel(run.status)}
+          </>
+        ) : (
+          runStatusLabel(run.status)
+        );
+        // The name says which run, for a screen reader that lists the buttons, by its day and when too (a weekly
+        // meeting repeats its name); the words say what it does.
+        const open = (
+          <Button label={words.which} variant="secondary" size="sm" data-open-run onClick={() => onOpen(run.id)}>
+            {action}
+          </Button>
+        );
+        return room.narrow ? (
+          <ListItem
+            key={run.id}
+            label={title}
+            description={
+              <VStack gap={2} align="start">
+                <span>{state}</span>
+                {open}
+              </VStack>
+            }
+          />
+        ) : (
+          <ListItem
+            key={run.id}
+            label={title}
+            description={<>{state}</>}
+            startContent={<Icon icon={glyph} color={color} />}
+            endContent={open}
+          />
+        );
+      })}
+    </List>
+  );
+}
+
+/**
+ * The setup's latest runs (`latestRuns`), at its top in the flow's column, so yesterday's meeting is one tap away before
+ * the next one starts, and a run waiting for the person's review is first: Eneo cancels a review not done in time. Where
+ * the list of earlier runs, at the working card's end, has more (`more`), "Visa alla" brings it into view and gives its
+ * heading the focus.
+ */
+export function LatestRuns({
+  runs,
+  more,
+  onOpen,
+  className,
+}: {
+  runs: readonly FlowRunSummary[];
+  more: boolean;
+  onOpen: (runId: string) => void;
+  className?: string;
+}) {
+  if (runs.length === 0) return null;
+  const showAll = () => {
     const heading = document.getElementById("earlier-runs");
     heading?.scrollIntoView({ block: "start" });
     heading?.focus({ preventScroll: true });
   };
   return (
-    <HStack>
-      <Button variant="ghost" icon={<Icon icon={History} />} label="Tidigare körningar" onClick={show} />
-    </HStack>
+    <VStack as="section" aria-labelledby="latest-runs" gap={3} className={className}>
+      <Heading level={2} id="latest-runs">
+        Senaste körningar
+      </Heading>
+      <RunRows runs={runs} onOpen={onOpen} />
+      {more && (
+        <HStack>
+          {/* Named for a screen reader that lists the buttons; under the heading the words are enough, and the arrow says
+              the list is further down the page. */}
+          <Button variant="ghost" icon={<Icon icon={ArrowDown} />} label="Visa alla körningar" onClick={showAll}>
+            Visa alla
+          </Button>
+        </HStack>
+      )}
+    </VStack>
   );
 }
 
-/** This flow's latest runs, so yesterday's document is one tap away, and more a page at a time. */
+/** This flow's earlier runs, so yesterday's document is one tap away, and more a page at a time. */
 export function EarlierRuns({
   list,
   onOpen,
@@ -121,11 +172,6 @@ export function EarlierRuns({
   // Test runs started from Eneo's editor are not this user's documents.
   const shown = list.runs.filter((run) => run.purpose !== "test");
   const section = useRef<HTMLElement>(null);
-  // A row is its icon, its title (the meeting's name and day, or when it ran) over the state, and the action at its end:
-  // 14 rem of the root text holds a date over a state, and a longer name wraps beside the action. Narrower (the reader's
-  // largest text, a phone's 200 % zoom) the title and the state take the row's whole width and the action stands under
-  // them, so neither is cut off; the state's word says what the icon would.
-  const room = useNarrowerThan(14);
   // After "Visa fler körningar", focus goes to the first run it added.
   const firstNew = useRef<number | null>(null);
   useEffect(() => {
@@ -140,62 +186,7 @@ export function EarlierRuns({
       <Heading level={2} id="earlier-runs" tabIndex={-1}>
         Tidigare körningar
       </Heading>
-      <List hasDividers ref={room.ref}>
-        {shown.map((run) => {
-          const outcome = runOutcome(run.status);
-          const [glyph, color, action] = outcome
-            ? [...OUTCOME[outcome], "Öppna"]
-            : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
-          const words = runWords(run, action);
-          // A node, not a string: Astryx cuts a string label to one line, and a meeting's name may be long, or the
-          // reader's text large; it wraps instead.
-          const title = <>{words.title}</>;
-          // The meeting's day and when it ran on one line, the state under them (Kaltron's rows): a state that wrapped onto a
-          // line of its own would start it with the dot between them.
-          const state = words.about ? (
-            <>
-              {words.about}
-              <br />
-              {runStatusLabel(run.status)}
-            </>
-          ) : (
-            runStatusLabel(run.status)
-          );
-          // The name says which run, for a screen reader that lists the buttons, by its day and when too (a weekly
-          // meeting repeats its name); the words say what it does.
-          const open = (
-            <Button
-              label={words.which}
-              variant="secondary"
-              size="sm"
-              data-open-run
-              onClick={() => onOpen(run.id)}
-            >
-              {action}
-            </Button>
-          );
-          return room.narrow ? (
-            <ListItem
-              key={run.id}
-              label={title}
-              description={
-                <VStack gap={2} align="start">
-                  <span>{state}</span>
-                  {open}
-                </VStack>
-              }
-            />
-          ) : (
-            <ListItem
-              key={run.id}
-              label={title}
-              description={<>{state}</>}
-              startContent={<Icon icon={glyph} color={color} />}
-              endContent={open}
-            />
-          );
-        })}
-      </List>
+      <RunRows runs={shown} onOpen={onOpen} />
       {list.failed === "first" && onMore && (
         <VStack gap={2} align="start">
           <Text as="p" type="supporting">

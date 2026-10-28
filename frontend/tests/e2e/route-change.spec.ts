@@ -317,7 +317,7 @@ test("an earlier run opened from the setup is an entry of its own: Back goes to 
   sentinel.expect(NO_CONFIRMED_WORDS);
   await setup(page);
   // The finished run, named and dated by its form.
-  await page.getByRole("button", { name: /^Öppna, Styrelsemöte, möte 22 sep, / }).click();
+  await page.getByRole("region", { name: "Senaste körningar" }).getByRole("button", { name: /^Öppna, Styrelsemöte, möte 22 sep, / }).click();
   await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
 
   await page.goBack();
@@ -382,7 +382,7 @@ for (const action of ["Försök igen", "Avbryt körningen"] as const) {
       );
     });
     await setup(page);
-    await page.getByRole("listitem").filter({ hasText: retry ? "Misslyckades" : "Pågår" }).getByRole("button").click();
+    await page.getByRole("region", { name: "Senaste körningar" }).getByRole("listitem").filter({ hasText: retry ? "Misslyckades" : "Pågår" }).getByRole("button").click();
     if (retry) {
       await page.getByRole("button", { name: "Försök igen" }).click();
     } else {
@@ -409,20 +409,21 @@ test("Försök igen answered while the failed run is still shown opens the run E
   test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width");
   sentinel.expect(NO_CONFIRMED_WORDS);
   await setup(page);
-  await page.getByRole("listitem").filter({ hasText: "Misslyckades" }).getByRole("button").click();
+  await page.getByRole("region", { name: "Senaste körningar" }).getByRole("listitem").filter({ hasText: "Misslyckades" }).getByRole("button").click();
   await page.getByRole("button", { name: "Försök igen" }).click();
   await expect(page.getByRole("heading", { name: "Dokumentet skapas", level: 1 })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("run"), "the address names the new run").not.toBe(ids.runs.failed);
 });
 
-test("a run waiting for review is said above the setup, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
+test("a run waiting for review opens the setup's latest runs, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   await page.goto(`/flows/${ids.flows.flow2}`);
-  // A note on the page; the page's status region says it (aria.spec.ts).
-  const banner = page.getByRole("note").filter({ hasText: "En körning väntar på din granskning" });
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText("Den avbryts om den inte granskas i tid.");
-  await banner.getByRole("button", { name: /^Granska, körningen / }).click();
+  // The page's status region says it once (aria.spec.ts).
+  const latest = page.getByRole("region", { name: "Senaste körningar" });
+  await expect(latest.getByRole("listitem").first()).toContainText("Väntar på granskning");
+  // The flow's one run: the latest runs are the list, and the working card does not list it again.
+  await expect(page.getByRole("region", { name: "Tidigare körningar" })).toHaveCount(0);
+  await latest.getByRole("button", { name: /^Granska, körningen / }).click();
   const heading = page.getByRole("heading", { name: "Vem är vem?", level: 1 });
   await expect(heading).toBeVisible();
   await expect(heading).toBeFocused();

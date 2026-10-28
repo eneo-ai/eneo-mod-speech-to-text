@@ -168,19 +168,19 @@
   box-shadow: var(--module-shadow-dock);
 }
 
-/* Earlier runs start a section: a little further from the actions above them than the setup's parts stand apart. Their
-   rows are read, not pressed: their icons and buttons stand on the card's content edges, and the card's edge closes the
-   last one, with no rule under it. */
-.earlier {
-  padding-block-start: var(--spacing-2);
-}
-
-.earlier :global(.astryx-list-item) {
+/* Runs as rows, the latest at the setup's top and the earlier at the working card's end: read, not pressed, their icons
+   and buttons stand on the content's edges, and no rule follows the last one. */
+.runs :global(.astryx-list-item) {
   padding-inline: 0;
 }
 
-.earlier :global(.astryx-list-item):last-child {
+.runs :global(.astryx-list-item):last-child {
   border-block-end-width: 0;
+}
+
+/* Earlier runs start a section: a little further from the actions above them than the setup's parts stand apart. */
+.earlier {
+  padding-block-start: var(--spacing-2);
 }
 
 /* "Tips för bra ljud" under the test: a native list whose words wrap; the reset takes the markers away. */

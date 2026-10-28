@@ -383,29 +383,31 @@ test("the tips for good sound are folded under the microphone's test, and there 
   await without.unmount();
 });
 
-test("Tidigare körningar at the setup's top brings the list's heading into view and gives it the focus; with no runs it is not there", async () => {
+test("Visa alla under the latest runs brings the whole list's heading into view and gives it the focus", async () => {
   const { createElement, Fragment } = await import("react");
-  const { EarlierRuns, ToEarlierRuns } = await import("../components/flow/EarlierRuns");
-  const run = { id: "run-1", status: "succeeded", created_at: "2026-10-27T10:35:00Z", purpose: null } as unknown as import("./api").FlowRunSummary;
-  const page = (runs: import("./api").FlowRunSummary[]) => {
-    const list = { runs, hasMore: false, loading: false, failed: null };
-    return createElement(Fragment, null, createElement(ToEarlierRuns, { list }), createElement(EarlierRuns, { list, onOpen: () => undefined }));
-  };
+  const { EarlierRuns, LatestRuns } = await import("../components/flow/EarlierRuns");
+  const { latestRuns } = await import("./earlier-runs");
+  const run = (id: string) => ({ id, flow_id: "flow-1", status: "completed", created_at: "2026-10-27T10:35:00Z" });
+  const list = { runs: ["a", "b", "c", "d"].map(run), hasMore: false, loading: false, failed: null };
   const scrolled: Element[] = [];
   const realScroll = window.HTMLElement.prototype.scrollIntoView;
   window.HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
     scrolled.push(this);
   };
   try {
-    const view = await mount(page([run]));
-    await view.act(async () => button(view.container, "Tidigare körningar")!.click());
+    const view = await mount(
+      createElement(
+        Fragment,
+        null,
+        createElement(LatestRuns, { runs: latestRuns(list.runs), more: true, onOpen: () => undefined }),
+        createElement(EarlierRuns, { list, onOpen: () => undefined }),
+      ),
+    );
+    await view.act(async () => button(view.container, "Visa alla körningar")!.click());
     const heading = view.container.querySelector("#earlier-runs");
     assert.deepEqual(scrolled, [heading], "the list's heading is brought into view");
     assert.equal(document.activeElement, heading, "and has the focus");
     await view.unmount();
-    const empty = await mount(page([{ ...run, purpose: "test" } as typeof run]));
-    assert.equal(button(empty.container, "Tidigare körningar"), null, "a test run from Eneo's editor is no earlier run");
-    await empty.unmount();
   } finally {
     window.HTMLElement.prototype.scrollIntoView = realScroll;
   }
