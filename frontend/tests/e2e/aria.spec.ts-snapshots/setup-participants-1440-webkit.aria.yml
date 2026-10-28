@@ -7,11 +7,13 @@
       - listitem: Du spelar in eller laddar upp ljud.
       - listitem: Ljudet görs om till text.
       - listitem: Du får ett dokument att ladda ner.
-    - button "Tips för bra ljud"
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
   - region "Ljudet":
     - status
     - status
+    - button "Tidigare körningar":
+      - text: ""
+      - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
@@ -27,6 +29,7 @@
       - text: ""
       - status
     - status: Testet visar här om mikrofonen hör dig.
+    - button "Tips för bra ljud"
     - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
     - group "Deltagare Valfritt":
       - text: Lägg till namn

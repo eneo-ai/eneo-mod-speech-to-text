@@ -7,10 +7,12 @@ import type { HowItWorks as Guide } from "@/lib/flow-output";
 import styles from "./FlowFrame.module.css";
 
 /**
- * "Så fungerar det": the steps a run of the flow takes the person through (`howItWorks`), and tips for good sound folded
- * under them. From a laptop's width it is always shown under its heading in the flow's column; on a phone or tablet it
- * is one folded row (FlowFrame's fold) after the work, so the choice of way in comes first. `lead` opens the fold (a
- * phone's setup has the flow's description there, read once, rather than above the choice).
+ * "Så fungerar det": the steps a run of the flow takes the person through (`howItWorks`). From a laptop's width it is
+ * always shown under its heading in the flow's column; on a phone or tablet it is one folded row (FlowFrame's fold) above
+ * the choice of way in, where it is read before the meeting, not after the form (after it on a short screen, whose first
+ * screen is the ways in's; FlowInput). `lead` opens the fold (a phone's setup
+ * has the flow's description there, read once, rather than above the choice). The tips for good sound are the
+ * microphone's (MicrophoneCheck).
  */
 export function HowItWorks({ guide, lead }: { guide: Guide; lead?: ReactNode }) {
   return (
@@ -37,17 +39,6 @@ export function HowItWorks({ guide, lead }: { guide: Guide; lead?: ReactNode }) 
             </li>
           ))}
         </VStack>
-        {guide.tips.length > 0 && (
-          <Collapsible trigger="Tips för bra ljud" defaultIsOpen={false}>
-            <VStack as="ul" gap={2} className={styles.tips}>
-              {guide.tips.map((tip) => (
-                <li key={tip}>
-                  <Text>{tip}</Text>
-                </li>
-              ))}
-            </VStack>
-          </Collapsible>
-        )}
       </VStack>
     </Collapsible>
   );

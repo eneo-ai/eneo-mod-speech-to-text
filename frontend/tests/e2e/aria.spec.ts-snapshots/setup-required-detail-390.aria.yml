@@ -3,6 +3,7 @@
   - region "Ljudet":
     - status
     - status
+    - button "Så fungerar det 3 steg"
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
@@ -32,7 +33,6 @@
     - textbox "Antal talare Valfritt"
     - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter uppladdningen.
     - switch "Märk upp talare"
-    - button "Så fungerar det 3 steg"
   - button "Skapa dokument":
     - text: ""
     - status

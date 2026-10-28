@@ -367,6 +367,50 @@ function listeningStream() {
   return { track, stream: { getTracks: () => [track], getAudioTracks: () => [] } };
 }
 
+test("the tips for good sound are folded under the microphone's test, and there only where they are given", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  stubMicrophones([["usb", "Jabra Speak 510"]], () => new Promise(() => undefined));
+  const tips = ["Ställ en enhet mitt på bordet.", "Stäng dörrar och fönster om du kan."];
+  const view = await mount(createElement(MicrophoneCheck, { active: true, tips }));
+  const fold = button(view.container, "Tips för bra ljud")!;
+  assert.equal(fold.getAttribute("aria-expanded"), "false", "folded");
+  await view.act(async () => fold.click());
+  assert.deepEqual([...view.container.querySelectorAll("ul li")].map((li) => li.textContent), tips);
+  await view.unmount();
+  const without = await mount(createElement(MicrophoneCheck, { active: true }));
+  assert.equal(button(without.container, "Tips för bra ljud"), null, "no tips, no fold");
+  await without.unmount();
+});
+
+test("Tidigare körningar at the setup's top brings the list's heading into view and gives it the focus; with no runs it is not there", async () => {
+  const { createElement, Fragment } = await import("react");
+  const { EarlierRuns, ToEarlierRuns } = await import("../components/flow/EarlierRuns");
+  const run = { id: "run-1", status: "succeeded", created_at: "2026-10-27T10:35:00Z", purpose: null } as unknown as import("./api").FlowRunSummary;
+  const page = (runs: import("./api").FlowRunSummary[]) => {
+    const list = { runs, hasMore: false, loading: false, failed: null };
+    return createElement(Fragment, null, createElement(ToEarlierRuns, { list }), createElement(EarlierRuns, { list, onOpen: () => undefined }));
+  };
+  const scrolled: Element[] = [];
+  const realScroll = window.HTMLElement.prototype.scrollIntoView;
+  window.HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+    scrolled.push(this);
+  };
+  try {
+    const view = await mount(page([run]));
+    await view.act(async () => button(view.container, "Tidigare körningar")!.click());
+    const heading = view.container.querySelector("#earlier-runs");
+    assert.deepEqual(scrolled, [heading], "the list's heading is brought into view");
+    assert.equal(document.activeElement, heading, "and has the focus");
+    await view.unmount();
+    const empty = await mount(page([{ ...run, purpose: "test" } as typeof run]));
+    assert.equal(button(empty.container, "Tidigare körningar"), null, "a test run from Eneo's editor is no earlier run");
+    await empty.unmount();
+  } finally {
+    window.HTMLElement.prototype.scrollIntoView = realScroll;
+  }
+});
+
 test("a microphone the browser grants after Sluta testa is let go at once, not turned on again", async () => {
   const { createElement } = await import("react");
   const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
@@ -746,11 +790,11 @@ test("a flow that requires speaker labels Eneo cannot make now says so in place 
     docked: usable.view.container.querySelector("[data-docked-action]")?.textContent ?? "",
   };
   await usable.view.unmount();
-  // In one column the flow's details follow the way in, before the file (FlowInput, choiceFirst); "Så fungerar det" follows
-  // the work, and the action is docked at the page's bottom.
+  // In one column the flow's details follow the way in, before the file (FlowInput, choiceFirst); "Så fungerar det" is
+  // folded above the work, after the recording to go on with, and the action is docked at the page's bottom.
   assert.deepEqual(
     usual.ways,
-    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "file", "text", "Lägg till", "text", "text", "Så fungerar det 3 steg"],
+    ["Skapa dokument av inspelningen", "Spara ljudfil", "Ta bort", "Så fungerar det 3 steg", "file", "text", "Lägg till", "text", "text"],
     "the flow as it is when the labels can be made",
   );
   assert.ok(usual.docked.includes("Välj ljudfil"), "its action docked");

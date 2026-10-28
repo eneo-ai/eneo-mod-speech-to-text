@@ -12,6 +12,10 @@
   - region "Ljudet":
     - status
     - status
+    - button "Tidigare körningar":
+      - text: ""
+      - status
+    - button "Så fungerar det 3 steg"
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
@@ -27,6 +31,7 @@
       - text: ""
       - status
     - status: Testet visar här om mikrofonen hör dig.
+    - button "Tips för bra ljud"
     - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
     - group "Deltagare Valfritt":
       - text: Lägg till namn
@@ -53,7 +58,6 @@
           - button /Öppna, körningen \d+ sep \d+:\d+/:
             - text: ""
             - status
-    - button "Så fungerar det 3 steg"
   - text: "Flödet får ta emot: Öppen information"
   - button "Starta strömning":
     - text: ""

@@ -3,6 +3,7 @@
   - region "Ljudet":
     - status
     - status
+    - button "Så fungerar det 2 steg"
     - heading "Hur vill du lägga till ljudet?" [level=2]
     - text: Hur vill du lägga till ljudet?
     - radiogroup "Hur vill du lägga till ljudet?":
@@ -16,12 +17,12 @@
       - text: ""
       - status
     - status: Testet visar här om mikrofonen hör dig.
+    - button "Tips för bra ljud"
     - text: Mötesdatum Valfritt
     - button "Öppna kalender"
     - textbox "Mötesdatum Valfritt"
     - alert
     - paragraph: Inspelningen sparas på enheten medan du spelar in. Webbläsaren kan ta bort den om du väntar länge efter att du har stoppat.
-    - button "Så fungerar det 2 steg"
   - button "Starta inspelning":
     - text: ""
     - status

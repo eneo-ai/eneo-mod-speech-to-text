@@ -182,3 +182,10 @@
 .earlier :global(.astryx-list-item):last-child {
   border-block-end-width: 0;
 }
+
+/* "Tips för bra ljud" under the test: a native list whose words wrap; the reset takes the markers away. */
+.tips {
+  margin: 0;
+  padding-inline-start: var(--spacing-6);
+  list-style: disc;
+}

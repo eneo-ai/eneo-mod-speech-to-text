@@ -21,7 +21,7 @@ import {
   focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
-import { EarlierRuns, PendingReview, pendingReviewSaid } from "@/components/flow/EarlierRuns";
+import { EarlierRuns, PendingReview, pendingReviewSaid, ToEarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { HowItWorks } from "@/components/flow/HowItWorks";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
@@ -143,6 +143,7 @@ export function FlowInput({
   const [dockSlot, dockRef] = useDock();
   const phone = useMediaQuery(PHONE);
   const columns = useMediaQuery(COLUMNS);
+  const short = useMediaQuery(SHORT);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
@@ -183,12 +184,17 @@ export function FlowInput({
   // starts it; the flow's classification follows the choice there. The details stand in the working card at every width,
   // by the speaker controls they fill in, so a field being typed in never moves when the layout changes (a tablet turned).
   const choiceFirst = group === "setup" && !blocked && !columns;
-  // "Så fungerar det" is read once: beside the work from a laptop's width, after it in one column, where it would stand
-  // between the flow's name and the choice. On a phone the flow's description opens it instead of standing above the
-  // choice: the person has just read it in the flow's row of the list.
+  // "Så fungerar det" is read once, before the meeting: beside the work from a laptop's width, and in one column one folded
+  // row above the choice, with the way to the earlier runs. A short screen (a small phone, one on its side) keeps its first
+  // screen for the ways in and the docked action: there the guide follows the work, and the list is reached by scrolling.
+  // On a phone the flow's description opens the guide instead of standing above the choice: the person has just read it in
+  // the flow's row of the list.
   const guide = group === "setup" ? howItWorks(contract, snapshot.modes) : null;
-  const guideAfter = choiceFirst ? guide : null;
-  const descriptionInGuide = guideAfter !== null && phone && Boolean(published.description);
+  const guideInColumn = choiceFirst ? guide : null;
+  const guideAbove = short ? null : guideInColumn;
+  const guideAfter = short ? guideInColumn : null;
+  const descriptionInGuide = guideInColumn !== null && phone && Boolean(published.description);
+  const guideLead = descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>;
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
   useEffect(
@@ -269,6 +275,9 @@ export function FlowInput({
           {group === "setup" && <PendingReview list={earlierRuns} onOpen={onOpenRun} />}
           {/* The recordings to go on with or send stand above the working card, a card of their own beside it, never in it. */}
           {group === "setup" && !blocked && !recoveryFirst && unsentRecordings}
+          {/* The list of earlier runs ends the working card: from its top, one press away. */}
+          {group === "setup" && !short && <ToEarlierRuns list={earlierRuns} />}
+          {guideAbove && <HowItWorks guide={guideAbove} lead={guideLead} />}
           {group === "setup" ? (
             <SetupWorkspace
               contract={contract}
@@ -310,12 +319,7 @@ export function FlowInput({
               room={workspace}
             />
           )}
-          {guideAfter && (
-            <HowItWorks
-              guide={guideAfter}
-              lead={descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>}
-            />
-          )}
+          {guideAfter && <HowItWorks guide={guideAfter} lead={guideLead} />}
         </VStack>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
             form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
@@ -572,7 +576,7 @@ function SetupWorkspace({
 
       {/* The microphone right under the way it records with: tested before the meeting starts, not after the rest. The
           chosen file the same way: in view under Ladda upp, not under the details, out of sight of the action it sends. */}
-      {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
+      {recordingMode && <MicrophoneCheck active={phase === "setup"} tips={howItWorks(contract, modes)?.tips} />}
       {mode === "ladda-upp" && (
         <UploadPanel
           step={step}
