@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -21,7 +21,7 @@ import {
   focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
-import { EarlierRuns, PendingReview, pendingReviewSaid, ToEarlierRuns } from "@/components/flow/EarlierRuns";
+import { EarlierRuns, LatestRuns, pendingReviewSaid } from "@/components/flow/EarlierRuns";
 import { FlowFrame } from "@/components/flow/FlowFrame";
 import { HowItWorks } from "@/components/flow/HowItWorks";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
@@ -38,7 +38,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { resumableRecording, UnsentRecordings, type UnsentList } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
-import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
+import { latestRuns, listsMore, type EarlierRunsList, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
   captureLimits,
   labelsSpeakers,
@@ -106,9 +106,8 @@ export function FlowInput({
   input,
   ownerId,
   notice,
-  earlierRuns,
+  earlier,
   onOpenRun,
-  onMoreRuns,
   unsent,
   afterRun = false,
 }: {
@@ -118,9 +117,9 @@ export function FlowInput({
   ownerId: string;
   /** A problem from following an earlier run. */
   notice: string | null;
-  earlierRuns: EarlierRunsSnapshot;
+  /** This user's earlier runs of the flow: the setup's own to follow, so a read never draws a run's view again. */
+  earlier: EarlierRunsList;
   onOpenRun: (runId: string) => void;
-  onMoreRuns: () => void;
   unsent: UnsentList;
   /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
   afterRun?: boolean;
@@ -138,9 +137,15 @@ export function FlowInput({
   // "Ta bort" took the ready recording away: said in the page's status (nothing shown moves the setup), until a recording begins.
   const [removed, setRemoved] = useState(false);
   if (removed && group !== "setup") setRemoved(false);
-  // A run waiting for the person's review, said in the page's status once the earlier runs say so (the notice itself is a
-  // note: it arrives with its words, which a screen reader does not reliably read out).
-  const reviewSaid = useSaidLater(group === "setup" ? pendingReviewSaid(earlierRuns) : "");
+  // The runs as the setup opened with them (on the page's load, or back from a run's view): a read that lands while it is
+  // open, one a run's view started or Visa fler körningar, changes the list at the working card's end, never the latest
+  // runs above the form.
+  const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
+  const onMoreRuns = () => void earlier.more();
+  const [opened] = useState(earlierRuns);
+  // A run waiting for the person's review, said in the page's status once the latest runs show it: they arrive with the
+  // setup, which a screen reader does not reliably read out.
+  const reviewSaid = useSaidLater(group === "setup" ? pendingReviewSaid(opened) : "");
   const [dockSlot, dockRef] = useDock();
   const phone = useMediaQuery(PHONE);
   const columns = useMediaQuery(COLUMNS);
@@ -186,9 +191,9 @@ export function FlowInput({
   // by the speaker controls they fill in, so a field being typed in never moves when the layout changes (a tablet turned).
   const choiceFirst = group === "setup" && !blocked && !columns;
   // "Så fungerar det" is read once, before the meeting: beside the work from a laptop's width, and in one column one folded
-  // row above the choice, with the way to the earlier runs. A short screen in one column (a small phone, one on its side)
-  // keeps its first screen for the ways in and the docked action: there the guide follows the work, and the list is reached
-  // by scrolling. A laptop's flow column has the room at any height.
+  // row above the choice, under the latest runs. A short screen in one column (a small phone, one on its side) keeps its
+  // first screen for the ways in and the docked action: there the guide follows the work. A laptop's flow column has the
+  // room at any height.
   // On a phone the flow's description opens the guide instead of standing above the choice: the person has just read it in
   // the flow's row of the list.
   const guide = group === "setup" ? howItWorks(contract, snapshot.modes) : null;
@@ -197,6 +202,17 @@ export function FlowInput({
   const guideAfter = short ? guideInColumn : null;
   const descriptionInGuide = guideInColumn !== null && phone && Boolean(published.description);
   const guideLead = descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>;
+  // The latest runs open the setup, under the flow's name at every width (beside the work from a laptop's width, so the
+  // working card keeps its action on the first screen): three, and two on a phone, whose first screen then still reaches
+  // the choice of way in under a browser's own bars. A short screen in one column shows only those waiting for review:
+  // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason. Where the latest
+  // runs are all of them, they are the list: the working card lists the runs only while it has more (a read that landed
+  // later, more in Eneo, a read to try again).
+  const waitingOnly = short && !columns;
+  const latest = group === "setup" && !blocked ? latestRuns(opened.runs, { waitingOnly, count: phone ? 2 : 3 }) : [];
+  const latestRunsShown = (
+    <LatestRuns runs={latest} more={listsMore(opened, latest)} waitingOnly={waitingOnly} onOpen={onOpenRun} className={styles.runs} />
+  );
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
   useEffect(
@@ -246,9 +262,16 @@ export function FlowInput({
             compact={holdsAudio}
             described={!descriptionInGuide}
             guide={columns ? guide : null}
-            // From a laptop's width the way to the earlier runs stands under the flow's name, so the working card keeps its
-            // action on the first screen.
-            lead={recoveryFirst ? unsentRecordings : group === "setup" && columns ? <ToEarlierRuns list={earlierRuns} /> : undefined}
+            lead={
+              recoveryFirst ? (
+                <>
+                  {unsentRecordings}
+                  {latestRunsShown}
+                </>
+              ) : (
+                latestRunsShown
+              )
+            }
             // In the setup the details are the working card's; while the page holds audio they are the flow's, folded on
             // a phone or tablet. The blocked setup asks for nothing: its details would be filled in for no run. What was
             // typed before stays with the session.
@@ -276,12 +299,8 @@ export function FlowInput({
           </VisuallyHidden>
           <OfflineBanner waiting={group === "capture" ? "recording" : null} saved={input.persistent === true && input.capture.refused === null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
-          {group === "setup" && <PendingReview list={earlierRuns} onOpen={onOpenRun} />}
           {/* The recordings to go on with or send stand above the working card, a card of their own beside it, never in it. */}
           {group === "setup" && !blocked && !recoveryFirst && unsentRecordings}
-          {/* The list of earlier runs ends the working card: from its top, one press away (in the flow's column from a
-              laptop's width). */}
-          {group === "setup" && !columns && !short && <ToEarlierRuns list={earlierRuns} />}
           {guideAbove && <HowItWorks guide={guideAbove} lead={guideLead} />}
           {group === "setup" ? (
             <SetupWorkspace
@@ -289,6 +308,7 @@ export function FlowInput({
               input={input}
               dock={columns ? null : dockSlot}
               earlierRuns={earlierRuns}
+              listsEarlier={listsMore(earlierRuns, latest)}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
               unsent={unsent}
@@ -446,6 +466,7 @@ function SetupWorkspace({
   input,
   dock,
   earlierRuns,
+  listsEarlier,
   onOpenRun,
   onMoreRuns,
   unsent,
@@ -458,6 +479,8 @@ function SetupWorkspace({
   /** In one column (a phone or tablet): the page's bottom edge, where the primary action docks. */
   dock: HTMLElement | null;
   earlierRuns: EarlierRunsSnapshot;
+  /** The list has runs the latest runs above do not show; else they are the list. */
+  listsEarlier: boolean;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   /** The unsent recordings, listed under the reason when the flow cannot run (only to save as files or delete). */
@@ -532,7 +555,7 @@ function SetupWorkspace({
               <BackToFlows variant="primary" size="md" />
             </HStack>
           </VStack>
-          <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
+          <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />
         </StateCard>
         <UnsentRecordings list={unsent} sendLabel={sendLabel} evictable={input.evictable} />
       </VStack>
@@ -672,7 +695,9 @@ function SetupWorkspace({
           </VStack>,
         )}
 
-      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
+      {listsEarlier && (
+        <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />
+      )}
     </StateCard>
   );
 }

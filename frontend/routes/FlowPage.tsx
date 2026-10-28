@@ -200,7 +200,14 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }, [runningRun?.id]);
   // This user's earlier runs of the flow, a page at a time.
   const [earlier] = useState(() => new EarlierRunsList(flowId));
-  const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
+  // Read again as a run's view is opened and as its run starts, ends or waits for review: the setup the person goes back to
+  // (Ny inspelning, Back) is drawn with what was read, its latest runs as they are, and reads nothing that would fill a row
+  // in above the form after it is shown.
+  const runOnScreen = runIdOf(run) && `${runIdOf(run)} ${"run" in run ? (runOutcome(run.run.status) ?? run.run.status) : run.kind}`;
+  useEffect(() => {
+    if (runOnScreen) loadEarlierRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runOnScreen]);
   // Why Eneo would not continue the failed run on screen, and whether a new run is the way on.
   const [retryRefusal, setRetryRefusal] = useState<{ message: string; startAgain: boolean } | null>(null);
 
@@ -240,10 +247,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     let cancelled = false;
     const urlRunId = readRunIdFromUrl();
     // The setup's earlier runs are read beside the contract, and the setup is drawn once they are known (or could not be
-    // read): a run waiting for review is said above the setup's work, and an answer that came later would move it. They
-    // are read once the flow is: a flow that is gone has no runs to ask for.
+    // read): the latest runs open the setup, and an answer that came later would move it. They are read once the flow
+    // is: a flow that is gone has no runs to ask for.
     const flow = getPublishedFlow(flowId);
-    Promise.all([flow, getRunContract(flowId), urlRunId ? null : flow.then(() => earlier.reload())])
+    // A load the page left (React's development double effect, Försök igen) starts no read of the runs: it would replace
+    // the read this load waits for, and the setup would be drawn before its runs are known.
+    Promise.all([flow, getRunContract(flowId), urlRunId ? null : flow.then(() => (cancelled ? undefined : earlier.reload()))])
       .then(async ([p, c]) => {
         if (cancelled) return;
         // The address as it is now: Back to the setup while the flow was read leaves the run it named, and the setup
@@ -466,7 +475,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRunError(null);
       setRetryRefusal(null);
       setRun({ kind: "idle" });
-      loadEarlierRuns();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
@@ -532,10 +540,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
       // ask for it again.
       const gone = err instanceof ApiError && (err.status === 404 || err.status === 410);
       if (gone) writeRunIdToUrl(null);
+      // The run the person meant may be among the earlier ones, which a page opened at a run's address has not read: the
+      // setup is drawn once they are, as on a load of its own.
+      await earlier.reload();
+      if (signal.aborted) return;
       setRunError(gone ? RUN_GONE : friendlyError(err));
       setRun({ kind: "idle" });
-      // The run the person meant may be among the earlier ones, which a page opened at a run's address has not read.
-      loadEarlierRuns();
     }
   }
 
@@ -670,7 +680,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRetryRefusal(null);
     writeRunIdToUrl(null);
     setRun({ kind: "idle" });
-    loadEarlierRuns();
   }
 
   /** "Försök igen": Eneo continues the failed run from its first unfinished step in a new run; what was finished is not done again. */
@@ -720,7 +729,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
         writeRunIdToUrl(null);
         setRunError(outcome.message);
         setRun({ kind: "idle" });
-        loadEarlierRuns();
         return;
       }
       // A refusal that led here stays on the failure view until a new run exists.
@@ -758,9 +766,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
           input={input}
           ownerId={user.id}
           notice={runError}
-          earlierRuns={earlierRuns}
+          earlier={earlier}
           onOpenRun={openRun}
-          onMoreRuns={() => void earlier.more()}
           unsent={unsent}
           afterRun={shownRun}
         />

@@ -95,16 +95,44 @@ for (const [state, heading, action] of [
   }
 }
 
-// A laptop's first screen holds the setup's action whole: the way to the earlier runs stands in the flow's column, under
-// its name, not above the working card, where it took a row from the first screen.
-test("on a laptop (1440 x 900) the setup's action is whole on the first screen, and Tidigare körningar stands in the flow's column", async ({ page }, info) => {
+// A laptop's first screen holds the setup's action whole: the latest runs stand in the flow's column, under its name, not
+// above the working card, where they would push the action off the first screen.
+test("on a laptop (1440 x 900) the setup's action is whole on the first screen, and the latest runs stand in the flow's column", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const { STATES } = await import("./screens");
   await STATES.find((s) => s.name === "setup")!.go(page, info);
   await page.evaluate(() => window.scrollTo(0, 0));
   const start = (await page.getByRole("button", { name: "Starta strömning" }).boundingBox())!;
   expect(start.y + start.height, "Starta strömning whole on the first screen").toBeLessThanOrEqual(900);
-  const jump = (await page.getByRole("button", { name: "Tidigare körningar" }).boundingBox())!;
+  const latest = (await page.getByRole("region", { name: "Senaste körningar" }).boundingBox())!;
   const card = (await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).boundingBox())!;
-  expect(jump.x + jump.width, "in the flow's column, beside the card").toBeLessThanOrEqual(card.x);
+  expect(latest.x + latest.width, "in the flow's column, beside the card").toBeLessThanOrEqual(card.x);
+  expect(latest.y, "on the first screen").toBeLessThan(900 / 2);
 });
+
+// Below a laptop's width the latest runs open the setup, above the choice of way in, two of them on a phone; a short
+// screen keeps its first screen for the ways in and lists only the runs waiting for review there.
+for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] as const) {
+  test(`at ${width} x ${height} the latest runs stand above the choice of way in${height <= 640 ? ", only those waiting for review" : ""}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height });
+    const { STATES } = await import("./screens");
+    await STATES.find((s) => s.name === "setup")!.go(page, info);
+    const latest = page.getByRole("region", { name: "Senaste körningar" });
+    if (height <= 640) {
+      await expect(latest, "no run waits: the ways in have the first screen").toHaveCount(0);
+      await STATES.find((s) => s.name === "setup-review-waiting")!.go(page, info);
+      await expect(latest.getByRole("button", { name: /^Granska, / })).toBeVisible();
+    } else {
+      await expect(latest.getByRole("listitem")).toHaveCount(width < 768 ? 2 : 3);
+    }
+    const list = (await latest.boundingBox())!;
+    const choice = (await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).boundingBox())!;
+    expect(list.y + list.height, "above the choice").toBeLessThanOrEqual(choice.y);
+    // The first way in is on the first screen, above the docked action where there is one.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const dock = page.locator("[data-docked-action]");
+    const end = (await dock.count()) ? (await dock.boundingBox())!.y : height;
+    const way = (await page.getByRole("radio").first().boundingBox())!;
+    expect(way.y + way.height, "the first way in on the first screen").toBeLessThanOrEqual(end);
+  });
+}

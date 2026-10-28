@@ -863,7 +863,7 @@ export const STATES: State[] = [
     },
   },
   {
-    // A run of the flow waits for this person's review: said above the setup's work, with the way to it.
+    // A run of the flow waits for this person's review: first among the setup's latest runs, with its Granska.
     name: "setup-review-waiting",
     go: async (page) => {
       await page.goto(`/flows/${ids.flows.flow2}`);

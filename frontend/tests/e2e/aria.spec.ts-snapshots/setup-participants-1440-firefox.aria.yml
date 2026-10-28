@@ -1,9 +1,27 @@
 - main:
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
-  - button "Tidigare körningar":
-    - text: ""
-    - status
+  - region "Senaste körningar":
+    - heading "Senaste körningar" [level=2]
+    - list:
+      - listitem:
+        - text: /Styrelsemöte Möte 22 sep( \d{4})? · startad i går \d+:\d+ Klar/
+        - button /Öppna, Styrelsemöte, möte 22 sep( \d{4})?, startad i går \d+:\d+/:
+          - text: ""
+          - status
+      - listitem:
+        - text: /\d+ sep \d+:\d+ Misslyckades/
+        - button /Öppna, körningen \d+ sep \d+:\d+/:
+          - text: ""
+          - status
+      - listitem:
+        - text: /Avdelningsmöte Möte 19 sep( \d{4})? · startad \d+ sep \d+:\d+ Klar/
+        - button /Öppna, Avdelningsmöte, möte 19 sep( \d{4})?, startad \d+ sep \d+:\d+/:
+          - text: ""
+          - status
+    - button "Visa alla körningar":
+      - text: ""
+      - status
   - region "Så fungerar det":
     - heading "Så fungerar det" [level=2]
     - list:
@@ -63,6 +81,16 @@
             - status
         - listitem:
           - text: /\d+ sep \d+:\d+ Misslyckades/
+          - button /Öppna, körningen \d+ sep \d+:\d+/:
+            - text: ""
+            - status
+        - listitem:
+          - text: /Avdelningsmöte Möte 19 sep( \d{4})? · startad \d+ sep \d+:\d+ Klar/
+          - button /Öppna, Avdelningsmöte, möte 19 sep( \d{4})?, startad \d+ sep \d+:\d+/:
+            - text: ""
+            - status
+        - listitem:
+          - text: /\d+ sep \d+:\d+ Klar/
           - button /Öppna, körningen \d+ sep \d+:\d+/:
             - text: ""
             - status

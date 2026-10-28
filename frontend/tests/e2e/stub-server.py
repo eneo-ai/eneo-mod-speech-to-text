@@ -991,12 +991,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, graph)
             return self.send(200, {**graph, "nodes": [dict(n, run_status=s) for n, s in zip(graph["nodes"], run["step_status"])]})
         if rest == ["runs"]:
-            # Intervju till sammanfattning has a run waiting for its review: the setup says so above its work.
+            # Intervju till sammanfattning has a run waiting for its review: the setup lists it first, and it is the whole list.
             earlier = {
-                # A run named and dated by its form (the meeting's name and day), and one without.
+                # Runs named and dated by their form (the meeting's name and day), and some without; one more than the
+                # setup's latest runs, so the whole list is reached with Visa alla.
                 F1: [{"id": RUN["done"], "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z",
                       "run_label": "Styrelsemöte", "run_date": "2026-09-22"},
-                     {"id": RUN["failed"], "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"}],
+                     {"id": RUN["failed"], "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"},
+                     {"id": RUN["pdf"], "flow_id": fid, "status": "completed", "created_at": "2026-09-19T12:15:00Z",
+                      "run_label": "Avdelningsmöte", "run_date": "2026-09-19"},
+                     {"id": RUN["plain"], "flow_id": fid, "status": "completed", "created_at": "2026-09-17T08:05:00Z"}],
                 F2: [{"id": RUN["review"], "flow_id": fid, "status": "awaiting_review", "created_at": "2026-09-24T09:00:00Z"}],
             }.get(fid, [])
             return self.send(200, {"items": earlier, "has_more": False, "count": len(earlier)})

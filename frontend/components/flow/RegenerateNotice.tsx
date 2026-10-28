@@ -82,8 +82,8 @@ export function RegenerateNotice({
           first={!unreadable}
           one={
             namesOnly
-              ? `Namnen syns redan i transkriberingen, och ${thing} får dem när du skapar ${it} igen. ${it[0].toUpperCase() + it.slice(1)} som visas nu finns kvar under Tidigare körningar.`
-              : `Den nya versionen görs från den rättade transkriberingen och tar en stund. ${Thing} som visas nu finns kvar under Tidigare körningar.`
+              ? `Namnen syns redan i transkriberingen, och ${thing} får dem när du skapar ${it} igen. ${it[0].toUpperCase() + it.slice(1)} som visas nu finns kvar bland körningarna i flödet.`
+              : `Den nya versionen görs från den rättade transkriberingen och tar en stund. ${Thing} som visas nu finns kvar bland körningarna i flödet.`
           }
           other="Rättningarna kunde inte läsas just nu."
         />

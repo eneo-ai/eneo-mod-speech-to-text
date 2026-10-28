@@ -112,7 +112,7 @@ test("the notice starts the new run only when asked, and shows a refusal with th
   };
   assert.match(
     seenText(),
-    /^Dokumentet skapades före dina ändringarDen nya versionen görs från den rättade transkriberingen och tar en stund\. Dokumentet som visas nu finns kvar under Tidigare körningar\.Skapa dokumentet igen$/,
+    /^Dokumentet skapades före dina ändringarDen nya versionen görs från den rättade transkriberingen och tar en stund\. Dokumentet som visas nu finns kvar bland körningarna i flödet\.Skapa dokumentet igen$/,
     "a title, what the new version is and that this one stays, and the button",
   );
   // The design system's warning is an alert; this one is there when the page opens and is not announced.
@@ -179,7 +179,7 @@ test("a notice for names alone says they show in the transcript already and the 
   };
   assert.equal(
     await shown(),
-    "Dokumentet skapades före dina ändringarNamnen syns redan i transkriberingen, och dokumentet får dem när du skapar det igen. Det som visas nu finns kvar under Tidigare körningar.Skapa dokumentet igen",
+    "Dokumentet skapades före dina ändringarNamnen syns redan i transkriberingen, och dokumentet får dem när du skapar det igen. Det som visas nu finns kvar bland körningarna i flödet.Skapa dokumentet igen",
   );
   assert.match(await shown("texten"), /och texten får dem när du skapar den igen\. Den som visas nu finns kvar/);
 });
@@ -207,14 +207,14 @@ test("the notice stands while the transcript is read, its button waiting, and sa
   const reading = await mount(createElement(RegenerateNotice, { ...props, reading: true }));
   const make = button(reading.container, "Skapa dokumentet igen")!;
   assert.ok(seen(make) && make.disabled, "waits for the transcript");
-  assert.ok(seen(words(reading.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.")));
+  assert.ok(seen(words(reading.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar bland körningarna i flödet.")));
   assert.ok(!seen(button(reading.container, "Läs in igen")));
   await reading.unmount();
 
   let reloads = 0;
   const settled = await mount(createElement(RegenerateNotice, { ...props, onReload: () => void reloads++ }));
   assert.ok(seen(words(settled.container, "Rättningarna kunde inte läsas just nu.")), "in the description's place");
-  assert.ok(!seen(words(settled.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar under Tidigare körningar.")));
+  assert.ok(!seen(words(settled.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar bland körningarna i flödet.")));
   assert.ok(!seen(button(settled.container, "Skapa dokumentet igen")));
   const again = button(settled.container, "Läs in igen")!;
   assert.ok(seen(again), "in the button's place");
