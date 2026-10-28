@@ -288,6 +288,33 @@ test("a new name typed for a speaker is offered to add, not listed as a name alr
   assert.ok(!options.includes("Sven"), "the field's own text is not a known name");
 });
 
+test("a new name set aside for another stays among the suggestions until the dialog's names are saved or thrown away", async () => {
+  const { view, field, saved } = await dialog({ rows: [row("SPEAKER_00", null)], participants: ["Kaltron"] });
+  const options = () =>
+    [...document.querySelectorAll('[aria-label="Förslag: Vem är Talare 1?"] [role="option"]')].map((o) => o.textContent);
+  const option = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent === name)!;
+  await view.act(async () => type(field("Talare 1"), "Kaltronn"));
+  // Opened again, the list shows the typed name as chosen; another name is chosen instead.
+  await view.act(async () => field("Talare 1").click());
+  await view.act(async () => option("Kaltron").click());
+  assert.equal(field("Talare 1").value, "Kaltron");
+  await view.act(async () => field("Talare 1").click());
+  assert.deepEqual(options(), ["Kaltron", "Kaltronn", "Skriv ett annat namn", "Inget namn (behåll etiketten)"], "the new name is still there");
+  // And so it is after Skriv ett annat namn replaced it.
+  await view.act(async () => option("Kaltronn").click());
+  await view.act(async () => field("Talare 1").click());
+  await view.act(async () => option("Skriv ett annat namn").click());
+  await view.act(async () => type(field("Talare 1"), "Anna"));
+  await view.act(async () => field("Talare 1").click());
+  assert.ok(options().includes("Kaltronn"), JSON.stringify(options()));
+  // Saved, only the names given are kept: the next opening offers the participants again.
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.deepEqual(saved.at(-1)?.map((r) => r.name), ["Anna"]);
+  await view.act(async () => button(view.container, "Namnge talarna")!.click());
+  await view.act(async () => field("Talare 1").click());
+  assert.ok(!options().includes("Kaltronn"), JSON.stringify(options()));
+});
+
 test("a name given to another speaker is said quietly, and only the row's own name is checked", async () => {
   const { view, field } = await dialog();
   // Opened by a click, so the list marks the field's own name (an arrow key would move to a row).

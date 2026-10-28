@@ -208,6 +208,7 @@ export function SpeakerNamingDialog({
   const end = () => {
     close();
     setTyped(null);
+    setSetAside([]);
     if (draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
   };
   // Focus goes back to the button that opened the dialog, which the design system's own return cannot be trusted
@@ -250,7 +251,10 @@ export function SpeakerNamingDialog({
   };
   const ownerId = draftKey?.ownerId;
   const offered = participants.length > 0 || !ownerId ? participants : recentNames(browserStorage(), ownerId);
-  const names = [...new Set([...offered, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
+  // New names typed here and then replaced by a choice: still offered until the names are saved or thrown away.
+  const [setAside, setSetAside] = useState<string[]>([]);
+  const known = [...new Set([...offered, ...setAside])];
+  const names = [...new Set([...known, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
 
   /** Checks each name, then saves; a refusal keeps the dialog and the names as they are. */
   async function submit() {
@@ -356,7 +360,7 @@ export function SpeakerNamingDialog({
                             description={unsure ? "Osäkert förslag" : undefined}
                             value={row.name}
                             // The field's own text is no known name: typed, it is offered to add.
-                            options={names.filter((name) => name !== row.name?.trim() || offered.includes(name))}
+                            options={names.filter((name) => name !== row.name?.trim() || known.includes(name))}
                             disabled={disabled || decided || saving}
                             placeholder="Välj eller skriv ett namn"
                             noneLabel="Inget namn (behåll etiketten)"
@@ -364,6 +368,7 @@ export function SpeakerNamingDialog({
                             optionNote={(name) => usedBy(name, row.label)}
                             problem={problems[row.label]}
                             onChange={(name) => rename(row.label, name)}
+                            onSetAside={(name) => setSetAside((now) => [...now, name])}
                             // Enter goes on to the next speaker; after the last, to Spara namnen, which closes a
                             // phone's keyboard and saves nothing by itself, so a stray Enter sends no names.
                             enterKeyHint={next ? "next" : "done"}
