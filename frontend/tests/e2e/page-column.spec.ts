@@ -110,8 +110,8 @@ test("on a laptop (1440 x 900) the setup's action is whole on the first screen, 
   expect(latest.y, "on the first screen").toBeLessThan(900 / 2);
 });
 
-// Below a laptop's width the latest runs open the setup, above the choice of way in; a short screen keeps its first
-// screen for the ways in and lists only the runs waiting for review there.
+// Below a laptop's width the latest runs open the setup, above the choice of way in, two of them on a phone; a short
+// screen keeps its first screen for the ways in and lists only the runs waiting for review there.
 for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] as const) {
   test(`at ${width} x ${height} the latest runs stand above the choice of way in${height <= 640 ? ", only those waiting for review" : ""}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height });
@@ -123,7 +123,7 @@ for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] 
       await STATES.find((s) => s.name === "setup-review-waiting")!.go(page, info);
       await expect(latest.getByRole("button", { name: /^Granska, / })).toBeVisible();
     } else {
-      await expect(latest.getByRole("listitem")).toHaveCount(3);
+      await expect(latest.getByRole("listitem")).toHaveCount(width < 768 ? 2 : 3);
     }
     const list = (await latest.boundingBox())!;
     const choice = (await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).boundingBox())!;

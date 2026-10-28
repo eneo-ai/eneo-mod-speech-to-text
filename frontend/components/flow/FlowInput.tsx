@@ -198,10 +198,11 @@ export function FlowInput({
   const descriptionInGuide = guideInColumn !== null && phone && Boolean(published.description);
   const guideLead = descriptionInGuide && <Text as="p" color="secondary">{published.description}</Text>;
   // The latest runs open the setup, under the flow's name at every width (beside the work from a laptop's width, so the
-  // working card keeps its action on the first screen). A short screen in one column shows only those waiting for review:
+  // working card keeps its action on the first screen): three, and two on a phone, whose first screen then still reaches
+  // the choice of way in under a browser's own bars. A short screen in one column shows only those waiting for review:
   // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason. Where the latest
   // runs are all of them, they are the list: the working card does not list them again.
-  const latest = group === "setup" && !blocked ? latestRuns(earlierRuns.runs, { waitingOnly: short && !columns }) : [];
+  const latest = group === "setup" && !blocked ? latestRuns(earlierRuns.runs, { waitingOnly: short && !columns, count: phone ? 2 : 3 }) : [];
   const listsEarlier = listsMore(earlierRuns, latest);
   const latestRunsShown = <LatestRuns runs={latest} more={listsEarlier} onOpen={onOpenRun} className={styles.runs} />;
 

@@ -587,6 +587,7 @@ test("the latest runs: those waiting for review first, then the newest, three at
   ];
   const ids = (list: { id: string }[]) => list.map((run) => run.id);
   assert.deepEqual(ids(latestRuns(runs)), ["waiting", "new", "failed"], "waiting first, then the newest; a test run never");
+  assert.deepEqual(ids(latestRuns(runs, { count: 2 })), ["waiting", "new"], "a phone: two");
   assert.deepEqual(ids(latestRuns(runs, { waitingOnly: true })), ["waiting"], "a short screen: only those waiting");
   assert.deepEqual(latestRuns(runs.filter((run) => run.status !== "awaiting_review"), { waitingOnly: true }), []);
   assert.equal(listsMore(listed(runs), latestRuns(runs)), true, "a fourth run: the list has more");

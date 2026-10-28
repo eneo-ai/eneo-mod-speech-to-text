@@ -239,8 +239,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   field's edge, so the two still read as one control. Empty, the field offers the names it was last sent with on this
   flow in one press ("Lägg till förra gångens namn (2)", a ghost button where the chips will be), and Märk upp talare
   starts as the person last left it on the flow.
-- "Senaste körningar" opens the setup, under the flow's name: the person's latest runs of the flow, three at most, those
-  waiting for their review first with their Granska (Eneo cancels a review not done in time), then the newest, in the
+- "Senaste körningar" opens the setup, under the flow's name: the person's latest runs of the flow, three at most (two
+  on a phone, whose first screen then still reaches the choice of way in under the browser's bars), those waiting for
+  their review first with their Granska (Eneo cancels a review not done in time), then the newest, in the
   rows of "Tidigare körningar". From 1024 px it stands in the flow's column, so the working card keeps its action on a
   laptop's first screen; below, above the choice of way in. A short screen in one column (at most 640 px high) lists
   only the runs waiting for review: its first screen is the ways in's. While "Tidigare körningar" has more, a ghost

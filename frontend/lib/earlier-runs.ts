@@ -16,16 +16,14 @@ export function pendingReviews(runs: readonly FlowRunSummary[]): FlowRunSummary[
   return runs.filter((run) => run.status === "awaiting_review" && run.purpose !== "test");
 }
 
-const LATEST = 3;
-
 /**
- * The setup's latest runs, at its top: those waiting for this person's review first, then the newest, three at most; with
- * `waitingOnly` (a short screen, whose first screen is the ways in's) only those waiting. Never a test run.
+ * The setup's latest runs, at its top: those waiting for this person's review first, then the newest, `count` at most;
+ * with `waitingOnly` (a short screen, whose first screen is the ways in's) only those waiting. Never a test run.
  */
-export function latestRuns(runs: readonly FlowRunSummary[], { waitingOnly = false } = {}): FlowRunSummary[] {
+export function latestRuns(runs: readonly FlowRunSummary[], { waitingOnly = false, count = 3 } = {}): FlowRunSummary[] {
   const waiting = pendingReviews(runs);
   const rest = waitingOnly ? [] : runs.filter((run) => run.purpose !== "test" && !waiting.includes(run));
-  return [...waiting, ...rest].slice(0, LATEST);
+  return [...waiting, ...rest].slice(0, count);
 }
 
 /**
