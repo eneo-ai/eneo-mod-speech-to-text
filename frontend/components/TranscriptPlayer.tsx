@@ -44,7 +44,7 @@ import { AudioPlayer, usePlayback, usePlaybackFlags, usePlaybackState } from "@/
 import { useRoomInRow } from "@/components/flow/useRoomInRow";
 import { useTranscriptPlayhead } from "@/lib/transcript-playhead";
 import styles from "@/components/TranscriptPlayer.module.css";
-import { useDock } from "@/lib/dock";
+import { useDock, whileTyping } from "@/lib/dock";
 import { browserStorage } from "@/lib/browser-storage";
 import { downloadBlob } from "@/lib/download";
 import { letterKeysOn, setLetterKeysOn } from "@/lib/letter-keys";
@@ -1033,10 +1033,8 @@ export function TranscriptPlayer(
       tabIndex={0}
       ref={playerRef}
       // While a text field of the player has the focus (the search, a passage's editor) a touch screen's soft keyboard
-      // covers the window's lower half, and the dock stays in the text (TranscriptPlayer.module.css). Said on the
-      // section by hand, not by a render or a `:has()`: neither should touch two thousand passages for a focus.
-      onFocus={(e) => e.currentTarget.toggleAttribute("data-typing", e.target.matches("input, textarea"))}
-      onBlur={(e) => e.currentTarget.removeAttribute("data-typing")}
+      // covers the window's lower half, and the dock stays in the text (TranscriptPlayer.module.css, lib/dock.ts).
+      {...whileTyping}
     >
       {title && (
         <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={3} paddingBlockStart={4} paddingBlockEnd={2} className={styles.inset}>

@@ -120,6 +120,14 @@
    lib/dock.ts, so a longer note or the text spacing a reader sets cannot outgrow it; with no dock stuck to the window's
    edge (a laptop, a short screen) the variable is unset and only the margin is left. lib/dock.ts says in `data-dock`
    which edges a dock is shown at. */
+/* Only the page's root reads it, as its scroll padding: not inherited, so a dock that changes what it covers recalculates
+   the root alone, not every passage of a long transcript under it. */
+@property --dock-block-size {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* A dock that would cover more than a third of the window (large text) stands at the page's end instead (lib/dock.ts). */
 :root [data-dock-too-tall] {
   position: static;
