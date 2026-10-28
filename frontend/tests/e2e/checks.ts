@@ -756,6 +756,8 @@ function probeFocus(page: Page) {
       return null;
     };
     const ownPin = pinnedBox(el);
+    const padding = getComputedStyle(document.documentElement);
+    const room = innerHeight - (Number.parseFloat(padding.scrollPaddingTop) || 0) - (Number.parseFloat(padding.scrollPaddingBottom) || 0);
     let covered = 0, byPinned = 0, byPinnedAtTop = 0, points = 0;
     let coveredBy: string | null = null;
     if (x1 > x0 && y1 > y0) {
@@ -794,13 +796,14 @@ function probeFocus(page: Page) {
       // of what shows: the indicator must then be inside it.
       perimeter: onScreenEdges(r),
       focusVisible,
-      // A region taller than the window (a phone's transcript) shows a part of itself whatever is pinned, and no scroll
-      // uncovers it: a bar over its lower part hides no more than the window's edge does. Its top, where its ring and
-      // name start, must still be clear. Only a region: a control (a field, a button, a passage's [role=button]) is held
-      // to the bar whatever its height.
+      // A region taller than the room the window's bars leave (a transcript under a docked player and a docked decision)
+      // shows a part of itself whatever is pinned, and no scroll uncovers it (lib/dock.ts scrolls it nowhere): a bar
+      // over its lower part hides no more than the window's edge does. Its top, where its ring and name start, must
+      // still be clear. Only a region: a control (a field, a button, a passage's [role=button]) is held to the bar
+      // whatever its height.
       obscured: (points > 0 && covered === points
         ? "full"
-        : byPinned > 0 && !(r.height > innerHeight && byPinnedAtTop === 0 && el.matches('[role="region"], section'))
+        : byPinned > 0 && !(r.height > room && byPinnedAtTop === 0 && el.matches('[role="region"], section'))
           ? "partial"
           : "none") as FocusStop["obscured"],
       coveredBy,

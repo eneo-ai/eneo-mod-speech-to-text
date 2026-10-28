@@ -270,7 +270,7 @@ test("a region taller than the window is held to the ring on its edges that show
   expect((await focusStop(page))?.indicator, "no ring at all").toBe(false);
 });
 
-test("a bar pinned over the lower part of a region taller than the window passes; over its top, or over a field or a button that tall, it fails", async ({ page }) => {
+test("a bar pinned over the lower part of a region taller than the room the bars leave passes; over its top, or over a field or a button that tall, it fails", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.setContent(`
     <style>
@@ -293,7 +293,18 @@ test("a bar pinned over the lower part of a region taller than the window passes
   expect(await under("region"), "a region's lower part under a bar at the window's bottom").toEqual([]);
   expect(await under("field"), "a field is a control: no bar over it").toEqual([expect.stringContaining("partly under")]);
   expect(await under("passage"), "so is a passage's [role=button], however tall").toEqual([expect.stringContaining("partly under")]);
-  await page.evaluate(() => Object.assign(document.getElementById("bar")!.style, { bottom: "auto", top: "0" }));
+  // Shorter than the window and taller than the room its bar leaves (the page's scroll padding): no scroll uncovers it.
+  await page.evaluate(() => {
+    document.getElementById("region")!.style.height = "560px";
+    document.documentElement.style.scrollPaddingBottom = "120px";
+  });
+  expect(await under("region"), "a region taller than the room the bar leaves").toEqual([]);
+  await page.evaluate(() => (document.documentElement.style.scrollPaddingBottom = "0px"));
+  expect(await under("region"), "with no padding for the bar, the room is the whole window").toEqual([expect.stringContaining("partly under")]);
+  await page.evaluate(() => {
+    document.getElementById("region")!.style.height = "";
+    Object.assign(document.getElementById("bar")!.style, { bottom: "auto", top: "0" });
+  });
   expect(await under("region"), "a bar over the region's top, where its ring and name start").toEqual([expect.stringContaining("partly under")]);
 });
 
