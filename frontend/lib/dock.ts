@@ -74,7 +74,8 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   };
   // A page that puts its dock in its flow while a field has the focus (a touch screen's soft keyboard: ReviewView's and
   // TranscriptPlayer's data-typing) changes no size. A dock measured then (the window resized for the keyboard) covered
-  // nothing: it is looked at again when the focus leaves a field, and before a control is uncovered while it says none.
+  // nothing: it is looked at again before a control is uncovered while it says none. Not on every focus that leaves a
+  // field: that runs inside a passage editor's closing, and a long transcript's would be laid out twice.
   const uncover = ({ target }: FocusEvent) => {
     if (!docks.get(dock)?.size) remeasure();
     if (pressed || !docks.get(dock)?.size || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
@@ -98,7 +99,6 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   document.addEventListener("pointerdown", press, true);
   document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", uncover);
-  document.addEventListener("focusout", remeasure);
   measure();
   return () => {
     observer.disconnect();
@@ -106,7 +106,6 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     document.removeEventListener("pointerdown", press, true);
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
-    document.removeEventListener("focusout", remeasure);
     yielding.delete(remeasure);
     docks.delete(dock);
     publish();

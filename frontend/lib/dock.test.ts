@@ -180,24 +180,32 @@ test("a dock that yields stands in the page when it and the docks that do not yi
   [decision, player].forEach((element) => element.remove());
 });
 
-test("a dock that is stuck again when a field loses the focus is measured again, with no resize", async (t) => {
+test("a dock that is stuck again after a field had the focus is measured again before a control is uncovered, with no resize", async (t) => {
   const { observeDock } = await import("./dock");
   const bar = dock(100);
   const stop = observeDock(bar);
   const field = document.createElement("textarea");
-  document.body.append(field);
+  const button = document.createElement("button");
+  document.body.append(field, button);
   // While a field has the focus a touch screen's soft keyboard is up and the page puts the dock in its flow
   // (ReviewView's data-typing); Android resizes the window for the keyboard, so the dock is measured covering nothing.
-  // As React's onBlur, which listens for focusout above the page.
-  field.addEventListener("focusout", () => (bar.style.position = "sticky"));
   field.focus();
   bar.style.position = "static";
   window.dispatchEvent(new window.Event("resize"));
   assert.equal(size(), "", "typing: in the page's flow");
+  // Done typing: the page docks it again, and the keyboard's next focus lands on a control under it.
+  bar.style.position = "sticky";
   field.blur();
-  assert.equal(size(), "100px", "done typing: docked and measured again, so focus stops short of it");
+  const box = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 100, width: 100, height, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+  t.mock.method(bar, "getBoundingClientRect", () => box(window.innerHeight - 100, 100));
+  t.mock.method(button, "getBoundingClientRect", () => box(window.innerHeight - 30, 24));
+  const scrolled: (number | undefined)[] = [];
+  t.mock.method(window, "scrollBy", (options: ScrollToOptions) => void scrolled.push(options.top));
+  button.focus();
+  assert.equal(size(), "100px", "measured again: focus stops short of it");
+  assert.equal(scrolled.length, 1, "and the covered control is scrolled clear");
   stop();
-  [bar, field].forEach((element) => element.remove());
+  [bar, field, button].forEach((element) => element.remove());
   t.mock.restoreAll();
 });
 
