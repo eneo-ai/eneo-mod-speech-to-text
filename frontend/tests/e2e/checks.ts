@@ -796,10 +796,11 @@ function probeFocus(page: Page) {
       focusVisible,
       // A region taller than the window (a phone's transcript) shows a part of itself whatever is pinned, and no scroll
       // uncovers it: a bar over its lower part hides no more than the window's edge does. Its top, where its ring and
-      // name start, must still be clear, and a control (a field, a button) is held to the bar whatever its height.
+      // name start, must still be clear. Only a region: a control (a field, a button, a passage's [role=button]) is held
+      // to the bar whatever its height.
       obscured: (points > 0 && covered === points
         ? "full"
-        : byPinned > 0 && !(r.height > innerHeight && byPinnedAtTop === 0 && !el.matches("input, textarea, select, button, a, [contenteditable], [role=textbox]"))
+        : byPinned > 0 && !(r.height > innerHeight && byPinnedAtTop === 0 && el.matches('[role="region"], section'))
           ? "partial"
           : "none") as FocusStop["obscured"],
       coveredBy,
