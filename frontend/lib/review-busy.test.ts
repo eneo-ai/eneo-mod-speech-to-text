@@ -280,7 +280,7 @@ test("who is who: Namnge talarna stands in the speakers' card's heading row; fro
   assert.ok(!card.contains(approve) && !card.contains(button(view.container, "Avvisa körningen")), "the decision is the page's, not the speakers' group");
   assert.ok(card.compareDocumentPosition(approve) & window.Node.DOCUMENT_POSITION_FOLLOWING, "after the card");
   assert.equal(approve.closest("[data-docked-action]"), null, "not docked");
-  assert.match(card.textContent ?? "", /Talare utan namn behåller sin etikett i transkriberingen\./, "beside the decision, at the card's foot");
+  assert.match(card.textContent ?? "", /1 av 2 talare saknar namn: Talare 2\. Talaren behåller sin etikett i transkriberingen\./, "beside the decision, at the card's foot");
   const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
   await view.act(async () => button(view.container, "Avvisa körningen")!.click());
@@ -301,8 +301,8 @@ test("who is who below a laptop's width: Avvisa follows the card, Godkänn och f
   assert.ok(dock && !transcript.contains(dock) && transcript.compareDocumentPosition(dock) & window.Node.DOCUMENT_POSITION_FOLLOWING, "Godkänn in the page's dock, after the transcript");
   assert.match(dock.textContent ?? "", /^Läs igenom och rätta innan du godkänner\./, "the reminder over it");
   // What Godkänn does to speakers without a name stays at the card's foot: the dock keeps to the decision.
-  assert.match(card.textContent ?? "", /Talare utan namn behåller sin etikett i transkriberingen\./);
-  assert.doesNotMatch(dock.textContent ?? "", /Talare utan namn/);
+  assert.match(card.textContent ?? "", /1 av 2 talare saknar namn: Talare 2\. Talaren behåller sin etikett i transkriberingen\./);
+  assert.doesNotMatch(dock.textContent ?? "", /saknar namn/);
   const player = transcript.querySelector("[data-docked-player]");
   assert.ok(!player || player.hasAttribute("data-dock-edge"), "the player docked on top, not at the bottom with the decision");
   assert.equal([...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Godkänn och fortsätt").length, 1, "one Godkänn on the page");
@@ -472,4 +472,61 @@ test("a review edit kept through a reload is restored only in the shape the revi
   }
   const named = await opened(speakers, JSON.stringify({ revision: 1, edit: { speakerRows: [fullRow("SPEAKER_00", "Bertil"), fullRow("SPEAKER_01", null)] } }));
   assert.match(named.text, /Bertil/, "rows of the right shape come back");
+});
+
+/** Who is who with six speakers, three named, and Talare 6 in the inventory with passages none of which is in the
+ * transcript any more (moved with Ändra talare). */
+const six: FlowRunReviewCheckpointPublic = {
+  ...speakers,
+  current_payload_json: {
+    text: [
+      "[00:00:00 - 00:00:40] SPEAKER_00: Välkomna till mötet.",
+      "[00:00:40 - 00:01:10] SPEAKER_01: Tack, jag börjar med budgeten.",
+      "[00:01:10 - 00:01:40] SPEAKER_02: Ramen höjs med två procent.",
+      "[00:01:40 - 00:02:20] SPEAKER_03: Förvaltningen återkommer i oktober.",
+      "[00:02:20 - 00:02:28] SPEAKER_04: Ja.",
+      "[00:02:28 - 00:03:00] SPEAKER_02: Nya turer gäller efter höstlovet.",
+      "[00:03:00 - 00:03:30] SPEAKER_03: Då avslutar vi.",
+    ].join("\n"),
+    speaker_mapping: {
+      inventory: ["SPEAKER_00", "SPEAKER_01", "SPEAKER_02", "SPEAKER_03", "SPEAKER_04", "SPEAKER_05"].map((label) => ({ label, line_count: 4 })),
+    },
+    structured: {
+      speakers: [
+        { label: "SPEAKER_00", name: "Anna Berg", confidence: "high", evidence: "" },
+        { label: "SPEAKER_01", name: "Sara Holm", confidence: "high", evidence: "" },
+        { label: "SPEAKER_02", name: "Erik Lund", confidence: "high", evidence: "" },
+      ],
+    },
+  },
+};
+
+/** Who is who with the transcript read. */
+async function readReview(start: FlowRunReviewCheckpointPublic) {
+  const view = await review(start);
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  return view;
+}
+const question = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
+
+test("who is who: once the transcript is read a speaker whose passages were all moved has none, and the card's foot names the speakers without a name", async (t) => {
+  eneo(t);
+  const view = await readReview(six);
+  const card = view.container.querySelector('[role="group"][aria-labelledby="review-speakers"]')!;
+  assert.match(card.textContent ?? "", /3 av 6 talare saknar namn: Talare 4, Talare 5, Talare 6\. De behåller sin etikett i transkriberingen\./);
+  await view.act(async () => button(view.container, "Namnge talarna")!.click());
+  const rowOf = (label: string) => document.body.querySelector(`dialog[open] li[data-speaker="${label}"]`)?.textContent ?? "";
+  assert.match(rowOf("SPEAKER_02"), /Talare 3 · 2 inlägg/);
+  assert.match(rowOf("SPEAKER_05"), /Talare 6 · 0 inlägg/, "none, not the inventory's four");
+});
+
+test("the text review's Godkänn och fortsätt never asks", async (t) => {
+  const server = eneo(t);
+  const view = await review();
+  await view.act(async () => {
+    button(view.container, "Godkänn och fortsätt")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.ok(!question());
+  assert.deepEqual(server.calls, ["approve"]);
 });

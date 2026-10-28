@@ -14,6 +14,7 @@
 
 import { ApiError, type Json } from "./api";
 import { friendlyError } from "./errors";
+import { speakerDisplayLabel } from "./transcript";
 
 type SpeakerConfidence = "low" | "medium" | "high";
 
@@ -210,6 +211,30 @@ export function unmappedSpeakerLabels(
   rows: readonly SpeakerMappingRow[],
 ): string[] {
   return rows.filter((row) => !row.name?.trim()).map((row) => row.label);
+}
+
+const both = new Intl.ListFormat("sv-SE", { type: "conjunction" });
+
+/** The speakers' card's note on the speakers without a name: how many of all, and which; null when every one has one. */
+export function unnamedNote(unnamed: readonly string[], total: number): string | null {
+  if (unnamed.length === 0) return null;
+  const which = unnamed.map(speakerDisplayLabel).join(", ");
+  const keep = unnamed.length === 1 ? "Talaren behåller" : "De behåller";
+  return `${unnamed.length} av ${total} talare saknar namn: ${which}. ${keep} sin etikett i transkriberingen.`;
+}
+
+/**
+ * What the speaker review's Godkänn och fortsätt asks about before the flow goes on, one sentence per thing left
+ * unresolved: speakers without a name, and names typed in Namnge talarna but not saved. Null when there is nothing.
+ */
+export function approvalQuestion(unnamed: readonly string[], unsavedNames: boolean): string[] | null {
+  const said: string[] = [];
+  if (unnamed.length === 1) said.push(`${speakerDisplayLabel(unnamed[0])} saknar namn och står kvar som etikett i dokumentet.`);
+  if (unnamed.length > 1) {
+    said.push(`${unnamed.length} talare saknar namn: ${both.format(unnamed.map(speakerDisplayLabel))}. De står kvar som etiketter i dokumentet.`);
+  }
+  if (unsavedNames) said.push("Namnen du skrev i Namnge talarna är inte sparade och kommer inte med om du godkänner nu.");
+  return said.length > 0 ? said : null;
 }
 
 /**

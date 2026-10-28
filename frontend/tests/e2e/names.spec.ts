@@ -91,7 +91,11 @@ test("the dialog saves the names; the page's Godkänn och fortsätt then lets th
   await expect(page.getByRole("listitem").filter({ hasText: "Talare 2" }), "the page shows the saved name").toContainText("Sara Holm");
   expect(saved, "the changed name was saved").toHaveLength(1);
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
+  // Talare 3 still has no name: Godkänn asks first, and Godkänn ändå goes on.
   await page.getByRole("button", { name: "Godkänn och fortsätt" }).click();
+  const question = page.getByRole("alertdialog", { name: "Godkänna ändå?" });
+  await expect(question).toContainText("Talare 3 saknar namn och står kvar som etikett i dokumentet.");
+  await question.getByRole("button", { name: "Godkänn ändå" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   expect(saved, "approving saves nothing again").toHaveLength(1);
 });

@@ -762,3 +762,19 @@ test("a refused save remembers no names", async (t) => {
   await view.view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.equal(window.localStorage.getItem(key), null);
 });
+
+test("the page is told while names are typed and not saved: a change, not a name typed back as it was, until saved", async () => {
+  const told: boolean[] = [];
+  const { view, field } = await dialog({ onUnsavedChange: (unsaved: boolean) => void told.push(unsaved) });
+  assert.deepEqual(told, [false], "nothing typed yet");
+  await view.act(async () => type(field("Talare 2"), "Erik Lund"));
+  assert.equal(told.at(-1), true, "a name typed");
+  await view.act(async () => type(field("Talare 2"), ""));
+  assert.equal(told.at(-1), false, "typed back as it was saved");
+  await view.act(async () => type(field("Talare 1"), "Sara Holm"));
+  await view.act(async () => button(document.body, "Stäng")!.click());
+  assert.equal(told.at(-1), true, "closed, the names typed are still not saved");
+  await view.act(async () => button(view.container, "Namnge talarna")!.click());
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.equal(told.at(-1), false, "saved");
+});

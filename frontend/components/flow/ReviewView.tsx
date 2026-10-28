@@ -47,6 +47,7 @@ import {
 } from "@/lib/api";
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import {
+  approvalQuestion,
   buildEditedMapping,
   buildSpeakerRows,
   getSpeakerMappingParticipants,
@@ -57,6 +58,7 @@ import {
   proposalNameToLabel,
   speakerNamesFromRows,
   unmappedSpeakerLabels,
+  unnamedNote,
   withSplitLabels,
   type SpeakerMappingRow,
 } from "@/lib/speaker-mapping";
@@ -197,6 +199,10 @@ export function ReviewView({
   const signedOut = useSignedOut();
   // The naming dialog, opened at one speaker by Byt namn på in a passage's Ändra talare.
   const namingDialog = useRef<SpeakerNamingHandle>(null);
+  // Names typed in the naming dialog and not saved, as the dialog tells it: Godkänn asks before going on without them.
+  const [namesUnsaved, setNamesUnsaved] = useState(false);
+  // Godkänn och fortsätt with something unresolved in who is who: asked first (approvalQuestion).
+  const [askingApproval, setAskingApproval] = useState(false);
 
   // A control that removes or disables itself hands the focus on once the view has changed, never to the page
   // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
@@ -369,6 +375,10 @@ export function ReviewView({
     () => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s.passages])),
     [shownSegments],
   );
+  // While the transcript is read, the inventory's count is all there is; once it is read, a speaker without passages
+  // has none, also when Ändra talare moved every one of them.
+  const passagesOf = (label: string) =>
+    transcript.pending ? (namingRows.find((row) => row.label === label)?.lineCount ?? 0) : (passageCounts.get(label) ?? 0);
 
   /** The names on the page, and kept as a draft until Eneo has them; the draft's version, to drop once saved. */
   function keepNames(rows: SpeakerMappingRow[]): ReviewEdit {
@@ -467,6 +477,8 @@ export function ReviewView({
   }
 
   const busy = working !== null;
+  // Who is who with a speaker without a name, or names typed and not saved: said before the flow goes on.
+  const unresolved = isSpeakerMapping && !decided ? approvalQuestion(unmapped, namesUnsaved) : null;
   // The transcript's own changes must be saved before the flow goes on.
   const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem) || saveState === "error" || hasDropped);
   // Approval folded the transcript's corrections in; a correction made after it would never reach the document.
@@ -529,7 +541,7 @@ export function ReviewView({
       label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
       isLoading={working === "approve"}
       isDisabled={busy || continueBlocked}
-      onClick={() => void saveAndApprove()}
+      onClick={() => (unresolved ? setAskingApproval(true) : void saveAndApprove())}
     />
   );
   const decidedNote = decided && (
@@ -677,7 +689,7 @@ export function ReviewView({
             rows={namingRows}
             proposals={modelProposals}
             participants={participants}
-            passages={(label) => passageCounts.get(label) ?? namingRows.find((row) => row.label === label)?.lineCount ?? 0}
+            passages={passagesOf}
             quote={(label) =>
               shownSegments.find((segment) => segment.speaker === label)?.text ??
               namingRows.find((row) => row.label === label)?.samples[0] ??
@@ -687,10 +699,17 @@ export function ReviewView({
             onListen={hasAudio ? listenTo : undefined}
             listening={listening}
             onStopListening={stopListening}
-            listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
+            listenUnavailableReason={(label) =>
+              !shownSegments.some((segment) => segment.speaker === label)
+                ? "Talaren har inga inlägg."
+                : !firstSegmentForSpeaker(shownSegments, label)
+                  ? "Det finns inget tilldelat exempel utan överlappande tal."
+                  : null
+            }
             onSave={saveNames}
             decided={decided}
             draftKey={namesDraftKey}
+            onUnsavedChange={setNamesUnsaved}
           >
             <Button
               variant="secondary"
@@ -707,10 +726,26 @@ export function ReviewView({
         {namingAction}
       </VStack>
     );
-    const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
+    const unnamed = speakerRows.length > 0 ? unnamedNote(unmapped, namingRows.length) : null;
+    const unmappedNote = unnamed && (
       <Text as="p" type="supporting">
-        Talare utan namn behåller sin etikett i transkriberingen.
+        {unnamed}
       </Text>
+    );
+    // Godkänn's question: what is unresolved, then Godkänn ändå, or back to name them (Namnge talarna on the card).
+    const approvalDialog = (
+      <AlertDialog
+        isOpen={askingApproval && unresolved !== null && !signedOut}
+        onOpenChange={setAskingApproval}
+        title="Godkänna ändå?"
+        description={`${unresolved?.join(" ") ?? ""} Namnge dem med Namnge talarna, eller godkänn ändå.`}
+        cancelLabel="Tillbaka"
+        actionLabel="Godkänn ändå"
+        onAction={() => {
+          setAskingApproval(false);
+          void saveAndApprove();
+        }}
+      />
     );
 
     return (
@@ -802,6 +837,7 @@ export function ReviewView({
             {dockedDecision}
           </div>
         )}
+        {approvalDialog}
       </VStack>
     );
   }

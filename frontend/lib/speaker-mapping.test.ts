@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  approvalQuestion,
   buildEditedMapping,
   buildSpeakerRows,
   getSpeakerMappingInferNames,
@@ -8,6 +9,7 @@ import {
   isSpeakerMappingCheckpoint,
   speakerNamesFromRows,
   unmappedSpeakerLabels,
+  unnamedNote,
 } from "./speaker-mapping";
 import { isSpeakerMappingReviewStep } from "./api";
 
@@ -151,4 +153,26 @@ test("a speaker-mapping review step is recognised from the run contract", () => 
     }),
     false,
   );
+});
+
+test("the speakers' card says how many of all have no name, and which", () => {
+  assert.equal(unnamedNote([], 6), null);
+  assert.equal(unnamedNote(["SPEAKER_03"], 6), "1 av 6 talare saknar namn: Talare 4. Talaren behåller sin etikett i transkriberingen.");
+  assert.equal(
+    unnamedNote(["SPEAKER_03", "SPEAKER_05"], 6),
+    "2 av 6 talare saknar namn: Talare 4, Talare 6. De behåller sin etikett i transkriberingen.",
+  );
+});
+
+test("Godkänn asks about speakers without a name and names typed but not saved, and about nothing else", () => {
+  assert.equal(approvalQuestion([], false), null, "nothing unresolved: no question");
+  assert.deepEqual(approvalQuestion(["SPEAKER_03"], false), ["Talare 4 saknar namn och står kvar som etikett i dokumentet."]);
+  assert.deepEqual(approvalQuestion(["SPEAKER_03", "SPEAKER_05"], false), [
+    "2 talare saknar namn: Talare 4 och Talare 6. De står kvar som etiketter i dokumentet.",
+  ]);
+  assert.deepEqual(approvalQuestion(["SPEAKER_00", "SPEAKER_01", "SPEAKER_02"], true), [
+    "3 talare saknar namn: Talare 1, Talare 2 och Talare 3. De står kvar som etiketter i dokumentet.",
+    "Namnen du skrev i Namnge talarna är inte sparade och kommer inte med om du godkänner nu.",
+  ]);
+  assert.deepEqual(approvalQuestion([], true), ["Namnen du skrev i Namnge talarna är inte sparade och kommer inte med om du godkänner nu."]);
 });

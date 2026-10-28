@@ -62,7 +62,7 @@ test("who is who: below a laptop's width, on the narrowest phone too, Godkänn o
   await expect(page.getByRole("heading", { name: "Vem är vem?", level: 1 })).toBeVisible();
   const approve = page.getByRole("button", { name: "Godkänn och fortsätt" });
   const card = page.getByRole("group", { name: "Talare" });
-  await expect(card.getByText("Talare utan namn behåller sin etikett i transkriberingen.")).toBeVisible();
+  await expect(card.getByText("1 av 3 talare saknar namn: Talare 3. Talaren behåller sin etikett i transkriberingen.")).toBeVisible();
   const { width, height } = info.project.use.viewport!;
   if (width >= 1024) {
     // Beside the transcript, under the speakers' card: in the page, not docked.
