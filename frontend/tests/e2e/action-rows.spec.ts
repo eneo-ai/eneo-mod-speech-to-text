@@ -84,6 +84,13 @@ test("who is who: below a laptop's width, on the narrowest phone too, Godkänn o
     const player = await page.locator("[data-docked-player]").first().boundingBox();
     if (player && at !== "first screen") expect(player.y + player.height, "the player above the decision").toBeLessThanOrEqual(box.y);
   }
+  // A taller phone (412 × 880) has the player's place in the text where the decision is docked: the decision is on top.
+  await page.setViewportSize({ width: 412, height: 880 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  expect(await approve.evaluate((button) => {
+    const { left, top, width: w, height: h } = button.getBoundingClientRect();
+    return button.contains(document.elementFromPoint(left + w / 2, top + h / 2));
+  }), "the player never over the decision").toBe(true);
   // A short screen (a phone on its side) docks nothing: the decision ends the page, whole and uncovered once reached.
   await page.setViewportSize({ width: 844, height: 390 });
   const dock = page.locator("[data-docked-action]");
