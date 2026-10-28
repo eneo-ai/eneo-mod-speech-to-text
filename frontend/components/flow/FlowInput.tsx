@@ -85,7 +85,8 @@ const PHONE = "(max-width: 767.98px)";
 // A small phone's window: the dock keeps to the action, so the ways in have the room above it.
 const SHORT = "(max-height: 640px)";
 // A touch screen, which locks and whose apps switch under a recording, tall enough that the bar's line about it leaves the
-// text its room; on a smaller one the line stands only among the tips before the start ("Så fungerar det").
+// text its room; on a smaller one the line stands only among the tips before the start ("Tips för bra ljud", under the
+// microphone's test).
 const TOUCH = "(pointer: coarse) and (min-height: 640px)";
 // From a laptop's width the flow stands in a column beside the work (FlowFrame); below it, the flow comes first.
 const COLUMNS = "(min-width: 1024px)";
@@ -185,8 +186,9 @@ export function FlowInput({
   // by the speaker controls they fill in, so a field being typed in never moves when the layout changes (a tablet turned).
   const choiceFirst = group === "setup" && !blocked && !columns;
   // "Så fungerar det" is read once, before the meeting: beside the work from a laptop's width, and in one column one folded
-  // row above the choice, with the way to the earlier runs. A short screen (a small phone, one on its side) keeps its first
-  // screen for the ways in and the docked action: there the guide follows the work, and the list is reached by scrolling.
+  // row above the choice, with the way to the earlier runs. A short screen in one column (a small phone, one on its side)
+  // keeps its first screen for the ways in and the docked action: there the guide follows the work, and the list is reached
+  // by scrolling. A laptop's flow column has the room at any height.
   // On a phone the flow's description opens the guide instead of standing above the choice: the person has just read it in
   // the flow's row of the list.
   const guide = group === "setup" ? howItWorks(contract, snapshot.modes) : null;
@@ -246,7 +248,7 @@ export function FlowInput({
             guide={columns ? guide : null}
             // From a laptop's width the way to the earlier runs stands under the flow's name, so the working card keeps its
             // action on the first screen.
-            lead={recoveryFirst ? unsentRecordings : group === "setup" && columns && !short ? <ToEarlierRuns list={earlierRuns} /> : undefined}
+            lead={recoveryFirst ? unsentRecordings : group === "setup" && columns ? <ToEarlierRuns list={earlierRuns} /> : undefined}
             // In the setup the details are the working card's; while the page holds audio they are the flow's, folded on
             // a phone or tablet. The blocked setup asks for nothing: its details would be filled in for no run. What was
             // typed before stays with the session.

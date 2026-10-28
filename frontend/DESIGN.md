@@ -247,8 +247,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   fold follows the work. On a phone the flow's description opens it, read once there rather than over the choice: the
   person read it in the flow's row of the list.
 - "Tips för bra ljud" is folded under the microphone test, with a way that records only.
-- "Tidigare körningar" ends the working card, under the form; while it lists runs, a ghost button of that name above the
-  card (not on a short screen) brings it into view and gives its heading the focus.
+- "Tidigare körningar" ends the working card, under the form; while it lists runs, a ghost button of that name brings it
+  into view and gives its heading the focus. From 1024 px it stands under the flow's name in the flow's column, so the
+  card keeps its action on a laptop's first screen; below, above the working card, and not on a short screen.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose part of the meeting ("Om du låser skärmen eller byter app kan delar av mötet saknas i inspelningen", led by "Skärmen hålls tänd." while the page holds the screen's wake lock) a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it. There the live sheet's head is its log's first line: the Preliminär pill, and when the final text comes on a line of its own under it.
