@@ -42,6 +42,7 @@ export function NameCombobox({
   problem,
   enterKeyHint,
   onEnter,
+  onSetAside,
 }: {
   /** What a phone's Enter key says it does: "next" where another field follows, "done" on the last. */
   enterKeyHint?: "next" | "done";
@@ -66,6 +67,8 @@ export function NameCombobox({
   description?: string;
   /** Why the name is refused, said under the field. */
   problem?: string;
+  /** A typed name, none of the options, that a choice in the list replaces: the caller can keep offering it. */
+  onSetAside?: (name: string) => void;
 }) {
   const id = useId();
   const listId = `${id}-list`;
@@ -115,6 +118,7 @@ export function NameCombobox({
   const active = moved === null ? items.findIndex(isSelected) : Math.min(moved, items.length - 1);
 
   function choose(option: Option) {
+    if (trimmed && !exact && !("name" in option && option.name === trimmed)) onSetAside?.(trimmed);
     if (option.kind === "write") {
       // What is typed next replaces the name.
       setTyping(true);

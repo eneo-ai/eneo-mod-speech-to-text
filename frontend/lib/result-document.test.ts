@@ -356,6 +356,95 @@ test("Dela only where the browser can share, and then the file itself when the d
   }
 });
 
+test("a file the browser says it can share and then refuses (a Word file on Android) is said, with what still works", async (t) => {
+  const word: ResultFileView = { ...pdf, name: "Mötesanteckningar.docx", kind: "word", typeLabel: "Word", meta: "Word, 18 kB",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", previewable: false };
+  const shared: ShareData[] = [];
+  let refusal = "NotAllowedError";
+  Object.defineProperty(navigator, "share", {
+    value: async (data: ShareData) => {
+      shared.push(data);
+      if (data.files) throw new DOMException("Permission denied", refusal);
+    },
+    configurable: true,
+  });
+  // Chrome on Android: canShare says yes to any file, and share refuses the types it does not send.
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(new Blob(["PK"], { type: word.mimeType }))) as typeof fetch;
+  t.after(() => {
+    ["share", "canShare"].forEach((name) => Reflect.deleteProperty(navigator, name));
+    globalThis.fetch = realFetch;
+  });
+  const read = (view: { act: (callback: () => Promise<void>) => Promise<void> }) => view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+  // Only the file: the page says why nothing happened, Dela goes, and the focus goes on to the download.
+  const alone = await document_({ text: null, file: word });
+  await read(alone);
+  const dela = button(alone.container, "Dela")!;
+  dela.focus();
+  await alone.act(async () => dela.click());
+  await read(alone);
+  assert.equal(shared.length, 1, "the file was offered");
+  assert.deepEqual(alertsOf(alone.container), ["Webbläsaren kan inte dela Word-filen.Ladda ner den och dela den från enheten."]);
+  assert.equal(button(alone.container, "Dela"), null, "no Dela that cannot work");
+  assert.equal(document.activeElement, alone.container.querySelector("a[download]"), "the focus is on Ladda ner");
+  await alone.unmount();
+
+  // With text: Dela stays, and its next press shares the text (a share needs a press of its own).
+  laidOut(t, 800);
+  const withText = await document_({ text, file: word });
+  await read(withText);
+  await withText.act(async () => button(withText.container, "Dela")!.click());
+  await read(withText);
+  assert.deepEqual(alertsOf(withText.container), ["Webbläsaren kan inte dela Word-filen.Tryck på Dela igen för att dela texten, eller ladda ner filen."]);
+  await withText.act(async () => button(withText.container, "Dela")!.click());
+  assert.equal(shared.at(-1)?.text, text, "the text is shared");
+  await withText.unmount();
+
+  // Closing the share sheet is a choice, and a second press while the sheet is open (InvalidStateError) no refusal:
+  // nothing is said.
+  for (const name of ["AbortError", "InvalidStateError"]) {
+    refusal = name;
+    const closed = await document_({ text: null, file: word });
+    await read(closed);
+    await closed.act(async () => button(closed.container, "Dela")!.click());
+    await read(closed);
+    assert.deepEqual(alertsOf(closed.container), [], `nothing to say (${name})`);
+    assert.ok(button(closed.container, "Dela"), "Dela stays");
+    await closed.unmount();
+  }
+
+  // The refusal is the file type's: the same page drawn with a PDF offers Dela again and says nothing.
+  refusal = "NotAllowedError";
+  const { createElement } = await import("react");
+  const { ResultDocument } = await import("../components/flow/ResultDocument");
+  const { ModuleProviders } = await import("@/kit/ModuleProviders");
+  const draw = (file: ResultFileView) =>
+    createElement(ModuleProviders, null, createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", text: null, file }));
+  const page = await mount(draw(word));
+  await read(page);
+  await page.act(async () => button(page.container, "Dela")!.click());
+  await read(page);
+  assert.equal(button(page.container, "Dela"), null);
+  await page.act(async () => page.rerender(draw(pdf)));
+  await read(page);
+  assert.deepEqual(alertsOf(page.container), [], "nothing said of the PDF");
+  assert.ok(button(page.container, "Dela"), "Dela is back for the PDF");
+});
+
+test("on a phone the download in a file's own card says Ladda ner, and its name the type: the row above names it", async () => {
+  const word: ResultFileView = { ...pdf, name: "Mötesanteckningar.docx", kind: "word", typeLabel: "Word", previewable: false };
+  const view = await document_({ text: null, file: word });
+  const link = view.container.querySelector("a[download]")!;
+  assert.equal(link.textContent?.trim(), "Ladda ner");
+  assert.equal(nameOf(link), "Ladda ner Word, Mötesanteckningar.docx");
+  await view.unmount();
+  // Above a text the file's row is out of sight: the type stays in the words.
+  const withText = await document_({ text, file: word });
+  assert.equal(withText.container.querySelector("a[download]")!.textContent?.trim(), "Ladda ner Word");
+});
+
 test("from a laptop's width Dela is there as it is narrower, on the document's edge or on its file's row", async (t) => {
   widthOf(t, 1280);
   filesAnswer(t, present);

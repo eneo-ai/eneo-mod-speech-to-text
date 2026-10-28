@@ -270,6 +270,6 @@ test("on a phone the caution against locking the screen is said from a region th
   await page.getByRole("button", { name: "Starta inspelning" }).click();
   await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
   await page.waitForTimeout(1_000);
-  expect((await arrived(page)).filter((text) => /Lås inte skärmen/.test(text)), "no region arrives with the caution in it").toEqual([]);
-  expect((await heard(page)).filter((s) => /Lås inte skärmen/.test(s.text)), "the caution reaches a live region once").toHaveLength(1);
+  expect((await arrived(page)).filter((text) => /låser den eller byter app/.test(text)), "no region arrives with the caution in it").toEqual([]);
+  expect((await heard(page)).filter((s) => /låser den eller byter app/.test(s.text)), "the caution reaches a live region once").toHaveLength(1);
 });
