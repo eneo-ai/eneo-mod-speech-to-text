@@ -201,9 +201,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // This user's earlier runs of the flow, a page at a time.
   const [earlier] = useState(() => new EarlierRunsList(flowId));
   const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
-  // Read again as the run on screen starts, ends or waits for review, so the setup the person goes back to draws its latest
-  // runs as they are, rather than filling a row in above the form after it is shown.
-  const runOnScreen = "run" in run ? `${run.run.id} ${runOutcome(run.run.status) ?? run.run.status}` : null;
+  // Read again as a run's view is opened and as its run starts, ends or waits for review: the setup the person goes back to
+  // (Ny inspelning, Back) is drawn with what was read, its latest runs as they are, and reads nothing that would fill a row
+  // in above the form after it is shown.
+  const runOnScreen = runIdOf(run) && `${runIdOf(run)} ${"run" in run ? (runOutcome(run.run.status) ?? run.run.status) : run.kind}`;
   useEffect(() => {
     if (runOnScreen) loadEarlierRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -473,7 +474,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRunError(null);
       setRetryRefusal(null);
       setRun({ kind: "idle" });
-      loadEarlierRuns();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
@@ -539,10 +539,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
       // ask for it again.
       const gone = err instanceof ApiError && (err.status === 404 || err.status === 410);
       if (gone) writeRunIdToUrl(null);
+      // The run the person meant may be among the earlier ones, which a page opened at a run's address has not read: the
+      // setup is drawn once they are, as on a load of its own.
+      await earlier.reload();
+      if (signal.aborted) return;
       setRunError(gone ? RUN_GONE : friendlyError(err));
       setRun({ kind: "idle" });
-      // The run the person meant may be among the earlier ones, which a page opened at a run's address has not read.
-      loadEarlierRuns();
     }
   }
 
@@ -677,7 +679,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRetryRefusal(null);
     writeRunIdToUrl(null);
     setRun({ kind: "idle" });
-    loadEarlierRuns();
   }
 
   /** "Försök igen": Eneo continues the failed run from its first unfinished step in a new run; what was finished is not done again. */
@@ -727,7 +728,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
         writeRunIdToUrl(null);
         setRunError(outcome.message);
         setRun({ kind: "idle" });
-        loadEarlierRuns();
         return;
       }
       // A refusal that led here stays on the failure view until a new run exists.

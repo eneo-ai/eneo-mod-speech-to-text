@@ -9,7 +9,7 @@ import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { axe, blocking } from "./checks";
 import ids from "../fixtures/ids.json";
-import { backLink, flows, NO_CONFIRMED_WORDS, record, setup } from "./screens";
+import { backLink, flows, NO_CONFIRMED_WORDS, record, setup, startOver } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -421,12 +421,28 @@ test("a run waiting for review opens the setup's latest runs, and Granska opens 
   // The page's status region says it once (aria.spec.ts).
   const latest = page.getByRole("region", { name: "Senaste körningar" });
   await expect(latest.getByRole("listitem").first()).toContainText("Väntar på granskning");
-  // The flow's one run: the latest runs are the list, and the working card does not list it again.
-  await expect(page.getByRole("region", { name: "Tidigare körningar" })).toHaveCount(0);
+  await expect(latest).toContainText("En körning som väntar på granskning avbryts om den inte granskas i tid.");
   await latest.getByRole("button", { name: /^Granska, körningen / }).click();
   const heading = page.getByRole("heading", { name: "Vem är vem?", level: 1 });
   await expect(heading).toBeVisible();
   await expect(heading).toBeFocused();
+});
+
+test("Ny inspelning after a run opened by its address draws the setup with the runs read while the run was shown", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  // A page opened at a run's address reads no runs on its load: they are read while the run's view is on the page.
+  const runs = new RegExp(`/api/eneo/flows/${ids.flows.flow1}/runs/\\?`);
+  const read = page.waitForResponse(runs);
+  await page.goto(`/flows/${ids.flows.flow1}?run=${ids.runs.done}`);
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  await read;
+  // A read started from here on is never answered: the setup is drawn from what was read, or not at all.
+  let later = 0;
+  await page.route(runs, () => void (later += 1));
+  await startOver(page);
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Senaste körningar" }).getByRole("listitem").first()).toContainText("Styrelsemöte");
+  expect(later, "going back reads nothing that would fill a row in above the form").toBe(0);
 });
 
 test("a flow that must be published again says its heading once: the line under it says what to do", async ({ page, sentinel }) => {

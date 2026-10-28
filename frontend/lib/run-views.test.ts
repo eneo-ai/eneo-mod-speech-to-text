@@ -598,14 +598,12 @@ test("the latest runs: those waiting for review first, then the newest, three at
 
   const html = markup(createElement(LatestRuns, { runs: latestRuns(runs), more: true, onOpen: () => undefined }));
   const words = text(html);
-  assert.match(words, /^Senaste körningar Testmöte 2 Startad i går 15:40 Väntar på granskning Granska Styrelsemöte Möte 1 okt 2025 · startad i går 15:40 Klar Öppna I går 15:40 Misslyckades Öppna Visa alla$/);
+  assert.match(words, /^Senaste körningar En körning som väntar på granskning avbryts om den inte granskas i tid\. Testmöte 2 Startad i går 15:40 Väntar på granskning Granska Styrelsemöte Möte 1 okt 2025 · startad i går 15:40 Klar Öppna I går 15:40 Misslyckades Öppna Visa alla$/);
   assert.match(html, /aria-label="Granska, Testmöte 2, startad i går 15:40"/);
   assert.match(html, /aria-label="Visa alla körningar"/);
-  assert.doesNotMatch(
-    text(markup(createElement(LatestRuns, { runs: latestRuns(three), more: false, onOpen: () => undefined }))),
-    /Visa alla/,
-    "nothing more to show",
-  );
+  const none = text(markup(createElement(LatestRuns, { runs: latestRuns(three).filter((run) => run.status !== "awaiting_review"), more: false, onOpen: () => undefined })));
+  assert.doesNotMatch(none, /Visa alla/, "nothing more to show");
+  assert.doesNotMatch(none, /avbryts/, "none waits: no word on cancelling");
   assert.equal(markup(createElement(LatestRuns, { runs: [], more: true, onOpen: () => undefined })), "", "no runs, no list");
 });
 

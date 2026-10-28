@@ -132,6 +132,7 @@ export function LatestRuns({
   className?: string;
 }) {
   if (runs.length === 0) return null;
+  const waiting = runs.filter((run) => run.status === "awaiting_review").length;
   const showAll = () => {
     const heading = document.getElementById("earlier-runs");
     heading?.scrollIntoView({ block: "start" });
@@ -142,6 +143,14 @@ export function LatestRuns({
       <Heading level={2} id="latest-runs">
         Senaste körningar
       </Heading>
+      {/* Why a run waiting first is to be reviewed now: Eneo cancels it otherwise. */}
+      {waiting > 0 && (
+        <Text as="p" type="supporting" color="secondary">
+          {waiting === 1
+            ? "En körning som väntar på granskning avbryts om den inte granskas i tid."
+            : "Körningar som väntar på granskning avbryts om de inte granskas i tid."}
+        </Text>
+      )}
       <RunRows runs={runs} onOpen={onOpen} />
       {more && (
         <HStack>

@@ -200,11 +200,9 @@ export function FlowInput({
   // The latest runs open the setup, under the flow's name at every width (beside the work from a laptop's width, so the
   // working card keeps its action on the first screen): three, and two on a phone, whose first screen then still reaches
   // the choice of way in under a browser's own bars. A short screen in one column shows only those waiting for review:
-  // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason. Where the latest
-  // runs are all of them, they are the list: the working card does not list them again.
+  // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason.
   const latest = group === "setup" && !blocked ? latestRuns(earlierRuns.runs, { waitingOnly: short && !columns, count: phone ? 2 : 3 }) : [];
-  const listsEarlier = listsMore(earlierRuns, latest);
-  const latestRunsShown = <LatestRuns runs={latest} more={listsEarlier} onOpen={onOpenRun} className={styles.runs} />;
+  const latestRunsShown = <LatestRuns runs={latest} more={listsMore(earlierRuns, latest)} onOpen={onOpenRun} className={styles.runs} />;
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
   useEffect(
@@ -299,7 +297,7 @@ export function FlowInput({
               contract={contract}
               input={input}
               dock={columns ? null : dockSlot}
-              earlierRuns={listsEarlier ? earlierRuns : null}
+              earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
               unsent={unsent}
@@ -468,8 +466,7 @@ function SetupWorkspace({
   input: Session;
   /** In one column (a phone or tablet): the page's bottom edge, where the primary action docks. */
   dock: HTMLElement | null;
-  /** None where the latest runs at the setup's top are all of them. */
-  earlierRuns: EarlierRunsSnapshot | null;
+  earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   /** The unsent recordings, listed under the reason when the flow cannot run (only to save as files or delete). */
@@ -544,7 +541,7 @@ function SetupWorkspace({
               <BackToFlows variant="primary" size="md" />
             </HStack>
           </VStack>
-          {earlierRuns && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />}
+          <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />
         </StateCard>
         <UnsentRecordings list={unsent} sendLabel={sendLabel} evictable={input.evictable} />
       </VStack>
@@ -684,7 +681,7 @@ function SetupWorkspace({
           </VStack>,
         )}
 
-      {earlierRuns && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />}
+      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={[styles.earlier, styles.runs].join(" ")} />
     </StateCard>
   );
 }

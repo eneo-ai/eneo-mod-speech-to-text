@@ -241,15 +241,15 @@ switches round. One-pixel borders are `var(--border-width)`.
   starts as the person last left it on the flow.
 - "Senaste körningar" opens the setup, under the flow's name: the person's latest runs of the flow, three at most (two
   on a phone, whose first screen then still reaches the choice of way in under the browser's bars), those waiting for
-  their review first with their Granska (Eneo cancels a review not done in time), then the newest, in the
-  rows of "Tidigare körningar". From 1024 px it stands in the flow's column, so the working card keeps its action on a
-  laptop's first screen; below, above the choice of way in. A short screen in one column (at most 640 px high) lists
-  only the runs waiting for review: its first screen is the ways in's. While "Tidigare körningar" has more, a ghost
-  "Visa alla" under the rows brings it into view and gives its heading the focus; where the latest runs are all of
-  them, they are the list. No runs, no list, and a test run from Eneo's editor is never one. The setup is drawn once
-  the runs are known, and they are read again as a run on the page starts and ends, so the list is not filled in above
-  the form after it is shown. A screen reader hears once, from the page's status, that a run waits for review and is
-  cancelled if it is not reviewed in time.
+  their review first with their Granska, then the newest, in the rows of "Tidigare körningar". While one waits, a line
+  under the heading says it is cancelled if it is not reviewed in time. From 1024 px it stands in the flow's column, so
+  the working card keeps its action on a laptop's first screen; below, above the choice of way in. A short screen in
+  one column (at most 640 px high) lists only the runs waiting for review: its first screen is the ways in's. While
+  "Tidigare körningar" has more, a ghost "Visa alla" under the rows brings it into view and gives its heading the
+  focus. No runs, no list, and a test run from Eneo's editor is never one. The setup is drawn once the runs are known,
+  and they are read again while a run's view is on the page (as it opens, and as the run starts and ends), so the
+  setup the person goes back to is drawn with them and nothing fills a row in above the form. A screen reader hears
+  once, from the page's status, that a run waits for review and is cancelled if it is not reviewed in time.
 
 ### How it works
 - "Så fungerar det": the steps a run takes the person through, said only as the run contract states them
@@ -259,10 +259,9 @@ switches round. One-pixel borders are `var(--border-width)`.
   fold follows the work. On a phone the flow's description opens it, read once there rather than over the choice: the
   person read it in the flow's row of the list.
 - "Tips för bra ljud" is folded under the microphone test, with a way that records only.
-- "Tidigare körningar" ends the working card, under the form, while it lists more than the latest runs at the setup's
-  top. A run its form named and dated (the flow's fields with the roles `run_label` and `run_date` in Eneo) is listed
-  by its name, with each date said for what it is under it: "Möte 22 sep · startad 23 sep 11:00", and its state on a
-  line under them; one without a name, by when it ran.
+- "Tidigare körningar" ends the working card, under the form. A run its form named and dated (the flow's fields with
+  the roles `run_label` and `run_date` in Eneo) is listed by its name, with each date said for what it is under it:
+  "Möte 22 sep · startad 23 sep 11:00", and its state on a line under them; one without a name, by when it ran.
 
 ### Recording notices
 - What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording), and what the person could do to lose part of the meeting ("Om du låser skärmen eller byter app kan delar av mötet saknas i inspelningen", led by "Skärmen hålls tänd." while the page holds the screen's wake lock) a calm line above them at the body's size, part of the controls, so a short screen that pins them pins it too; what else matters now is a line under them. The lines follow the controls: centred under Spela in's stage, from the bar's start in Strömma. Below 768 px Strömma leaves out the line under Stoppa, so the live text has the room; Spela in, whose stage has room, keeps it. There the live sheet's head is its log's first line: the Preliminär pill, and when the final text comes on a line of its own under it.
