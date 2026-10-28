@@ -362,7 +362,7 @@ function CaptureWorkspace({
     // The recorder's own word on keeping the recording; what a press was answered (the problem) and what a stop ends with
     // (the ready view) are said there.
     error: problem || capture.stopping ? null : capture.error,
-    wakeLock: !capture.screenMayDim,
+    screenLock: capture.screenLock,
     makesText,
     coarsePointer,
   });

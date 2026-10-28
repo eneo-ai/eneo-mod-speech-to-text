@@ -99,8 +99,11 @@ interface CaptureSnapshot {
   refused: DeviceRefusal | null;
   /** The device was full and keeps the recording again: said for a moment while recording. */
   backOnDevice: boolean;
-  /** The screen may go dark during the recording: the browser holds no wake lock for it (it has none, refused it, or let it go). */
-  screenMayDim: boolean;
+  /**
+   * The screen's wake lock: asked for (at the start, and when the page is shown again), held, or none (the browser has
+   * none, refused it, or let it go while the page was in view), when the screen may go dark during the recording.
+   */
+  screenLock: ScreenLock;
   /**
    * Recording time left before the flow's last allowed file is full, as the tier the page tells of (Infinity above 15
    * minutes, then 15 minutes, 5 minutes and 0): a value that changes every chunk would render the page every chunk.
@@ -127,6 +130,9 @@ interface CaptureSnapshot {
    */
   awaitingDevice: boolean;
 }
+
+/** The screen's wake lock, as the recording bar tells of it. */
+export type ScreenLock = "asking" | "held" | "none";
 
 interface WakeLockLike {
   release(): Promise<void>;
@@ -250,7 +256,7 @@ export class RecordingCapture {
     persistent: true,
     refused: null,
     backOnDevice: false,
-    screenMayDim: false,
+    screenLock: "asking",
     remainingMs: null,
     limitReached: false,
     muted: false,
@@ -1119,9 +1125,10 @@ export class RecordingCapture {
       if (this.wakeLock !== lock) return; // the page's own release
       this.wakeLock = null;
       // Every hidden page loses it and asks again when it is shown; a page in view lost it to the system.
-      if (this.deps.page?.visibilityState !== "hidden") this.set({ screenMayDim: true });
+      this.set({ screenLock: this.deps.page?.visibilityState === "hidden" ? "asking" : "none" });
     });
-    if (this.snapshot.screenMayDim !== (lock === null)) this.set({ screenMayDim: lock === null });
+    const screenLock = lock ? "held" : "none";
+    if (this.snapshot.screenLock !== screenLock) this.set({ screenLock });
   }
 
   private releaseWakeLock() {

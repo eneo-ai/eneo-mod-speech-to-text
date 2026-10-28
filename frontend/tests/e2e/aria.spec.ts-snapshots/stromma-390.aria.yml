@@ -5,7 +5,7 @@
       - heading "Preliminär text. Den slutliga texten skapas när du är klar." [level=2]
       - paragraph: /Välkomna till/
     - status
-  - status: "Lås inte skärmen och byt inte app: ljud kan saknas."
+  - status: "Skärmen hålls tänd. Om du låser den eller byter app kan delar av mötet saknas i inspelningen."
   - toolbar "Inspelningen":
     - text: /Spelar in 0:\d+/
     - button "Pausa"

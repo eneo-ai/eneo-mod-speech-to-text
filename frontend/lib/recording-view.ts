@@ -7,7 +7,7 @@ import type { FormField } from "./api";
 import type { Problem, SessionPhase } from "./flow-session";
 import { formatClock, formatDuration } from "./format";
 import type { LiveStatus } from "./live-transcriber";
-import { TIME_LEFT_NOTE_MS, TIME_LEFT_WARNING_MS, type CaptureStatus } from "./recording-session";
+import { TIME_LEFT_NOTE_MS, TIME_LEFT_WARNING_MS, type CaptureStatus, type ScreenLock } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
 import { documentTitle } from "./product";
 
@@ -78,7 +78,7 @@ export function recordingNotices({
   hiddenGap = null,
   stalled = false,
   error = null,
-  wakeLock,
+  screenLock,
   backOnDevice = false,
   makesText = false,
   coarsePointer = false,
@@ -104,7 +104,8 @@ export function recordingNotices({
   stalled?: boolean;
   /** What went wrong in keeping the recording while it is captured (the recorder's own sentence). */
   error?: string | null;
-  wakeLock: boolean;
+  /** The screen's wake lock (RecordingSession): held, being asked for, or none. */
+  screenLock: ScreenLock;
   /** The flow ends in text, not a file. */
   makesText?: boolean;
   /** A touch device: the screen locks and apps switch under a recording, which then loses audio. */
@@ -180,8 +181,13 @@ export function recordingNotices({
   }
   if (backOnDevice && !refused) notes.push("Det finns plats igen, och inspelningen sparas på enheten.");
   // Said before it happens; the gaps above say it after.
-  if (phase === "recording" && coarsePointer) cautions.push("Lås inte skärmen och byt inte app: ljud kan saknas.");
-  if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
+  // What locking or leaving costs, as a possibility: the recording can go on in the background. With the screen kept on
+  // the page says so, and what is left to the person: locking it themselves, or another app.
+  if (phase === "recording" && coarsePointer) {
+    const costs = "kan delar av mötet saknas i inspelningen.";
+    cautions.push(screenLock === "held" ? `Skärmen hålls tänd. Om du låser den eller byter app ${costs}` : `Om du låser skärmen eller byter app ${costs}`);
+  }
+  if (screenLock === "none") notes.push("Låt skärmen vara tänd under inspelningen.");
   return { warnings, cautions, notes };
 }
 

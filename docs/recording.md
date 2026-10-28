@@ -26,6 +26,7 @@ Inspelningen fortsätter i alla lägen nedan utom när ljudspåret avslutas. Tex
 | **Det finns lite lagringsutrymme kvar på enheten.** | Webbläsarens uppskattning av lagringen är låg. | Frigör utrymme före ett långt möte. |
 | **Mindre än 5 minuter kvar till flödets maxlängd.** | En notis från 15 minuter, en varning från 5. Vid gränsen stoppas och sparas inspelningen. | Inget. |
 | **Låt skärmen vara tänd under inspelningen.** | Webbläsaren saknar, nekar eller släppte Screen Wake Lock. | Håll skärmen tänd. |
+| **Skärmen hålls tänd. Om du låser den eller byter app kan delar av mötet saknas i inspelningen.** | På en pekskärm medan inspelningen pågår, när webbläsaren håller skärmen tänd (Screen Wake Lock). Utan låset står bara andra meningen, med "skärmen" i stället för "den". | Lås inte skärmen och stanna i appen. |
 
 Efteråt står det hur länge ljud saknades: **Mikrofonen var avstängd i …** (med "medan sidan låg i bakgrunden" när så var fallet), eller, när en telefon tog mikrofonen utan att säga det (Android, minst sex sekunder utan ljud i bakgrunden), **Sidan låg i bakgrunden i … Ljud från den tiden kan saknas.**
 

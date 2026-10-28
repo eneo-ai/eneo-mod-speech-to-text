@@ -68,7 +68,7 @@ test("while recording for a flow that makes text, the bar's lines speak of the t
     refused: null,
     remainingMs: null,
     muted: false,
-    wakeLock: true,
+    screenLock: "held" as const,
     makesText: true,
   });
   assert.deepEqual(notes, ["Inspelningen sparas bara i den här fliken. Stäng inte fliken innan texten är skapad."]);
@@ -83,7 +83,7 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
     refused: null,
     remainingMs: null as number | null,
     muted: false,
-    wakeLock: true,
+    screenLock: "held" as const,
   };
   const none = { warnings: [], cautions: [], notes: [] };
   assert.deepEqual(recordingNotices(base), none);
@@ -92,20 +92,26 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
     cautions: [],
     notes: [],
   });
-  const lockNote = "Lås inte skärmen och byt inte app: ljud kan saknas.";
+  // What locking or leaving costs, said as a possibility: the recording can go on in the background.
+  const lockNote = "Om du låser skärmen eller byter app kan delar av mötet saknas i inspelningen.";
   assert.deepEqual(
     recordingNotices({ ...base, coarsePointer: true }),
+    { warnings: [], cautions: [`Skärmen hålls tänd. Om du låser den eller byter app kan delar av mötet saknas i inspelningen.`], notes: [] },
+    "said on a touch device before it happens, above the controls, with the screen the page keeps on",
+  );
+  assert.deepEqual(
+    recordingNotices({ ...base, coarsePointer: true, screenLock: "asking" }),
     { warnings: [], cautions: [lockNote], notes: [] },
-    "said on a touch device before it happens, above the controls",
+    "while the page asks for the lock, nothing is said of it",
   );
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", coarsePointer: true }), none, "audio is not at risk while paused");
   assert.deepEqual(
-    recordingNotices({ ...base, coarsePointer: true, wakeLock: false }),
+    recordingNotices({ ...base, coarsePointer: true, screenLock: "none" }),
     { warnings: [], cautions: [lockNote], notes: ["Låt skärmen vara tänd under inspelningen."] },
     "apart from the note that the screen may dim",
   );
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), none, "no silence warning while paused");
-  assert.deepEqual(recordingNotices({ ...base, lowSpace: true, persistent: false, wakeLock: false }), {
+  assert.deepEqual(recordingNotices({ ...base, lowSpace: true, persistent: false, screenLock: "none" }), {
     warnings: [{ title: "Det finns lite lagringsutrymme kvar på enheten.", detail: "Frigör utrymme om du ska spela in länge." }],
     cautions: [],
     notes: [
@@ -169,7 +175,7 @@ test("the bar says when no audio is kept, when the microphone stays muted, how l
     refused: null,
     remainingMs: null,
     muted: false,
-    wakeLock: true,
+    screenLock: "held" as const,
   };
   const stalled = {
     title: "Ljudet sparas inte just nu.",

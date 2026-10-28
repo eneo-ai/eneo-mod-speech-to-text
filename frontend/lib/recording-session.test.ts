@@ -1515,7 +1515,7 @@ test("the snapshot carries the time left as the tier the page tells of, and says
   let told = 0;
   capture.subscribe(() => (told += 1));
   const noticesAt = (remainingMs: number | null) =>
-    recordingNotices({ phase: "recording", silent: false, lowSpace: false, persistent: true, refused: null, remainingMs, muted: false, wakeLock: true });
+    recordingNotices({ phase: "recording", silent: false, lowSpace: false, persistent: true, refused: null, remainingMs, muted: false, screenLock: "held" });
 
   // Around every boundary the page tells exactly what it would from the exact time left.
   for (const left of [20 * MINUTE, 15 * MINUTE + 1, 15 * MINUTE, 15 * MINUTE - 1, 5 * MINUTE + 1, 5 * MINUTE, 5 * MINUTE - 1, 1]) {
@@ -2141,35 +2141,35 @@ test("a wake lock the browser refuses or lets go of says so, and a later one tha
     },
   });
   await capture.start(meeting);
-  assert.equal(capture.getSnapshot().screenMayDim, true, "refused: the screen may go dark");
+  assert.equal(capture.getSnapshot().screenLock, "none", "refused: the screen may go dark");
 
   grant = true;
   show("hidden");
   show("visible"); // asked again, and granted
-  await until(() => !capture.getSnapshot().screenMayDim, "the lock taken back");
+  await until(() => capture.getSnapshot().screenLock === "held", "the lock taken back");
 
   locks[0].lose(); // the system lets it go (a battery saver)
-  assert.equal(capture.getSnapshot().screenMayDim, true, "said at once");
+  assert.equal(capture.getSnapshot().screenLock, "none", "said at once");
   show("hidden");
   show("visible");
-  await until(() => !capture.getSnapshot().screenMayDim, "granted again");
+  await until(() => capture.getSnapshot().screenLock === "held", "granted again");
 
   show("hidden");
   locks[1].lose(); // every hidden page loses it, and asks again when it is shown
-  assert.equal(capture.getSnapshot().screenMayDim, false, "not said for a hidden page");
+  assert.equal(capture.getSnapshot().screenLock, "asking", "a hidden page asks again when it is shown: nothing is said");
   show("visible");
-  await until(() => locks.length === 3, "asked again");
-  assert.equal(capture.getSnapshot().screenMayDim, false);
+  await until(() => capture.getSnapshot().screenLock === "held", "asked again, and held");
+  assert.equal(locks.length, 3);
 
   await capture.stop();
   assert.equal(locks[2].released, true, "the page lets its lock go at Stoppa");
-  assert.equal(capture.getSnapshot().screenMayDim, false, "its own release is no loss");
+  assert.notEqual(capture.getSnapshot().screenLock, "none", "its own release is no loss");
 });
 
 test("a browser without a wake lock says so, and two requests that cross leave one lock, released at Stoppa", async () => {
   const none = await setup({ requestWakeLock: async () => null });
   await none.capture.start(meeting);
-  assert.equal(none.capture.getSnapshot().screenMayDim, true);
+  assert.equal(none.capture.getSnapshot().screenLock, "none");
 
   let grant = () => {};
   const wakeLock = new Promise<void>((resolve) => (grant = resolve));
@@ -2177,6 +2177,7 @@ test("a browser without a wake lock says so, and two requests that cross leave o
   const { capture, wakeLocks } = await setup({ page, wakeLock });
   const starting = capture.start(meeting); // asks for the lock, and waits
   await until(() => capture.getSnapshot().status === "recording", "recording");
+  assert.equal(capture.getSnapshot().screenLock, "asking", "recording while the lock is asked for: neither kept on nor dimming");
   show("hidden");
   show("visible"); // asks again while the first is unanswered
   grant();
