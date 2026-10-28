@@ -2166,6 +2166,29 @@ test("a wake lock the browser refuses or lets go of says so, and a later one tha
   assert.notEqual(capture.getSnapshot().screenLock, "none", "its own release is no loss");
 });
 
+test("a lock the page let go of is not said to be held while it is asked for again (Fortsätt spela in)", async () => {
+  let answer = () => {};
+  let asked = 0;
+  const { capture, streams } = await setup({
+    requestWakeLock: async () => {
+      asked += 1;
+      if (asked > 1) await new Promise<void>((resolve) => (answer = resolve));
+      return new FakeWakeLock();
+    },
+  });
+  await capture.start(meeting);
+  assert.equal(capture.getSnapshot().screenLock, "held");
+  streams[0].track.lose("ended"); // the microphone goes away: the page lets its lock go
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+  const continuing = capture.continueRecording();
+  await until(() => capture.getSnapshot().status === "recording" && asked === 2, "recording, the lock asked for");
+  assert.equal(capture.getSnapshot().screenLock, "asking", "not held until it is granted");
+  answer();
+  await continuing;
+  assert.equal(capture.getSnapshot().screenLock, "held");
+  await capture.stop();
+});
+
 test("a browser without a wake lock says so, and two requests that cross leave one lock, released at Stoppa", async () => {
   const none = await setup({ requestWakeLock: async () => null });
   await none.capture.start(meeting);

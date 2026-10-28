@@ -402,14 +402,35 @@ test("a file the browser says it can share and then refuses (a Word file on Andr
   assert.equal(shared.at(-1)?.text, text, "the text is shared");
   await withText.unmount();
 
-  // Closing the share sheet is a choice: nothing is said.
-  refusal = "AbortError";
-  const closed = await document_({ text: null, file: word });
-  await read(closed);
-  await closed.act(async () => button(closed.container, "Dela")!.click());
-  await read(closed);
-  assert.deepEqual(alertsOf(closed.container), [], "nothing to say");
-  assert.ok(button(closed.container, "Dela"), "Dela stays");
+  // Closing the share sheet is a choice, and a second press while the sheet is open (InvalidStateError) no refusal:
+  // nothing is said.
+  for (const name of ["AbortError", "InvalidStateError"]) {
+    refusal = name;
+    const closed = await document_({ text: null, file: word });
+    await read(closed);
+    await closed.act(async () => button(closed.container, "Dela")!.click());
+    await read(closed);
+    assert.deepEqual(alertsOf(closed.container), [], `nothing to say (${name})`);
+    assert.ok(button(closed.container, "Dela"), "Dela stays");
+    await closed.unmount();
+  }
+
+  // The refusal is the file type's: the same page drawn with a PDF offers Dela again and says nothing.
+  refusal = "NotAllowedError";
+  const { createElement } = await import("react");
+  const { ResultDocument } = await import("../components/flow/ResultDocument");
+  const { ModuleProviders } = await import("@/kit/ModuleProviders");
+  const draw = (file: ResultFileView) =>
+    createElement(ModuleProviders, null, createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", text: null, file }));
+  const page = await mount(draw(word));
+  await read(page);
+  await page.act(async () => button(page.container, "Dela")!.click());
+  await read(page);
+  assert.equal(button(page.container, "Dela"), null);
+  await page.act(async () => page.rerender(draw(pdf)));
+  await read(page);
+  assert.deepEqual(alertsOf(page.container), [], "nothing said of the PDF");
+  assert.ok(button(page.container, "Dela"), "Dela is back for the PDF");
 });
 
 test("on a phone the download in a file's own card says Ladda ner, and its name the type: the row above names it", async () => {

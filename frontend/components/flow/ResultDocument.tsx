@@ -165,9 +165,11 @@ async function runShare(share: Share, title: string, text: string | null): Promi
     await navigator.share(share.kind === "file" ? { files: [share.file], title } : { title, text: text ?? "" });
     return "shared";
   } catch (error) {
-    // Closing the share sheet is a choice, not an error. Anything else is the browser's refusal: Chrome on Android says
-    // it can share any file (canShare) and then refuses the types it does not send, a Word file among them.
-    return (error as Error | null)?.name === "AbortError" ? "closed" : "refused";
+    // Closing the share sheet is a choice, not an error, and a second press while it is open (InvalidStateError) no
+    // refusal. Anything else is the browser's: Chrome on Android says it can share any file (canShare) and then refuses
+    // the types it does not send, a Word file among them (NotAllowedError).
+    const name = (error as Error | null)?.name;
+    return name === "AbortError" || name === "InvalidStateError" ? "closed" : "refused";
   }
 }
 
@@ -206,22 +208,27 @@ export function ResultDocument({
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
-  // What the browser refused to share: the file (Dela offers the text instead, where there is text), or the text.
-  const [refused, setRefused] = useState<"file" | "text" | null>(null);
-  const share = useShare(file, download, text, refused === "file");
+  // What the browser refused to share: a type of file (Dela offers the text instead, where there is text), or the text.
+  const [refused, setRefused] = useState<{ type: string } | "text" | null>(null);
+  const fileRefused = !!file && typeof refused === "object" && refused?.type === file.mimeType;
+  const share = useShare(file, download, text, fileRefused);
   // The download's link; the design system types a button's ref as a button's whatever it renders.
   const downloadLink = useRef<HTMLButtonElement | null>(null);
   const onShare = async (current: Share) => {
     if ((await runShare(current, title, text)) !== "refused") return;
-    setRefused(current.kind === "file" ? "file" : "text");
+    setRefused(current.kind === "file" ? { type: file?.mimeType ?? "" } : "text");
     // Without text no Dela is left: the focus goes on to the download, which still works.
     if (current.kind === "file" && !text) downloadLink.current?.focus();
   };
   const refusal =
-    refused === "file" && file
+    fileRefused && file
       ? {
           title: `Webbläsaren kan inte dela ${file.typeLabel === "Text" ? "textfilen" : `${file.typeLabel}-filen`}.`,
-          detail: text ? "Tryck på Dela igen för att dela texten, eller ladda ner filen." : "Ladda ner den och dela den från enheten.",
+          detail: !text
+            ? "Ladda ner den och dela den från enheten."
+            : textIsPreview
+              ? "Tryck på Dela början för att dela textens början, eller ladda ner filen."
+              : "Tryck på Dela igen för att dela texten, eller ladda ner filen.",
         }
       : refused === "text"
         ? { title: "Det gick inte att dela texten.", detail: "Kopiera den i stället." }

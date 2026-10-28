@@ -1107,6 +1107,8 @@ export class RecordingCapture {
   }
 
   private async takeWakeLock() {
+    // A lock the page let go of (at an interruption) is not held while it is asked for again.
+    if (this.snapshot.screenLock === "held") this.set({ screenLock: "asking" });
     this.releaseWakeLock();
     let lock: WakeLockLike | null = null;
     try {
