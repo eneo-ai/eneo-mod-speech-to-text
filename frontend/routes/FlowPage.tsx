@@ -200,7 +200,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }, [runningRun?.id]);
   // This user's earlier runs of the flow, a page at a time.
   const [earlier] = useState(() => new EarlierRunsList(flowId));
-  const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
   // Read again as a run's view is opened and as its run starts, ends or waits for review: the setup the person goes back to
   // (Ny inspelning, Back) is drawn with what was read, its latest runs as they are, and reads nothing that would fill a row
   // in above the form after it is shown.
@@ -248,10 +247,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     let cancelled = false;
     const urlRunId = readRunIdFromUrl();
     // The setup's earlier runs are read beside the contract, and the setup is drawn once they are known (or could not be
-    // read): a run waiting for review is said above the setup's work, and an answer that came later would move it. They
-    // are read once the flow is: a flow that is gone has no runs to ask for.
+    // read): the latest runs open the setup, and an answer that came later would move it. They are read once the flow
+    // is: a flow that is gone has no runs to ask for.
     const flow = getPublishedFlow(flowId);
-    Promise.all([flow, getRunContract(flowId), urlRunId ? null : flow.then(() => earlier.reload())])
+    // A load the page left (React's development double effect, Försök igen) starts no read of the runs: it would replace
+    // the read this load waits for, and the setup would be drawn before its runs are known.
+    Promise.all([flow, getRunContract(flowId), urlRunId ? null : flow.then(() => (cancelled ? undefined : earlier.reload()))])
       .then(async ([p, c]) => {
         if (cancelled) return;
         // The address as it is now: Back to the setup while the flow was read leaves the run it named, and the setup
@@ -765,9 +766,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
           input={input}
           ownerId={user.id}
           notice={runError}
-          earlierRuns={earlierRuns}
+          earlier={earlier}
           onOpenRun={openRun}
-          onMoreRuns={() => void earlier.more()}
           unsent={unsent}
           afterRun={shownRun}
         />

@@ -119,23 +119,6 @@ test("reading the list again starts from the first page, and a page still coming
   assert.deepEqual(eneo.asked.at(-1), { limit: 10, offset: 0 });
 });
 
-test("a first page read again before the last read answered: both wait for the newest answer, whichever answers first", async () => {
-  const eneo = eneoRuns(runs(3));
-  const earlier = new EarlierRunsList("flow-1", eneo.list);
-  const releaseFirst = eneo.holdNextPage();
-  let firstDone = false;
-  const first = earlier.reload().then(() => (firstDone = true));
-  const releaseSecond = eneo.holdNextPage();
-  const second = earlier.reload();
-  releaseFirst(); // the replaced read answers first, and is dropped
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(firstDone, false, "the list is not known yet: the newest read has not answered");
-  assert.equal(earlier.getSnapshot().loading, true);
-  releaseSecond();
-  await Promise.all([first, second]);
-  assert.equal(earlier.getSnapshot().runs.length, 3, "known when either says so");
-});
-
 test("the runs waiting for this person's review: newest first as Eneo lists them, never a test run from Eneo's editor", async () => {
   const { pendingReviews } = await import("./earlier-runs");
   const run = (id: string, status: string, purpose?: string): FlowRunSummary => ({ id, flow_id: "flow-1", status, ...(purpose ? { purpose } : {}) });

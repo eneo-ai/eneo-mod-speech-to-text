@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { button, installDom, mount, type } from "./test-dom";
+import { EarlierRunsList } from "./earlier-runs";
 import { withRouter } from "./test-router";
 
 installDom();
@@ -690,9 +691,8 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
       input,
       ownerId: "user-1",
       notice: null,
-      earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
+      earlier: new EarlierRunsList("flow-6", async () => ({ items: [], has_more: false, count: 0 })),
       onOpenRun: () => undefined,
-      onMoreRuns: () => undefined,
       unsent: { recordings: [], unreadable: false, retry: () => undefined },
       afterRun,
     });
@@ -751,9 +751,8 @@ async function mountAudioSetup(
       input,
       ownerId: "user-1",
       notice: null,
-      earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
+      earlier: new EarlierRunsList("flow-6", async () => ({ items: [], has_more: false, count: 0 })),
       onOpenRun: () => undefined,
-      onMoreRuns: () => undefined,
       unsent: { recordings: [earlier], unreadable: false, retry: () => undefined },
       afterRun: true,
     });

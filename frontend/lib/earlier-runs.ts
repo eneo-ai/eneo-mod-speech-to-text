@@ -50,8 +50,6 @@ export class EarlierRunsList {
   private listeners = new Set<() => void>();
   // Bumped when the list is read again: a page still coming for the old list is dropped.
   private generation = 0;
-  // The newest read of the first page.
-  private reading: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly flowId: string,
@@ -65,22 +63,10 @@ export class EarlierRunsList {
     return () => this.listeners.delete(listener);
   };
 
-  /**
-   * From the first page again: the newest runs come first, a new one among them. Resolves once the newest read of the
-   * first page has its answer, so whoever waits for the list (the setup, drawn once its runs are known) waits for the
-   * runs that are shown: a read a newer one replaced waits for that one.
-   */
+  /** From the first page again: the newest runs come first, a new one among them. */
   reload(): Promise<void> {
     this.generation += 1;
-    this.reading = this.read(0, []);
-    return this.settled();
-  }
-
-  private async settled(): Promise<void> {
-    for (let read = this.reading; ; read = this.reading) {
-      await read;
-      if (read === this.reading) return;
-    }
+    return this.read(0, []);
   }
 
   /** "Visa fler körningar": the next page; after a first page that failed, that page again. */

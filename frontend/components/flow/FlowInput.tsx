@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
@@ -38,7 +38,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { resumableRecording, UnsentRecordings, type UnsentList } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
-import { latestRuns, listsMore, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
+import { latestRuns, listsMore, type EarlierRunsList, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
   captureLimits,
   labelsSpeakers,
@@ -106,9 +106,8 @@ export function FlowInput({
   input,
   ownerId,
   notice,
-  earlierRuns,
+  earlier,
   onOpenRun,
-  onMoreRuns,
   unsent,
   afterRun = false,
 }: {
@@ -118,9 +117,9 @@ export function FlowInput({
   ownerId: string;
   /** A problem from following an earlier run. */
   notice: string | null;
-  earlierRuns: EarlierRunsSnapshot;
+  /** This user's earlier runs of the flow: the setup's own to follow, so a read never draws a run's view again. */
+  earlier: EarlierRunsList;
   onOpenRun: (runId: string) => void;
-  onMoreRuns: () => void;
   unsent: UnsentList;
   /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
   afterRun?: boolean;
@@ -141,6 +140,8 @@ export function FlowInput({
   // The runs as the setup opened with them (on the page's load, or back from a run's view): a read that lands while it is
   // open, one a run's view started or Visa fler körningar, changes the list at the working card's end, never the latest
   // runs above the form.
+  const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
+  const onMoreRuns = () => void earlier.more();
   const [opened] = useState(earlierRuns);
   // A run waiting for the person's review, said in the page's status once the latest runs show it: they arrive with the
   // setup, which a screen reader does not reliably read out.
