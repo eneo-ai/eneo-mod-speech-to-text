@@ -38,18 +38,26 @@ const MOST_OF_WINDOW = 1 / 3;
  * window: past it, the player stands in the text and the action stays in reach.
  */
 export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields = false): () => void {
-  const measure = () => {
+  // The dock's height as last laid out (its observer and the window say when it changes): a measure on a focus reads no
+  // layout, which on a long transcript would be laid out again for every focus that opens a passage's editor.
+  let height = 0;
+  const measure = (read = true) => {
+    if (read) height = dock.offsetHeight;
     const others = yields ? [...docks].reduce((sum, [other, { size, yields: alsoYields }]) => sum + (other === dock || alsoYields ? 0 : size), 0) : 0;
-    const tooTall = dock.offsetHeight + others > window.innerHeight * MOST_OF_WINDOW;
+    const tooTall = height + others > window.innerHeight * MOST_OF_WINDOW;
+    const covers = !tooTall && height > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
+    const size = covers ? height : 0;
+    const shown = height > 0 ? edge : null;
+    const before = docks.get(dock);
+    // Nothing that changed, nothing written: the page's root holds what every element inherits.
+    if (before && before.size === size && before.edge === shown && dock.hasAttribute("data-dock-too-tall") === tooTall) return;
     dock.toggleAttribute("data-dock-too-tall", tooTall);
-    const covers = !tooTall && dock.offsetHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
-    const size = covers ? dock.offsetHeight : 0;
-    const changed = docks.get(dock)?.size !== size;
-    docks.set(dock, { size, edge: dock.offsetHeight > 0 ? edge : null, yields });
+    docks.set(dock, { size, edge: shown, yields });
     publish();
-    if (!yields && changed) yielding.forEach((again) => again());
+    if (!yields && before?.size !== size) yielding.forEach((again) => again());
   };
-  if (yields) yielding.add(measure);
+  const remeasure = () => measure(false);
+  if (yields) yielding.add(remeasure);
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
   // in a dialog or a popover (a sheet over the dock) does not move with the page. One taller than the room the padding
@@ -65,10 +73,10 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     pressed = false;
   };
   // A page that puts its dock in its flow while a field has the focus (a touch screen's soft keyboard: ReviewView's and
-  // TranscriptPlayer's data-typing) changes no size: the dock is measured again as the focus comes and goes, after the
-  // page's own focus handlers, before a control is uncovered.
+  // TranscriptPlayer's data-typing) changes no size. A dock measured then (the window resized for the keyboard) covered
+  // nothing: it is looked at again when the focus leaves a field, and before a control is uncovered while it says none.
   const uncover = ({ target }: FocusEvent) => {
-    measure();
+    if (!docks.get(dock)?.size) remeasure();
     if (pressed || !docks.get(dock)?.size || !(target instanceof Element) || dock.contains(target) || target.contains(dock)) return;
     if (target.closest("dialog, [popover]")) return;
     const box = target.getBoundingClientRect();
@@ -82,23 +90,24 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     const top = atTop ? box.top - above : box.bottom - window.innerHeight + below;
     window.scrollBy({ top, behavior: "instant" });
   };
-  const observer = new ResizeObserver(measure);
+  const observer = new ResizeObserver(() => measure());
   observer.observe(dock);
   // A dock that is no longer stuck (a window made wider or lower) can keep its size: the window says so.
-  window.addEventListener("resize", measure);
+  const resized = () => measure();
+  window.addEventListener("resize", resized);
   document.addEventListener("pointerdown", press, true);
   document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", uncover);
-  document.addEventListener("focusout", measure);
+  document.addEventListener("focusout", remeasure);
   measure();
   return () => {
     observer.disconnect();
-    window.removeEventListener("resize", measure);
+    window.removeEventListener("resize", resized);
     document.removeEventListener("pointerdown", press, true);
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
-    document.removeEventListener("focusout", measure);
-    yielding.delete(measure);
+    document.removeEventListener("focusout", remeasure);
+    yielding.delete(remeasure);
     docks.delete(dock);
     publish();
     if (!yields) yielding.forEach((again) => again());

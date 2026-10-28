@@ -186,16 +186,34 @@ test("a dock that is stuck again when a field loses the focus is measured again,
   const stop = observeDock(bar);
   const field = document.createElement("textarea");
   document.body.append(field);
-  // While a field has the focus a touch screen's soft keyboard is up, and the page puts the dock in its flow
-  // (ReviewView's data-typing): it covers nothing then.
-  // As React's onFocus and onBlur, which listen for focusin and focusout above the page.
-  field.addEventListener("focusin", () => (bar.style.position = "static"));
+  // While a field has the focus a touch screen's soft keyboard is up and the page puts the dock in its flow
+  // (ReviewView's data-typing); Android resizes the window for the keyboard, so the dock is measured covering nothing.
+  // As React's onBlur, which listens for focusout above the page.
   field.addEventListener("focusout", () => (bar.style.position = "sticky"));
   field.focus();
+  bar.style.position = "static";
+  window.dispatchEvent(new window.Event("resize"));
   assert.equal(size(), "", "typing: in the page's flow");
   field.blur();
   assert.equal(size(), "100px", "done typing: docked and measured again, so focus stops short of it");
   stop();
   [bar, field].forEach((element) => element.remove());
   t.mock.restoreAll();
+});
+
+test("a focus that changes nothing about a dock writes nothing to the page's root, which every element inherits", async (t) => {
+  const { observeDock } = await import("./dock");
+  const bar = dock(100);
+  const stop = observeDock(bar);
+  const field = document.createElement("textarea");
+  document.body.append(field);
+  const writes = t.mock.method(document.documentElement.style, "setProperty");
+  const read = t.mock.fn(() => 100);
+  Object.defineProperty(bar, "offsetHeight", { configurable: true, get: read });
+  field.focus();
+  field.blur();
+  assert.equal(writes.mock.callCount(), 0, "the same dock: no write");
+  assert.equal(read.mock.callCount(), 0, "and no layout read: its height is the one last laid out");
+  stop();
+  [bar, field].forEach((element) => element.remove());
 });
