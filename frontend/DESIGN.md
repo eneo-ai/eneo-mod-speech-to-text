@@ -244,12 +244,14 @@ switches round. One-pixel borders are `var(--border-width)`.
   their review first with their Granska, then the newest, in the rows of "Tidigare körningar". While one waits, a line
   under the heading says it is cancelled if it is not reviewed in time. From 1024 px it stands in the flow's column, so
   the working card keeps its action on a laptop's first screen; below, above the choice of way in. A short screen in
-  one column (at most 640 px high) lists only the runs waiting for review: its first screen is the ways in's. While
-  "Tidigare körningar" has more, a ghost "Visa alla" under the rows brings it into view and gives its heading the
-  focus. No runs, no list, and a test run from Eneo's editor is never one. The setup is drawn once the runs are known,
-  and they are read again while a run's view is on the page (as it opens, and as the run starts and ends), so the
-  setup the person goes back to is drawn with them and nothing fills a row in above the form. A screen reader hears
-  once, from the page's status, that a run waits for review and is cancelled if it is not reviewed in time.
+  one column (at most 640 px high) lists only the runs waiting for review, under that line in the heading's place (the
+  heading is a screen reader's): its first screen is the ways in's. While "Tidigare körningar" has more, a ghost
+  "Visa alla" under the rows brings it into view and gives its heading the focus. No runs, no list, and a test run
+  from Eneo's editor is never one. The setup is drawn once the runs are known, and they are read again while a run's
+  view is on the page (as it opens, and as the run starts and ends), so the setup the person goes back to is drawn
+  with them. The rows above the form stay as the setup opened with them: a read that lands later changes the list at
+  the working card's end. A screen reader hears once, from the page's status, that a run waits for review and is
+  cancelled if it is not reviewed in time.
 
 ### How it works
 - "Så fungerar det": the steps a run takes the person through, said only as the run contract states them

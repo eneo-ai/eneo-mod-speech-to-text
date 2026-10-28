@@ -6,6 +6,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { pendingReviews, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import type { FlowRunSummary } from "@/lib/api";
 import { formatDay, formatRelativeDate } from "@/lib/format";
@@ -123,11 +124,14 @@ function RunRows({ runs, onOpen }: { runs: readonly FlowRunSummary[]; onOpen: (r
 export function LatestRuns({
   runs,
   more,
+  waitingOnly = false,
   onOpen,
   className,
 }: {
   runs: readonly FlowRunSummary[];
   more: boolean;
+  /** Only the runs waiting for review (a short screen): the line about them names the list, its heading is a screen reader's. */
+  waitingOnly?: boolean;
   onOpen: (runId: string) => void;
   className?: string;
 }) {
@@ -140,9 +144,15 @@ export function LatestRuns({
   };
   return (
     <VStack as="section" aria-labelledby="latest-runs" gap={3} className={className}>
-      <Heading level={2} id="latest-runs">
-        Senaste körningar
-      </Heading>
+      {waitingOnly ? (
+        <VisuallyHidden as="h2" id="latest-runs">
+          Senaste körningar
+        </VisuallyHidden>
+      ) : (
+        <Heading level={2} id="latest-runs">
+          Senaste körningar
+        </Heading>
+      )}
       {/* Why a run waiting first is to be reviewed now: Eneo cancels it otherwise. */}
       {waiting > 0 && (
         <Text as="p" type="supporting" color="secondary">

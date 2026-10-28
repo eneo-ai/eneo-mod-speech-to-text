@@ -138,9 +138,13 @@ export function FlowInput({
   // "Ta bort" took the ready recording away: said in the page's status (nothing shown moves the setup), until a recording begins.
   const [removed, setRemoved] = useState(false);
   if (removed && group !== "setup") setRemoved(false);
-  // A run waiting for the person's review, said in the page's status once the earlier runs say so: the latest runs list it
-  // first, and they arrive with the setup, which a screen reader does not reliably read out.
-  const reviewSaid = useSaidLater(group === "setup" ? pendingReviewSaid(earlierRuns) : "");
+  // The runs as the setup opened with them (on the page's load, or back from a run's view): a read that lands while it is
+  // open, one a run's view started or Visa fler körningar, changes the list at the working card's end, never the latest
+  // runs above the form.
+  const [opened] = useState(earlierRuns);
+  // A run waiting for the person's review, said in the page's status once the latest runs show it: they arrive with the
+  // setup, which a screen reader does not reliably read out.
+  const reviewSaid = useSaidLater(group === "setup" ? pendingReviewSaid(opened) : "");
   const [dockSlot, dockRef] = useDock();
   const phone = useMediaQuery(PHONE);
   const columns = useMediaQuery(COLUMNS);
@@ -201,8 +205,11 @@ export function FlowInput({
   // working card keeps its action on the first screen): three, and two on a phone, whose first screen then still reaches
   // the choice of way in under a browser's own bars. A short screen in one column shows only those waiting for review:
   // its first screen is the ways in's. The blocked setup's card lists its runs right under the reason.
-  const latest = group === "setup" && !blocked ? latestRuns(earlierRuns.runs, { waitingOnly: short && !columns, count: phone ? 2 : 3 }) : [];
-  const latestRunsShown = <LatestRuns runs={latest} more={listsMore(earlierRuns, latest)} onOpen={onOpenRun} className={styles.runs} />;
+  const waitingOnly = short && !columns;
+  const latest = group === "setup" && !blocked ? latestRuns(opened.runs, { waitingOnly, count: phone ? 2 : 3 }) : [];
+  const latestRunsShown = (
+    <LatestRuns runs={latest} more={listsMore(opened, latest)} waitingOnly={waitingOnly} onOpen={onOpenRun} className={styles.runs} />
+  );
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
   useEffect(

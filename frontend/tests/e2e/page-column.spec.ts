@@ -128,5 +128,11 @@ for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] 
     const list = (await latest.boundingBox())!;
     const choice = (await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).boundingBox())!;
     expect(list.y + list.height, "above the choice").toBeLessThanOrEqual(choice.y);
+    // The first way in is on the first screen, above the docked action where there is one.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const dock = page.locator("[data-docked-action]");
+    const end = (await dock.count()) ? (await dock.boundingBox())!.y : height;
+    const way = (await page.getByRole("radio").first().boundingBox())!;
+    expect(way.y + way.height, "the first way in on the first screen").toBeLessThanOrEqual(end);
   });
 }

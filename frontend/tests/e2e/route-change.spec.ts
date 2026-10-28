@@ -445,6 +445,37 @@ test("Ny inspelning after a run opened by its address draws the setup with the r
   expect(later, "going back reads nothing that would fill a row in above the form").toBe(0);
 });
 
+// A read the run's view started that answers once the setup is back: it adds a run, at the working card's end only.
+for (const back of ["Back", "Ny inspelning"] as const) {
+  test(`a read of the runs that lands after ${back} changes the whole list, never the rows above the form`, async ({ page, sentinel }) => {
+    sentinel.expect(NO_CONFIRMED_WORDS);
+    await setup(page);
+    const latest = page.getByRole("region", { name: "Senaste körningar" });
+    const choice = page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" });
+    const rows = await latest.getByRole("listitem").allTextContents();
+    const at = () => choice.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    const before = await at();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow1}/runs/\\?`), async (route) => {
+      await held;
+      const response = await route.fetch();
+      const { items, ...list } = await response.json();
+      const started = { id: ids.runs.running, flow_id: ids.flows.flow1, status: "running", created_at: "2026-09-24T09:30:00Z" };
+      await route.fulfill({ response, json: { ...list, items: [started, ...items] } }).catch(() => undefined);
+    });
+    await latest.getByRole("button", { name: /^Öppna, Styrelsemöte, / }).click();
+    await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+    if (back === "Back") await page.goBack();
+    else await startOver(page);
+    await expect(choice).toBeVisible();
+    release();
+    await expect(page.getByRole("region", { name: "Tidigare körningar" }).getByRole("listitem"), "the whole list has the new run").toHaveCount(5);
+    expect(await latest.getByRole("listitem").allTextContents(), "the rows above the form as the setup opened").toEqual(rows);
+    expect(await at(), "the form where it was").toBe(before);
+  });
+}
+
 test("a flow that must be published again says its heading once: the line under it says what to do", async ({ page, sentinel }) => {
   sentinel.expect({ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// });
   await page.goto(`/flows/${ids.flows.flow4}`);
