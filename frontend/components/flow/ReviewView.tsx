@@ -72,7 +72,7 @@ import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { isRecord } from "@/lib/is-record";
-import { formatDeadline, formatSpeechTime } from "@/lib/format";
+import { formatDeadline } from "@/lib/format";
 import { useDock, whileTyping } from "@/lib/dock";
 import { useWorkspace } from "@/lib/workspace";
 import styles from "./ReviewView.module.css";
@@ -379,16 +379,13 @@ export function ReviewView({
     transcript.pending ? (namingRows.find((row) => row.label === label)?.lineCount ?? 0) : (speakerStats.get(label)?.passages ?? 0);
   // How long they spoke is known once the transcript is read, and where no other speaker shares their time.
   const secondsOf = (label: string) => (transcript.pending ? null : (speakerStats.get(label)?.seconds ?? null));
-  // A row's support line: who the label is (or that there is no name), how much they said, a name another row shares.
+  // A row's support line: who the label is (or that there is no name), and a name another row shares. How much each
+  // said is told in Namnge talarna: known only once the transcript is read, it would move the row's words as it came.
   const rowSupport = (row: SpeakerMappingRow) => {
-    const count = passagesOf(row.label);
-    const time = secondsOf(row.label);
     const twin = sameNameAs(namingRows, row.label, row.name);
-    return [
-      row.name ? speakerDisplayLabel(row.label) : "Inget namn",
-      `${count} inlägg${time != null && count > 0 ? ` · ${formatSpeechTime(time)}` : ""}`,
-      twin && `Samma namn som ${speakerDisplayLabel(twin)}`,
-    ].filter(Boolean).join(" · ");
+    return [row.name ? speakerDisplayLabel(row.label) : "Inget namn", twin && `Samma namn som ${speakerDisplayLabel(twin)}`]
+      .filter(Boolean)
+      .join(" · ");
   };
 
   /** The names on the page, and kept as a draft until Eneo has them; the draft's version, to drop once saved. */
