@@ -92,6 +92,11 @@ export function formatPercent(percent: number): string {
 }
 
 /** The recording timer: "12:34" under an hour, "1:02:05" from an hour. */
+/** Seconds someone spoke, as the clock says it: "0:08", a part of a second as "0:01". */
+export function formatSpeechTime(seconds: number): string {
+  return formatClock(Math.ceil(seconds) * 1_000);
+}
+
 export function formatClock(ms: number): string {
   const total = Math.floor(ms / 1_000);
   const hours = Math.floor(total / 3_600);

@@ -7,6 +7,7 @@ import {
   getSpeakerMappingInferNames,
   getSpeakerMappingParticipants,
   isSpeakerMappingCheckpoint,
+  sameNameAs,
   speakerNamesFromRows,
   unmappedSpeakerLabels,
   unnamedNote,
@@ -175,4 +176,14 @@ test("Godkänn asks about speakers without a name and names typed but not saved,
     "Namnen du skrev i Namnge talarna är inte sparade och kommer inte med om du godkänner nu.",
   ]);
   assert.deepEqual(approvalQuestion([], true), ["Namnen du skrev i Namnge talarna är inte sparade och kommer inte med om du godkänner nu."]);
+});
+
+test("a name another speaker has is found as a reader would: case and spaces aside, never the row itself or an empty name", () => {
+  const row = (label: string, name: string | null) => ({ label, lineCount: 1, samples: [], name, confidence: "high" as const, evidence: "" });
+  const rows = [row("SPEAKER_00", "Anna Berg"), row("SPEAKER_01", null), row("SPEAKER_02", "  anna   berg ")];
+  assert.equal(sameNameAs(rows, "SPEAKER_02", "  anna   berg "), "SPEAKER_00");
+  assert.equal(sameNameAs(rows, "SPEAKER_00", "Anna Berg"), "SPEAKER_02");
+  assert.equal(sameNameAs(rows, "SPEAKER_01", "Erik Lund"), null);
+  assert.equal(sameNameAs(rows, "SPEAKER_01", "  "), null, "an empty name is nobody's");
+  assert.equal(sameNameAs([row("SPEAKER_00", "Anna Berg")], "SPEAKER_00", "Anna Berg"), null, "not the row itself");
 });

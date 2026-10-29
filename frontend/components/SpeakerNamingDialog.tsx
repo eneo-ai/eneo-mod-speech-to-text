@@ -20,7 +20,8 @@ import { browserStorage } from "@/lib/browser-storage";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { recentNames, rememberNames } from "@/lib/participants";
 import { isRecord } from "@/lib/is-record";
-import { isUnsureProposal, type SpeakerMappingRow } from "@/lib/speaker-mapping";
+import { isUnsureProposal, sameNameAs, type SpeakerMappingRow } from "@/lib/speaker-mapping";
+import { formatSpeechTime } from "@/lib/format";
 import { speakerDisplayLabel, speakerNameProblem } from "@/lib/transcript";
 
 /**
@@ -90,6 +91,7 @@ export function SpeakerNamingDialog({
   proposals = [],
   participants,
   passages,
+  seconds,
   quote,
   disabled = false,
   onListen,
@@ -114,6 +116,8 @@ export function SpeakerNamingDialog({
   participants: readonly string[];
   /** How many passages a speaker has in the transcript. */
   passages: (label: string) => number;
+  /** How many seconds of speech those passages hold; null or absent where it cannot honestly be said. */
+  seconds?: (label: string) => number | null;
   /** The first thing a speaker says, quoted in the row. */
   quote: (label: string) => string | null;
   disabled?: boolean;
@@ -252,8 +256,8 @@ export function SpeakerNamingDialog({
 
   // A name given to another speaker is said quietly; only the row's own choice is checked.
   const usedBy = (name: string, label: string) => {
-    const other = draft.find((row) => row.label !== label && row.name?.trim() === name.trim());
-    return other ? `Redan kopplad till ${speakerDisplayLabel(other.label)}` : null;
+    const other = sameNameAs(draft, label, name);
+    return other ? `Redan kopplad till ${speakerDisplayLabel(other)}` : null;
   };
   const ownerId = draftKey?.ownerId;
   const offered = participants.length > 0 || !ownerId ? participants : recentNames(browserStorage(), ownerId);
@@ -321,6 +325,7 @@ export function SpeakerNamingDialog({
                   {draft.map((row, index) => {
                     const next = draft[index + 1];
                     const count = passages(row.label);
+                    const time = seconds?.(row.label);
                     const said = quote(row.label);
                     const unavailable = listenUnavailableReason?.(row.label) ?? null;
                     const playing = listening === row.label;
@@ -336,7 +341,7 @@ export function SpeakerNamingDialog({
                           <VStack gap={1} hAlign="start" className={styles.said}>
                             <Text as="p">
                               <Text weight="medium">{speakerDisplayLabel(row.label)}</Text>
-                              <Text color="secondary"> · {count} inlägg</Text>
+                              <Text color="secondary"> · {count} inlägg{time != null && count > 0 ? ` · ${formatSpeechTime(time)}` : ""}</Text>
                             </Text>
                             {said && (
                               <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>

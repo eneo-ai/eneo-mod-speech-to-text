@@ -444,16 +444,35 @@ interface SpeakerSummary {
   label: string;
   /** Passages (turns) the speaker has; passages still to check count for no one. */
   passages: number;
+  /**
+   * Seconds of the speaker's own segments in those passages, silence between them not counted; null while a segment of
+   * theirs shares its time with another speaker's (a passage split without word timings keeps its whole window for
+   * both), when no honest share can be said.
+   */
+  seconds: number | null;
 }
 
 /** The speakers in the order they first speak. */
 export function speakerSummaries(turns: readonly TranscriptTurn[]): SpeakerSummary[] {
   const passages = new Map<string, number>();
+  const seconds = new Map<string, number>();
+  const window = (segment: TranscriptSegment) => `${segment.fileIndex}:${segment.start}:${segment.end}`;
+  const speakersOf = new Map<string, Set<string>>();
+  for (const turn of turns) {
+    for (const { segment } of turn.parts) {
+      if (segment.speaker) speakersOf.set(window(segment), (speakersOf.get(window(segment)) ?? new Set()).add(segment.speaker));
+    }
+  }
+  const shared = new Set<string>();
   for (const turn of turns) {
     if (!turn.speaker || pendingSpeakerReview(turn) || turn.parts[0].segment.decision === "unresolved") continue;
     passages.set(turn.speaker, (passages.get(turn.speaker) ?? 0) + 1);
+    for (const { segment } of turn.parts) {
+      if ((speakersOf.get(window(segment))?.size ?? 0) > 1) shared.add(turn.speaker);
+      seconds.set(turn.speaker, (seconds.get(turn.speaker) ?? 0) + Math.max(0, segment.end - segment.start));
+    }
   }
-  return [...passages].map(([label, count]) => ({ label, passages: count }));
+  return [...passages].map(([label, count]) => ({ label, passages: count, seconds: shared.has(label) ? null : (seconds.get(label) ?? 0) }));
 }
 
 /** "Anna Berg" → "A", "Talare 3" → "3": the letter in a speaker's round mark. */
