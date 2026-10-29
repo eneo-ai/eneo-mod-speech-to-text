@@ -643,9 +643,9 @@ test("a passage's editor that the soft keyboard covers brings itself above it on
   await view.act(async () => button(view.container, "Rätta repliken från 0:02")!.click());
   // The editor (its field and buttons) where the page has laid it out; everything else nowhere in particular.
   let editor = { top: 600, bottom: 720 };
+  let port = { top: 0, bottom: window.innerHeight };
   t.mock.method(window.HTMLElement.prototype, "getBoundingClientRect", function (this: HTMLElement) {
-    const holds = this !== view.container && this.contains(view.container.querySelector("textarea"));
-    const { top, bottom } = holds ? editor : { top: 0, bottom: 0 };
+    const { top, bottom } = this.classList.contains("lineEditor") ? editor : this.classList.contains("scrollport") ? port : { top: 0, bottom: 0 };
     return { top, bottom, left: 0, right: 100, width: 100, height: bottom - top, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
   });
   const height = window.innerHeight;
@@ -656,4 +656,29 @@ test("a passage's editor that the soft keyboard covers brings itself above it on
   editor = { top: 100, bottom: 720 };
   move(200, 0);
   assert.equal(scrolled.at(-1), 100, "taller than what shows: no further than its own top");
+  // The visible part panned down the page (offsetTop): what is hidden is measured from where it now ends.
+  editor = { top: 500, bottom: 620 };
+  move(300, 200);
+  assert.equal(scrolled.at(-1), 620 - 500 + 8, "measured from the visible part's own bottom");
+
+  // From a laptop's width the transcript scrolls in its own scrollport: that is what moves, not the window.
+  const scrollport = view.container.querySelector<HTMLElement>(".scrollport")!;
+  Object.defineProperty(scrollport, "scrollHeight", { value: 2000, configurable: true });
+  Object.defineProperty(scrollport, "clientHeight", { value: 500, configurable: true });
+  const inner: (number | undefined)[] = [];
+  scrollport.scrollBy = ((options: ScrollToOptions) => void inner.push(options.top)) as typeof scrollport.scrollBy;
+  const before = scrolled.length;
+  editor = { top: 600, bottom: 720 };
+  move(height - 300, 0);
+  assert.deepEqual([inner, scrolled.length], [[720 - (height - 300) + 8], before], "the scrollport, not the window");
+  // The scrollport's own bottom edge (the player below it) clips the editor before the keyboard does.
+  port = { top: 100, bottom: 400 };
+  editor = { top: 350, bottom: 450 };
+  move(height - 100, 0);
+  assert.equal(inner.at(-1), 450 - 400 + 8, "above the scrollport's own edge");
+
+  // Closed, the editor listens no more.
+  await view.act(async () => button(view.container, "Avbryt")!.click());
+  move(100, 0);
+  assert.deepEqual([inner.length, scrolled.length], [2, before], "nothing after the editor is gone");
 });
