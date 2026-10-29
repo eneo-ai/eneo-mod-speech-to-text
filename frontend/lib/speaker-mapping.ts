@@ -207,6 +207,18 @@ export function speakerNamesFromRows(
 }
 
 /** Vilka etiketter som saknar namn och därför lämnas kvar i transkriberingen. */
+/** A name as two speakers' names are compared: case, and spaces around and between words, do not tell them apart. */
+const nameKey = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleLowerCase("sv-SE");
+
+/**
+ * The other speaker that already has `name`, compared as a reader would; null when none does. A hint, not a refusal:
+ * one person can be two labels of the transcription.
+ */
+export function sameNameAs(rows: readonly SpeakerMappingRow[], label: string, name: string | null | undefined): string | null {
+  if (!name?.trim()) return null;
+  return rows.find((row) => row.label !== label && row.name?.trim() && nameKey(row.name) === nameKey(name))?.label ?? null;
+}
+
 export function unmappedSpeakerLabels(
   rows: readonly SpeakerMappingRow[],
 ): string[] {

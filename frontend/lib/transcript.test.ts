@@ -12,6 +12,7 @@ import {
   segmentsFromTranscription,
   speakerColorIndex,
   speakerDisplayLabel,
+  speakerSummaries,
 } from "./transcript";
 
 const transcription = {
@@ -174,4 +175,11 @@ test("Eneo's text without segments reads as its time blocks, in the parts it nam
     "a clock starting over names no file: the loader decides what several unnamed files may seek",
   );
   assert.deepEqual(blocks("### 65:00 - 70:00\n\nSent."), [[0, 3_900, 4_200, null, "Sent."]], "minutes past the hour");
+});
+
+test("how long a speaker spoke is their own segments' time, not the silence between them", () => {
+  const segment = (start: number, end: number, speaker: string, text = "Ja.") => ({ fileIndex: 0, start, end, speaker, text });
+  // One passage of two segments a minute apart: 4 seconds said, not 62.
+  const apart = speakerSummaries(computeTurns([segment(0, 2, "SPEAKER_00"), segment(60, 62, "SPEAKER_00"), segment(62, 70, "SPEAKER_01")]));
+  assert.deepEqual(apart, [{ label: "SPEAKER_00", passages: 1, seconds: 4 }, { label: "SPEAKER_01", passages: 1, seconds: 8 }]);
 });

@@ -58,6 +58,7 @@ import {
   proposalNameToLabel,
   speakerNamesFromRows,
   unmappedSpeakerLabels,
+  sameNameAs,
   unnamedNote,
   withSplitLabels,
   type SpeakerMappingRow,
@@ -371,14 +372,21 @@ export function ReviewView({
   const namingRows = useMemo(() => withSplitLabels(speakerRows, splitSpeakers), [speakerRows, splitSpeakers]);
   // Every speaker the list shows without a name, a split one too: each keeps its label in the transcript.
   const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(namingRows) : [];
-  const passageCounts = useMemo(
-    () => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s.passages])),
-    [shownSegments],
-  );
+  const speakerStats = useMemo(() => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s])), [shownSegments]);
   // While the transcript is read, the inventory's count is all there is; once it is read, a speaker without passages
   // has none, also when Ändra talare moved every one of them.
   const passagesOf = (label: string) =>
-    transcript.pending ? (namingRows.find((row) => row.label === label)?.lineCount ?? 0) : (passageCounts.get(label) ?? 0);
+    transcript.pending ? (namingRows.find((row) => row.label === label)?.lineCount ?? 0) : (speakerStats.get(label)?.passages ?? 0);
+  // How long they spoke is known once the transcript is read, and where no other speaker shares their time.
+  const secondsOf = (label: string) => (transcript.pending ? null : (speakerStats.get(label)?.seconds ?? null));
+  // A row's support line: who the label is (or that there is no name), and a name another row shares. How much each
+  // said is told in Namnge talarna: known only once the transcript is read, it would move the row's words as it came.
+  const rowSupport = (row: SpeakerMappingRow) => {
+    const twin = sameNameAs(namingRows, row.label, row.name);
+    return [row.name ? speakerDisplayLabel(row.label) : "Inget namn", twin && `Samma namn som ${speakerDisplayLabel(twin)}`]
+      .filter(Boolean)
+      .join(" · ");
+  };
 
   /** The names on the page, and kept as a draft until Eneo has them; the draft's version, to drop once saved. */
   function keepNames(rows: SpeakerMappingRow[]): ReviewEdit {
@@ -661,7 +669,7 @@ export function ReviewView({
             const unsure = isUnsureProposal(row, modelProposals) && (
               <Token size="sm" color="yellow" label="Osäkert förslag" icon={<Icon icon="warning" size="sm" />} />
             );
-            const label = row.name ? speakerDisplayLabel(row.label) : "Inget namn";
+            const label = rowSupport(row);
             return (
               <ListItem
                 key={row.label}
@@ -690,6 +698,7 @@ export function ReviewView({
             proposals={modelProposals}
             participants={participants}
             passages={passagesOf}
+            seconds={secondsOf}
             quote={(label) =>
               shownSegments.find((segment) => segment.speaker === label)?.text ??
               namingRows.find((row) => row.label === label)?.samples[0] ??

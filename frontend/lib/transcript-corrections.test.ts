@@ -17,7 +17,7 @@ import {
   withSpeakerEdit,
   type CorrectionSet,
 } from "./transcript-corrections";
-import type { TranscriptSegment } from "./transcript";
+import { computeTurns, speakerSummaries, type TranscriptSegment } from "./transcript";
 
 const segments: TranscriptSegment[] = [
   { fileIndex: 0, start: 0, end: 4, speaker: "SPEAKER_00", text: "Hej och välkomna." },
@@ -275,4 +275,22 @@ test("the text names each speaker as the page does, and keeps the brackets of wh
   ]);
   // Without names the text is as it was.
   assert.equal(renderReviewedTranscript(parts, { ...set, speakerNames: {} }, {}), renderReviewedTranscript(parts, { ...set, speakerNames: undefined }));
+});
+
+test("a split part with no word timings of its own says no time for its speaker; with word timings each part says its own", () => {
+  const word = (text: string, at: number, start: number) => ({ word: text, start, end: start + 1, probability: 1, charStart: at, charEnd: at + text.length, uncertain: false });
+  const untimed: TranscriptSegment = { fileIndex: 0, start: 0, end: 30, speaker: "SPEAKER_00", text: "ett två tre" };
+  const timed: TranscriptSegment = { ...untimed, words: [word("ett", 0, 2), word("två", 4, 12), word("tre", 8, 25)] };
+  const edit = (speaker: string | null, decision: "confirmed" | "unresolved") => ({
+    ...v3,
+    speaker_edits: [{ segment_index: 0, char_start: 4, char_end: 7, original: "två", original_speaker: "SPEAKER_00", speaker, decision }],
+  });
+  const seconds = (raw: TranscriptSegment, set: CorrectionSet) =>
+    Object.fromEntries(speakerSummaries(computeTurns(applyCorrections([raw], set).segments)).map((s) => [s.label, s.seconds]));
+
+  assert.deepEqual(seconds(untimed, EMPTY_CORRECTIONS), { SPEAKER_00: 30 }, "unsplit: the segment's window");
+  assert.deepEqual(seconds(untimed, edit("SPEAKER_01", "confirmed")), { SPEAKER_00: null, SPEAKER_01: null }, "moved, untimed: no share for either");
+  assert.deepEqual(seconds(untimed, edit("SPEAKER_00", "confirmed")), { SPEAKER_00: null }, "confirmed in place, untimed: not 90 s");
+  assert.deepEqual(seconds(untimed, edit(null, "unresolved")), { SPEAKER_00: null }, "unresolved, untimed: not 60 s");
+  assert.deepEqual(seconds(timed, edit("SPEAKER_01", "confirmed")), { SPEAKER_00: 2, SPEAKER_01: 1 }, "timed: each part its own words");
 });

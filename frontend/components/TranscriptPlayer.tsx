@@ -1755,7 +1755,7 @@ function SpeakerNaming({
   /** On a phone its icon alone, at the end of the speakers' row. */
   iconOnly: boolean;
   naming: Naming;
-  speakers: readonly { label: string; passages: number }[];
+  speakers: readonly { label: string; passages: number; seconds: number | null }[];
   /** The passages as shown, with the corrections. */
   shown: readonly TranscriptSegment[];
   /** The names the page shows. */
@@ -1800,6 +1800,7 @@ function SpeakerNaming({
       rows={rows}
       participants={naming.participants}
       passages={(label) => speakers.find((speaker) => speaker.label === label)?.passages ?? 0}
+      seconds={(label) => speakers.find((speaker) => speaker.label === label)?.seconds ?? null}
       quote={(label) => shown.find((segment) => segment.speaker === label)?.text ?? null}
       onListen={hasAudio ? listenTo : undefined}
       listening={listening}
