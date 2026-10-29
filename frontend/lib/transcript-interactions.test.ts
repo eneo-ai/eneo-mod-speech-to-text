@@ -3,7 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { computeAccessibleName } from "dom-accessibility-api";
 import { wordKey } from "./confirmed-words";
-import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
 import type { CorrectionSet, SpeakerNames } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
 
@@ -633,4 +633,27 @@ test("with the speaker review's own view, a finished run's speakers are named al
   await view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.deepEqual(sent, [{ SPEAKER_00: "Anna Berg" }]);
   assert.ok(!document.querySelector("dialog[open]"));
+});
+
+test("a passage's editor that the soft keyboard covers brings itself above it once the keyboard has opened, never past its own top", async (t) => {
+  const move = visualViewport(t);
+  const scrolled: (number | undefined)[] = [];
+  t.mock.method(window, "scrollBy", (options: ScrollToOptions) => void scrolled.push(options.top));
+  const view = await player(meeting, { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
+  await view.act(async () => button(view.container, "Rätta repliken från 0:02")!.click());
+  // The editor (its field and buttons) where the page has laid it out; everything else nowhere in particular.
+  let editor = { top: 600, bottom: 720 };
+  t.mock.method(window.HTMLElement.prototype, "getBoundingClientRect", function (this: HTMLElement) {
+    const holds = this !== view.container && this.contains(view.container.querySelector("textarea"));
+    const { top, bottom } = holds ? editor : { top: 0, bottom: 0 };
+    return { top, bottom, left: 0, right: 100, width: 100, height: bottom - top, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+  });
+  const height = window.innerHeight;
+  move(height - 300, 0);
+  assert.deepEqual(scrolled, [720 - (height - 300) + 8], "above the keyboard, by what it hides and a margin");
+  move(height, 0);
+  assert.equal(scrolled.length, 1, "the keyboard gone: nothing to move");
+  editor = { top: 100, bottom: 720 };
+  move(200, 0);
+  assert.equal(scrolled.at(-1), 100, "taller than what shows: no further than its own top");
 });

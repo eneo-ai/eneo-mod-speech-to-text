@@ -1859,6 +1859,20 @@ function LineEditor({
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
     fit(el);
+    // iOS Safari does not always scroll a field opened near the page's end above its soft keyboard, and then leaves it
+    // and its buttons behind the keyboard. Once the visible part of the window has shrunk for the keyboard, the editor
+    // brings itself above it, never past its own top.
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const reveal = () => {
+      const box = el.closest(`.${styles.lineEditor}`)?.getBoundingClientRect();
+      if (!box) return;
+      const hidden = box.bottom - (viewport.offsetTop + viewport.height);
+      const room = box.top - viewport.offsetTop;
+      if (hidden > 0 && room > 0) window.scrollBy({ top: Math.min(hidden + 8, room), behavior: "instant" });
+    };
+    viewport.addEventListener("resize", reveal);
+    return () => viewport.removeEventListener("resize", reveal);
   }, []);
   return (
     <VStack
