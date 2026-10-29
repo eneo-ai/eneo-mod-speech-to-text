@@ -567,9 +567,9 @@ test("the naming dialog has a row for each speaker the transcript shows, split o
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   const dialog = document.querySelector("dialog[open]")!;
   assert.match(dialog.textContent ?? "", /Namnen syns direkt i transkriberingen\./, "the page's own words");
-  assert.match(dialog.textContent ?? "", /Talare 1 · 1 inlägg”Välkomna\. Vi har två punkter i dag\.”/);
+  assert.match(dialog.textContent ?? "", /Talare 1 · 1 inlägg · 0:02”Välkomna\. Vi har två punkter i dag\.”/);
   assert.match(dialog.textContent ?? "", /Talare 2 · 2 inlägg/);
-  assert.match(dialog.textContent ?? "", /Talare 3 · 1 inlägg”Då godkänner vi den punkten\.”/, "the speaker split off has a row");
+  assert.match(dialog.textContent ?? "", /Talare 3 · 1 inlägg · 0:02”Då godkänner vi den punkten\.”/, "the speaker split off has a row");
   assert.doesNotMatch(dialog.textContent ?? "", /Osäkert förslag|Varför\?/, "no proposals after the run");
   assert.equal(nameField("Talare 2").value, "Erik Lund", "the step's name to start from");
   await view.act(async () => type(nameField("Talare 1"), "Anna Berg"));
