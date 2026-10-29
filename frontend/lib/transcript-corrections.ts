@@ -212,6 +212,8 @@ export function applyCorrections(
         text: segment.text.slice(start, end),
         ...(edit ? { speaker: edit.speaker, decision: edit.decision ?? "confirmed" } : {}),
         ...(edits.length && sourceWords?.length ? { start: Math.min(...sourceWords.map((w) => w.start)), end: Math.max(...sourceWords.map((w) => w.end)) } : {}),
+        // A part of the segment with no word timings keeps its whole window: how long the part is cannot be told.
+        ...(edits.length && (from > 0 || to < raw.text.length) && !sourceWords?.length ? { wholeWindow: true } : {}),
         ...(segment.words ? { words: edits.length ? words?.map((w) => ({ ...w, charStart: w.charStart - start, charEnd: w.charEnd - start })) : segment.words } : {}),
       };
       const displayIndex = displayed.length;

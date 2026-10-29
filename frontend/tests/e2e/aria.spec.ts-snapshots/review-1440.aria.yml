@@ -8,9 +8,9 @@
     - heading "Talare" [level=2]
     - button "Namnge talarna"
     - list "Talare":
-      - listitem: /Anna Berg Talare 1 · 3 inlägg · \d+:\d\d/
-      - listitem: /Erik Lund Talare 2 · 2 inlägg · \d+:\d\d Osäkert förslag/
-      - listitem: /Talare 3 Inget namn · 1 inlägg · \d+:\d\d/
+      - listitem: Anna Berg Talare 1 · 3 inlägg · 0:10
+      - listitem: Erik Lund Talare 2 · 2 inlägg · 0:07 Osäkert förslag
+      - listitem: Talare 3 Inget namn · 1 inlägg · 0:03
     - paragraph: "1 av 3 talare saknar namn: Talare 3. Talaren behåller sin etikett i transkriberingen."
   - button "Avvisa körningen"
   - button "Godkänn och fortsätt"

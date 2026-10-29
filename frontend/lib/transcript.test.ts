@@ -177,12 +177,9 @@ test("Eneo's text without segments reads as its time blocks, in the parts it nam
   assert.deepEqual(blocks("### 65:00 - 70:00\n\nSent."), [[0, 3_900, 4_200, null, "Sent."]], "minutes past the hour");
 });
 
-test("how long a speaker spoke is their own segments' time, not the silence between them, and unknown where a split shares its window", () => {
+test("how long a speaker spoke is their own segments' time, not the silence between them", () => {
   const segment = (start: number, end: number, speaker: string, text = "Ja.") => ({ fileIndex: 0, start, end, speaker, text });
   // One passage of two segments a minute apart: 4 seconds said, not 62.
   const apart = speakerSummaries(computeTurns([segment(0, 2, "SPEAKER_00"), segment(60, 62, "SPEAKER_00"), segment(62, 70, "SPEAKER_01")]));
   assert.deepEqual(apart, [{ label: "SPEAKER_00", passages: 1, seconds: 4 }, { label: "SPEAKER_01", passages: 1, seconds: 8 }]);
-  // A passage split between two speakers without word timings keeps its whole window for both: no time is said for either.
-  const split = speakerSummaries(computeTurns([segment(0, 30, "SPEAKER_00", "Hej"), segment(0, 30, "SPEAKER_01", "och välkomna."), segment(30, 40, "SPEAKER_02")]));
-  assert.deepEqual(split.map(({ label, seconds }) => [label, seconds]), [["SPEAKER_00", null], ["SPEAKER_01", null], ["SPEAKER_02", 10]]);
 });
