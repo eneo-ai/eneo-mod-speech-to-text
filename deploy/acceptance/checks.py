@@ -955,7 +955,7 @@ def check_16() -> str:
     session = sign_in(STACK.module)
     # the cookie the BFF sets reaches the client, and comes back
     login = get(f"{STACK.module}/api/auth/login?next=/flows")
-    expect(any(c.startswith("eneo_module_login_state=") and "HttpOnly" in c for c in login.set_cookies), f"the login's Set-Cookie did not arrive through Traefik: {login.set_cookies}")
+    expect(any(c.startswith("eneo_module_login_state_") and "HttpOnly" in c for c in login.set_cookies), f"the login's Set-Cookie did not arrive through Traefik: {login.set_cookies}")
     status = get(f"{STACK.module}/api/auth/status", headers=session.read())
     expect(status.json()["authenticated"] is True, "the session cookie did not come back through Traefik")  # type: ignore[index]
     lines.append("the login's state cookie and the session cookie arrive and come back")

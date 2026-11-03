@@ -74,6 +74,22 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.session_max_age_seconds, 90 * 60)
 
+    def test_a_login_may_take_30_minutes_at_eneo_unless_configured(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            self.assertEqual(load_settings().login_timeout_seconds, 30 * 60)
+        environment = valid_environment()
+        environment["LOGIN_TIMEOUT_MINUTES"] = "45"
+        with patch.dict(os.environ, environment, clear=True):
+            self.assertEqual(load_settings().login_timeout_seconds, 45 * 60)
+
+    def test_rejects_an_invalid_login_timeout(self) -> None:
+        for raw in ("0", "-5", "thirty"):
+            environment = valid_environment()
+            environment["LOGIN_TIMEOUT_MINUTES"] = raw
+            with self.subTest(raw=raw), patch.dict(os.environ, environment, clear=True):
+                with self.assertRaisesRegex(RuntimeError, "LOGIN_TIMEOUT_MINUTES"):
+                    load_settings()
+
     def test_rejects_invalid_session_max_age(self) -> None:
         for raw in ("0", "-5", "eight"):
             environment = valid_environment()

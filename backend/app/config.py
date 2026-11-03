@@ -94,6 +94,11 @@ class Settings(BaseModel):
     # Övre gräns för modulsessionen. Den slutar senast vid Eneos sessionstak
     # (module_auth_max_session_hours); modultoken förnyas via Eneo fram till dess.
     session_max_age_seconds: int = 8 * 60 * 60
+    # How long a person may take to sign in at Eneo (LOGIN_TIMEOUT_MINUTES): the login state that binds the callback to
+    # their browser lives this long. Signed out of Eneo, they first sign in there, and Eneo's identity provider alone may
+    # take OIDC_STATE_TTL_SECONDS (10 minutes by default), so this must be longer than that or a sign-in Eneo completed
+    # ends as invalid_state.
+    login_timeout_seconds: int = 30 * 60
     # None shows "Tal till text" alone (SHOW_ORGANIZATION=false).
     organization: Organization | None = DEFAULT_ORGANIZATION
     organization_logo: LogoFile | None = None
@@ -496,6 +501,7 @@ def load_settings() -> Settings:
         max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", _default("max_response_bytes")),
         static_dir=Path(os.environ["STATIC_DIR"]) if os.environ.get("STATIC_DIR") else None,
         session_max_age_seconds=session_minutes * 60,
+        login_timeout_seconds=_positive_int("LOGIN_TIMEOUT_MINUTES", _default("login_timeout_seconds") // 60) * 60,
         organization=organization,
         organization_logo=organization_logo,
         organization_logo_dark=organization_logo_dark,

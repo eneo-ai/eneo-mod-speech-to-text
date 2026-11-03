@@ -27,6 +27,7 @@ sequenceDiagram
 ```
 
 - `state` är oförutsägbart och kortlivat, bundet till en HttpOnly-cookie och förbrukat vid callbacken (cookien raderas).
+- Varje inloggning som inte har kommit tillbaka har en egen cookie, så en andra inloggning (en annan flik, eller **Logga in igen** när inloggningen har gått ut) avbryter inte den första. Högst fem väntar samtidigt: nästa inloggning tar bort de äldsta utöver fem.
 - Varje proxat Eneo-anrop skickar både servicenyckeln och modultoken som BFF:en hämtar ur sessionen.
 - När halva tokenens livslängd har gått förnyar BFF:en den. Nekar Eneo förnyelsen, till exempel när Eneos sessionstak har passerats, avslutas sessionen och användaren loggar in igen.
 - Den som öppnar en sida i modulen utan att vara inloggad (ett bokmärke till en körning, `/flows/<id>?run=<id>`) skickas till inloggningssidan, som ger adressen till `GET /api/auth/login` som `next`. Callbacken skickar webbläsaren dit. Bara en sökväg i modulen godtas (den börjar med ett `/`, inte med `//`, och har inget `\`); allt annat blir flödeslistan, `/flows`.
@@ -39,7 +40,7 @@ Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska
 
 | Kod | Betyder |
 |---|---|
-| `invalid_state` | Ticket eller state saknas eller stämmer inte med state-cookien (som går ut efter 5 minuter). |
+| `invalid_state` | Ticket eller state saknas eller stämmer inte med state-cookien (som går ut efter `LOGIN_TIMEOUT_MINUTES`, standard 30 minuter, så att den som först måste logga in i Eneo hinner det). |
 | `exchange_unavailable`, `exchange_failed`, `exchange_invalid` | Ticketväxlingen: Eneo nåddes inte, svarade med annat än 200, eller svarade med fel format, fel modul eller en utgången session. |
 | `validation_unavailable`, `validation_failed`, `validation_invalid` | Samma tre fall för valideringsanropet, inklusive att identiteten inte stämde med tokenens. |
 
