@@ -54,6 +54,11 @@ def token_payload(
     }
 
 
+def pending_logins(cookies) -> dict[str, str]:
+    """The login states in a cookie jar or a response's cookies: one per sign-in that has not returned yet."""
+    return {name: value for name, value in dict(cookies).items() if name.startswith(f"{STATE_COOKIE}_")}
+
+
 class FakeResponse:
     def __init__(self, status_code: int = 200, *, user_id: str = "user-id") -> None:
         self.status_code = status_code
@@ -100,7 +105,7 @@ class ModuleAuthTests(unittest.TestCase):
             query["redirect_uri"],
             ["http://localhost:3002/api/auth/callback"],
         )
-        self.assertIn("eneo_module_login_state", response.cookies)
+        self.assertTrue(pending_logins(response.cookies))
         return query["state"][0], location
 
     def test_login_redirect_binds_state_to_callback_cookie(self) -> None:
@@ -240,19 +245,79 @@ class ModuleAuthTests(unittest.TestCase):
         state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
         self.assertIn("Max-Age=600", response.headers["set-cookie"])
         # A browser that kept the cookie past its Max-Age anyway: the backend checks the signed age itself.
-        pending = response.cookies[STATE_COOKIE]
+        [(name, pending)] = pending_logins(response.cookies).items()
         self.client.cookies.clear()
 
         with patch.object(main.settings, "login_timeout_seconds", 10 * 60), patch("time.time", return_value=time.time() + 10 * 60 + 5):
             callback = self.client.get(
                 "/api/auth/callback",
                 params={"ticket": "one-time-ticket", "state": state},
-                headers={"Cookie": f"{STATE_COOKIE}={pending}"},
+                headers={"Cookie": f"{name}={pending}"},
             )
 
         self.assertEqual(callback.headers["location"], "/?auth_error=invalid_state")
         self.assertNotIn(SESSION_COOKIE, callback.cookies)
         self.assertEqual(self.exchange_client.calls, [])
+
+    def test_a_second_sign_in_started_before_the_first_returned_ends_neither(self) -> None:
+        # Another tab, or the session cover's "Logga in igen", starts a sign-in while the first is still at Eneo.
+        first, _ = self.start_login()
+        second, _ = self.start_login()
+        self.assertEqual(len(pending_logins(self.client.cookies)), 2)
+
+        for state in (first, second):
+            with self.subTest(state=state):
+                callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+                self.assertEqual(callback.headers["location"], "/flows")
+                self.assertIn(SESSION_COOKIE, callback.cookies)
+        self.assertEqual(pending_logins(self.client.cookies), {}, "each callback clears its own state")
+
+    def test_at_most_five_sign_ins_wait_and_a_sixth_drops_the_oldest(self) -> None:
+        start = time.time()
+        states = []
+        for second in range(6):
+            with patch("time.time", return_value=start + second):
+                states.append(self.start_login()[0])
+        self.assertEqual(len(pending_logins(self.client.cookies)), 5)
+
+        with patch("time.time", return_value=start + 10):
+            oldest = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": states[0]})
+            self.assertEqual(oldest.headers["location"], "/?auth_error=invalid_state")
+            self.assertEqual(self.exchange_client.calls, [])
+            newest = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": states[5]})
+            self.assertEqual(newest.headers["location"], "/flows")
+
+    def test_two_sign_ins_started_at_once_overshoot_the_five_only_until_the_next_start(self) -> None:
+        # Two starts sent before either answer lands both see the same four waiting logins: the cap is a cleanup, kept by
+        # the next start, not a lock across requests.
+        header = lambda cookies: {"Cookie": "; ".join(f"{name}={value}" for name, value in cookies.items())}
+        start = time.time()
+        waiting: dict[str, str] = {}
+        for second in range(4):
+            with patch("time.time", return_value=start + second):
+                waiting |= pending_logins(self.client.get("/api/auth/login", headers=header(waiting)).cookies)
+        with patch("time.time", return_value=start + 4):
+            both = [self.client.get("/api/auth/login", headers=header(waiting)) for _ in range(2)]
+        for response in both:
+            self.assertNotIn("Max-Age=0", str(response.headers.get_list("set-cookie")))
+            waiting |= pending_logins(response.cookies)
+        self.assertEqual(len(waiting), 6)
+
+        with patch("time.time", return_value=start + 5):
+            next_start = self.client.get("/api/auth/login", headers=header(waiting))
+
+        dropped = [cookie for cookie in next_start.headers.get_list("set-cookie") if "Max-Age=0" in cookie]
+        self.assertEqual(len(dropped), 2, "the two oldest go, so five wait again")
+        self.assertTrue(all(any(cookie.startswith(f"{name}=") for name in list(waiting)[:2]) for cookie in dropped))
+
+    def test_a_cookie_the_module_never_set_is_no_waiting_login_and_breaks_no_login(self) -> None:
+        # Another site on the parent domain can set cookies with any name; a name the module could not have set is ignored.
+        junk = {f"{STATE_COOKIE}_{name}": "x" for name in ("@", "a", "b", "c", "d", "e" * 24)}
+
+        response = self.client.get("/api/auth/login", headers={"Cookie": "; ".join(f"{k}={v}" for k, v in junk.items())})
+
+        self.assertEqual(response.status_code, 303)
+        self.assertNotIn("Max-Age=0", response.headers["set-cookie"], "nothing it did not set is deleted")
 
     def test_status_says_when_the_session_ends(self) -> None:
         state, _ = self.start_login()

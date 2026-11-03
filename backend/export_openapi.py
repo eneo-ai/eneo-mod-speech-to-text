@@ -69,7 +69,9 @@ QUERY_PARAMETERS = {
     "renew": "`true` för en ny inloggning i ett eget fönster för den som är inloggad nu. Utan session är den vägrad "
     "(`fel=utgangen`).",
     "ticket": "Engångsticket från Eneo.",
-    "state": "Värdet som inloggningen startade med; det måste vara det som står i kakan `" + STATE_COOKIE + "`.",
+    "state": "Värdet som inloggningen startade med; det måste vara det som står i just den inloggningens kaka `"
+    + STATE_COOKIE
+    + "_<id>`.",
     "disposition": "`inline` öppnar bara en PDF i webbläsaren; allt annat, och `attachment`, hämtas som fil.",
 }
 TAGS = (
@@ -310,9 +312,10 @@ OPERATIONS: dict[tuple[str, str], Op] = {
     ("GET", "/api/auth/login"): Op(
         "Inloggning",
         "Starta inloggningen mot Eneo",
-        "Skickar webbläsaren till Eneos `/module-login` och sätter kakan `"
+        "Skickar webbläsaren till Eneos `/module-login` och sätter en kaka för den här inloggningen, `"
         + STATE_COOKIE
-        + "`, som binder återkomsten till den webbläsare som började.",
+        + "_<id>`, som binder återkomsten till den webbläsare som började. Flera inloggningar kan vänta samtidigt "
+        "(en annan flik); nästa inloggning tar bort de äldsta utöver fem.",
         success={"303": reply("Till Eneos inloggning.", headers=REDIRECT)},
     ),
     ("GET", "/api/auth/callback"): Op(

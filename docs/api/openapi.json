@@ -959,7 +959,7 @@
         ],
         "summary": "Starta inloggningen mot Eneo",
         "operationId": "get_api_auth_login",
-        "description": "Skickar webbläsaren till Eneos `/module-login` och sätter kakan `eneo_module_login_state`, som binder återkomsten till den webbläsare som började.",
+        "description": "Skickar webbläsaren till Eneos `/module-login` och sätter en kaka för den här inloggningen, `eneo_module_login_state_<id>`, som binder återkomsten till den webbläsare som började. Flera inloggningar kan vänta samtidigt (en annan flik); nästa inloggning tar bort de äldsta utöver fem.",
         "parameters": [
           {
             "name": "next",
@@ -1052,7 +1052,7 @@
                 }
               ]
             },
-            "description": "Värdet som inloggningen startade med; det måste vara det som står i kakan `eneo_module_login_state`."
+            "description": "Värdet som inloggningen startade med; det måste vara det som står i just den inloggningens kaka `eneo_module_login_state_<id>`."
           }
         ],
         "responses": {

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import math
+import re
 import secrets
 import threading
 import time
@@ -36,9 +38,15 @@ logger = logging.getLogger("eneo_module_auth")
 # Eneo's session ceiling (module_auth_max_session_hours), and the shorter-lived module token is refreshed through Eneo
 # until then.
 SESSION_COOKIE = "eneo_module_session"
-# Binds a callback to the browser that started the login, for Settings.login_timeout_seconds (LOGIN_TIMEOUT_MINUTES):
-# the whole sign-in at Eneo. HttpOnly, and cleared by every callback.
+# Each login that has not returned has a cookie of its own, named after its state (state_cookie_name), so a second
+# login (another tab, the session cover's "Logga in igen") never ends the first. It binds the callback to the browser
+# that started the login, for Settings.login_timeout_seconds (LOGIN_TIMEOUT_MINUTES): the whole sign-in at Eneo.
+# HttpOnly, and cleared by its callback. On /api/auth, so that a new login sees how many wait.
 STATE_COOKIE = "eneo_module_login_state"
+STATE_COOKIE_PATH = "/api/auth"
+# Logins that may wait at once: a new login drops the oldest past this. A cleanup, not a lock: two logins started
+# before either answer lands can leave one more, until the next start.
+MAX_PENDING_LOGINS = 5
 CALLBACK_PATH = "/api/auth/callback"
 # After Eneo fails to answer a token refresh, wait this long before asking
 # again; the current, still valid token stays in use meanwhile.
@@ -107,6 +115,16 @@ class PendingLogin(BaseModel):
 
 def with_query(path: str, query: str) -> str:
     return f"{path}{'&' if '?' in path else '?'}{query}"
+
+
+def state_cookie_name(state: str) -> str:
+    """The cookie that holds this login's state; a digest, so the name is a valid cookie name whatever the query held."""
+    return f"{STATE_COOKIE}_{hashlib.sha256(state.encode()).hexdigest()[:24]}"
+
+
+# Only a name state_cookie_name gives: a cookie set under the prefix by anyone else (a site on the parent domain) is no
+# login of this module's, and its name may be one the response could not even delete.
+_STATE_COOKIE_NAME = re.compile(rf"{STATE_COOKIE}_[0-9a-f]{{24}}")
 
 
 def module_path(value: str | None) -> str:
@@ -256,6 +274,7 @@ class ModuleAuth:
 
     async def login(
         self,
+        request: Request,
         next_path: Annotated[str | None, Query(alias="next")] = None,
         renew: Annotated[bool, Query()] = False,
         session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
@@ -288,29 +307,41 @@ class ModuleAuth:
             url=f"{self.settings.eneo_public_url}/module-login?{query}",
             status_code=303,
         )
+        for oldest in self._pending_logins(request)[: -MAX_PENDING_LOGINS + 1 or None]:
+            self._delete_state_cookie(response, oldest)
         response.set_cookie(
-            key=STATE_COOKIE,
+            key=state_cookie_name(state),
             value=pending,
             httponly=True,
             secure=self.settings.cookie_secure,
             samesite="lax",
             max_age=self.settings.login_timeout_seconds,
-            path=CALLBACK_PATH,
+            path=STATE_COOKIE_PATH,
         )
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    def _pending_logins(self, request: Request) -> list[str]:
+        """The browser's waiting logins' cookie names, oldest first; one that cannot be read counts as the oldest."""
+
+        def started(name: str) -> float:
+            try:
+                return self.state_serializer.loads(request.cookies[name], return_timestamp=True)[1].timestamp()
+            except (BadSignature, ValueError):
+                return 0
+
+        return sorted((name for name in request.cookies if _STATE_COOKIE_NAME.fullmatch(name)), key=started)
+
     async def callback(
         self,
+        request: Request,
         ticket: Annotated[str | None, Query()] = None,
         state: Annotated[str | None, Query()] = None,
-        pending_cookie: Annotated[
-            str | None,
-            Cookie(alias=STATE_COOKIE),
-        ] = None,
         replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> RedirectResponse:
-        pending = self._load_pending_login(pending_cookie)
+        # Only this login's own cookie: another login's state, however valid, never admits this callback.
+        cookie_name = state_cookie_name(state) if state is not None else None
+        pending = self._load_pending_login(request.cookies.get(cookie_name) if cookie_name else None)
         if (
             ticket is None
             or state is None
@@ -318,7 +349,7 @@ class ModuleAuth:
             # Bytes, not str: compare_digest raises TypeError (a 500) for a str with a non-ASCII character.
             or not secrets.compare_digest(state.encode(), pending.state.encode())
         ):
-            return self._auth_error("invalid_state")
+            return self._auth_error(cookie_name, "invalid_state")
 
         try:
             upstream = await self.http_client.post(
@@ -330,14 +361,14 @@ class ModuleAuth:
             )
         except httpx.RequestError:
             logger.exception("Module ticket exchange could not reach Eneo")
-            return self._auth_error("exchange_unavailable")
+            return self._auth_error(cookie_name, "exchange_unavailable")
 
         if upstream.status_code != 200:
             logger.warning(
                 "Module ticket exchange failed with status %s",
                 upstream.status_code,
             )
-            return self._auth_error("exchange_failed")
+            return self._auth_error(cookie_name, "exchange_failed")
 
         try:
             token = ModuleTokenResponse.model_validate(upstream.json())
@@ -345,7 +376,7 @@ class ModuleAuth:
             # Not the exception, here and in the two like it below: a validation error quotes the input it refused,
             # and that is an access token.
             logger.error("Module ticket exchange returned an invalid response")
-            return self._auth_error("exchange_invalid")
+            return self._auth_error(cookie_name, "exchange_invalid")
 
         now = int(time.time())
         session_expires_at = min(
@@ -358,7 +389,7 @@ class ModuleAuth:
             or session_expires_at <= now
         ):
             logger.error("Module ticket exchange returned the wrong module or expiry")
-            return self._auth_error("exchange_invalid")
+            return self._auth_error(cookie_name, "exchange_invalid")
 
         try:
             validation = await self.http_client.get(
@@ -372,33 +403,33 @@ class ModuleAuth:
             )
         except httpx.RequestError:
             logger.exception("Module session validation could not reach Eneo")
-            return self._auth_error("validation_unavailable")
+            return self._auth_error(cookie_name, "validation_unavailable")
 
         if validation.status_code != 200:
             logger.warning(
                 "Module session validation failed with status %s",
                 validation.status_code,
             )
-            return self._auth_error("validation_failed")
+            return self._auth_error(cookie_name, "validation_failed")
         try:
             validated = ModuleResourceSessionResponse.model_validate(validation.json())
         except (ValueError, ValidationError):
             logger.error("Module session validation returned an invalid response")
-            return self._auth_error("validation_invalid")
+            return self._auth_error(cookie_name, "validation_invalid")
         if (
             validated.module_key != token.module_key
             or validated.tenant_id != token.tenant_id
             or validated.user.id != token.user.id
         ):
             logger.error("Module session validation returned a different identity")
-            return self._auth_error("validation_invalid")
+            return self._auth_error(cookie_name, "validation_invalid")
 
         if pending.renew_user_id is not None and (
             token.user.id != pending.renew_user_id or token.tenant_id != pending.renew_tenant_id
         ):
             logger.warning("A session renewal signed in a different user; the session is kept")
             response = RedirectResponse(url=with_query(pending.next, "fel=annan-anvandare"), status_code=303)
-            self._delete_state_cookie(response)
+            self._delete_state_cookie(response, cookie_name)
             self._secure_callback_response(response)
             return response
 
@@ -417,7 +448,7 @@ class ModuleAuth:
         )
         # The browser has the new session now: the one it had is over, with whatever is open under it.
         self.sessions.delete(replaced_session_id)
-        self._delete_state_cookie(response)
+        self._delete_state_cookie(response, cookie_name)
         self._secure_callback_response(response)
         return response
 
@@ -674,19 +705,21 @@ class ModuleAuth:
         except (BadSignature, SignatureExpired, ValidationError):
             return None
 
-    def _auth_error(self, code: str) -> RedirectResponse:
+    def _auth_error(self, cookie_name: str | None, code: str) -> RedirectResponse:
         response = RedirectResponse(
             url=f"/?{urlencode({'auth_error': code})}",
             status_code=303,
         )
-        self._delete_state_cookie(response)
+        self._delete_state_cookie(response, cookie_name)
         self._secure_callback_response(response)
         return response
 
-    def _delete_state_cookie(self, response: Response) -> None:
+    def _delete_state_cookie(self, response: Response, cookie_name: str | None) -> None:
+        if cookie_name is None:
+            return
         response.delete_cookie(
-            STATE_COOKIE,
-            path=CALLBACK_PATH,
+            cookie_name,
+            path=STATE_COOKIE_PATH,
             secure=self.settings.cookie_secure,
             httponly=True,
             samesite="lax",
