@@ -26,7 +26,30 @@ const TITLE: Record<Refusal | "ok", string> = {
 /** The route /inloggad, where a login window lands. It is outside every gate: no AuthGate, and no way off the page when nobody is signed in. */
 export default function SignedInAgainPage() {
   const [params] = useSearchParams();
+  const failure = params.get("auth_error");
+  if (failure !== null) return <LoginWindowFailed late={failure === "invalid_state"} />;
   return <SignedInAgain refusal={refusalOf(params.get("fel"))} />;
+}
+
+/**
+ * A login window whose sign-in failed (`?auth_error=`, from the backend's callback): it says so and stays, and no tab is
+ * told that anyone signed in. The page that opened it still offers its own way to sign in.
+ */
+function LoginWindowFailed({ late }: { late: boolean }) {
+  useDocumentTitle(documentTitle("Inloggningen misslyckades"));
+  useRouteReady(true);
+  return (
+    <Layout height="auto" contentWidth={640}>
+      <LayoutContent role="main" padding={6} isScrollable={false}>
+        <VStack gap={3} hAlign="start">
+          <Heading level={1}>Inloggningen kunde inte slutföras</Heading>
+          <Text as="p" color="secondary">
+            {late ? "Inloggningen tog för lång tid eller avbröts. " : ""}Stäng fönstret och försök igen från sidan.
+          </Text>
+        </VStack>
+      </LayoutContent>
+    </Layout>
+  );
 }
 
 /**

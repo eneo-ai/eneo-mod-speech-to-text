@@ -19,6 +19,7 @@ import { connectionLost } from "@/lib/online-status";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
 import { isRecord } from "@/lib/is-record";
+import { LOGIN_WINDOW } from "@/components/SessionEndWarning";
 
 /**
  * Where the page that sent the person here was going (AuthGate puts it in the route's state): a path of this module, never
@@ -40,14 +41,30 @@ export default function LoginPage() {
   // False when the module could not be asked who is signed in: the way in is then a second try.
   const [reachable, setReachable] = useState(false);
   const signedOut = reachable && isRecord(location.state) && location.state.signedOut === true;
-  // Read once: cleaning `auth_error` from the address replaces the entry, and its state with it.
-  const [next] = useState(() => returnAddress(location.state));
+  // Read once: cleaning `auth_error` from the address replaces the entry, and its state with it. A failed sign-in brings
+  // the address it was going to as `?next=`, by the same rule.
+  const [next] = useState(
+    () => returnAddress(location.state) ?? returnAddress({ next: new URLSearchParams(window.location.search).get("next") }),
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const failure = params.get("auth_error");
+    // A login window whose sign-in failed after its state was gone (the backend no longer knew it was one) belongs on its
+    // own page, which says so and stays, not on the module's login page.
+    if (failure !== null && window.name === LOGIN_WINDOW) {
+      void navigate(`/inloggad?${new URLSearchParams({ auth_error: failure })}`, { replace: true });
+      return;
+    }
     if (params.has("auth_error")) {
-      setAuthError("Inloggningen kunde inte slutföras. Försök igen.");
-      void navigate("/", { replace: true });
+      // invalid_state: the sign-in came back after LOGIN_TIMEOUT_MINUTES, or to a browser that no longer had its start.
+      setAuthError(
+        params.get("auth_error") === "invalid_state"
+          ? "Inloggningen tog för lång tid eller avbröts. Försök igen."
+          : "Inloggningen kunde inte slutföras. Försök igen.",
+      );
+      // The address is cleaned, and where the sign-in was going stays in the entry's state: a reload (Försök igen) keeps it.
+      void navigate("/", { replace: true, state: next ? { next } : null });
     }
     authStatus()
       .then((s) => {

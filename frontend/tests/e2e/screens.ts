@@ -637,6 +637,14 @@ export const STATES: State[] = [
     },
   },
   {
+    // A login window whose sign-in failed: it stays, and says so.
+    name: "signed-in-again-failed",
+    go: async (page) => {
+      await page.goto("/inloggad?auth_error=invalid_state");
+      await heading(page, "Inloggningen kunde inte slutföras");
+    },
+  },
+  {
     name: "flow-list-error",
     expects: [{ console: /status of 503.*\/api\/eneo\/flows\// }],
     go: async (page) => {

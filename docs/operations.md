@@ -179,6 +179,7 @@ De fyra tidsgränserna är sekunder, över 0 och högst 86400. De tre `MAX_*_BYT
 
 Modulen svarar på vanlig HTTP och läser inga `X-Forwarded-*`-headers. Proxyn framför den ska ge:
 
+- **En egen värd.** Inloggningens cookies gäller bara modulens värd, men en annan värd under samma registrerbara domän (`*.example.org`) kan sätta cookies som webbläsaren skickar till modulen. Låt därför inga värdar ni inte litar på dela modulens överordnade domän.
 - **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS. Sessionscookien är `Secure` och mikrofonen kräver en säker sida, så hela vägen från webbläsaren till proxyn måste vara HTTPS. Se [HSTS i Traefik](#hsts-i-traefik).
 - **Tid för uppladdningar.** Traefik v3.7 har `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s per ingångspunkt. `readTimeout` gäller hela requesten med bodyn, så en uppladdning som tar mer än 60 s att skicka kapas. Se [Höj readTimeout i Traefik](#höj-readtimeout-i-traefik).
   - Webbläsaren skickar högst 4 MiB per request, och 60 s räcker då ner till ungefär 0,6 Mbit/s. En klient som använder multipart-rutten direkt skickar hela filen i ett anrop: 1800 s räcker för 1 GiB över 5 Mbit/s.

@@ -243,7 +243,8 @@ class ModuleAuthTests(unittest.TestCase):
         with patch.object(main.settings, "login_timeout_seconds", 10 * 60):
             response = self.client.get("/api/auth/login")
         state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
-        self.assertIn("Max-Age=600", response.headers["set-cookie"])
+        # The browser keeps it an hour longer, to say where a late login was going; the signed age admits 10 minutes.
+        self.assertIn(f"Max-Age={10 * 60 + 60 * 60}", response.headers["set-cookie"])
         # A browser that kept the cookie past its Max-Age anyway: the backend checks the signed age itself.
         [(name, pending)] = pending_logins(response.cookies).items()
         self.client.cookies.clear()
@@ -395,7 +396,7 @@ class ModuleAuthTests(unittest.TestCase):
                 # No handoff to Eneo: with no user to bind to, anyone could sign in under this page.
                 self.assertEqual(response.status_code, 303)
                 self.assertEqual(response.headers["location"], "/inloggad?fel=utgangen")
-                self.assertNotIn(STATE_COOKIE, response.cookies)
+                self.assertEqual(pending_logins(response.cookies), {})
                 self.assertNotIn(SESSION_COOKIE, response.cookies)
 
     def test_failed_exchange_redirects_without_creating_session(self) -> None:
@@ -416,6 +417,74 @@ class ModuleAuthTests(unittest.TestCase):
                 "user": None,
             },
         )
+
+    def test_five_waiting_logins_stay_under_a_proxy_s_8_kb_header_whatever_their_next(self) -> None:
+        # Up to five state cookies (six for a moment, from two starts at once) go with every /api/auth request: a long
+        # next in each could push the Cookie header past a proxy's limit (ingress-nginx: 8 KB) and lock the browser out
+        # of signing in until they expire. The bound is the signed cookie's bytes, not next's characters.
+        # Varied characters: the signed payload is compressed, and a repeated one would hide the size.
+        varied = lambda first, count: "/" + "".join(chr(first + i) for i in range(count))
+        for kind, next_path in (("ascii", "/" + "a" * 2000), ("cjk", varied(0x4E00, 511)), ("emoji", varied(0x1F300, 511))):
+            with self.subTest(kind=kind):
+                self.client.cookies.clear()
+                for _ in range(6):
+                    self.client.get("/api/auth/login", params={"next": next_path})
+                header = "; ".join(f"{name}={value}" for name, value in pending_logins(self.client.cookies).items())
+                self.assertLessEqual(len(header.encode()) * 6 // 5, 8 * 1024)
+        self.client.cookies.clear()
+        response = self.client.get("/api/auth/login", params={"next": "/flows/a?run=r1"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+        callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+        self.assertEqual(callback.headers["location"], "/flows/a?run=r1", "an ordinary next is kept")
+
+    def test_a_login_that_came_back_after_its_cookie_expired_still_knows_where_it_was_going(self) -> None:
+        # The browser keeps the cookie a while past the login timeout: the callback is refused, but it can still say
+        # where the login was going, through the ordinary cookie jar.
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        with patch("time.time", return_value=time.time() + main.settings.login_timeout_seconds + 5 * 60):
+            callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/inloggad?auth_error=invalid_state")
+        self.assertEqual(self.exchange_client.calls, [])
+
+    def test_a_failed_sign_in_goes_to_the_login_page_with_where_it_was_going(self) -> None:
+        self.exchange_client.response = FakeResponse(status_code=401)
+        response = self.client.get("/api/auth/login", params={"next": "/flows/a?run=r1"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "bad-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=exchange_failed&next=%2Fflows%2Fa%3Frun%3Dr1")
+
+    def test_a_failed_sign_in_in_a_login_window_stays_on_the_window_s_page(self) -> None:
+        # The session cover's login window lands on /inloggad, which closes it on success: on failure it says so there,
+        # rather than showing the module's login page inside the small window.
+        self.exchange_client.response = FakeResponse(status_code=401)
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "bad-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/inloggad?auth_error=exchange_failed")
+
+    def test_a_sign_in_that_took_too_long_still_knows_where_it_was_going(self) -> None:
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+        [(name, pending)] = pending_logins(response.cookies).items()
+        self.client.cookies.clear()
+
+        late = time.time() + main.settings.login_timeout_seconds + 5
+        with patch("time.time", return_value=late):
+            callback = self.client.get(
+                "/api/auth/callback",
+                params={"ticket": "one-time-ticket", "state": state},
+                headers={"Cookie": f"{name}={pending}"},
+            )
+
+        self.assertEqual(callback.headers["location"], "/inloggad?auth_error=invalid_state")
+        self.assertEqual(self.exchange_client.calls, [])
 
     def test_failed_dual_auth_validation_does_not_create_session(self) -> None:
         self.exchange_client.validation_response = FakeResponse(status_code=403)
