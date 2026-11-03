@@ -34,6 +34,25 @@ test("the document is the wider column, the transcript sits beside it and the he
   expect(doc.position).toBe("static");
 });
 
+test("the open steps lie on the page's own ground, and leave Dölj hur resultatet togs fram whole", async ({ page }) => {
+  await result(page);
+  await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
+  await expect(page.getByText("Flödets version 3")).toBeVisible();
+  const { covered, painted } = await page.evaluate(() => {
+    const content = document.querySelector("#result-panel-document .astryx-collapsible-content")!;
+    const trigger = content.previousElementSibling!;
+    const { left, bottom } = trigger.getBoundingClientRect();
+    return {
+      // A surface of its own under the list: the design system lets a disclosure's first child reach past its padding, up
+      // over the trigger's lower half. The steps' status icons are small, this is the panel's size.
+      painted: [...content.querySelectorAll("*")].filter((element) => element.getBoundingClientRect().width > 100 && getComputedStyle(element).backgroundColor !== "rgba(0, 0, 0, 0)").length,
+      covered: !trigger.contains(document.elementFromPoint(left + 20, bottom - 4)),
+    };
+  });
+  expect(painted, "no surface of its own").toBe(0);
+  expect(covered, "nothing lies over the trigger").toBe(false);
+});
+
 test("scrolled past a long document, the transcript stays at the top of the window", async ({ page }) => {
   await result(page);
   // A document much longer than the window, as a long report is.
