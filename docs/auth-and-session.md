@@ -36,7 +36,9 @@ Callbacken redirectar alltid till en ren URL och svarar med `Referrer-Policy: no
 
 ### Om callbacken misslyckas
 
-Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska meddelande och tar bort parametern ur adressen; koden är till för felsökning.
+Webbläsaren skickas till inloggningssidan, `/?auth_error=<kod>`, med `&next=<sida>` när inloggningen var på väg till en annan sida än flödeslistan, så att nästa inloggning går dit. Sidan tar bort parametrarna ur adressen. Vid `invalid_state` säger den att inloggningen tog för lång tid eller avbröts, annars att den inte kunde slutföras; koden är till för felsökning.
+
+En inloggning i ett eget fönster (**Förläng inloggningen** eller **Logga in igen**) går i stället till `/inloggad?auth_error=<kod>`. Fönstret säger att inloggningen inte kunde slutföras och stängs inte, och ingen flik får veta att någon loggat in.
 
 | Kod | Betyder |
 |---|---|

@@ -323,7 +323,8 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Ta emot inloggningen från Eneo",
         "Byter ticketen mot en session och sätter kakan `"
         + SESSION_COOKIE
-        + "` (`HttpOnly`, `SameSite=Lax`). Misslyckas något går webbläsaren till `/?auth_error=<kod>`; "
+        + "` (`HttpOnly`, `SameSite=Lax`). Misslyckas något går webbläsaren till `/?auth_error=<kod>`, med `&next=<sida>` för en annan sida än "
+        "`/flows`, och ett inloggningsfönster till `/inloggad?auth_error=<kod>`; "
         "koderna är `invalid_state`, `exchange_unavailable`, `exchange_failed`, `exchange_invalid`, "
         "`validation_unavailable`, `validation_failed` och `validation_invalid`. "
         "Är det en annan användare än den som bad om en förnyad inloggning går den till `next?fel=annan-anvandare`.",

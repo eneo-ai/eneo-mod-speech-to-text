@@ -417,6 +417,43 @@ class ModuleAuthTests(unittest.TestCase):
             },
         )
 
+    def test_a_failed_sign_in_goes_to_the_login_page_with_where_it_was_going(self) -> None:
+        self.exchange_client.response = FakeResponse(status_code=401)
+        response = self.client.get("/api/auth/login", params={"next": "/flows/a?run=r1"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "bad-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=exchange_failed&next=%2Fflows%2Fa%3Frun%3Dr1")
+
+    def test_a_failed_sign_in_in_a_login_window_stays_on_the_window_s_page(self) -> None:
+        # The session cover's login window lands on /inloggad, which closes it on success: on failure it says so there,
+        # rather than showing the module's login page inside the small window.
+        self.exchange_client.response = FakeResponse(status_code=401)
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "bad-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/inloggad?auth_error=exchange_failed")
+
+    def test_a_sign_in_that_took_too_long_still_knows_where_it_was_going(self) -> None:
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+        [(name, pending)] = pending_logins(response.cookies).items()
+        self.client.cookies.clear()
+
+        late = time.time() + main.settings.login_timeout_seconds + 5
+        with patch("time.time", return_value=late):
+            callback = self.client.get(
+                "/api/auth/callback",
+                params={"ticket": "one-time-ticket", "state": state},
+                headers={"Cookie": f"{name}={pending}"},
+            )
+
+        self.assertEqual(callback.headers["location"], "/inloggad?auth_error=invalid_state")
+        self.assertEqual(self.exchange_client.calls, [])
+
     def test_failed_dual_auth_validation_does_not_create_session(self) -> None:
         self.exchange_client.validation_response = FakeResponse(status_code=403)
         state, _ = self.start_login()

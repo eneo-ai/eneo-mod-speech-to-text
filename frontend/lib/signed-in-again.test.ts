@@ -71,6 +71,30 @@ test("a renewal that signed in someone else names the person to sign in as", asy
   assert.deepEqual(requests, ["/api/auth/status"], "who the page's own login is, and nothing else");
 });
 
+test("a login window whose sign-in failed says so and stays, and tells no tab that anyone signed in", async (t) => {
+  const heard: unknown[] = [];
+  const real = globalThis.BroadcastChannel;
+  globalThis.BroadcastChannel = class {
+    postMessage(message: unknown) {
+      heard.push(message);
+    }
+    close() {}
+  } as unknown as typeof BroadcastChannel;
+  t.after(() => void (globalThis.BroadcastChannel = real));
+  const { container, closed, requests } = await open(t, "/inloggad?auth_error=invalid_state");
+  assert.equal(heading(container), "Inloggningen kunde inte slutföras");
+  assert.equal(document.title, "Inloggningen misslyckades · Tal till text");
+  assert.match(container.textContent ?? "", /tog för lång tid eller avbröts/);
+  assert.match(container.textContent ?? "", /Stäng fönstret och försök igen/);
+  assert.equal(closed.mock.callCount(), 0, "the window stays for the person to read");
+  assert.deepEqual(heard, []);
+  assert.deepEqual(requests, []);
+  await cleanup();
+  const other = await open(t, "/inloggad?auth_error=exchange_failed");
+  assert.equal(heading(other.container), "Inloggningen kunde inte slutföras");
+  assert.doesNotMatch(other.container.textContent ?? "", /tog för lång tid/, "only a lost or late state is called that");
+});
+
 test("a value of fel that the backend does not send is the plain page", async (t) => {
   const { container, closed } = await open(t, "/inloggad?fel=nagot-annat");
   assert.equal(heading(container), "Du är inloggad igen");

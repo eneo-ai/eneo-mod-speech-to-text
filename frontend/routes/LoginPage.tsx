@@ -40,13 +40,21 @@ export default function LoginPage() {
   // False when the module could not be asked who is signed in: the way in is then a second try.
   const [reachable, setReachable] = useState(false);
   const signedOut = reachable && isRecord(location.state) && location.state.signedOut === true;
-  // Read once: cleaning `auth_error` from the address replaces the entry, and its state with it.
-  const [next] = useState(() => returnAddress(location.state));
+  // Read once: cleaning `auth_error` from the address replaces the entry, and its state with it. A failed sign-in brings
+  // the address it was going to as `?next=`, by the same rule.
+  const [next] = useState(
+    () => returnAddress(location.state) ?? returnAddress({ next: new URLSearchParams(window.location.search).get("next") }),
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("auth_error")) {
-      setAuthError("Inloggningen kunde inte slutföras. Försök igen.");
+      // invalid_state: the sign-in came back after LOGIN_TIMEOUT_MINUTES, or to a browser that no longer had its start.
+      setAuthError(
+        params.get("auth_error") === "invalid_state"
+          ? "Inloggningen tog för lång tid eller avbröts. Försök igen."
+          : "Inloggningen kunde inte slutföras. Försök igen.",
+      );
       void navigate("/", { replace: true });
     }
     authStatus()

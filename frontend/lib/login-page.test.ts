@@ -109,6 +109,24 @@ test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", 
   assert.ok(button(container, "Logga in med Eneo"), "the way in is still there");
 });
 
+test("a sign-in that took too long or was cut short says so, not as Eneo's refusal", async (t) => {
+  window.history.replaceState(null, "", "/?auth_error=invalid_state");
+  const { container } = await openLoginPage(t, signedOut);
+  assert.deepEqual(alerts(document.body).filter((text) => text.includes("Inloggningen")), ["Inloggningen tog för lång tid eller avbröts. Försök igen."]);
+  assert.ok(button(container, "Logga in med Eneo"));
+});
+
+test("a failed sign-in still returns to where it was going once signed in, and never to another site", async (t) => {
+  const signedIn = () => json({ authenticated: true, user: { id: "u", email: "a@b.se", username: "A" } });
+  window.history.replaceState(null, "", "/?auth_error=exchange_failed&next=%2Fflows%2Fa%3Frun%3Dr1");
+  const { router } = await openLoginPage(t, signedIn);
+  assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1");
+  await cleanup();
+  window.history.replaceState(null, "", "/?auth_error=exchange_failed&next=%2F%2Fevil.example");
+  const { router: other } = await openLoginPage(t, signedIn);
+  assert.equal(other.state.location.pathname, "/flows");
+});
+
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
   const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")), { signedOut: true });
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("svarar inte")), ["Tal till text svarar inte just nu."]);
