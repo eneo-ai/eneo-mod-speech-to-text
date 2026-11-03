@@ -55,7 +55,8 @@ export default function LoginPage() {
           ? "Inloggningen tog för lång tid eller avbröts. Försök igen."
           : "Inloggningen kunde inte slutföras. Försök igen.",
       );
-      void navigate("/", { replace: true });
+      // The address is cleaned, and where the sign-in was going stays in the entry's state: a reload (Försök igen) keeps it.
+      void navigate("/", { replace: true, state: next ? { next } : null });
     }
     authStatus()
       .then((s) => {

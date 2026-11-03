@@ -44,6 +44,13 @@ SESSION_COOKIE = "eneo_module_session"
 # HttpOnly, and cleared by its callback. On /api/auth, so that a new login sees how many wait.
 STATE_COOKIE = "eneo_module_login_state"
 STATE_COOKIE_PATH = "/api/auth"
+# The largest signed state a login keeps, in bytes; a next that would make it larger is the flow list. Up to five waiting
+# logins (six for a moment) go with every /api/auth request, and this keeps their Cookie header under a proxy's limit
+# (ingress-nginx: 8 KB) whatever their next: past it, the proxy would refuse every login until they expire.
+MAX_STATE_COOKIE_BYTES = 1024
+# How long the browser keeps a state cookie past the login timeout: such a late login is refused, but it can still say
+# where it was going.
+STATE_COOKIE_GRACE_SECONDS = 60 * 60
 # Logins that may wait at once: a new login drops the oldest past this. A cleanup, not a lock: two logins started
 # before either answer lands can leave one more, until the next start.
 MAX_PENDING_LOGINS = 5
@@ -131,20 +138,9 @@ def state_cookie_name(state: str) -> str:
 _STATE_COOKIE_NAME = re.compile(rf"{STATE_COOKIE}_[0-9a-f]{{24}}")
 
 
-# The longest next a login keeps. It rides in each waiting login's cookie, and up to five of those go with every
-# /api/auth request: a longer one could push the Cookie header past a proxy's limit (ingress-nginx: 8 KB).
-MAX_NEXT_LENGTH = 512
-
-
 def module_path(value: str | None) -> str:
-    """``value`` when it is a path on the module's own origin, at most MAX_NEXT_LENGTH long, else the flow list."""
-    if (
-        value
-        and len(value) <= MAX_NEXT_LENGTH
-        and value.startswith("/")
-        and not value.startswith("//")
-        and "\\" not in value
-    ):
+    """``value`` when it is a path on the module's own origin, else the flow list."""
+    if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
         return value
     return DEFAULT_NEXT
 
@@ -303,14 +299,15 @@ class ModuleAuth:
             refused = RedirectResponse(url=with_query(module_path(next_path), "fel=utgangen"), status_code=303)
             refused.headers["Cache-Control"] = "no-store"
             return refused
-        pending = self.state_serializer.dumps(
-            PendingLogin(
-                state=state,
-                next=module_path(next_path),
-                renew_user_id=current.user.id if current else None,
-                renew_tenant_id=current.tenant_id if current else None,
-            ).model_dump()
+        login = PendingLogin(
+            state=state,
+            next=module_path(next_path),
+            renew_user_id=current.user.id if current else None,
+            renew_tenant_id=current.tenant_id if current else None,
         )
+        pending = self.state_serializer.dumps(login.model_dump())
+        if len(pending) > MAX_STATE_COOKIE_BYTES:
+            pending = self.state_serializer.dumps(login.model_copy(update={"next": DEFAULT_NEXT}).model_dump())
         query = urlencode(
             {
                 "module_key": self.settings.module_key,
@@ -330,7 +327,7 @@ class ModuleAuth:
             httponly=True,
             secure=self.settings.cookie_secure,
             samesite="lax",
-            max_age=self.settings.login_timeout_seconds,
+            max_age=self.settings.login_timeout_seconds + STATE_COOKIE_GRACE_SECONDS,
             path=STATE_COOKIE_PATH,
         )
         response.headers["Cache-Control"] = "no-store"

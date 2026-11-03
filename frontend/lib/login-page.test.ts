@@ -127,6 +127,13 @@ test("a failed sign-in still returns to where it was going once signed in, and n
   assert.equal(other.state.location.pathname, "/flows");
 });
 
+test("after a failed sign-in the cleaned address keeps where it was going, so a reload (Försök igen) does not lose it", async (t) => {
+  window.history.replaceState(null, "", "/?auth_error=exchange_failed&next=%2Fflows%2Fa%3Frun%3Dr1");
+  const { router } = await openLoginPage(t, signedOut);
+  assert.equal(router.state.location.search, "");
+  assert.deepEqual(router.state.location.state, { next: "/flows/a?run=r1" });
+});
+
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
   const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")), { signedOut: true });
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("svarar inte")), ["Tal till text svarar inte just nu."]);

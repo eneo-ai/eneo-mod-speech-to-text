@@ -243,7 +243,8 @@ class ModuleAuthTests(unittest.TestCase):
         with patch.object(main.settings, "login_timeout_seconds", 10 * 60):
             response = self.client.get("/api/auth/login")
         state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
-        self.assertIn("Max-Age=600", response.headers["set-cookie"])
+        # The browser keeps it an hour longer, to say where a late login was going; the signed age admits 10 minutes.
+        self.assertIn(f"Max-Age={10 * 60 + 60 * 60}", response.headers["set-cookie"])
         # A browser that kept the cookie past its Max-Age anyway: the backend checks the signed age itself.
         [(name, pending)] = pending_logins(response.cookies).items()
         self.client.cookies.clear()
@@ -417,15 +418,36 @@ class ModuleAuthTests(unittest.TestCase):
             },
         )
 
-    def test_a_login_s_next_is_at_most_512_characters(self) -> None:
-        # Up to five state cookies go with every /api/auth request: a long next in each could push the Cookie header past
-        # a proxy's limit (ingress-nginx: 8 KB) and lock the browser out of signing in until they expire.
-        for length, expected in ((512, "/" + "a" * 511), (513, "/flows")):
-            with self.subTest(length=length):
-                response = self.client.get("/api/auth/login", params={"next": "/" + "a" * (length - 1)})
-                state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
-                callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
-                self.assertEqual(callback.headers["location"], expected)
+    def test_five_waiting_logins_stay_under_a_proxy_s_8_kb_header_whatever_their_next(self) -> None:
+        # Up to five state cookies (six for a moment, from two starts at once) go with every /api/auth request: a long
+        # next in each could push the Cookie header past a proxy's limit (ingress-nginx: 8 KB) and lock the browser out
+        # of signing in until they expire. The bound is the signed cookie's bytes, not next's characters.
+        # Varied characters: the signed payload is compressed, and a repeated one would hide the size.
+        varied = lambda first, count: "/" + "".join(chr(first + i) for i in range(count))
+        for kind, next_path in (("ascii", "/" + "a" * 2000), ("cjk", varied(0x4E00, 511)), ("emoji", varied(0x1F300, 511))):
+            with self.subTest(kind=kind):
+                self.client.cookies.clear()
+                for _ in range(6):
+                    self.client.get("/api/auth/login", params={"next": next_path})
+                header = "; ".join(f"{name}={value}" for name, value in pending_logins(self.client.cookies).items())
+                self.assertLessEqual(len(header.encode()) * 6 // 5, 8 * 1024)
+        self.client.cookies.clear()
+        response = self.client.get("/api/auth/login", params={"next": "/flows/a?run=r1"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+        callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+        self.assertEqual(callback.headers["location"], "/flows/a?run=r1", "an ordinary next is kept")
+
+    def test_a_login_that_came_back_after_its_cookie_expired_still_knows_where_it_was_going(self) -> None:
+        # The browser keeps the cookie a while past the login timeout: the callback is refused, but it can still say
+        # where the login was going, through the ordinary cookie jar.
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        with patch("time.time", return_value=time.time() + main.settings.login_timeout_seconds + 5 * 60):
+            callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/inloggad?auth_error=invalid_state")
+        self.assertEqual(self.exchange_client.calls, [])
 
     def test_a_failed_sign_in_goes_to_the_login_page_with_where_it_was_going(self) -> None:
         self.exchange_client.response = FakeResponse(status_code=401)
