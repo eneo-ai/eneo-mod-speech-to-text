@@ -38,11 +38,11 @@ Callbacken redirectar alltid till en ren URL och svarar med `Referrer-Policy: no
 
 Webbläsaren skickas till inloggningssidan, `/?auth_error=<kod>`, med `&next=<sida>` när inloggningen var på väg till en annan sida än flödeslistan, så att nästa inloggning går dit. Sidan tar bort parametrarna ur adressen. Vid `invalid_state` säger den att inloggningen tog för lång tid eller avbröts, annars att den inte kunde slutföras; koden är till för felsökning.
 
-En inloggning i ett eget fönster (**Förläng inloggningen** eller **Logga in igen**) går i stället till `/inloggad?auth_error=<kod>`. Fönstret säger att inloggningen inte kunde slutföras och stängs inte, och ingen flik får veta att någon loggat in.
+En inloggning i ett eget fönster (**Förläng inloggningen** eller **Logga in igen**) går i stället till `/inloggad?auth_error=<kod>`, också när inloggningens cookie redan är borta: då kommer fönstret till inloggningssidan, som känner igen det på dess namn och skickar det vidare. Fönstret säger att inloggningen inte kunde slutföras och stängs inte, och ingen flik får veta att någon loggat in.
 
 | Kod | Betyder |
 |---|---|
-| `invalid_state` | Ticket eller state saknas eller stämmer inte med state-cookien (den godtas i `LOGIN_TIMEOUT_MINUTES`, standard 30 minuter, så att den som först måste logga in i Eneo hinner det; webbläsaren behåller den en timme till, bara för att felet ska kunna skicka tillbaka till rätt sida, och därefter går felet till flödeslistan). |
+| `invalid_state` | Ticket eller state saknas eller stämmer inte med state-cookien (den godtas i `LOGIN_TIMEOUT_MINUTES`, standard 30 minuter, så att den som först måste logga in i Eneo hinner det; webbläsaren behåller den en timme till, bara för att felet ska kunna skicka tillbaka till rätt sida, och därefter går felet till inloggningssidan utan sida att återvända till). |
 | `exchange_unavailable`, `exchange_failed`, `exchange_invalid` | Ticketväxlingen: Eneo nåddes inte, svarade med annat än 200, eller svarade med fel format, fel modul eller en utgången session. |
 | `validation_unavailable`, `validation_failed`, `validation_invalid` | Samma tre fall för valideringsanropet, inklusive att identiteten inte stämde med tokenens. |
 

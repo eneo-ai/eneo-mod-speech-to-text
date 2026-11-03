@@ -134,6 +134,18 @@ test("after a failed sign-in the cleaned address keeps where it was going, so a 
   assert.deepEqual(router.state.location.state, { next: "/flows/a?run=r1" });
 });
 
+test("a login window whose sign-in failed without its state goes to its own page, not the module's login page", async (t) => {
+  // The backend sends a login window to /inloggad only while it still has the login's state; without it, the window
+  // knows itself by the name SessionEndWarning opened it with.
+  window.name = "tal-till-text-inloggning";
+  t.after(() => void (window.name = ""));
+  window.history.replaceState(null, "", "/?auth_error=invalid_state");
+  const { router, requests } = await openLoginPage(t, signedOut);
+  assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/inloggad?auth_error=invalid_state");
+  assert.equal(router.state.historyAction, "REPLACE");
+  assert.deepEqual(requests, [], "it asks nothing: the window only says what happened");
+});
+
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
   const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")), { signedOut: true });
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("svarar inte")), ["Tal till text svarar inte just nu."]);

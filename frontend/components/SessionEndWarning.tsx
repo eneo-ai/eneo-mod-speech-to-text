@@ -11,6 +11,8 @@ import { userDisplayName } from "@/lib/user-identity";
 
 /** Where the login window says it has signed in again (routes/SignedInAgain); every tab of the module listens (AuthGate). */
 export const SESSION_CHANNEL = "tal-till-text:session";
+/** The login window's name: the login page knows it is that window by it, and sends a failure to /inloggad. */
+export const LOGIN_WINDOW = "tal-till-text-inloggning";
 
 // Long enough to finish what one is doing (WCAG 2.2.1 asks for at least 20 seconds).
 const WARN_BEFORE_MS = 5 * 60_000;
@@ -77,7 +79,7 @@ export function SessionEndWarning({
     // Before the end, `renew` binds the new login to the user signed in now. After it the backend has nobody to
     // bind to and refuses a renewal: a new login instead, and AuthGate unlocks the page only for its own user.
     const url = signedOut ? "/api/auth/login?next=%2Finloggad" : "/api/auth/login?renew=1&next=%2Finloggad";
-    const login = window.open(url, "tal-till-text-inloggning", "popup,width=520,height=700");
+    const login = window.open(url, LOGIN_WINDOW, "popup,width=520,height=700");
     setProblem(login === null ? "Fönstret kunde inte öppnas. Tillåt popup-fönster för Tal till text och försök igen." : null);
   }
 

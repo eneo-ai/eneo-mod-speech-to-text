@@ -19,6 +19,7 @@ import { connectionLost } from "@/lib/online-status";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
 import { isRecord } from "@/lib/is-record";
+import { LOGIN_WINDOW } from "@/components/SessionEndWarning";
 
 /**
  * Where the page that sent the person here was going (AuthGate puts it in the route's state): a path of this module, never
@@ -48,6 +49,13 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const failure = params.get("auth_error");
+    // A login window whose sign-in failed after its state was gone (the backend no longer knew it was one) belongs on its
+    // own page, which says so and stays, not on the module's login page.
+    if (failure !== null && window.name === LOGIN_WINDOW) {
+      void navigate(`/inloggad?${new URLSearchParams({ auth_error: failure })}`, { replace: true });
+      return;
+    }
     if (params.has("auth_error")) {
       // invalid_state: the sign-in came back after LOGIN_TIMEOUT_MINUTES, or to a browser that no longer had its start.
       setAuthError(
