@@ -131,9 +131,20 @@ def state_cookie_name(state: str) -> str:
 _STATE_COOKIE_NAME = re.compile(rf"{STATE_COOKIE}_[0-9a-f]{{24}}")
 
 
+# The longest next a login keeps. It rides in each waiting login's cookie, and up to five of those go with every
+# /api/auth request: a longer one could push the Cookie header past a proxy's limit (ingress-nginx: 8 KB).
+MAX_NEXT_LENGTH = 512
+
+
 def module_path(value: str | None) -> str:
-    """``value`` when it is a path on the module's own origin, else the flow list."""
-    if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
+    """``value`` when it is a path on the module's own origin, at most MAX_NEXT_LENGTH long, else the flow list."""
+    if (
+        value
+        and len(value) <= MAX_NEXT_LENGTH
+        and value.startswith("/")
+        and not value.startswith("//")
+        and "\\" not in value
+    ):
         return value
     return DEFAULT_NEXT
 

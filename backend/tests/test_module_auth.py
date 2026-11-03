@@ -395,7 +395,7 @@ class ModuleAuthTests(unittest.TestCase):
                 # No handoff to Eneo: with no user to bind to, anyone could sign in under this page.
                 self.assertEqual(response.status_code, 303)
                 self.assertEqual(response.headers["location"], "/inloggad?fel=utgangen")
-                self.assertNotIn(STATE_COOKIE, response.cookies)
+                self.assertEqual(pending_logins(response.cookies), {})
                 self.assertNotIn(SESSION_COOKIE, response.cookies)
 
     def test_failed_exchange_redirects_without_creating_session(self) -> None:
@@ -416,6 +416,16 @@ class ModuleAuthTests(unittest.TestCase):
                 "user": None,
             },
         )
+
+    def test_a_login_s_next_is_at_most_512_characters(self) -> None:
+        # Up to five state cookies go with every /api/auth request: a long next in each could push the Cookie header past
+        # a proxy's limit (ingress-nginx: 8 KB) and lock the browser out of signing in until they expire.
+        for length, expected in ((512, "/" + "a" * 511), (513, "/flows")):
+            with self.subTest(length=length):
+                response = self.client.get("/api/auth/login", params={"next": "/" + "a" * (length - 1)})
+                state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+                callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+                self.assertEqual(callback.headers["location"], expected)
 
     def test_a_failed_sign_in_goes_to_the_login_page_with_where_it_was_going(self) -> None:
         self.exchange_client.response = FakeResponse(status_code=401)
