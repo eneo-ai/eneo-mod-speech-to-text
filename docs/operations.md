@@ -160,6 +160,7 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 | `SESSION_SECRET` | | Minst 32 tecken, modulens egen: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Signerar inloggningens state. Hemlig. |
 | `COOKIE_SECURE` | `true` | `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]`. |
 | `SESSION_MAX_AGE_MINUTES` | `480` | Heltal över 0. Längsta inloggning; Eneos sessionstak (`MODULE_AUTH_MAX_SESSION_HOURS`) gäller om det är kortare. |
+| `LOGIN_TIMEOUT_MINUTES` | `30` | Heltal över 0. Hur länge någon får ta på sig att logga in i Eneo innan inloggningen avbryts med `invalid_state`. Ska vara längre än Eneos `OIDC_STATE_TTL_SECONDS` (standard 10 minuter); höjer ni den hos Eneo, höj den här också. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | `1800` | Tid för att skicka en mottagen uppladdning vidare till Eneo. |
 | `UPLOAD_RECEIVE_TIMEOUT_SECONDS` | `1800` | Tid för hela mottagningen, inklusive uppehållen mellan delarna i en återupptagbar uppladdning. |
 | `UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS` | `30` | Längsta väntan utan nya byte från webbläsaren. |

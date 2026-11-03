@@ -220,6 +220,40 @@ class ModuleAuthTests(unittest.TestCase):
         self.assertEqual(second.headers["location"], "/?auth_error=invalid_state")
         self.assertEqual(len(self.exchange_client.calls), 2)
 
+    def test_a_person_signed_out_of_eneo_may_take_longer_than_eneos_own_sign_in_window(self) -> None:
+        # Signed out of Eneo, the person first signs in there: Eneo's identity provider alone gives them 10 minutes
+        # (OIDC_STATE_TTL_SECONDS), after the time they spend on Eneo's sign-in page. The browser keeps the state
+        # cookie for its Max-Age, and the backend checks the same age: both must outlast that sign-in.
+        state, _ = self.start_login()
+
+        # The cookie jar and the signature both read this clock.
+        with patch("time.time", return_value=time.time() + 14 * 60):
+            callback = self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/flows")
+        self.assertIn(SESSION_COOKIE, callback.cookies)
+
+    def test_a_forgotten_sign_in_still_ends_as_invalid_state(self) -> None:
+        # LOGIN_TIMEOUT_MINUTES sets the window; 10 minutes here, so the default is not what the test relies on.
+        with patch.object(main.settings, "login_timeout_seconds", 10 * 60):
+            response = self.client.get("/api/auth/login")
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+        self.assertIn("Max-Age=600", response.headers["set-cookie"])
+        # A browser that kept the cookie past its Max-Age anyway: the backend checks the signed age itself.
+        pending = response.cookies[STATE_COOKIE]
+        self.client.cookies.clear()
+
+        with patch.object(main.settings, "login_timeout_seconds", 10 * 60), patch("time.time", return_value=time.time() + 10 * 60 + 5):
+            callback = self.client.get(
+                "/api/auth/callback",
+                params={"ticket": "one-time-ticket", "state": state},
+                headers={"Cookie": f"{STATE_COOKIE}={pending}"},
+            )
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=invalid_state")
+        self.assertNotIn(SESSION_COOKIE, callback.cookies)
+        self.assertEqual(self.exchange_client.calls, [])
+
     def test_status_says_when_the_session_ends(self) -> None:
         state, _ = self.start_login()
         self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})

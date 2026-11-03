@@ -39,7 +39,7 @@ Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska
 
 | Kod | Betyder |
 |---|---|
-| `invalid_state` | Ticket eller state saknas eller stämmer inte med state-cookien (som går ut efter 5 minuter). |
+| `invalid_state` | Ticket eller state saknas eller stämmer inte med state-cookien (som går ut efter `LOGIN_TIMEOUT_MINUTES`, standard 30 minuter, så att den som först måste logga in i Eneo hinner det). |
 | `exchange_unavailable`, `exchange_failed`, `exchange_invalid` | Ticketväxlingen: Eneo nåddes inte, svarade med annat än 200, eller svarade med fel format, fel modul eller en utgången session. |
 | `validation_unavailable`, `validation_failed`, `validation_invalid` | Samma tre fall för valideringsanropet, inklusive att identiteten inte stämde med tokenens. |
 
