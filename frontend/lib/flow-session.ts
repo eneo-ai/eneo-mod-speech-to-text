@@ -427,15 +427,16 @@ function stringOptions(field: FormField): string[] {
 }
 
 function fits(field: FormField, value: DetailValue): boolean {
+  const options = stringOptions(field);
+  if (field.type === "multiselect") return Array.isArray(value) && value.every((choice) => options.includes(choice));
   if (field.type === "list") return Array.isArray(value);
   if (Array.isArray(value)) return false;
-  const options = stringOptions(field);
   return field.type !== "select" || options.length === 0 || options.includes(value);
 }
 
 function defaultValue(field: FormField): DetailValue | undefined {
   if (field.default == null) return undefined;
-  if (field.type !== "list") return String(field.default);
+  if (field.type !== "list" && field.type !== "multiselect") return String(field.default);
   return Array.isArray(field.default)
     ? field.default.filter((name): name is string => typeof name === "string")
     : splitNames(String(field.default));

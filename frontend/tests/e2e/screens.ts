@@ -184,6 +184,16 @@ export async function limitAudio(page: Page, seconds: number, files: number) {
   });
 }
 
+/** The flow also asks for several choices among its options (Eneo's `multiselect`). */
+async function askForChoices(page: Page) {
+  await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
+    const contract = await (await route.fetch()).json();
+    const options = ["Lärande och att tillämpa kunskap", "Allmänna uppgifter och krav", "Kommunikation"];
+    contract.form_fields.push({ name: "livsomraden", label: "Livsområden", type: "multiselect", options, required: false, order: 0 });
+    return route.fulfill({ json: contract });
+  });
+}
+
 /** Eneo cannot make the speaker labels the flow asks for now: its run contract says why (`unavailable_reason`). */
 async function speakerLabelsUnavailable(page: Page) {
   await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
@@ -748,6 +758,14 @@ export const STATES: State[] = [
       await setup(page);
       await chooseMode(page, "Strömma");
       await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+    },
+  },
+  {
+    name: "setup-multiple-choice",
+    go: async (page) => {
+      await askForChoices(page);
+      await setup(page);
+      await page.getByRole("checkbox", { name: "Kommunikation" }).check();
     },
   },
   {

@@ -784,6 +784,30 @@ test("details start from the flow's defaults, and a refreshed contract keeps the
   });
 });
 
+test("a multiple choice starts from the flow's default, keeps a list, and lets go of what is no longer an option", async () => {
+  const { session } = await setup();
+  const choice = { name: "livsomraden", label: "Livsområden", type: "multiselect", options: ["Lärande", "Rörlighet"] };
+  session.setContract(audioContract({ form_fields: [{ ...choice, default: "Lärande, Rörlighet" }] }));
+  assert.deepEqual(session.getSnapshot().details, { livsomraden: ["Lärande", "Rörlighet"] }, "Eneo reads a default with commas as the choices");
+  session.setContract(audioContract({ published_flow_version: 4, form_fields: [choice] }));
+  session.setDetail("livsomraden", ["Rörlighet"]);
+  session.setContract(audioContract({ published_flow_version: 5, form_fields: [choice] }));
+  assert.deepEqual(session.getSnapshot().details, { livsomraden: ["Rörlighet"] }, "a refreshed contract keeps the choice");
+  session.setContract(audioContract({ published_flow_version: 6, form_fields: [{ ...choice, options: ["Lärande"] }] }));
+  assert.deepEqual(session.getSnapshot().details, {}, "a choice the flow no longer has is not sent");
+  session.setDetail("livsomraden", "Lärande");
+  session.setContract(audioContract({ published_flow_version: 7, form_fields: [choice] }));
+  assert.deepEqual(session.getSnapshot().details, {}, "text kept from when the field was typed in is no choice");
+
+  const sent: SubmitRequest[] = [];
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setDetail("livsomraden", ["Rörlighet", "Lärande"]);
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await session.createDocument(), true);
+  assert.deepEqual(sent[0].payload.livsomraden, ["Rörlighet", "Lärande"], "Eneo gets a list, so an option may hold a comma");
+});
+
 test("the storage line says the recording is kept on the device only when the device store keeps it", () => {
   assert.equal(storageLine(true), "Inspelningen sparas på enheten medan du spelar in.");
   assert.equal(storageLine(false), "Låt sidan vara öppen under inspelningen.");

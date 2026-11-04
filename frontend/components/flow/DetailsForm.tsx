@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { CheckboxList, CheckboxListItem } from "@astryxdesign/core/CheckboxList";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
 import { Selector } from "@astryxdesign/core/Selector";
 import { TextArea } from "@astryxdesign/core/TextArea";
@@ -88,7 +89,7 @@ function options(field: FormField): string[] {
     : [];
 }
 
-/** The details the flow asks for; a `list` field is a chip input. */
+/** The details the flow asks for; a `list` field is a chip input, and a `multiselect` a checkbox per option. */
 export function DetailsForm({
   fields,
   details,
@@ -167,6 +168,15 @@ export function DetailsForm({
                 isRequired={!!field.required}
                 fieldName={field.name}
               />
+            );
+          }
+          if (field.type === "multiselect") {
+            return (
+              <CheckboxList key={field.name} {...common} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
+                {opts.map((option) => (
+                  <CheckboxListItem key={option} value={option} label={option} />
+                ))}
+              </CheckboxList>
             );
           }
           if (field.type === "select" && opts.length > 0) {

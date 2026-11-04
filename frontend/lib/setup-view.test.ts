@@ -147,6 +147,20 @@ test("a required detail says so to a screen reader before sending, and a number 
   assert.doesNotMatch(control(html, "arende"), /inputmode/i);
 });
 
+test("a multiple choice says what the other details say: optional, chosen, and what is missing", () => {
+  const field: FormField = { name: "livsomraden", label: "Livsområden", type: "multiselect", options: ["Lärande", "Rörlighet"], required: false };
+  const form = (fields: FormField[], details: Record<string, string[]>, invalid: string[] = []) =>
+    renderToStaticMarkup(createElement(DetailsForm, { fields, details, invalid, onChange: noop, suggestions: [], onNamesAdded: noop }));
+  const optional = form([field], { livsomraden: ["Rörlighet"] });
+  assert.match(optional, /Valfritt/);
+  assert.match(optional, /data-detail-field="livsomraden"/);
+  assert.equal(optional.match(/type="checkbox"/g)?.length, 2);
+  assert.equal(optional.match(/\bchecked=""/g)?.length, 1, "what is chosen shows");
+  const missing = form([{ ...field, required: true }], {}, ["livsomraden"]);
+  assert.doesNotMatch(missing, /Valfritt/);
+  assert.match(missing, /Fyll i det här för att skapa dokumentet\./);
+});
+
 test("Antal talare is a light number field with its help below, and a count that is no count says so at the field", () => {
   const field = (value: string) => renderToStaticMarkup(createElement(SpeakerCountField, { value, onChange: noop }));
   const empty = field("");

@@ -292,19 +292,50 @@ test("a refused start puts focus on the first detail that blocks it, whatever ki
     { name: "arende", label: "Ärende", type: "text", required: true },
     { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"], required: true },
     { name: "deltagare", label: "Deltagare", type: "list", required: true },
+    { name: "livsomraden", label: "Livsområden", type: "multiselect", options: ["Lärande", "Rörlighet"], required: true },
   ] as import("./api").FormField[];
   const view = await mount(
     createElement(DetailsForm, { fields, details: {}, invalid: [], onChange: () => {}, suggestions: [], onNamesAdded: () => {} }),
   );
-  for (const [name, role] of [["arende", "INPUT"], ["typ", "BUTTON"], ["deltagare", "INPUT"]] as const) {
+  for (const [name, role] of [["arende", "INPUT"], ["typ", "BUTTON"], ["deltagare", "INPUT"], ["livsomraden", "INPUT"]] as const) {
     const session = { createDocument: async () => false, getSnapshot: () => ({ invalid: [name] }) } as unknown as import("./flow-session").FlowSession;
     await view.act(async () => {
       await createDocument(session);
       await new Promise((resolve) => requestAnimationFrame(resolve));
     });
     assert.equal(document.activeElement?.tagName, role, name);
-    assert.equal(document.activeElement?.closest("[data-detail-field], [role=group]")?.querySelector("[data-detail-field]")?.getAttribute("data-detail-field") ?? document.activeElement?.getAttribute("data-detail-field"), name);
+    assert.equal(document.activeElement?.closest("[data-detail-field], [role=group]")?.querySelector("[data-detail-field]")?.getAttribute("data-detail-field") ?? document.activeElement?.closest("[data-detail-field]")?.getAttribute("data-detail-field"), name);
   }
+  await view.unmount();
+});
+
+test("a multiple choice is a checkbox per option: each press adds to or takes from what is chosen", async () => {
+  const { createElement, useState } = await import("react");
+  const { DetailsForm } = await import("../components/flow/DetailsForm");
+  const fields = [{ name: "livsomraden", label: "Livsområden", type: "multiselect", options: ["Lärande", "Kommunikation", "Rörlighet"], required: false }] as import("./api").FormField[];
+  const sent: unknown[] = [];
+  function Form() {
+    const [details, setDetails] = useState<Record<string, string | string[]>>({});
+    return createElement(DetailsForm, {
+      fields,
+      details,
+      invalid: [],
+      onChange: (name, value) => {
+        sent.push(value);
+        setDetails({ ...details, [name]: value });
+      },
+      suggestions: [],
+      onNamesAdded: () => {},
+    });
+  }
+  const view = await mount(createElement(Form));
+  const boxes = () => [...view.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+  assert.equal(boxes().length, 3);
+  assert.equal(view.container.querySelector('input[type="text"]'), null, "no field to type the options in");
+  await view.act(async () => boxes()[2].click());
+  await view.act(async () => boxes()[0].click());
+  await view.act(async () => boxes()[2].click());
+  assert.deepEqual(sent.map((value) => [...(value as string[])].sort()), [["Rörlighet"], ["Lärande", "Rörlighet"], ["Lärande"]]);
   await view.unmount();
 });
 
