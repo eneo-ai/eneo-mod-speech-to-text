@@ -38,18 +38,19 @@ function runWords(run: FlowRunSummary, action: string) {
   };
 }
 
+const waitingTitle = (count: number) => (count === 1 ? "En körning väntar på din granskning" : `${count} körningar väntar på din granskning`);
+
 /**
  * The runs waiting for the person's review as one sentence for the setup's status region, or "" while none waits: the
  * latest runs list them first, and Eneo cancels a review that is not done in time.
  */
 export function pendingReviewSaid(list: EarlierRunsSnapshot): string {
   const waiting = pendingReviews(list.runs);
-  const [newest] = waiting;
-  if (!newest) return "";
-  const when = newest.created_at ? formatRelativeDate(newest.created_at) : "";
-  const named = capital([newest.run_label, newest.run_date && `möte ${formatDay(newest.run_date)}`, when && `startad ${when}`].filter(Boolean).join(", "));
-  const title = waiting.length === 1 ? "En körning väntar på din granskning" : `${waiting.length} körningar väntar på din granskning`;
-  return `${title}. ${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`;
+  const [first] = waiting;
+  if (!first) return "";
+  const when = first.created_at ? formatRelativeDate(first.created_at) : "";
+  const named = capital([first.run_label, first.run_date && `möte ${formatDay(first.run_date)}`, when && `startad ${when}`].filter(Boolean).join(", "));
+  return `${waitingTitle(waiting.length)}. ${named ? `${named}. ` : ""}Den avbryts om den inte granskas i tid.`;
 }
 
 /**
@@ -117,18 +118,22 @@ function RunRows({ runs, onOpen }: { runs: readonly FlowRunSummary[]; onOpen: (r
 
 /**
  * The setup's latest runs (`latestRuns`), at its top in the flow's column, so yesterday's meeting is one tap away before
- * the next one starts, and a run waiting for the person's review is first: Eneo cancels a review not done in time. Where
- * the list of earlier runs, at the working card's end, has more (`more`), "Visa alla" brings it into view and gives its
- * heading the focus.
+ * the next one starts. Runs waiting for the person's review stand apart above them, under a heading of their own: Eneo
+ * cancels a review not done in time, and "Senaste körningar" then holds what its name says, in order. Where the list of
+ * earlier runs, at the working card's end, has more (`more`), "Visa alla" brings it into view and gives its heading the
+ * focus.
  */
 export function LatestRuns({
   runs,
+  waiting,
   more,
   waitingOnly = false,
   onOpen,
   className,
 }: {
   runs: readonly FlowRunSummary[];
+  /** How many runs wait for review, also those `runs` has no row for. */
+  waiting: number;
   more: boolean;
   /** Only the runs waiting for review (a short screen): the line about them names the list, its heading is a screen reader's. */
   waitingOnly?: boolean;
@@ -136,40 +141,53 @@ export function LatestRuns({
   className?: string;
 }) {
   if (runs.length === 0) return null;
-  const waiting = runs.filter((run) => run.status === "awaiting_review").length;
+  const toReview = runs.filter((run) => run.status === "awaiting_review");
+  const others = runs.filter((run) => run.status !== "awaiting_review");
+  const title = waitingTitle(waiting);
+  const cancelled = waiting === 1 ? "Den avbryts om den inte granskas i tid." : "De avbryts om de inte granskas i tid.";
   const showAll = () => {
     const heading = document.getElementById("earlier-runs");
     heading?.scrollIntoView({ block: "start" });
     heading?.focus({ preventScroll: true });
   };
+  const all = more && (
+    <HStack>
+      {/* Named for a screen reader that lists the buttons; under the heading the words are enough, and the arrow says
+          the list is further down the page. */}
+      <Button variant="ghost" icon={<Icon icon={ArrowDown} />} label="Visa alla körningar" onClick={showAll}>
+        Visa alla
+      </Button>
+    </HStack>
+  );
   return (
-    <VStack as="section" aria-labelledby="latest-runs" gap={3} className={className}>
-      {waitingOnly ? (
-        <VisuallyHidden as="h2" id="latest-runs">
-          Senaste körningar
-        </VisuallyHidden>
-      ) : (
-        <Heading level={2} id="latest-runs">
-          Senaste körningar
-        </Heading>
+    <VStack gap={6} className={className}>
+      {toReview.length > 0 && (
+        <VStack as="section" aria-labelledby="waiting-runs" gap={3}>
+          {waitingOnly ? (
+            <VisuallyHidden as="h2" id="waiting-runs">
+              {title}
+            </VisuallyHidden>
+          ) : (
+            <Heading level={2} id="waiting-runs">
+              {title}
+            </Heading>
+          )}
+          {/* A short screen has no heading to see: the line says it too. */}
+          <Text as="p" type="supporting" color="secondary">
+            {waitingOnly ? `${title}. ${cancelled}` : cancelled}
+          </Text>
+          <RunRows runs={toReview} onOpen={onOpen} />
+          {others.length === 0 && all}
+        </VStack>
       )}
-      {/* Why a run waiting first is to be reviewed now: Eneo cancels it otherwise. */}
-      {waiting > 0 && (
-        <Text as="p" type="supporting" color="secondary">
-          {waiting === 1
-            ? "En körning som väntar på granskning avbryts om den inte granskas i tid."
-            : "Körningar som väntar på granskning avbryts om de inte granskas i tid."}
-        </Text>
-      )}
-      <RunRows runs={runs} onOpen={onOpen} />
-      {more && (
-        <HStack>
-          {/* Named for a screen reader that lists the buttons; under the heading the words are enough, and the arrow says
-              the list is further down the page. */}
-          <Button variant="ghost" icon={<Icon icon={ArrowDown} />} label="Visa alla körningar" onClick={showAll}>
-            Visa alla
-          </Button>
-        </HStack>
+      {others.length > 0 && (
+        <VStack as="section" aria-labelledby="latest-runs" gap={3}>
+          <Heading level={2} id="latest-runs">
+            Senaste körningar
+          </Heading>
+          <RunRows runs={others} onOpen={onOpen} />
+          {all}
+        </VStack>
       )}
     </VStack>
   );

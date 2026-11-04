@@ -110,6 +110,18 @@ test("on a laptop (1440 x 900) the setup's action is whole on the first screen, 
   expect(latest.y, "on the first screen").toBeLessThan(900 / 2);
 });
 
+test("on a laptop the classification stands once more right above the action, in view with it on the first screen", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const { STATES } = await import("./screens");
+  await STATES.find((s) => s.name === "setup")!.go(page, info);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const line = (await page.getByText("Flödet får ta emot:").boundingBox())!;
+  const start = (await page.getByRole("button", { name: "Starta strömning" }).boundingBox())!;
+  expect(line.y + line.height, "above the action").toBeLessThanOrEqual(start.y);
+  expect(start.y - (line.y + line.height), "next to it").toBeLessThan(24);
+  expect(start.y + start.height, "both on the first screen").toBeLessThanOrEqual(900);
+});
+
 // Below a laptop's width the latest runs open the setup, above the choice of way in, two of them on a phone; a short
 // screen keeps its first screen for the ways in and lists only the runs waiting for review there.
 for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] as const) {
@@ -117,10 +129,11 @@ for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] 
     await page.setViewportSize({ width, height });
     const { STATES } = await import("./screens");
     await STATES.find((s) => s.name === "setup")!.go(page, info);
-    const latest = page.getByRole("region", { name: "Senaste körningar" });
+    let latest = page.getByRole("region", { name: "Senaste körningar" });
     if (height <= 640) {
       await expect(latest, "no run waits: the ways in have the first screen").toHaveCount(0);
       await STATES.find((s) => s.name === "setup-review-waiting")!.go(page, info);
+      latest = page.getByRole("region", { name: "En körning väntar på din granskning" });
       await expect(latest.getByRole("button", { name: /^Granska, / })).toBeVisible();
     } else {
       await expect(latest.getByRole("listitem")).toHaveCount(width < 768 ? 2 : 3);

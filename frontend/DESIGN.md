@@ -225,10 +225,10 @@ switches round. One-pixel borders are `var(--border-width)`.
   mikrofonen hör dig."). Nothing moves when a test starts or the browser names its microphones. The button keeps one
   width for both of its words, and its icon says which it is (the microphone, a stop); on a phone it takes the row, as
   the phone's other actions do.
-- In one column the classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}",
-  docked with the primary action, where the window is taller than 640 px (a small phone's dock keeps to the action, and
-  the note at the working card's end says it). From a laptop's width its own note is in view beside the action instead,
-  in the flow's column. A flow whose result goes on to a receiver says so above the setup's action, and above the
+- The classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}", right above the
+  primary action. In one column it is docked with the action, where the window is taller than 640 px (a small phone's
+  dock keeps to the action, and the note at the working card's end says it). From a laptop's width it stands at every
+  height: the note in the flow's column may be below the first screen. A flow whose result goes on to a receiver says so above the setup's action, and above the
   recording's Skapa dokument.
 - The recordings to go on with or send stand above the working card, a card of their own, never in it, with the working
   card's padding, so the two share their content's edge. On a phone their card has no tile: its heading, its words and
@@ -239,13 +239,16 @@ switches round. One-pixel borders are `var(--border-width)`.
   field's edge, so the two still read as one control. Empty, the field offers the names it was last sent with on this
   flow in one press ("Lägg till förra gångens namn (2)", a ghost button where the chips will be), and Märk upp talare
   starts as the person last left it on the flow.
-- "Senaste körningar" opens the setup, under the flow's name: the person's latest runs of the flow, three at most (two
-  on a phone, whose first screen then still reaches the choice of way in under the browser's bars), those waiting for
-  their review first with their Granska, then the newest, in the rows of "Tidigare körningar". While one waits, a line
-  under the heading says it is cancelled if it is not reviewed in time. From 1024 px it stands in the flow's column, so
-  the working card keeps its action on a laptop's first screen; below, above the choice of way in. A short screen in
-  one column (at most 640 px high) lists only the runs waiting for review, under that line in the heading's place (the
-  heading is a screen reader's): its first screen is the ways in's. While "Tidigare körningar" has more, a ghost
+- The setup opens, under the flow's name, with the person's latest runs of the flow, three rows at most (two on a phone,
+  whose first screen then still reaches the choice of way in under the browser's bars), in the rows of "Tidigare
+  körningar". Runs waiting for their review stand first under a heading of their own that counts them ("2 körningar
+  väntar på din granskning"), the oldest first, the first Eneo cancels, each with its Granska, and a line says they are
+  cancelled if they are not reviewed in time. "Senaste körningar" follows, the newest first, so its dates run in order.
+  However many wait, the newest of the others keeps a row: a run under way or the latest document is never pushed out;
+  the heading's count says the waiting runs no row shows, and "Visa alla" reaches them. From 1024 px this stands in the
+  flow's column, so the working card keeps its action on a laptop's first screen; below, above the choice of way in. A
+  short screen in one column (at most 640 px high) lists only the runs waiting for review, under that line in the
+  heading's place (the heading is a screen reader's, and the line says what it says): its first screen is the ways in's. While "Tidigare körningar" has more, a ghost
   "Visa alla" under the rows brings it into view and gives its heading the focus; where the latest runs are all of
   them, they are the list. No runs, no list, and a test run
   from Eneo's editor is never one. The setup is drawn once the runs are known, and they are read again while a run's
