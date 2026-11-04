@@ -556,18 +556,14 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
   // A page that moves while its ring is photographed (a live status line, a level meter, a list arriving) puts part of
   // the ring outside the clip: a measurement counts only when the owner stood still through both screenshots, and is
   // taken again from a fresh probe when it did not.
-  let waited = false;
+  // An engine can bring what Tab focused into the window with a scroll of its own that is still on its way (WebKit, which
+  // left 9 of 76 controls outside the window for good without this and none with it). The probe takes the focus off and
+  // back without scrolling, which calls that scroll off, so a control outside the window waits first, with its focus left
+  // alone. One that the engine never brings in is still outside then.
+  if (await focusOutside(page)) await scrollsAtRest(page);
   for (let attempt = 1; ; attempt++) {
     const stop = await probeFocus(page);
     if (!stop) return null;
-    // An engine can bring what Tab focused into the window with a scroll of its own that is still on its way (WebKit on a
-    // loaded Linux runner): a control outside the window is probed again once the page stands still. One that the
-    // engine never brings in is still outside then.
-    if (stop.offscreen && !waited) {
-      waited = true;
-      await scrollsAtRest(page);
-      continue;
-    }
     const { owner, perimeter, ...rest } = stop;
     let area = owner === null ? 0 : await seenChange(page);
     // Firefox can take two identical screenshots of a ring its styles show, so a miss is measured once more: a ring
@@ -578,6 +574,13 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
     return { ...rest, indicator: measured >= perimeter, indicatorArea: Math.round(measured), perimeter: Math.round(perimeter), ...(area === null ? { unsettled: true } : {}) };
   }
 }
+
+/** Whether the focused element is outside the window, read without touching the focus. */
+const focusOutside = (page: Page): Promise<boolean> =>
+  page.evaluate(() => {
+    const box = document.activeElement?.getBoundingClientRect();
+    return box !== undefined && (box.bottom <= 0 || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth);
+  });
 
 /** How many fresh probes a stop gets while its owner keeps moving under the screenshots. */
 const SETTLE_ATTEMPTS = 5;
