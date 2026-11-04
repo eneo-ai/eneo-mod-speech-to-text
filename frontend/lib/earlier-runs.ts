@@ -9,21 +9,22 @@ import { listOwnRuns, type FlowRunSummary } from "./api";
 const EARLIER_RUNS_PAGE = 10;
 
 /**
- * The runs among `runs` that wait for this person's review, in the list's order (the newest first). A test run started
- * from Eneo's editor is not this person's to review.
+ * The runs among `runs` that wait for this person's review, the oldest first: Eneo lists the newest first, and the one
+ * that has waited longest is the first it cancels. A test run started from Eneo's editor is not this person's to review.
  */
 export function pendingReviews(runs: readonly FlowRunSummary[]): FlowRunSummary[] {
-  return runs.filter((run) => run.status === "awaiting_review" && run.purpose !== "test");
+  return runs.filter((run) => run.status === "awaiting_review" && run.purpose !== "test").reverse();
 }
 
 /**
  * The setup's latest runs, at its top: those waiting for this person's review first, then the newest, `count` at most;
- * with `waitingOnly` (a short screen, whose first screen is the ways in's) only those waiting. Never a test run.
+ * however many wait, the newest of the others keeps its row, so a run under way or the latest document is never pushed
+ * out. With `waitingOnly` (a short screen, whose first screen is the ways in's) only those waiting. Never a test run.
  */
 export function latestRuns(runs: readonly FlowRunSummary[], { waitingOnly = false, count = 3 } = {}): FlowRunSummary[] {
   const waiting = pendingReviews(runs);
   const rest = waitingOnly ? [] : runs.filter((run) => run.purpose !== "test" && !waiting.includes(run));
-  return [...waiting, ...rest].slice(0, count);
+  return [...waiting.slice(0, rest.length ? count - 1 : count), ...rest].slice(0, count);
 }
 
 /**

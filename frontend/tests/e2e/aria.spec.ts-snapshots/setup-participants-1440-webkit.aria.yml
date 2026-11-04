@@ -66,6 +66,7 @@
     - status: Erik Lund har lagts till.
     - text: Märk upp talare Texten visar vem som sa vad. Det tar längre tid efter inspelningen.
     - switch "Märk upp talare"
+    - text: "Flödet får ta emot: Öppen information"
     - button "Starta strömning":
       - text: ""
       - status

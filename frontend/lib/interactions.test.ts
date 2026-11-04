@@ -431,7 +431,7 @@ test("Visa alla under the latest runs brings the whole list's heading into view 
       createElement(
         Fragment,
         null,
-        createElement(LatestRuns, { runs: latestRuns(list.runs), more: true, onOpen: () => undefined }),
+        createElement(LatestRuns, { runs: latestRuns(list.runs), waiting: 0, more: true, onOpen: () => undefined }),
         createElement(EarlierRuns, { list, onOpen: () => undefined }),
       ),
     );
