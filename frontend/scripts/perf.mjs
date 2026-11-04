@@ -173,6 +173,10 @@ const chip = (text) => async (page) => {
   await page.getByRole("combobox", { name: /^(Talare|Filtrera talare)$/ }).click();
   await page.getByRole("option", { name: text === "Alla" ? "Alla talare" : text, exact: true }).click();
 };
+// A passage's Rätta, found inside the first passage for the same reason: over the whole of 2,000 passages the role query
+// takes 9 to 14 s on a fast machine with the phone's throttling, and past the click's 30 s on a slower runner.
+const correct = (page) =>
+  page.getByRole("list", { name: /^(Transkriberingen|Del \d+)$/ }).first().getByRole("listitem").first().getByRole("button", { name: /^Rätta/ }).click();
 const type = (text, label) => (page) => page.getByRole("textbox", { name: label }).first().pressSequentially(text, { delay: 60 });
 // The page folds its columns into tabs below a laptop's width (1024 px): there the tab must be there and is pressed (a
 // tab that is gone fails the step); on a laptop the columns stand side by side and there is nothing to press.
@@ -204,7 +208,7 @@ const PAGES = [
       ["tab Transkribering", tab("Transkribering")],
       ["chip Talare 1", chip("Talare 1")],
       ["type search", type("budget", "Sök i transkriberingen")],
-      ["Rätta open", click("button", /^Rätta/)],
+      ["Rätta open", correct],
       ["Rätta Escape", (page) => page.keyboard.press("Escape")],
     ],
   ],
@@ -227,7 +231,7 @@ const LONG_ACTIONS = [
   ["chip Alla", chip("Alla")],
   ["type search", type("budget", "Sök i transkriberingen")],
   ["clear search", (page) => page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("")],
-  ["Rätta open", click("button", /^Rätta/)],
+  ["Rätta open", correct],
   ["Rätta Escape", (page) => page.keyboard.press("Escape")],
 ];
 
