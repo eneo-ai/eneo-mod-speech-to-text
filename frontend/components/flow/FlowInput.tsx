@@ -652,7 +652,7 @@ function SetupWorkspace({
             {/* Where the person commits: what the flow may take, once more above the action. In the dock only where the
                 window has room for it (a small phone's leaves it to the note in the card); from a laptop's width the
                 note in the flow's column may be below the first screen. */}
-            {!(oneColumn && short) && <ClassificationLine classification={contract.security_classification} />}
+            {(!oneColumn || (dock && !short)) && <ClassificationLine classification={contract.security_classification} />}
             {forwardedLine(contract) && (
               <Text as="p" type="supporting" justify="center">
                 {forwardedLine(contract)}
