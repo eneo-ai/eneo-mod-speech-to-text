@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
-import { Section } from "@astryxdesign/core/Section";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import type { StepView } from "@/lib/run-progress";
@@ -25,16 +24,14 @@ export function StepDetails({ steps, version, className }: { steps: readonly Ste
         </>
       }
     >
-      <Section>
-        <VStack gap={4}>
-          <StepList steps={steps} />
-          {version != null && (
-            <Text as="p" type="supporting">
-              Flödets version {version}
-            </Text>
-          )}
-        </VStack>
-      </Section>
+      <VStack gap={4}>
+        <StepList steps={steps} />
+        {version != null && (
+          <Text as="p" type="supporting">
+            Flödets version {version}
+          </Text>
+        )}
+      </VStack>
     </Collapsible>
   );
 }
