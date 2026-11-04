@@ -233,6 +233,9 @@ switches round. One-pixel borders are `var(--border-width)`.
 - The recordings to go on with or send stand above the working card, a card of their own, never in it, with the working
   card's padding, so the two share their content's edge. On a phone their card has no tile: its heading, its words and
   its actions share one edge.
+- A detail of several choices (`multiselect`) is a checkbox per option, as on Eneo's own run page: the choices are in
+  view and each is one press. It goes to Eneo as a list, so an option may hold a comma. A long one scrolls in its place
+  (18 rem, at most half the window), cut through a row so it says there is more, and the form goes on under it.
 - The flow's details follow the choice of way in, in the working card at every width: a field being typed in when the
   layout changes (a tablet turned) does not move. A name typed in the participants' field is kept when the field goes
   (a recording started). Its Lägg till is one piece with the field and off until a name is typed; off, it keeps the
