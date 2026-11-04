@@ -649,10 +649,10 @@ function SetupWorkspace({
           dock,
           // In one column the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
-            {/* Where the person commits in one column: what the flow may take, once more in the dock, where the window
-                has room for it (a small phone's leaves it to the note in the card). Elsewhere the classification stands
-                in view beside the action (the flow's column). */}
-            {dock && !short && <ClassificationLine classification={contract.security_classification} />}
+            {/* Where the person commits: what the flow may take, once more above the action. In the dock only where the
+                window has room for it (a small phone's leaves it to the note in the card); from a laptop's width the
+                note in the flow's column may be below the first screen. */}
+            {!(oneColumn && short) && <ClassificationLine classification={contract.security_classification} />}
             {forwardedLine(contract) && (
               <Text as="p" type="supporting" justify="center">
                 {forwardedLine(contract)}

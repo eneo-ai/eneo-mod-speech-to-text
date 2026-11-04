@@ -225,10 +225,10 @@ switches round. One-pixel borders are `var(--border-width)`.
   mikrofonen hör dig."). Nothing moves when a test starts or the browser names its microphones. The button keeps one
   width for both of its words, and its icon says which it is (the microphone, a stop); on a phone it takes the row, as
   the phone's other actions do.
-- In one column the classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}",
-  docked with the primary action, where the window is taller than 640 px (a small phone's dock keeps to the action, and
-  the note at the working card's end says it). From a laptop's width its own note is in view beside the action instead,
-  in the flow's column. A flow whose result goes on to a receiver says so above the setup's action, and above the
+- The classification stands once more where the person commits: one line, "Flödet får ta emot: {namn}", right above the
+  primary action. In one column it is docked with the action, where the window is taller than 640 px (a small phone's
+  dock keeps to the action, and the note at the working card's end says it). From a laptop's width it stands at every
+  height: the note in the flow's column may be below the first screen. A flow whose result goes on to a receiver says so above the setup's action, and above the
   recording's Skapa dokument.
 - The recordings to go on with or send stand above the working card, a card of their own, never in it, with the working
   card's padding, so the two share their content's edge. On a phone their card has no tile: its heading, its words and
