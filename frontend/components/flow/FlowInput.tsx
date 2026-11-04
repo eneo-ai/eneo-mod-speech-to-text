@@ -38,7 +38,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { resumableRecording, UnsentRecordings, type UnsentList } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
-import { latestRuns, listsMore, type EarlierRunsList, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
+import { latestRuns, listsMore, pendingReviews, type EarlierRunsList, type EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
   captureLimits,
   labelsSpeakers,
@@ -211,7 +211,7 @@ export function FlowInput({
   const waitingOnly = short && !columns;
   const latest = group === "setup" && !blocked ? latestRuns(opened.runs, { waitingOnly, count: phone ? 2 : 3 }) : [];
   const latestRunsShown = (
-    <LatestRuns runs={latest} more={listsMore(opened, latest)} waitingOnly={waitingOnly} onOpen={onOpenRun} className={styles.runs} />
+    <LatestRuns runs={latest} waiting={pendingReviews(opened.runs).length} more={listsMore(opened, latest)} waitingOnly={waitingOnly} onOpen={onOpenRun} className={styles.runs} />
   );
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);

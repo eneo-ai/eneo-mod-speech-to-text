@@ -117,10 +117,11 @@ for (const [width, height] of [[390, 844], [768, 1024], [320, 568], [844, 390]] 
     await page.setViewportSize({ width, height });
     const { STATES } = await import("./screens");
     await STATES.find((s) => s.name === "setup")!.go(page, info);
-    const latest = page.getByRole("region", { name: "Senaste körningar" });
+    let latest = page.getByRole("region", { name: "Senaste körningar" });
     if (height <= 640) {
       await expect(latest, "no run waits: the ways in have the first screen").toHaveCount(0);
       await STATES.find((s) => s.name === "setup-review-waiting")!.go(page, info);
+      latest = page.getByRole("region", { name: "En körning väntar på din granskning" });
       await expect(latest.getByRole("button", { name: /^Granska, / })).toBeVisible();
     } else {
       await expect(latest.getByRole("listitem")).toHaveCount(width < 768 ? 2 : 3);

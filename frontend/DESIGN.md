@@ -239,13 +239,16 @@ switches round. One-pixel borders are `var(--border-width)`.
   field's edge, so the two still read as one control. Empty, the field offers the names it was last sent with on this
   flow in one press ("Lägg till förra gångens namn (2)", a ghost button where the chips will be), and Märk upp talare
   starts as the person last left it on the flow.
-- "Senaste körningar" opens the setup, under the flow's name: the person's latest runs of the flow, three at most (two
-  on a phone, whose first screen then still reaches the choice of way in under the browser's bars), those waiting for
-  their review first with their Granska, then the newest, in the rows of "Tidigare körningar". While one waits, a line
-  under the heading says it is cancelled if it is not reviewed in time. From 1024 px it stands in the flow's column, so
-  the working card keeps its action on a laptop's first screen; below, above the choice of way in. A short screen in
-  one column (at most 640 px high) lists only the runs waiting for review, under that line in the heading's place (the
-  heading is a screen reader's): its first screen is the ways in's. While "Tidigare körningar" has more, a ghost
+- The setup opens, under the flow's name, with the person's latest runs of the flow, three rows at most (two on a phone,
+  whose first screen then still reaches the choice of way in under the browser's bars), in the rows of "Tidigare
+  körningar". Runs waiting for their review stand first under a heading of their own that counts them ("2 körningar
+  väntar på din granskning"), the oldest first, the first Eneo cancels, each with its Granska, and a line says they are
+  cancelled if they are not reviewed in time. "Senaste körningar" follows, the newest first, so its dates run in order.
+  However many wait, the newest of the others keeps a row: a run under way or the latest document is never pushed out;
+  the heading's count says the waiting runs no row shows, and "Visa alla" reaches them. From 1024 px this stands in the
+  flow's column, so the working card keeps its action on a laptop's first screen; below, above the choice of way in. A
+  short screen in one column (at most 640 px high) lists only the runs waiting for review, under that line in the
+  heading's place (the heading is a screen reader's, and the line says what it says): its first screen is the ways in's. While "Tidigare körningar" has more, a ghost
   "Visa alla" under the rows brings it into view and gives its heading the focus; where the latest runs are all of
   them, they are the list. No runs, no list, and a test run
   from Eneo's editor is never one. The setup is drawn once the runs are known, and they are read again while a run's

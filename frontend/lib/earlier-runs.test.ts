@@ -132,13 +132,13 @@ test("a read that failed is said while it is tried again, and until one succeeds
   assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [3, null]);
 });
 
-test("the runs waiting for this person's review: newest first as Eneo lists them, never a test run from Eneo's editor", async () => {
+test("the runs waiting for this person's review: the oldest first, the first Eneo cancels, never a test run from Eneo's editor", async () => {
   const { pendingReviews } = await import("./earlier-runs");
   const run = (id: string, status: string, purpose?: string): FlowRunSummary => ({ id, flow_id: "flow-1", status, ...(purpose ? { purpose } : {}) });
   assert.deepEqual(pendingReviews([]), []);
   assert.deepEqual(pendingReviews([run("a", "completed"), run("b", "running")]), [], "nothing waits");
   assert.deepEqual(
     pendingReviews([run("new", "awaiting_review"), run("done", "completed"), run("test", "awaiting_review", "test"), run("old", "awaiting_review")]).map((r) => r.id),
-    ["new", "old"],
+    ["old", "new"],
   );
 });

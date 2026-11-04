@@ -415,15 +415,38 @@ test("Försök igen answered while the failed run is still shown opens the run E
   expect(new URL(page.url()).searchParams.get("run"), "the address names the new run").not.toBe(ids.runs.failed);
 });
 
+test("waiting runs stand apart, the oldest first, and Senaste körningar keeps its own order and its row", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  // A laptop's three rows; a phone's two are `latestRuns`' own test.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route(new RegExp(`/api/eneo/flows/${ids.flows.flow2}/runs/\\?`), async (route) => {
+    const response = await route.fetch();
+    const { items, ...list } = await response.json();
+    const run = (id: string, status: string, created_at: string) => ({ id, flow_id: ids.flows.flow2, status, created_at });
+    const older = run(ids.runs.plain, "awaiting_review", "2026-09-20T09:00:00Z");
+    const oldest = run(ids.runs.pdf, "awaiting_review", "2026-09-19T09:00:00Z");
+    const done = run(ids.runs.done, "completed", "2026-09-25T09:00:00Z");
+    await route.fulfill({ response, json: { ...list, items: [done, ...items, older, oldest] } });
+  });
+  await page.goto(`/flows/${ids.flows.flow2}`);
+  const waiting = page.getByRole("region", { name: "3 körningar väntar på din granskning" });
+  await expect(waiting.getByRole("listitem")).toHaveCount(2);
+  await expect(waiting.getByRole("listitem").first()).toContainText("19 sep");
+  await expect(waiting).toContainText("De avbryts om de inte granskas i tid.");
+  await expect(page.getByRole("region", { name: "Senaste körningar" }).getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Senaste körningar" }).getByRole("listitem")).toContainText("Klar");
+  await expect(page.getByRole("button", { name: "Visa alla körningar" })).toBeVisible();
+});
+
 test("a run waiting for review opens the setup's latest runs, and Granska opens Vem är vem? with its heading focused", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   await page.goto(`/flows/${ids.flows.flow2}`);
   // The page's status region says it once (aria.spec.ts).
-  const latest = page.getByRole("region", { name: "Senaste körningar" });
+  const latest = page.getByRole("region", { name: "En körning väntar på din granskning" });
   await expect(latest.getByRole("listitem").first()).toContainText("Väntar på granskning");
-  await expect(latest).toContainText("En körning som väntar på granskning avbryts om den inte granskas i tid.");
+  await expect(latest).toContainText("Den avbryts om den inte granskas i tid.");
   // The flow's one run: the latest runs are the list, so it is listed, and its Granska named, once.
-  await expect(page.getByRole("region", { name: "Senaste körningar" })).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Senaste körningar" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Tidigare körningar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Granska, körningen / })).toHaveCount(1);
   await latest.getByRole("button", { name: /^Granska, körningen / }).click();
@@ -483,7 +506,7 @@ for (const back of ["Back", "Ny inspelning"] as const) {
 test("where the latest runs are all of them, a read that lands later with one more brings the whole list under the form", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   await page.goto(`/flows/${ids.flows.flow2}`);
-  const latest = page.getByRole("region", { name: "Senaste körningar" });
+  const latest = page.getByRole("region", { name: "En körning väntar på din granskning" });
   await expect(latest.getByRole("listitem")).toHaveCount(1);
   await expect(page.getByRole("region", { name: "Tidigare körningar" })).toHaveCount(0);
   let release = () => {};

@@ -590,21 +590,35 @@ test("the latest runs: those waiting for review first, then the newest, three at
   assert.deepEqual(ids(latestRuns(runs, { count: 2 })), ["waiting", "new"], "a phone: two");
   assert.deepEqual(ids(latestRuns(runs, { waitingOnly: true })), ["waiting"], "a short screen: only those waiting");
   assert.deepEqual(latestRuns(runs.filter((run) => run.status !== "awaiting_review"), { waitingOnly: true }), []);
+  const waitingAll = [
+    { id: "live", flow_id: "flow-1", status: "running", created_at: at },
+    { id: "done", flow_id: "flow-1", status: "completed", created_at: at },
+    { id: "w3", flow_id: "flow-1", status: "awaiting_review", created_at: at },
+    { id: "w2", flow_id: "flow-1", status: "awaiting_review", created_at: at },
+    { id: "w1", flow_id: "flow-1", status: "awaiting_review", created_at: at },
+  ];
+  assert.deepEqual(ids(latestRuns(waitingAll)), ["w1", "w2", "live"], "the oldest waiting first, and the newest other run keeps its row");
+  assert.deepEqual(ids(latestRuns(waitingAll, { count: 2 })), ["w1", "live"], "on a phone too");
+  assert.deepEqual(ids(latestRuns(waitingAll.slice(2))), ["w1", "w2", "w3"], "nothing else to show: every row waits");
   assert.equal(listsMore(listed(runs), latestRuns(runs)), true, "a fourth run: the list has more");
   const three = runs.slice(0, 4);
   assert.equal(listsMore(listed(three), latestRuns(three)), false, "the latest runs are the list (a test run is none of it)");
   assert.equal(listsMore({ ...listed(three), hasMore: true }, latestRuns(three)), true, "Eneo has more");
   assert.equal(listsMore({ ...listed([]), failed: "first" }, []), true, "a read to try again");
 
-  const html = markup(createElement(LatestRuns, { runs: latestRuns(runs), more: true, onOpen: () => undefined }));
+  const html = markup(createElement(LatestRuns, { runs: latestRuns(runs), waiting: 1, more: true, onOpen: () => undefined }));
   const words = text(html);
-  assert.match(words, /^Senaste körningar En körning som väntar på granskning avbryts om den inte granskas i tid\. Testmöte 2 Startad i går 15:40 Väntar på granskning Granska Styrelsemöte Möte 1 okt 2025 · startad i går 15:40 Klar Öppna I går 15:40 Misslyckades Öppna Visa alla$/);
+  assert.match(words, /^En körning väntar på din granskning Den avbryts om den inte granskas i tid\. Testmöte 2 Startad i går 15:40 Väntar på granskning Granska Senaste körningar Styrelsemöte Möte 1 okt 2025 · startad i går 15:40 Klar Öppna I går 15:40 Misslyckades Öppna Visa alla$/);
   assert.match(html, /aria-label="Granska, Testmöte 2, startad i går 15:40"/);
   assert.match(html, /aria-label="Visa alla körningar"/);
-  const none = text(markup(createElement(LatestRuns, { runs: latestRuns(three).filter((run) => run.status !== "awaiting_review"), more: false, onOpen: () => undefined })));
+  const hidden = text(markup(createElement(LatestRuns, { runs: latestRuns(waitingAll), waiting: 3, more: true, onOpen: () => undefined })));
+  assert.match(hidden, /^3 körningar väntar på din granskning De avbryts om de inte granskas i tid\. /, "the count says those a row does not show");
+  const short = text(markup(createElement(LatestRuns, { runs: latestRuns(runs, { waitingOnly: true }), waiting: 1, more: true, waitingOnly: true, onOpen: () => undefined })));
+  assert.match(short, /En körning väntar på din granskning\. Den avbryts om den inte granskas i tid\. .* Visa alla$/, "a short screen: the line says what the heading would, and Visa alla stays");
+  const none = text(markup(createElement(LatestRuns, { runs: latestRuns(three).filter((run) => run.status !== "awaiting_review"), waiting: 0, more: false, onOpen: () => undefined })));
   assert.doesNotMatch(none, /Visa alla/, "nothing more to show");
   assert.doesNotMatch(none, /avbryts/, "none waits: no word on cancelling");
-  assert.equal(markup(createElement(LatestRuns, { runs: [], more: true, onOpen: () => undefined })), "", "no runs, no list");
+  assert.equal(markup(createElement(LatestRuns, { runs: [], waiting: 0, more: true, onOpen: () => undefined })), "", "no runs, no list");
 });
 
 test("more earlier runs than a page: 'Visa fler körningar' below the list, with its own waiting and failure", () => {
