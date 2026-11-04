@@ -2,6 +2,7 @@
  * The page's column: what a page says starts where the bar's brand does, at every width, so the bar and the page share
  * one left edge, and the account ends where the column does (styles/globals.css aligns the bar to the column).
  */
+import { stopProblems, tabWalk } from "./checks";
 import { expect, test } from "./gate";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "the widths are set here"));
@@ -109,6 +110,31 @@ test("on a laptop (1440 x 900) the setup's action is whole on the first screen, 
   expect(latest.x + latest.width, "in the flow's column, beside the card").toBeLessThanOrEqual(card.x);
   expect(latest.y, "on the first screen").toBeLessThan(900 / 2);
 });
+
+// A long multiple choice scrolls in its place, whatever the width, so the rest of the form stays near; a short one does not.
+for (const [width, height] of [[1440, 900], [390, 844], [320, 568]] as const) {
+  test(`at ${width} x ${height} a long multiple choice scrolls in its place, and every option is reached`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height });
+    const { STATES } = await import("./screens");
+    await STATES.find((s) => s.name === "setup-multiple-choice-long")!.go(page, info);
+    const list = page.getByRole("group", { name: "Livsområden" });
+    const box = await list.evaluate((el) => ({ shown: el.clientHeight, all: el.scrollHeight, width: el.scrollWidth - el.clientWidth }));
+    expect(box.all, "more than it shows").toBeGreaterThan(box.shown);
+    expect(box.shown, "the window keeps room for what surrounds it").toBeLessThanOrEqual(height * 0.6);
+    expect(box.width, "no sideways scroll").toBe(0);
+    const last = page.getByRole("checkbox", { name: "Livsområde 24", exact: true });
+    await last.focus();
+    await page.keyboard.press("Space");
+    await expect(last).toBeChecked();
+    await expect(last).toBeInViewport();
+    // The rings, not the order: `orderProblems` reads a row by its place in the list, not in the window.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    expect(stopProblems((await tabWalk(page)).stops), "each row's focus shows whole").toEqual([]);
+    await STATES.find((s) => s.name === "setup-multiple-choice")!.go(page, info);
+    const short = await page.getByRole("group", { name: "Livsområden" }).evaluate((el) => el.scrollHeight - el.clientHeight);
+    expect(short, "three options need no scroll").toBe(0);
+  });
+}
 
 // Below a laptop's width the latest runs open the setup, above the choice of way in, two of them on a phone; a short
 // screen keeps its first screen for the ways in and lists only the runs waiting for review there.

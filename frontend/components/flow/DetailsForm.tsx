@@ -172,7 +172,7 @@ export function DetailsForm({
           }
           if (field.type === "multiselect") {
             return (
-              <CheckboxList key={field.name} {...common} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
+              <CheckboxList key={field.name} {...common} className={styles.choices} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
                 {opts.map((option) => (
                   <CheckboxListItem key={option} value={option} label={option} />
                 ))}

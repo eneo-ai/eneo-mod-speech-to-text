@@ -3,6 +3,14 @@
   max-inline-size: 7rem;
 }
 
+/* A long multiple choice scrolls in its place, so the rest of the form stays near. Its end cuts through a row, which says
+   there is more where a scrollbar is hidden; a short one is as tall as it is. In rem, the same rows at the reader's text
+   size; a short window keeps room for what surrounds it. */
+.choices [role="group"] {
+  max-block-size: min(18rem, 50dvh);
+  overflow-y: auto;
+}
+
 /* Under a coarse pointer the field is the browser's own date field with the design system's calendar button beside it, a
    16 px icon (WCAG 2.5.8 asks 24, the house bar 44). The button stays, at the field's height: it is no hook of the theme
    (the toggle carries no themeProps, and theme rules do not nest), so this rule is the one place its size is set. */

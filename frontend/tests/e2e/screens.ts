@@ -185,10 +185,9 @@ export async function limitAudio(page: Page, seconds: number, files: number) {
 }
 
 /** The flow also asks for several choices among its options (Eneo's `multiselect`). */
-async function askForChoices(page: Page) {
+async function askForChoices(page: Page, options = ["Lärande och att tillämpa kunskap", "Allmänna uppgifter och krav", "Kommunikation"]) {
   await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
     const contract = await (await route.fetch()).json();
-    const options = ["Lärande och att tillämpa kunskap", "Allmänna uppgifter och krav", "Kommunikation"];
     contract.form_fields.push({ name: "livsomraden", label: "Livsområden", type: "multiselect", options, required: false, order: 0 });
     return route.fulfill({ json: contract });
   });
@@ -766,6 +765,15 @@ export const STATES: State[] = [
       await askForChoices(page);
       await setup(page);
       await page.getByRole("checkbox", { name: "Kommunikation" }).check();
+    },
+  },
+  {
+    // More options than the list shows at once: it scrolls in its place, and the form goes on under it.
+    name: "setup-multiple-choice-long",
+    go: async (page) => {
+      await askForChoices(page, Array.from({ length: 24 }, (_, index) => `Livsområde ${index + 1}`));
+      await setup(page);
+      await page.getByRole("checkbox", { name: "Livsområde 1", exact: true }).check();
     },
   },
   {
