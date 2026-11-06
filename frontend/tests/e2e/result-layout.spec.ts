@@ -44,8 +44,9 @@ test("the open steps lie on the page's own ground, and leave Dölj hur resultate
     const { left, bottom } = trigger.getBoundingClientRect();
     return {
       // A surface of its own under the list: the design system lets a disclosure's first child reach past its padding, up
-      // over the trigger's lower half. The steps' status icons are small, this is the panel's size.
-      painted: [...content.querySelectorAll("*")].filter((element) => element.getBoundingClientRect().width > 100 && getComputedStyle(element).backgroundColor !== "rgba(0, 0, 0, 0)").length,
+      // over the trigger's lower half. The steps' status icons are small, this is the panel's size. Its alpha, not one
+      // spelling of transparent: forced colors computes an unpainted element to rgba(255, 255, 255, 0).
+      painted: [...content.querySelectorAll("*")].filter((element) => element.getBoundingClientRect().width > 100 && !/^rgba\(.*, 0\)$/.test(getComputedStyle(element).backgroundColor)).length,
       covered: !trigger.contains(document.elementFromPoint(left + 20, bottom - 4)),
     };
   });
