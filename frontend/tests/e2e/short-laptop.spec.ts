@@ -62,7 +62,9 @@ for (const view of VIEWS) {
       const shown = await end.evaluate((element) => {
         const { left, top, height: tall } = element.getBoundingClientRect();
         const hit = document.elementFromPoint(left + 4, top + tall / 2);
-        return hit !== null && element.contains(hit);
+        // In its passage, not its sentence: the browser can skip a passage's content for a frame just after a scroll
+        // (content-visibility: auto), and the point then lands on the passage itself, with nothing over it.
+        return hit !== null && element.closest("[data-turn-index]")!.contains(hit);
       });
       expect(box.y + box.height, `at ${width} × ${height}, the last passage's end`).toBeLessThanOrEqual(height + 1);
       expect(shown, `at ${width} × ${height}, the last passage is not covered or cut off`).toBe(true);
