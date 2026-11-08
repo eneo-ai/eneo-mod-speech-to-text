@@ -38,10 +38,12 @@ def frame(opcode: int, payload: bytes) -> bytes:
 
 class FakeRelay:
     """A live relay on a port of 127.0.0.1. ``behaviour(reply_number)`` says what to do instead of reply number N: None answers
-    it, "quiet" stops answering from then on, "error" sends an error event, "close" closes the socket with 1011."""
+    it, "quiet" stops answering from then on, "error" sends an error event, "close" closes the socket with 1011. ``delay`` holds every
+    answer that long, as a relay whose frames wait in a queue behind the load would."""
 
-    def __init__(self, behaviour=lambda number: None, close_after: float | None = None) -> None:
+    def __init__(self, behaviour=lambda number: None, close_after: float | None = None, delay: float = 0) -> None:
         self.behaviour = behaviour
+        self.delay = delay
         self.close_after = close_after  # seconds of silence from the client after which the relay closes the socket with 1011
         self.server = socket.socket()
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -121,6 +123,7 @@ class FakeRelay:
                 connection.sendall(frame(8, struct.pack(">H", 1011)))
                 return
             else:
+                time.sleep(self.delay)
                 connection.sendall(frame(1, json.dumps({"type": "transcript.delta", "text": "ord"}).encode()))
 
 
@@ -178,6 +181,33 @@ class RoundTripTests(unittest.TestCase):
             measure(relay)
 
         self.assertIn("1011", str(raised.exception))
+
+
+class SlowedTests(unittest.TestCase):
+    """Whether a load slowed the relay, given the p95 round trip idle and under the load."""
+
+    def test_a_relay_queued_behind_the_load_is_slowed_however_fast_it_answers_idle(self) -> None:
+        idle_relay, queued_relay = FakeRelay(), FakeRelay(delay=0.012)  # 12 ms in a queue, under the 14 to 43 ms the stress adds on a runner
+        self.addCleanup(idle_relay.close)
+        self.addCleanup(queued_relay.close)
+
+        idle, queued = (live_load.percentiles(measure(relay))["p95_ms"] for relay in (idle_relay, queued_relay))
+
+        self.assertTrue(live_load.slowed(queued, idle), f"queued {queued} ms against idle {idle} ms")
+
+    def test_a_few_tenths_of_a_millisecond_under_one_is_the_schedulers_not_the_relays(self) -> None:
+        self.assertFalse(live_load.slowed(1.02, 0.41))  # CI run 42481074823: a third of capacity, 2.5 times idle, 0.61 ms more
+        self.assertFalse(live_load.slowed(2.02, 1.48))  # CI run 42180395303: four fifths of capacity
+
+    def test_on_any_machine_a_load_that_adds_more_than_two_milliseconds_and_the_idle_p95_slowed_it(self) -> None:
+        self.assertTrue(live_load.slowed(14.57, 0.41))  # the saturating stress of CI run 42481074823
+        self.assertTrue(live_load.slowed(0.41 + 2.1, 0.41))
+        self.assertFalse(live_load.slowed(0.41 + 1.9, 0.41))
+
+    def test_where_the_idle_p95_is_over_two_milliseconds_it_is_twice_idle_as_before(self) -> None:
+        self.assertTrue(live_load.slowed(8.8, 4.35))  # the owner's laptop, busy: idle 4.35 ms
+        self.assertFalse(live_load.slowed(8.6, 4.35))
+        self.assertFalse(live_load.slowed(4.07, 4.35))
 
 
 class QuietSocketTests(unittest.TestCase):

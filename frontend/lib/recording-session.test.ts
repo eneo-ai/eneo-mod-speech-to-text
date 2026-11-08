@@ -10,6 +10,9 @@ import {
   type RecordingStore,
 } from "./recording-store";
 import { fakeWebLocks } from "./fake-web-locks";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReadyPanel } from "../components/flow/ReadyPanel";
 import { createOnlineStatus } from "./online-status";
 import { asksBeforeClosing, recordingNotices } from "./recording-view";
 import { mayContinue, RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
@@ -209,6 +212,72 @@ test("losing the microphone pauses the recording, keeps what was recorded, and '
   assert.equal(stopped?.state, "stopped");
   assert.deepEqual(await texts(await store.readParts(stopped!.id)), ["ab.", "c."]);
   assert.equal(capture.getSnapshot().status, "stopped");
+});
+
+// Firefox can hand over an empty chunk, then the stop event, then the audio: before any of the part's audio, or after some.
+const tailAfterStop = (recorder: FakeRecorder, tail: string) => {
+  recorder.stop = () => {
+    recorder.state = "inactive";
+    setImmediate(() => recorder.emit(""));
+    setImmediate(() => recorder.dispatchEvent(new Event("stop")));
+    setImmediate(() => recorder.emit(tail));
+  };
+};
+
+for (const before of ["", "a"]) {
+  test(`audio a recorder hands over just after its stop event is kept, ${before ? "after audio before it" : "with no audio before it"} (Firefox: an empty chunk, the stop, then the audio)`, async () => {
+    const { capture, store, recorders } = await setup();
+    await capture.start(meeting);
+    if (before) recorders[0].emit(before);
+    tailAfterStop(recorders[0], "tail");
+    // The stop waits for that audio: what it gives, and what a send reads, has it, and its end is confirmed only then.
+    const stopped = (await capture.stop())!;
+    assert.equal(stopped.parts[0].bytes, before.length + 4);
+    assert.equal(stopped.parts[0].endConfirmed, true);
+    assert.equal(capture.getSnapshot().error, null, "stopped as asked");
+    assert.deepEqual(await texts(await store.readPartsToSend(stopped.id)), [`${before}tail`]);
+  });
+}
+
+test("a stop event before any audio, and none after it: stopped as asked with no audio, at once, and the writer let go", async () => {
+  const env = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const store = await openRecordingStore(env);
+  const tab = await openRecordingStore(env);
+  const { capture, recorders } = await setup({ store });
+  await capture.start(meeting);
+  recorders[0].lastData = "";
+  const asked = Date.now();
+  const stopped = (await capture.stop())!;
+  assert.ok(Date.now() - asked < 2_000, "not held for a stop event that already came");
+  assert.equal(stopped.parts[0].endConfirmed, true);
+  assert.equal(capture.getSnapshot().error, null, "no audio, not a recorder that did not confirm its end");
+  const html = renderToStaticMarkup(
+    createElement(ReadyPanel, { recording: stopped, persistent: true, problem: null, onCreate: () => {}, onContinue: () => {}, onDiscard: () => {} }),
+  );
+  assert.match(html, /Inget ljud sparades i den här inspelningen\./);
+  // Once the page lets it go, another tab may write to it: this one keeps no writer for audio that will not come.
+  capture.reset();
+  store.letGo(stopped.id);
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.equal(await tab.lease(stopped.id), true, "another tab may take it");
+  tab.release(stopped.id);
+});
+
+test("a stop with no audio, then Fortsätt spela in and a stop as usual: the recording is whole, and a document can be made of it", async () => {
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].lastData = "";
+  const empty = (await capture.stop())!;
+  await capture.continueStopped(empty, { maxBytes: LIMIT, maxFiles: 3 });
+  recorders[1].emit("more");
+  const stopped = (await capture.stop())!;
+  assert.deepEqual(stopped.parts.map((part) => part.endConfirmed), [true, true]);
+  assert.equal(capture.getSnapshot().error, null);
+  assert.deepEqual(await texts(await store.readPartsToSend(stopped.id)), ["more."]);
+  const html = renderToStaticMarkup(
+    createElement(ReadyPanel, { recording: stopped, persistent: true, problem: null, onCreate: () => {}, onContinue: () => {}, onDiscard: () => {} }),
+  );
+  assert.match(html, />Skapa dokument</);
 });
 
 test("a microphone that goes quiet for a moment (a headset changing route) keeps recording, says so, and is back by itself", async () => {

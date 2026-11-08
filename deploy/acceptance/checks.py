@@ -846,7 +846,7 @@ def check_14() -> str:
 # clients that replay it with no pause, and not in visits a second: what a machine serves differs (a visit's 32 requests at the owner's laptop's
 # pace are about 80 visits a second, on a 4 vCPU runner about 60), and one event loop at four fifths of its capacity queues on either.
 FRACTIONS = (0.1, 0.35, 0.8)
-UNAFFECTED_UP_TO = 0.35  # the owner's reason for accepting the stress result (waivers.json): a row up to here over twice idle is a failure
+UNAFFECTED_UP_TO = 0.35  # the owner's reason for accepting the stress result (waivers.json): a row up to here that the load slowed is a failure
 
 
 def envelope_rate(fraction: float, capacity: float) -> float:
@@ -860,7 +860,7 @@ def cpu_seconds_of_module() -> float:
     return (int(fields[11]) + int(fields[12])) / 100  # Linux counts 100 ticks a second
 
 
-@check(15, "the live relay under static load: the loaded p95 round trip is at most twice the idle p95")
+@check(15, f"the live relay under static load: the loaded p95 round trip is at most twice the idle p95, or {live_load.SLOWED_FLOOR_MS:g} ms over it where that is more")
 def check_15() -> str:
     session = sign_in()
     path = f"/api/live/{FLOW}/{AUDIO_STEP}?expected_user={session.user}&recording_id=acceptance-load"
@@ -912,8 +912,8 @@ def check_15() -> str:
     lines.append(f"idle: {idle}")
     if load:
         lines.append(f"stress test, shell and assets, 200 clients with no pause: {stress}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors; CPU of one core: the image {load['module_cpu_percent']} %, the generator {load['generator_cpu_percent']} %")
-    if stress.get("p95_ms") is not None and idle.get("p95_ms") is not None and stress["p95_ms"] > 2 * idle["p95_ms"]:
-        stop.append(f"the loaded p95 {stress['p95_ms']} ms is {stress['p95_ms'] / idle['p95_ms']:.1f} times the idle p95 {idle['p95_ms']} ms: the stop condition is more than twice")
+    if stress.get("p95_ms") is not None and idle.get("p95_ms") is not None and live_load.slowed(stress["p95_ms"], idle["p95_ms"]):
+        stop.append(f"the loaded p95 {stress['p95_ms']} ms is {stress['p95_ms'] / idle['p95_ms']:.1f} times the idle p95 {idle['p95_ms']} ms: the stop condition is more than twice, and more than {live_load.SLOWED_FLOOR_MS:g} ms over it")
 
     # an envelope, not a verdict: the visit above at a controlled arrival rate (open loop), in fractions of what the module serves of that visit
     if load:
@@ -933,8 +933,8 @@ def check_15() -> str:
                     report, row = relay(label, ["--rate", str(rate), "--visit", visit_file.name])
                     if row:
                         ratio = f", {report['p95_ms'] / idle['p95_ms']:.1f} times idle" if report.get("p95_ms") is not None and idle.get("p95_ms") else ""
-                        if ratio and fraction <= UNAFFECTED_UP_TO and report["p95_ms"] > 2 * idle["p95_ms"]:
-                            problems.append(f"{label}: the relay p95 {report['p95_ms']} ms is over twice the idle p95 {idle['p95_ms']} ms, which the owner's acceptance of the stress result says it is not")
+                        if ratio and fraction <= UNAFFECTED_UP_TO and live_load.slowed(report["p95_ms"], idle["p95_ms"]):
+                            problems.append(f"{label}: the relay p95 {report['p95_ms']} ms is over twice the idle p95 {idle['p95_ms']} ms and more than {live_load.SLOWED_FLOOR_MS:g} ms over it, which the owner's acceptance of the stress result says it is not")
                         lines.append(
                             f"arrival rate, {label} ({len(visit)} requests each): {report}{ratio}; {row['requests_per_second']} requests/s, {row['mbit_per_second']} Mbit/s, {row['errors']} errors, "
                             f"{row['dropped']} visits not started" + (" (2,000 were in flight: the offered rate is above what the module or the generator serves)" if row["dropped"] else "")

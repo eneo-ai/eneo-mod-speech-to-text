@@ -21,7 +21,8 @@ export default defineConfig({
     titleDelimiter: '·',
     locales: { root: { label: 'Svenska', lang: 'sv' } },
     customCss: ['./src/styles/custom.css'],
-    expressiveCode: { themes: ['github-dark-high-contrast', 'github-light-high-contrast'] },
+    // Code wraps: a block that scrolls sideways is a keyboard stop only once Expressive Code's deferred script has run.
+    expressiveCode: { themes: ['github-dark-high-contrast', 'github-light-high-contrast'], defaultProps: { wrap: true } },
     components: { Head: './src/components/Head.astro', Footer: './src/components/Footer.astro' },
     social: [{ icon: 'github', label: 'Källkod på GitHub', href: 'https://github.com/eneo-ai/eneo-mod-speech-to-text' }],
     plugins: [md3Theme({

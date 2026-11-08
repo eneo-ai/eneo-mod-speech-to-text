@@ -133,6 +133,29 @@ test("undecided text is measured on what is behind its letters, not on the rest 
   expect(of("#parent").ratio, "the marked word's black ground is not under the parent's black letters").toBeGreaterThanOrEqual(7);
 });
 
+test("in forced colours, text the system draws is not compared with itself; text the page keeps its colours for is measured", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  test.skip(!(await page.evaluate(() => matchMedia("(forced-colors: active)").matches)), "the engine cannot emulate forced colours");
+  // An engine that forces colours draws #faint and #moving in the system's (Chromium, Firefox); one that only answers the
+  // media query (WebKit) draws the page's, where #faint is too faint and #moving is readable. #own keeps the page's faint
+  // colours in every engine.
+  await page.setContent(`
+    <style>body { margin: 0; font: 16px/1.5 sans-serif; } p { width: fit-content; margin: 16px; }</style>
+    <main><h1>Prov</h1>
+      <p id="faint" style="color: #959595">Svag text</p>
+      <p id="moving" style="color: #333333">Text som flyttar sig</p>
+      <p id="own" style="forced-color-adjust: none; color: #959595; background: #ffffff">Egna färger</p>
+    </main>`);
+  // A page that changes while it is pictured (a layout that settles): each picture of the text stands somewhere else.
+  await page.evaluate(() => {
+    const moving = document.getElementById("moving")!;
+    new MutationObserver(() => (moving.style.paddingLeft = `${(parseFloat(moving.style.paddingLeft) || 0) + 3}px`)).observe(moving, { attributeFilter: ["data-contrast-probe"] });
+  });
+  const forcing = await page.evaluate(() => getComputedStyle(document.getElementById("faint")!).color !== "rgb(149, 149, 149)");
+  const measured = await undecidedContrast(page, ["#faint", "#moving", "#own"].map((target) => ({ target, reason: "bgOverlap" })));
+  expect(measured.filter((item) => item.ratio < item.needed).map((item) => item.target)).toEqual(forcing ? ["#own"] : ["#faint", "#own"]);
+});
+
 test("text behind an open modal dialog is out of reach, so its contrast is not measured; the dialog's own is", async ({ page }) => {
   await page.setContent(`
     <style>body { margin: 0; font: 16px/1.5 sans-serif; } dialog { inset-block-start: 60vh; } dialog::backdrop { background: rgb(0 0 0 / 0.6); }</style>
