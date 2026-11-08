@@ -49,6 +49,10 @@ const HIDDEN_GAP_MS = 3 * CHUNK_MS;
 // long after its part began to end, and after its latest audio, will not give it (WebKit after an interruption): the part
 // ends unconfirmed, and audio it hands over later is still kept.
 const END_WAIT_MS = 2 * CHUNK_MS;
+// A recorder that hands over an empty chunk just before an asked stop's event can still hand over its last audio just
+// after it (Firefox, before any of the part's audio or after some: the empty chunk, the stop, then the audio, in the same
+// moment). It is listened to this long after its stop event; then its end is confirmed.
+const STOP_DRAIN_MS = 250;
 // How long Stoppa waits for the device's storage to say the recording is stopped. IndexedDB has no timeout of its own and
 // WebKit has hung instead of failing: past this the page stops as after a failed write, with the recording it holds.
 const STOP_STORE_WAIT_MS = 10_000;
@@ -633,8 +637,10 @@ export class RecordingCapture {
     let releaseWriter: (() => void) | null = null;
     // The wait for its stop event, once its end has begun (and again after each audio that comes then).
     let waiting: ReturnType<typeof setTimeout> | null = null;
-    // A stop event that came before any of the part's audio (onStop): the audio after it confirms the end.
-    let stoppedBeforeAudio = false;
+    // The short listen after an asked stop's event (onStop), for audio the recorder hands over just after it.
+    let draining: ReturnType<typeof setTimeout> | null = null;
+    // Whether the recorder's latest chunk was empty, or it has handed over none.
+    let emptyLast = true;
     const wait = () => {
       if (waiting !== null) clearTimeout(waiting);
       waiting = setTimeout(() => void finish(false), END_WAIT_MS);
@@ -660,7 +666,8 @@ export class RecordingCapture {
 
     const onData = (event: Event) => {
       const data = (event as BlobEvent).data;
-      if (!data || data.size === 0) return;
+      emptyLast = !data || data.size === 0;
+      if (emptyLast) return;
       // Audio from a recorder whose part is ending: its stop event may come after it.
       if (waiting !== null) wait();
       // Audio: the recorder is alive, in the background too.
@@ -679,8 +686,8 @@ export class RecordingCapture {
           // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
           if (this.snapshot.recording?.id === id && notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
         });
-      // The audio after an early stop event: the recorder has handed over all it had.
-      if (stoppedBeforeAudio) return confirm();
+      // The audio just after the stop event: the recorder has handed over all it had.
+      if (draining !== null) return confirm();
       if (!current) return;
       this.chunks += 1;
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
@@ -720,19 +727,21 @@ export class RecordingCapture {
 
     // The recorder has handed over all it had: the end is confirmed after its last audio, which the store has queued.
     const confirm = () => {
+      if (draining !== null) clearTimeout(draining);
+      draining = null;
       recorder.removeEventListener("dataavailable", onData);
       recorder.removeEventListener("error", onError);
       void part.index.then((index) => store.setPartEndConfirmed(id, index, true)).catch(() => undefined).finally(() => releaseWriter?.());
       void finish(true);
     };
-    // A stop that was asked for, whose event comes before any of the part's audio: Firefox can hand that audio over just
-    // after it (an empty chunk, the stop, then the audio). Its end is then confirmed by that audio; until it comes, the
-    // part is waited for as one whose stop event has not come (waitForStop: unconfirmed in time, still taking audio). A
-    // recorder that stops by itself (the microphone went) is said at once.
+    // A stop event after the recorder's last audio confirms the end at once, as does one from a recorder that stopped by
+    // itself (the microphone went). After an empty chunk, an asked stop's end is confirmed by the audio handed over just
+    // after it, or, without any, once the drain is over: a part with no audio is stopped as asked, not unconfirmed. A
+    // stop event that never comes is waited for by waitForStop.
     const onStop = () => {
       recorder.removeEventListener("stop", onStop);
-      if (part.bytes > 0 || (part.ending ?? "interrupt") === "interrupt") return confirm();
-      stoppedBeforeAudio = true;
+      if (!emptyLast || (part.ending ?? "interrupt") === "interrupt") return confirm();
+      draining = setTimeout(confirm, STOP_DRAIN_MS);
     };
 
     recorder.addEventListener("dataavailable", onData);
