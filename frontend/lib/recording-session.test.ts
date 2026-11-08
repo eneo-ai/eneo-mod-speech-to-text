@@ -211,6 +211,44 @@ test("losing the microphone pauses the recording, keeps what was recorded, and '
   assert.equal(capture.getSnapshot().status, "stopped");
 });
 
+test("audio a recorder hands over just after its stop event is kept (Firefox: an empty chunk, the stop, then the audio)", async () => {
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  const recorder = recorders[0];
+  recorder.stop = () => {
+    recorder.state = "inactive";
+    setImmediate(() => recorder.emit(""));
+    setImmediate(() => recorder.dispatchEvent(new Event("stop")));
+    setImmediate(() => recorder.emit("tail"));
+  };
+  // The stop waits for that audio: what it gives, and what a send reads, has it, and its end is confirmed only then.
+  const stopped = (await capture.stop())!;
+  assert.equal(stopped.parts[0].bytes, 4);
+  assert.equal(stopped.parts[0].endConfirmed, true);
+  assert.deepEqual(await texts(await store.readPartsToSend(stopped.id)), ["tail"]);
+});
+
+test("a stop event before any audio, and no audio in time: the stop is unconfirmed, cannot be sent, and keeps the audio that comes later", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  const recorder = recorders[0];
+  recorder.lastData = "";
+  const stopping = capture.stop();
+  await until(() => recorder.state === "inactive", "the recorder told to stop");
+  for (let i = 0; i < 5; i += 1) await settle();
+  t.mock.timers.tick(4_000);
+  const stopped = (await stopping)!;
+  assert.equal(stopped.parts[0].endConfirmed, false);
+  assert.ok(capture.getSnapshot().error, "said: the recorder did not confirm its end");
+  await assert.rejects(store.readPartsToSend(stopped.id), /bekräfta.*stopp|bekräftat.*stopp/);
+  recorder.emit("late");
+  await until(async () => {
+    try { return (await store.readPartsToSend(stopped.id)).length === 1; } catch { return false; }
+  }, "the late audio, kept and confirmed");
+  assert.deepEqual(await texts(await store.readPartsToSend(stopped.id)), ["late"]);
+});
+
 test("a microphone that goes quiet for a moment (a headset changing route) keeps recording, says so, and is back by itself", async () => {
   const { capture, recorders, streams } = await setup();
   await capture.start(meeting);

@@ -633,6 +633,8 @@ export class RecordingCapture {
     let releaseWriter: (() => void) | null = null;
     // The wait for its stop event, once its end has begun (and again after each audio that comes then).
     let waiting: ReturnType<typeof setTimeout> | null = null;
+    // A stop event that came before any of the part's audio (onStop): the audio after it confirms the end.
+    let stoppedBeforeAudio = false;
     const wait = () => {
       if (waiting !== null) clearTimeout(waiting);
       waiting = setTimeout(() => void finish(false), END_WAIT_MS);
@@ -677,6 +679,8 @@ export class RecordingCapture {
           // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
           if (this.snapshot.recording?.id === id && notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
         });
+      // The audio after an early stop event: the recorder has handed over all it had.
+      if (stoppedBeforeAudio) return confirm();
       if (!current) return;
       this.chunks += 1;
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
@@ -714,13 +718,21 @@ export class RecordingCapture {
       ended(confirmed);
     };
 
-    // After its last audio: the recorder has handed over all it had.
-    const onStop = () => {
+    // The recorder has handed over all it had: the end is confirmed after its last audio, which the store has queued.
+    const confirm = () => {
       recorder.removeEventListener("dataavailable", onData);
       recorder.removeEventListener("error", onError);
-      recorder.removeEventListener("stop", onStop);
       void part.index.then((index) => store.setPartEndConfirmed(id, index, true)).catch(() => undefined).finally(() => releaseWriter?.());
       void finish(true);
+    };
+    // A stop that was asked for, whose event comes before any of the part's audio: Firefox can hand that audio over just
+    // after it (an empty chunk, the stop, then the audio). Its end is then confirmed by that audio; until it comes, the
+    // part is waited for as one whose stop event has not come (waitForStop: unconfirmed in time, still taking audio). A
+    // recorder that stops by itself (the microphone went) is said at once.
+    const onStop = () => {
+      recorder.removeEventListener("stop", onStop);
+      if (part.bytes > 0 || (part.ending ?? "interrupt") === "interrupt") return confirm();
+      stoppedBeforeAudio = true;
     };
 
     recorder.addEventListener("dataavailable", onData);
