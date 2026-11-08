@@ -43,6 +43,10 @@ for (const path of pages) for (const [width, scheme] of [[1440, 'light'], [1440,
   await audit(page, label)
   if (await page.getByRole('heading', { level: 1 }).count() !== 1) note(label, 'the page does not have exactly one main heading')
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'the page scrolls sideways')
+  // Expressive Code makes a block that scrolls a keyboard stop only after a timer and an idle callback, which axe can run before; a
+  // block that wraps never scrolls, so it needs no stop.
+  const scrolling = await page.locator('.expressive-code pre').evaluateAll((blocks) => blocks.filter((pre) => pre.scrollWidth > pre.clientWidth + 1).length)
+  if (scrolling) note(label, `${scrolling} code block(s) scroll sideways instead of wrapping`)
   if (!(await page.locator('html').getAttribute('lang'))?.startsWith('sv')) note(label, 'the page language is not Swedish')
   if (path.startsWith('/api/')) {
     const headings = await page.getByRole('heading').allTextContents()
