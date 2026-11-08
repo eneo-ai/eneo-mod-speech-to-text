@@ -186,7 +186,7 @@ const luminance = ([r, g, b]: readonly number[]) => {
  * colour is the ratio. The rest of the box decides nothing, so text whose letters partly stand on a ground of their own
  * colour fails however much of the box is clear. Words inside it in a colour of their own are their own text and keep
  * it. Each with the ratio it needs (4.5:1, or 3:1 for large text: 24 px, or 18.66 px bold). A glyph is not measured, nor
- * text that something else covers where it stands or that is drawn in no colour.
+ * text that something else covers where it stands, that is drawn in no colour, or that forced colours draw in the system's.
  */
 export async function undecidedContrast(page: Page, undecided: { target: string; reason: string }[]) {
   const measured: { target: string; reason: string; ratio: number; needed: number; text: number[]; behind: number[] }[] = [];
@@ -211,6 +211,14 @@ export async function undecidedContrast(page: Page, undecided: { target: string;
           const right = Math.min(innerWidth, box.right);
           const bottom = Math.min(innerHeight, box.bottom);
           if (right - left < 1 || bottom - top < 1 || style.visibility === "hidden") return null;
+          // Forced colours: the system draws the text and its ground in the colours the person chose, none of the page's
+          // to measure, and the probe cannot recolour those letters, so the bare picture would compare them with themselves.
+          // Text the page keeps its own colours for (forced-color-adjust: none) is measured. An engine that only answers
+          // the media query (WebKit) draws the page's colours, which are measured.
+          const marker = document.body.appendChild(Object.assign(document.createElement("span"), { style: "color: rgb(1, 2, 3)" }));
+          const forcing = getComputedStyle(marker).color !== "rgb(1, 2, 3)";
+          marker.remove();
+          if (forcing && style.forcedColorAdjust !== "none") return null;
           // Behind an open modal dialog, or inert: out of reach while the dialog is open, as targetSizes counts it.
           const modal = document.querySelector("dialog:modal");
           if ((modal && !modal.contains(node)) || (node.closest("[inert]") && !node.closest("dialog:modal"))) return null;
