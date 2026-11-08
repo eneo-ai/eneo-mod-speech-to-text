@@ -204,6 +204,18 @@ def percentiles(trips: Trips) -> dict[str, float | int]:
     return report
 
 
+# What a load may add to the idle p95 round trip before it counts as slowing the relay, at the least. Under it the difference is the
+# scheduler's: on a 4 vCPU GitHub runner (13 CI runs, 2026-10-28 to 2026-11-08, idle p95 0.41 to 1.48 ms) the arrival rates up to
+# four fifths of capacity added at most 0.61 ms, while the saturating stress, whose relay frames wait behind the static requests,
+# added 14 to 43 ms. Twice idle alone made that 0.61 ms a failure wherever the idle p95 was under a millisecond.
+SLOWED_FLOOR_MS = 2.0
+
+
+def slowed(loaded_p95: float, idle_p95: float) -> bool:
+    """Whether the load slowed the relay: its p95 rose by more than the idle p95 (twice idle) and by more than SLOWED_FLOOR_MS."""
+    return loaded_p95 - idle_p95 > max(idle_p95, SLOWED_FLOOR_MS)
+
+
 # ---- the load: uncached visits ----------------------------------------------------------------------------------------
 LOADED_LINKS = {"stylesheet", "modulepreload", "preload"}  # the rels of a <link> that a browser fetches to load the page
 
