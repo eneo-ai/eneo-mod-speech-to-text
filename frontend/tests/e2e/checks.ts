@@ -200,10 +200,20 @@ export async function undecidedContrast(page: Page, undecided: { target: string;
      [data-contrast-probe], [data-contrast-probe] * { transition: none !important; }`,
   );
   try {
+    // Forced colours: the system draws the text and its ground in the colours the person chose, none of the page's to
+    // measure, and the probe cannot recolour those letters, so the bare picture would compare them with themselves. Text
+    // the page keeps its own colours for (forced-color-adjust: none) is measured. An engine that only answers the media
+    // query (WebKit) draws the page's colours, which are measured.
+    const forcing = await page.evaluate(() => {
+      const marker = document.body.appendChild(Object.assign(document.createElement("span"), { style: "color: rgb(1, 2, 3); forced-color-adjust: auto" }));
+      const forced = getComputedStyle(marker).color !== "rgb(1, 2, 3)";
+      marker.remove();
+      return forced;
+    });
     for (const { target, reason } of undecided.filter((item) => !NOT_TEXT.has(item.reason))) {
       const element = page.locator(target).first();
       const seen = await element
-        .evaluate((node) => {
+        .evaluate((node, forcing) => {
           const style = getComputedStyle(node);
           const box = node.getBoundingClientRect();
           const left = Math.max(0, box.left);
@@ -211,13 +221,6 @@ export async function undecidedContrast(page: Page, undecided: { target: string;
           const right = Math.min(innerWidth, box.right);
           const bottom = Math.min(innerHeight, box.bottom);
           if (right - left < 1 || bottom - top < 1 || style.visibility === "hidden") return null;
-          // Forced colours: the system draws the text and its ground in the colours the person chose, none of the page's
-          // to measure, and the probe cannot recolour those letters, so the bare picture would compare them with themselves.
-          // Text the page keeps its own colours for (forced-color-adjust: none) is measured. An engine that only answers
-          // the media query (WebKit) draws the page's colours, which are measured.
-          const marker = document.body.appendChild(Object.assign(document.createElement("span"), { style: "color: rgb(1, 2, 3)" }));
-          const forcing = getComputedStyle(marker).color !== "rgb(1, 2, 3)";
-          marker.remove();
           if (forcing && style.forcedColorAdjust !== "none") return null;
           // Behind an open modal dialog, or inert: out of reach while the dialog is open, as targetSizes counts it.
           const modal = document.querySelector("dialog:modal");
@@ -234,7 +237,7 @@ export async function undecidedContrast(page: Page, undecided: { target: string;
           if (a === 0) return null;
           const size = parseFloat(style.fontSize);
           return { clip: { x: left, y: top, width: right - left, height: bottom - top }, text: [r, g, b, a / 255], large: size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700) };
-        })
+        }, forcing)
         .catch(() => null);
       if (!seen) continue;
       try {
