@@ -661,7 +661,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
         text = lambda obj: ws_send(self.wfile, 1, json.dumps(obj).encode())
-        text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000})
+        # As Eneo: a named recording keeps its text when the flow's transcription model streams it.
+        named = "recording_id" in parse_qs(urlparse(self.path).query)
+        text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000, "keeps_transcript": named})
         said, frames = [], 0
         with STATE.lock:
             seen = STATE.stats["live_sessions"][recording] = {"frames": 0, "bytes": 0, **(handshake or {})}

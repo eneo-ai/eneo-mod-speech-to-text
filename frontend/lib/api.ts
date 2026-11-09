@@ -301,8 +301,8 @@ export interface FlowReviewStepContract {
 
 type LiveTranscriptionUnavailableReason =
   | "transcription_disabled"
-  | "transcription_service_mode"
   | "model_unavailable"
+  | "live_model_unavailable"
   | "model_not_realtime";
 
 /**

@@ -47,7 +47,7 @@ När körningen är klar kan talarna namnges: "Namnge talare" i transkriberingen
 
 ## Live-text (Strömma)
 
-Strömma visar texten medan användaren spelar in. Inspelningen laddas upp och flödet körs som i Spela in; har en enda live-session hört hela inspelningen, och den är en enda fil, använder körningen sessionens text i stället för att transkribera ljudet en gång till. Run-kontraktets `transcription.live` säger i förväg om flödets ljudsteg kan visa live-text. Ticketen hämtas och används bara av BFF:en, och ramarna och Eneos händelser går oförändrade åt vardera håll.
+Strömma visar texten medan användaren spelar in. Inspelningen laddas upp och flödet körs som i Spela in, och flödets transkriberingsmodell skriver alltid den slutliga texten. Har flödet en egen modell för livetext är dess text bara en förhandsvisning: körningen transkriberar inspelningen med transkriberingsmodellen. Visar transkriberingsmodellen själv livetexten, har en enda live-session hört hela inspelningen och är inspelningen en enda fil, använder körningen sessionens text i stället för att transkribera ljudet en gång till. Eneos `ready` säger med `keeps_transcript` om sessionens text kan bli körningens; är den `false` väntar körningen inte på sessionens sista text, och inget `transcript_id` kommer. Run-kontraktets `transcription.live` säger i förväg om flödets ljudsteg kan visa live-text. Ticketen hämtas och används bara av BFF:en, och ramarna och Eneos händelser går oförändrade åt vardera håll.
 
 ```mermaid
 sequenceDiagram

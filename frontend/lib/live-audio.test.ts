@@ -62,7 +62,10 @@ class FakeSocket implements LiveSocket {
     this.closedWith = code;
   }
   ready() {
-    this.onmessage?.({ data: JSON.stringify({ type: "ready", sample_rate: 16_000, max_seconds: 18_000 }) });
+    // As Eneo when the flow's transcription model streams: the session may keep its text.
+    this.onmessage?.({
+      data: JSON.stringify({ type: "ready", sample_rate: 16_000, max_seconds: 18_000, keeps_transcript: true }),
+    });
   }
   samples() {
     return this.sent
