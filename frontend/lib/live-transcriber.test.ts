@@ -27,8 +27,9 @@ class FakeSocket implements LiveSocket {
   event(payload: object) {
     this.onmessage?.({ data: JSON.stringify(payload) });
   }
-  ready() {
-    this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000 });
+  // Eneo keeps the text of a session through the flow's transcription model; a separate live model only previews.
+  ready(keepsTranscript = true) {
+    this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000, keeps_transcript: keepsTranscript });
   }
   drop(code: number, reason?: string) {
     this.onclose?.({ code, reason });
@@ -313,6 +314,21 @@ test("a counted stop is awaited: finishing from the recording's end until its fi
   broken.live.end();
   broken.live.stop();
   assert.ok(!broken.live.getSnapshot().finishing, "a stop without a count brings no transcript to wait for");
+});
+
+test("a preview Eneo will not keep holds nothing up: no count, no wait, no transcript id", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready(false);
+  live.pushFrame(frame(1));
+  live.end();
+  assert.ok(!live.getSnapshot().finishing, "the flow's transcription model writes the text after the recording");
+  live.stop();
+  assert.ok(!live.getSnapshot().finishing);
+  assert.equal(sockets[0].sent.at(-1), JSON.stringify({ type: "stop" }));
+  sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Hej."], "the preview still gets its final text");
+  assert.equal(live.getSnapshot().transcriptId, undefined);
 });
 
 test("after a break no session heard the whole recording: the stop carries no count, and a transcript id is not kept", () => {

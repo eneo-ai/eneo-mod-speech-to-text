@@ -5,13 +5,16 @@
  * keeps the audio on the device the whole time; nothing here touches it, and
  * a live-text failure only changes this client's status.
  *
- * The relay's contract: wait for `ready` {sample_rate, max_seconds}, send
- * binary frames of at most 64 KiB, end with {"type":"stop", produced_samples};
- * it answers `transcript.delta` {text}, `transcript.done` {text,
- * transcript_id?} and `error` {code, message, retryable}. A refused handshake
- * (signed out, wrong origin) shows only as close 1006; 1011 means Eneo's
- * socket broke. The address may name the recording (?recording_id=): Eneo
- * then keeps the text of a session that heard all of it, as transcript_id.
+ * The relay's contract: wait for `ready` {sample_rate, max_seconds,
+ * keeps_transcript}, send binary frames of at most 64 KiB, end with
+ * {"type":"stop", produced_samples}; it answers `transcript.delta` {text},
+ * `transcript.done` {text, transcript_id?} and `error` {code, message,
+ * retryable}. A refused handshake (signed out, wrong origin) shows only as
+ * close 1006; 1011 means Eneo's socket broke. The address may name the
+ * recording (?recording_id=): Eneo then keeps the text of a session that heard
+ * all of it, as transcript_id, when the flow's transcription model streamed it
+ * (`keeps_transcript`). A separate live model's text is only a preview: the
+ * run transcribes the recording, and nothing waits for that text.
  * It names the user the page was opened for (?expected_user=), as a browser
  * cannot set a header on a socket: for another user's session the relay
  * accepts the socket and closes it 1008 "user_changed"; a session that ends
@@ -316,7 +319,14 @@ export class LiveTranscriber {
 
   private onMessage(socket: LiveSocket, data: unknown) {
     if (socket !== this.socket) return;
-    let event: { type?: unknown; text?: unknown; code?: unknown; retryable?: unknown; transcript_id?: unknown };
+    let event: {
+      type?: unknown;
+      text?: unknown;
+      code?: unknown;
+      retryable?: unknown;
+      transcript_id?: unknown;
+      keeps_transcript?: unknown;
+    };
     try {
       event = JSON.parse(String(data));
     } catch {
@@ -324,6 +334,8 @@ export class LiveTranscriber {
     }
     switch (event.type) {
       case "ready":
+        // Eneo will not keep this session's text: it is a preview from the start.
+        if (event.keeps_transcript !== true) this.lose();
         this.ready = true;
         this.attempts = 0;
         this.retryMs = FIRST_RETRY_MS;
