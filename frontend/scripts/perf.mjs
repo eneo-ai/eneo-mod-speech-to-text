@@ -15,7 +15,8 @@
 //   per page (list, setup, result, review)  LCP, CLS and total blocking time of a load with an empty cache, and the INP of
 //                                           a fixed list of interactions on that page
 //   list -> flow                            the time from the click on a flow to its setup page
-//   long transcript                         INP of the filter, search and correction on the run with 2,000 passages
+//   long transcript                         INP of the filter, search and correction on the run with 2,000 passages, and in
+//                                           the last run where their frames went (style, layout, paint) by a Chrome trace
 // CLS and INP are stable and fail the run when over budget (exit 2, apart from a run that broke, exit 1); LCP, blocking
 // time and times are reported, since a shared machine moves them. A run writes test-results/perf/<label>.json (ignored by git).
 // .github/workflows/perf.yml measures a pull request's base and head on the same runner and compares them with
@@ -262,14 +263,46 @@ async function open(ctx, profile) {
   await cdp.send("Network.clearBrowserCache");
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
   await page.addInitScript(OBSERVE);
-  return page;
+  return { page, cdp };
+}
+
+// The frame after an interaction's handlers, split by Chrome's trace into the browser's work: style (UpdateLayoutTree),
+// layout and paint (PrePaint, Paint, Layerize), in ms. Event Timing says how long the frame took; this says what it did.
+const FRAME_WORK = { style: ["UpdateLayoutTree"], layout: ["Layout"], paint: ["PrePaint", "Paint", "Layerize"] };
+async function traced(cdp, act) {
+  const events = [];
+  const collect = ({ value }) => events.push(...value);
+  cdp.on("Tracing.dataCollected", collect);
+  await cdp.send("Tracing.start", { categories: "devtools.timeline", transferMode: "ReportEvents" });
+  try {
+    await act();
+  } finally {
+    const complete = new Promise((done) => cdp.once("Tracing.tracingComplete", done));
+    await cdp.send("Tracing.end");
+    await complete;
+    cdp.off("Tracing.dataCollected", collect);
+  }
+  // The interaction's longest event; its trace times are microseconds, its data milliseconds from the page's origin.
+  const longest = events
+    .filter((event) => event.name === "EventTiming" && event.ph === "b" && event.args.data?.interactionId)
+    .reduce((a, b) => (b.args.data.duration > (a?.args.data.duration ?? 0) ? b : a), null);
+  if (!longest) return null;
+  const { duration, processingEnd, timeStamp } = longest.args.data;
+  const from = longest.ts + (processingEnd - timeStamp) * 1000;
+  const to = longest.ts + duration * 1000;
+  const split = {};
+  for (const [part, names] of Object.entries(FRAME_WORK))
+    split[part] = events
+      .filter((event) => names.includes(event.name) && event.tid === longest.tid && event.ts >= from && event.ts < to)
+      .reduce((sum, event) => sum + (event.dur ?? 0) / 1000, 0);
+  return split;
 }
 
 /**
  * The longest an interaction took from input to paint, 0 for one under a frame; INP of one interaction. Its phases are
  * logged, so a change in a run's number shows where the time went.
  */
-async function interaction(page, act, label) {
+async function interaction({ page }, act, label) {
   await page.evaluate(() => (window.__perf.events = []));
   await act(page).catch((error) => {
     error.message = `${label}: ${error.message}`;
@@ -284,12 +317,41 @@ async function interaction(page, act, label) {
   return longest.duration;
 }
 
+/**
+ * The long transcript's interactions once more, each under a Chrome trace, for where their frames went. Apart from the
+ * measured rounds, since tracing slows the page: these numbers are reported, never budgeted.
+ */
+async function frames(browser, profile) {
+  const found = [];
+  const ctx = await signedIn(browser, profile);
+  const { page, cdp } = await open(ctx, profile);
+  await page.goto(BASE + LONG);
+  await page.getByText("Välkomna till kommunstyrelsens möte.").first().waitFor({ state: "attached", timeout: 60_000 });
+  await page.waitForTimeout(1500);
+  for (const [label, act] of LONG_ACTIONS) {
+    const split = await traced(cdp, async () => {
+      await act(page).catch((error) => {
+        error.message = `long transcript ${label}: ${error.message}`;
+        throw error;
+      });
+      await page.waitForTimeout(600);
+    });
+    if (!split) continue;
+    const ms = (value) => Math.round(value);
+    console.log(`  long transcript ${label} frame: style ${ms(split.style)} + layout ${ms(split.layout)} + paint ${ms(split.paint)}`);
+    for (const [part, value] of Object.entries(split)) found.push(["long transcript frame", `${part} ${label}`, "report", "ms", value]);
+  }
+  await ctx.close();
+  return found;
+}
+
 // One round on one profile: the numbers by [group, name, kind, unit].
 async function round(browser, profile) {
   const found = [];
   const ctx = await signedIn(browser, profile);
   for (const [group, path, loaded, actions] of PAGES) {
-    const page = await open(ctx, profile);
+    const opened = await open(ctx, profile);
+    const { page } = opened;
     await page.goto(BASE + path);
     await loaded(page);
     await page.waitForTimeout(1000);
@@ -298,13 +360,13 @@ async function round(browser, profile) {
       tbt: window.__perf.tasks.reduce((sum, duration) => sum + Math.max(0, duration - 50), 0),
     }));
     found.push([group, "LCP", "report", "ms", load.lcp], [group, "blocking time", "report", "ms", load.tbt]);
-    for (const [label, act] of actions) found.push([group, `INP ${label}`, "inp", "ms", await interaction(page, act, `${group} ${label}`)]);
+    for (const [label, act] of actions) found.push([group, `INP ${label}`, "inp", "ms", await interaction(opened, act, `${group} ${label}`)]);
     found.push([group, "CLS", "cls", "", await page.evaluate(() => window.__perf.cls)]);
     await page.close();
   }
 
   // From the list to a flow, with the list read for a moment.
-  const page = await open(ctx, profile);
+  const { page } = await open(ctx, profile);
   await page.goto(`${BASE}/flows`);
   const link = page.getByRole("link", { name: /Nämndmöte till rapport/ });
   await link.waitFor();
@@ -315,7 +377,8 @@ async function round(browser, profile) {
   found.push(["list to flow", "time", "report", "ms", Date.now() - started]);
   await page.close();
 
-  const long = await open(ctx, profile);
+  const opened = await open(ctx, profile);
+  const long = opened.page;
   const begun = Date.now();
   await long.goto(BASE + LONG);
   await long.getByRole("heading", { name: /Dokumentet är klart/ }).waitFor();
@@ -323,7 +386,7 @@ async function round(browser, profile) {
   found.push(["long transcript", "ready", "report", "ms", Date.now() - begun]);
   found.push(["long transcript", "elements", "report", "count", await long.evaluate(() => document.querySelectorAll("*").length)]);
   await long.waitForTimeout(1500);
-  for (const [label, act] of LONG_ACTIONS) found.push(["long transcript", `INP ${label}`, "inpLong", "ms", await interaction(long, act, `long transcript ${label}`)]);
+  for (const [label, act] of LONG_ACTIONS) found.push(["long transcript", `INP ${label}`, "inpLong", "ms", await interaction(opened, act, `long transcript ${label}`)]);
   await ctx.close();
   return found;
 }
@@ -352,6 +415,7 @@ try {
           error.message = `${profile}, run ${n}: ${error.message}`;
           throw error;
         });
+        if (n === runs) found.push(...(await frames(browser, settings)));
         for (const [group, metric, kind, unit, value] of found) {
           const key = `${profile}\t${group}\t${metric}`;
           samples.set(key, { profile, group, name: metric, kind, unit, values: [...(samples.get(key)?.values ?? []), value] });
