@@ -1190,6 +1190,27 @@ export const STATES: State[] = [
       await expect(page.getByRole("status").filter({ hasText: "Skriv rapporten" })).toBeVisible();
     },
   },
+  {
+    // Streamed audio whose live text the run decided not to use, said while the transcription model transcribes it: the
+    // graph carries the reason, and the step results read then name the model.
+    name: "run-progress-live-fallback",
+    go: async (page) => {
+      await page.route(new RegExp(`/graph/\\?run_id=${ids.runs.running}`), async (route) => {
+        const response = await route.fetch();
+        const graph = await response.json();
+        graph.nodes[0] = { ...graph.nodes[0], run_status: "running", live_fallback_reason: "not_received" };
+        graph.nodes[1] = { ...graph.nodes[1], run_status: null };
+        await route.fulfill({ response, json: graph });
+      });
+      const transcribing = { id: ids.results.transcribe, step_id: ids.steps.audio, step_order: 1, status: "running" };
+      await page.route(new RegExp(`/runs/${ids.runs.running}/steps/?$`), (route) =>
+        route.fulfill({ json: [{ ...transcribing, live_fallback_reason: "not_received", transcript_origin: null, transcript_model_name: "KB Whisper" }] }),
+      );
+      await run(page, ids.runs.running);
+      await heading(page, "Dokumentet skapas");
+      await expect(page.getByRole("note").filter({ hasText: "Livetexten kunde inte användas" })).toBeVisible();
+    },
+  },
   { name: "flow-slow", go: async (page) => void (await flowSlow(page)) },
   { name: "flows-slow", go: async (page) => void (await flowsSlow(page)) },
   { name: "run-opening-slow", go: async (page) => void (await runOpeningSlow(page)) },

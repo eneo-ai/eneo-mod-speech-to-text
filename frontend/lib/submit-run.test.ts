@@ -2049,6 +2049,43 @@ test("a new run keeps a recording's parts together where the step says so and th
   assert.deepEqual(input(parts(false), offering), { file_ids: ["file-a", "file-b"] }, "separate files stay separate");
 });
 
+test("a new run of streamed audio goes as streamed with the live transcript the run named; other audio goes as files alone", () => {
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed" };
+  const audio = (submitted: Partial<FlowRunStep>): FlowRunStep[] => [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"], ...submitted },
+  ];
+  const offering: RunContract = {
+    ...contract,
+    transcription: {
+      live: { available: true, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      single_recording: true,
+    },
+  };
+  const input = (steps: FlowRunStep[]) => {
+    const request = startAgainRequest(failed, steps, offering);
+    assert.ok(request && "body" in request);
+    return (request.body.step_inputs as Record<string, Json>)["step-audio"];
+  };
+
+  assert.deepEqual(
+    input(audio({ runtime_input_single_recording: true, runtime_input_streamed: true, runtime_input_live_transcript_id: "transcript-1" })),
+    { file_ids: ["file-a", "file-b"], single_recording: true, streamed: true, live_transcript_id: "transcript-1" },
+  );
+  assert.deepEqual(
+    input(audio({ runtime_input_streamed: true, runtime_input_live_transcript_id: null })),
+    { file_ids: ["file-a", "file-b"], streamed: true },
+    "streamed with no live text that reached the run: streamed still",
+  );
+  assert.deepEqual(input(audio({ runtime_input_streamed: false })), { file_ids: ["file-a", "file-b"] }, "recorded or chosen: neither");
+  assert.deepEqual(
+    input(audio({ runtime_input_streamed: false, runtime_input_live_transcript_id: "transcript-1" })),
+    { file_ids: ["file-a", "file-b"] },
+    "a transcript only beside streamed",
+  );
+  assert.deepEqual(input(audio({})), { file_ids: ["file-a", "file-b"] }, "a step that says nothing of it: neither");
+});
+
 test("a recording sent as one is not sent past Eneo's longest recording, all parts together; parts sent apart are", async () => {
   const HOUR = 3_600_000;
   const store = await openRecordingStore({});

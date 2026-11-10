@@ -1,7 +1,8 @@
 /**
  * Follows a run while it goes, reading only what is made for polling: the run
  * status and the run-pinned graph (the step results are audited per read, so
- * they are read once, after the end). Stops when the run ends or waits for a
+ * they are read once, after the end, and once more while it goes when a step
+ * decides against its live text). Stops when the run ends or waits for a
  * review, and polls rarely while the page is hidden.
  */
 
@@ -95,6 +96,8 @@ export const HIDDEN_POLL_MS = 30_000;
 export interface RunSnapshot {
   run: FlowRunSummary;
   graph: FlowGraph | null;
+  /** The step results, read once when the graph first says a step's live text is not used: they name the model. */
+  steps: FlowRunStep[];
 }
 
 export interface PageVisibility {
@@ -110,7 +113,7 @@ interface FollowOptions {
   onTrouble?: (failing: boolean) => void;
   page?: PageVisibility;
   online?: OnlineStatus;
-  deps?: { getStatus: typeof getRunStatus; getGraph: typeof getRunGraph };
+  deps?: { getStatus: typeof getRunStatus; getGraph: typeof getRunGraph; getSteps?: typeof getRunSteps };
 }
 
 /** The last snapshot once the run ended or waits for review; null when aborted. */
@@ -123,10 +126,11 @@ export async function followRun(
     onTrouble,
     page = documentVisibility(),
     online = onlineStatus,
-    deps = { getStatus: getRunStatus, getGraph: getRunGraph },
+    deps = { getStatus: getRunStatus, getGraph: getRunGraph, getSteps: getRunSteps },
   }: FollowOptions,
 ): Promise<RunSnapshot | null> {
   let graph: FlowGraph | null = null;
+  let steps: FlowRunStep[] | null = null;
   let failing = false;
   const inTrouble = (now: boolean) => {
     if (now !== failing) onTrouble?.((failing = now));
@@ -148,7 +152,13 @@ export async function followRun(
     );
     if (signal.aborted) break;
     graph = latest ?? graph;
-    const snapshot = { run, graph };
+    // A step decided against its live text: its results are read once, for the model's name (a failed read leaves the
+    // notice without it).
+    if (steps === null && graph?.nodes.some((node) => node.live_fallback_reason)) {
+      steps = await (deps.getSteps ?? getRunSteps)(flowId, runId).catch(() => []);
+      if (signal.aborted) break;
+    }
+    const snapshot = { run, graph, steps: steps ?? [] };
     onSnapshot(snapshot);
     if (runOutcome(run.status) || run.status === "awaiting_review") return snapshot;
     await pause(page.hidden ? HIDDEN_POLL_MS : VISIBLE_POLL_MS, signal, page);

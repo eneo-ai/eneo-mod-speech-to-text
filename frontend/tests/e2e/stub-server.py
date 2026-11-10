@@ -557,20 +557,21 @@ def run_state(run_id, poll=False):
     transcription step says where its text came from when the audio was streamed."""
     if run_id in STARTED:
         STARTED[run_id] += poll
-        if STARTED[run_id] <= 2:
-            return RUNS[RUN["running"]]
-        done = REGENERATED.get(run_id, DONE)
+        state = RUNS[RUN["running"]] if STARTED[run_id] <= 2 else REGENERATED.get(run_id, DONE)
         if run_id in TRANSCRIBED:
-            done = dict(done, steps=[dict(done["steps"][0], **TRANSCRIBED[run_id]), *done["steps"][1:]])
-        return done
+            # Its transcription is done while the report is written: the step says so from then on.
+            first, *rest = state["steps"] or [TRANSCRIBE_STEP]
+            state = dict(state, steps=[dict(first, **TRANSCRIBED[run_id]), *rest])
+        return state
     return RUNS.get(run_id)
 
 
 def transcribed(live_transcript_id):
-    """The source of a streamed recording's transcript, as Eneo's run step gives it."""
+    """A streamed recording's transcription step as Eneo gives it: how its audio was sent, and where its text came from."""
+    sent = {"runtime_input_streamed": True, "runtime_input_live_transcript_id": live_transcript_id}
     if live_transcript_id in LIVE_TRANSCRIPTS:
-        return {"transcript_origin": "live", "live_fallback_reason": None, "transcript_model_name": "Strömmande modell"}
-    return {"transcript_origin": "batch", "live_fallback_reason": "not_found" if live_transcript_id else "not_received",
+        return {**sent, "transcript_origin": "live", "live_fallback_reason": None, "transcript_model_name": "Strömmande modell"}
+    return {**sent, "transcript_origin": "batch", "live_fallback_reason": "not_found" if live_transcript_id else "not_received",
             "transcript_model_name": "KB Whisper"}
 
 
@@ -1018,7 +1019,10 @@ class Handler(BaseHTTPRequestHandler):
             run = run_state(parse_qs(url.query).get("run_id", [""])[0])
             if run is None:
                 return self.send(200, graph)
-            return self.send(200, {**graph, "nodes": [dict(n, run_status=s) for n, s in zip(graph["nodes"], run["step_status"])]})
+            # Each step's status in the run, and why an audio step's live text is not used, once it decided.
+            reasons = {step["step_id"]: step.get("live_fallback_reason") for step in run["steps"]}
+            return self.send(200, {**graph, "nodes": [dict(n, run_status=s, live_fallback_reason=reasons.get(n["id"]))
+                                                      for n, s in zip(graph["nodes"], run["step_status"])]})
         if rest == ["runs"]:
             # Intervju till sammanfattning has a run waiting for its review: the setup lists it first, and it is the whole list.
             earlier = {

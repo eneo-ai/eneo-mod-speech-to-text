@@ -473,13 +473,17 @@ export function startAgainRequest(
     fileIds.length <= (step.max_files ?? Infinity) &&
     (contract.form_fields ?? []).every((field) => !field.required || filledValue(payload[field.name]));
   if (!step || !fits) return { review: INPUT_CHANGED };
+  const input: Json = { file_ids: fileIds };
   // Parts of one recording stay one recording where the flow still takes the flag.
-  const together =
-    fileIds.length > 1 && inputStep.runtime_input_single_recording === true && contract.transcription?.single_recording === true;
-  const body: Json = {
-    expected_flow_version: contract.published_flow_version,
-    step_inputs: { [step.step_id]: together ? { file_ids: fileIds, single_recording: true } : { file_ids: fileIds } },
-  };
+  if (fileIds.length > 1 && inputStep.runtime_input_single_recording === true && contract.transcription?.single_recording === true) {
+    input.single_recording = true;
+  }
+  // Audio streamed while recorded goes as it went, with the live transcript the run named: Eneo uses it or says why not.
+  if (inputStep.runtime_input_streamed === true) {
+    input.streamed = true;
+    if (inputStep.runtime_input_live_transcript_id) input.live_transcript_id = inputStep.runtime_input_live_transcript_id;
+  }
+  const body: Json = { expected_flow_version: contract.published_flow_version, step_inputs: { [step.step_id]: input } };
   if (Object.keys(payload).length > 0) body.input_payload_json = payload;
   // The run's own choices, where the flow still lets a run make them; a choice it no longer offers is dropped.
   const option = contract.transcription?.speaker_labels;

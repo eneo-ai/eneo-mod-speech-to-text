@@ -78,6 +78,56 @@ test("follows the status and the run-pinned graph until the run ends, then stops
   assert.deepEqual(calls, { status: 3, graph: 3 }, "nothing is read after the run ended");
 });
 
+test("the step results are read once while the run goes, when the graph first says a step's live text is not used", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const statuses = ["running", "running", "running", "completed"];
+  const reasons = [null, "not_received", "not_received", "not_received"] as const;
+  const calls = { status: 0, steps: 0 };
+  const read = [{ id: "result-1", step_id: "s1", status: "running", live_fallback_reason: "not_received" as const, transcript_model_name: "KB Whisper" }];
+  const snapshots: RunSnapshot[] = [];
+  const done = followRun("flow-1", "run-1", {
+    signal: new AbortController().signal,
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: {
+      getStatus: async () => run(statuses[calls.status++]),
+      getGraph: async () => {
+        const plain = graph("running");
+        return { ...plain, nodes: [{ ...plain.nodes[0], live_fallback_reason: reasons[calls.status - 1] }] };
+      },
+      getSteps: async () => {
+        calls.steps += 1;
+        return read;
+      },
+    },
+  });
+  for (let poll = 1; poll < statuses.length; poll += 1) {
+    await until(() => snapshots.length === poll);
+    t.mock.timers.tick(VISIBLE_POLL_MS);
+  }
+  await done;
+
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.steps), [[], read, read, read], "from the poll that saw the reason on");
+  assert.equal(calls.steps, 1, "read once");
+
+  // A run whose live text is used, or that streamed nothing, never reads them while it goes.
+  const { deps } = eneo(["running", "completed"]);
+  let plainReads = 0;
+  let polls = 0;
+  const plainDone = followRun("flow-1", "run-1", {
+    signal: new AbortController().signal,
+    onSnapshot: () => (polls += 1),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: { ...deps, getSteps: async () => ((plainReads += 1), []) },
+  });
+  await until(() => polls === 1);
+  t.mock.timers.tick(VISIBLE_POLL_MS);
+  assert.equal((await plainDone)?.run.status, "completed");
+  assert.equal(plainReads, 0);
+});
+
 test("a run that waits for review ends the follow so the review can open", async () => {
   const { deps } = eneo(["awaiting_review"]);
   const result = await followRun("flow-1", "run-1", {

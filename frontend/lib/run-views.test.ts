@@ -21,7 +21,8 @@ import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
 import type { TranscriptContext } from "./transcript-context";
 import { EMPTY_CORRECTIONS } from "./transcript-corrections";
-import { listOwnRuns, type FlowRunStep } from "./api";
+import { listOwnRuns, type FlowGraph, type FlowRunStep, type LiveFallbackReason } from "./api";
+import { goingLiveFallbackNotice } from "./run-result";
 import { inStaticRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
@@ -436,6 +437,32 @@ test("a failed or cancelled run says which model was to write the text, unless i
     /Körningen fick ingen färdig livetext\. Ljudfilerna transkriberades med KB Whisper i stället\./,
   );
   assert.doesNotMatch(failure([transcription({ status: "failed" })]), /Livetexten/);
+});
+
+test("while the run goes, a step that decided against its live text says so under the steps, with the model once it is read", () => {
+  const node = (run_status: string, live_fallback_reason: LiveFallbackReason | null = "not_received"): FlowGraph => ({
+    nodes: [{ id: "step-audio", label: "Transkribera", type: "llm", step_order: 1, input_source: null, input_type: "audio", output_type: null, output_mode: null, run_status, live_fallback_reason }],
+    edges: [],
+  });
+  const read = [transcription({ status: "running", live_fallback_reason: "not_received", transcript_model_name: "KB Whisper" })];
+  const going = (graph: FlowGraph, steps: FlowRunStep[] = read) =>
+    markup(
+      createElement(RunProgress, {
+        flowName: "Nämndmöte",
+        steps: running,
+        stage: "Analysera mötesinnehållet",
+        liveFallback: goingLiveFallbackNotice(graph, steps),
+        onCancel: async () => undefined,
+      }),
+    );
+
+  const html = going(node("running"));
+  assert.match(text(html), /Livetexten kunde inte användas Körningen fick ingen färdig livetext\. Ljudfilerna transkriberas med KB Whisper i stället\./);
+  assert.match(html, /<div role="note"[^>]*astryx-banner-frame/, "a note, not announced");
+  assert.deepEqual(statuses(html), ["Pågår: Analysera mötesinnehållet"], "the stage stays the one status region");
+  assert.match(text(going(node("completed"))), /Ljudfilerna transkriberades med KB Whisper i stället\./, "its step done: transcribed");
+  assert.match(text(going(node("running"), [])), /Körningen fick ingen färdig livetext\.(?! Ljudfilerna)/, "results not read: the reason alone");
+  assert.doesNotMatch(text(going(node("running", null))), /Livetexten/, "no reason: nothing");
 });
 
 test("a failure names the step, says Kördes inte for the rest, keeps the run id copyable and retries only with the same audio", () => {

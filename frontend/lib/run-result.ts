@@ -1,4 +1,4 @@
-import type { FlowRunError, FlowRunResult, FlowRunStep, LiveFallbackReason, RunContract, RunContractStepInput } from "./api";
+import type { FlowGraph, FlowRunError, FlowRunResult, FlowRunStep, LiveFallbackReason, RunContract, RunContractStepInput } from "./api";
 import { REVIEW_EXPIRED, REVIEW_REJECTED } from "./errors";
 import { makesText } from "./flow-output";
 import { formatDuration } from "./format";
@@ -196,11 +196,12 @@ const LIVE_FALLBACK_REASONS: Record<LiveFallbackReason, string> = {
 };
 
 /**
- * Why a step's streamed audio was not written by its live text, and which model wrote it or was to: on a finished run
- * and on one that failed or was cancelled. It says the files were transcribed only once Eneo says the transcription
- * model wrote the transcript. Null when no step's live text went unused.
+ * Why a step's streamed audio was not written by its live text, and which model wrote it, writes it (`going`, while the
+ * run goes and the step runs) or was to: on a finished run and on one that failed or was cancelled. It says the files
+ * were transcribed only once Eneo says the transcription model wrote the transcript. Null when no step's live text went
+ * unused.
  */
-export function liveFallbackNotice(steps: readonly FlowRunStep[]): { title: string; description: string } | null {
+export function liveFallbackNotice(steps: readonly FlowRunStep[], going = false): { title: string; description: string } | null {
   const step = steps.find((candidate) => candidate.live_fallback_reason);
   if (!step?.live_fallback_reason) return null;
   const model = step.transcript_model_name;
@@ -208,9 +209,32 @@ export function liveFallbackNotice(steps: readonly FlowRunStep[]): { title: stri
     ? null
     : step.transcript_origin === "batch"
       ? `Ljudfilerna transkriberades med ${model} i stället.`
-      : `Ljudfilerna skulle transkriberas med ${model} i stället.`;
+      : going && step.status === "running"
+        ? `Ljudfilerna transkriberas med ${model} i stället.`
+        : `Ljudfilerna skulle transkriberas med ${model} i stället.`;
   return {
     title: "Livetexten kunde inte användas",
     description: [LIVE_FALLBACK_REASONS[step.live_fallback_reason], transcribed].filter(Boolean).join(" "),
   };
+}
+
+/**
+ * The same while the run goes: the run-pinned graph says which step decided against its live text and how far the step
+ * is, and the step results read when it decided (RunSnapshot) name the model.
+ */
+export function goingLiveFallbackNotice(graph: FlowGraph | null, steps: readonly FlowRunStep[]) {
+  const node = graph?.nodes.find((candidate) => candidate.live_fallback_reason);
+  if (!node) return null;
+  const read = steps.find((step) => step.step_id === node.id);
+  const status = node.run_status ?? "";
+  const step: FlowRunStep = {
+    id: node.id,
+    step_id: node.id,
+    status,
+    live_fallback_reason: node.live_fallback_reason,
+    // A step that decided against its live text and is done was transcribed by the model.
+    transcript_origin: status === "completed" ? "batch" : null,
+    transcript_model_name: read?.transcript_model_name,
+  };
+  return liveFallbackNotice([step], true);
 }

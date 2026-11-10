@@ -458,6 +458,10 @@ export interface FlowRunStep {
   finished_at?: string;
   /** Sant när körningen skickade stegets filer som delar av samma inspelning. */
   runtime_input_single_recording?: boolean;
+  /** The run sent the step's audio as streamed while it was recorded (`streamed`). */
+  runtime_input_streamed?: boolean;
+  /** The live transcript the run named for the step (`live_transcript_id`), whether or not it could be used. */
+  runtime_input_live_transcript_id?: string | null;
   /** Who wrote the step's transcript, once written: the live text, or the transcription model ("batch"). */
   transcript_origin?: "live" | "batch" | null;
   /** Why the transcription model transcribes audio that was streamed instead of using its live text; set as the step decides. */
@@ -837,6 +841,8 @@ export interface FlowGraphNode {
   output_mode: string | null;
   /** Only on a run-pinned graph (`?run_id=`): the step's status in that run, null before it has one. */
   run_status?: FlowStepResultStatus | string | null;
+  /** Only on a run-pinned graph, audio steps: why the run's streamed audio is transcribed instead, as the step decides. */
+  live_fallback_reason?: LiveFallbackReason | null;
 }
 
 interface FlowGraphEdge {
