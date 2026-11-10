@@ -404,8 +404,9 @@ test("a result whose streamed audio the transcription model wrote says why and w
       reason,
     );
     // A state that lasts, read where it stands: no live region, and nothing to open first.
-    const banner = html.slice(html.indexOf('<div role="note"'), html.indexOf("i stället."));
-    assert.match(banner, /^<div role="note"[^>]*astryx-banner-frame/, reason);
+    const frame = html.lastIndexOf("<div", html.lastIndexOf("astryx-banner-frame", html.indexOf("Livetexten kunde inte användas")));
+    const banner = html.slice(frame, html.indexOf("i stället."));
+    assert.match(banner, /^<div (?=[^>]*role="note")[^>]*astryx-banner-frame/, reason);
     assert.doesNotMatch(banner, /role="(alert|status)"|aria-live|aria-expanded|<button/, reason);
   }
   const used = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], {
@@ -458,7 +459,7 @@ test("while the run goes, a step that decided against its live text says so unde
 
   const html = going(node("running"));
   assert.match(text(html), /Livetexten kunde inte användas Körningen fick ingen färdig livetext\. Ljudfilerna transkriberas med KB Whisper i stället\./);
-  assert.match(html, /<div role="note"[^>]*astryx-banner-frame/, "a note, not announced");
+  assert.match(html, /<div (?=[^>]*role="note")[^>]*astryx-banner-frame/, "a note, not announced");
   assert.deepEqual(statuses(html), ["Pågår: Analysera mötesinnehållet"], "the stage stays the one status region");
   assert.match(text(going(node("completed"))), /Ljudfilerna transkriberades med KB Whisper i stället\./, "its step done: transcribed");
   assert.match(text(going(node("running"), [])), /Körningen fick ingen färdig livetext\.(?! Ljudfilerna)/, "results not read: the reason alone");
