@@ -140,7 +140,7 @@ export interface SubmitParams extends RetryOptions {
   speakerLabels?: boolean;
   /** An upper bound on the speakers, as max_speakers; left out, Eneo uses the flow's own count field or decides. */
   maxSpeakers?: number;
-  /** Eneo's stored live transcript of the one file, used instead of transcribing it again; never beside more files. */
+  /** Eneo's stored live transcript of the files, the parts of one recording in order, used instead of transcribing them again. */
   liveTranscriptId?: string | null;
   /** The files are the parts of one recording; sent as such only where the contract offers it. */
   singleRecording?: boolean;
@@ -206,7 +206,7 @@ export async function submitRun(
   const body: Json = { expected_flow_version: contract.published_flow_version };
   if (fileIds.length > 0) {
     const input: Json = { file_ids: fileIds };
-    if (fileIds.length === 1 && params.liveTranscriptId) input.live_transcript_id = params.liveTranscriptId;
+    if (params.liveTranscriptId) input.live_transcript_id = params.liveTranscriptId;
     if (fileIds.length > 1 && params.singleRecording && contract.transcription?.single_recording) {
       input.single_recording = true;
     }
@@ -278,14 +278,14 @@ const refusedByEneo = (error: unknown) =>
   error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
 
 /**
- * Eneo will not use the request's live transcript: gone or expired, bound to another file, or not beside one audio
- * file. It made no run for the request, so the same request without it goes under the same key, and the run
+ * Eneo will not use the request's live transcript: gone or expired, bound to other files, or not of as many parts as
+ * the files. It made no run for the request, so the same request without it goes under the same key, and the run
  * transcribes the audio as for any recording.
  */
 const LIVE_TRANSCRIPT_REFUSALS = new Set([
   "flow_run_live_transcript_not_found",
   "flow_run_live_transcript_already_bound",
-  "flow_run_live_transcript_requires_one_audio_file",
+  "flow_run_live_transcript_files_mismatch",
 ]);
 
 /** The request without the live transcript it names, or null when it names none. */

@@ -133,6 +133,8 @@ interface CaptureSnapshot {
    * it, so what it has of the audio is not known until the device answers (then `recording` is the stored one).
    */
   awaitingDevice: boolean;
+  /** Parts this capture has begun, one per recorder: a new one on the same `stream` is a handover at the flow's limit. */
+  partsBegun: number;
 }
 
 /** The screen's wake lock, as the recording bar tells of it. */
@@ -270,6 +272,7 @@ export class RecordingCapture {
     stalled: false,
     stopping: false,
     awaitingDevice: false,
+    partsBegun: 0,
   };
   private listeners = new Set<() => void>();
   private store: RecordingStore | null = null;
@@ -754,7 +757,8 @@ export class RecordingCapture {
     // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
     this.scheduleHandover(part);
-    this.set({ status: "recording", stream, remainingMs: this.remainingTier(part) });
+    // Told in the same task as the recorder's start, so live text marks the new part as close to it as it can.
+    this.set({ status: "recording", stream, partsBegun: this.snapshot.partsBegun + 1, remainingMs: this.remainingTier(part) });
     return part;
   }
 

@@ -7,7 +7,7 @@
  *
  * The relay's contract: wait for `ready` {sample_rate, max_seconds,
  * keeps_transcript}, send binary frames of at most 64 KiB, end with
- * {"type":"stop", produced_samples}; it answers `transcript.delta` {text},
+ * {"type":"stop", produced_samples, part_start_samples?}; it answers `transcript.delta` {text},
  * `transcript.done` {text, transcript_id?} and `error` {code, message,
  * retryable}. A refused handshake (signed out, wrong origin) shows only as
  * close 1006; 1011 means Eneo's socket broke. The address may name the
@@ -141,6 +141,8 @@ export class LiveTranscriber {
   // Samples the recording gave live text. Only a recording heard whole, by one connection with no audio lost on the
   // way, sends the count and keeps its transcript; anything else makes its text a preview, for good.
   private produced = 0;
+  // Where each part after the first began, in the same count: strictly increasing, each above 0.
+  private partStarts: number[] = [];
   private whole = true;
   private opened = false;
   private recording = true;
@@ -218,6 +220,16 @@ export class LiveTranscriber {
     if (this.buffered.length > MAX_BUFFERED_FRAMES) this.buffered.shift();
   }
 
+  /**
+   * A new part of the recording began where the audio given so far, and `unsent` samples not yet in a frame, end.
+   * A start that cannot be told apart from the one before (no audio between) is left out.
+   */
+  markPart(unsent: number): void {
+    if (this.stopping) return;
+    const at = this.produced + unsent;
+    if (at > (this.partStarts.at(-1) ?? 0)) this.partStarts.push(at);
+  }
+
   /** The recorder paused or went on: paused, no new try starts, and a session silence ended starts again. */
   setRecording(on: boolean): void {
     this.recording = on;
@@ -238,8 +250,11 @@ export class LiveTranscriber {
     this.commit();
     this.clear("retryTimer");
     if (this.socket && this.ready) {
-      // A recording not heard whole names no count, and Eneo keeps no text.
-      const stop = this.whole ? { type: "stop", produced_samples: this.produced } : { type: "stop" };
+      // A recording not heard whole names no count, and Eneo keeps no text. A part that began at the end has no audio.
+      const partStarts = this.partStarts.filter((at) => at < this.produced);
+      const stop = this.whole
+        ? { type: "stop", produced_samples: this.produced, ...(partStarts.length > 0 && { part_start_samples: partStarts }) }
+        : { type: "stop" };
       this.socket.send(JSON.stringify(stop));
       if (this.whole) this.awaitFinalText();
       else this.stopAwaiting();

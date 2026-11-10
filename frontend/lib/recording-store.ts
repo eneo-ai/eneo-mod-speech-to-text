@@ -60,8 +60,8 @@ export interface StoredRecording {
    */
   submission?: RunRequest | null;
   /**
-   * Eneo's stored text of the live session (Strömma) that heard the whole recording, while it is one part: the
-   * run uses it instead of transcribing the audio again. A new part forgets it.
+   * Eneo's stored text of the live session (Strömma) that heard the whole recording, of its parts in order: the run
+   * uses it instead of transcribing the audio again. A part added later forgets it.
    */
   liveTranscriptId?: string | null;
 }
@@ -505,16 +505,16 @@ export class RecordingStore {
   }
 
   /**
-   * Keeps a live session's stored transcript with the recording it heard whole: still one part, and no send begun,
-   * which asked without it. Under the lease, so a send or a new part in another tab is never written over; a
-   * recording in use is left as it is, and its run transcribes the audio.
+   * Keeps a live session's stored transcript with the recording it heard whole: still the `parts` it heard, and no
+   * send begun, which asked without it. Under the lease, so a send or a new part in another tab is never written over;
+   * a recording in use is left as it is, and its run transcribes the audio.
    */
-  async keepLiveTranscript(id: string, transcriptId: string): Promise<void> {
+  async keepLiveTranscript(id: string, transcriptId: string, parts: number): Promise<void> {
     if (!(await this.lease(id))) return;
     try {
       await this.change(async () => {
         const recording = await this.load(id);
-        if (recording?.parts.length === 1 && !sealed(recording)) {
+        if (recording?.parts.length === parts && !sealed(recording)) {
           await this.write({ ...recording, liveTranscriptId: transcriptId });
         }
       });

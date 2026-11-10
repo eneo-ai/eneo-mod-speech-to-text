@@ -282,6 +282,62 @@ test("the stop counts every sample the recording gave the session, before the wa
   assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop", produced_samples: 301 * 1_600 + 500 });
 });
 
+test("a recording in parts says with its stop where each later part began, counted as the stop counts", () => {
+  const { live, sockets } = setup();
+  live.start();
+  live.pushFrame(frame(1));
+  // A part begins with 700 samples handed to the encoder but not yet in a frame.
+  live.markPart(700);
+  sockets[0].ready();
+  live.pushFrame(frame(2));
+  live.pushFrame(frame(3));
+  live.markPart(0);
+  live.pushFrame(frame(4));
+  live.stop();
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), {
+    type: "stop",
+    produced_samples: 4 * 1_600,
+    part_start_samples: [1_600 + 700, 3 * 1_600],
+  });
+});
+
+test("a part start that cannot be placed is left out: at the first sample, a repeat, or at the recording's end", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.markPart(0);
+  live.pushFrame(frame(1));
+  live.markPart(0);
+  live.markPart(0);
+  live.pushFrame(frame(2));
+  live.markPart(0);
+  live.stop();
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), {
+    type: "stop",
+    produced_samples: 2 * 1_600,
+    part_start_samples: [1_600],
+  });
+});
+
+test("a recording in one part, or one not heard whole, sends no part starts", () => {
+  const one = setup();
+  one.live.start();
+  one.sockets[0].ready();
+  one.live.pushFrame(frame(1));
+  one.live.stop();
+  assert.deepEqual(JSON.parse(one.sockets[0].sent.at(-1) as string), { type: "stop", produced_samples: 1_600 });
+
+  const lost = setup();
+  lost.live.start();
+  lost.sockets[0].ready();
+  lost.live.pushFrame(frame(1));
+  lost.live.markPart(0);
+  lost.live.pushFrame(frame(2));
+  lost.live.lose();
+  lost.live.stop();
+  assert.deepEqual(JSON.parse(lost.sockets[0].sent.at(-1) as string), { type: "stop" });
+});
+
 test("the only session's final text brings Eneo's stored transcript of the recording", () => {
   const { live, sockets } = setup();
   live.start();

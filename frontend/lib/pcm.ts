@@ -43,6 +43,11 @@ export class Pcm16Encoder {
     this.bufferStart = keepFrom;
   }
 
+  /** Samples made but not yet handed on in a frame. */
+  get pending(): number {
+    return this.filled;
+  }
+
   /** Hands on a partial last frame and forgets input not yet used: the next push starts a new stretch. */
   flush(): void {
     if (this.filled > 0) this.onFrame(this.frame.buffer.slice(0, this.filled * 2));

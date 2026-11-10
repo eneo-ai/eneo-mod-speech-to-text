@@ -138,6 +138,7 @@ function fakeLiveClient() {
         },
         listen: (stream) => void streams.push(stream),
         setRecording: (on) => void calls.push(on ? "recording" : "paused"),
+        markPart: () => void calls.push("part"),
         stop: () => void calls.push("stop"),
         dispose: () => void calls.push("dispose"),
       };
@@ -1666,6 +1667,7 @@ function relayedLiveClient() {
         subscribe: transcriber.subscribe,
         listen: () => undefined,
         setRecording: (on) => transcriber.setRecording(on),
+        markPart: () => transcriber.markPart(0),
         stop: () => transcriber.stop(),
         dispose: () => transcriber.dispose(),
       };
@@ -2117,13 +2119,13 @@ test("the wait for Strömma's text ends after 20 s, its keeping included; after 
   let write!: () => void;
   let writing: Promise<void> | null = null;
   // A slow write under the recording's lease, holding the store's one queue as the real store does.
-  store.keepLiveTranscript = async (id, transcriptId) => {
+  store.keepLiveTranscript = async (id, transcriptId, parts) => {
     if (!(await store.lease(id))) return;
     writing = new Promise<void>((resolve) => (write = resolve));
     await writing;
     writing = null;
     store.release(id);
-    await keep(id, transcriptId);
+    await keep(id, transcriptId, parts);
   };
   const get = store.get.bind(store);
   store.get = async (id) => {
@@ -2196,27 +2198,47 @@ test("live text stops with the recorder, before the stopped recording is stored"
   await stopping;
 });
 
-test("a transcript never stays with a recording of two parts, and live text for a new part names no recording", async () => {
+test("a part on a new microphone is no handover: live text hears the new stream, which leaves its text a preview", async () => {
   const live = fakeLiveClient();
-  const { session, store, streams, recorders } = await setup({ live: live.client });
+  const { session, streams, recorders } = await setup({ live: live.client });
   session.setContract(audioContract());
   await session.start();
-  const id = session.getSnapshot().recording!.id;
   recorders[0].emit("first");
   streams[0].track.dispatchEvent(new Event("ended")); // a phone call takes the microphone
   await until(() => session.getSnapshot().phase === "interrupted");
   await session.continueRecording();
   recorders[1].emit("second");
+  await session.stop();
+  assert.deepEqual(live.streams, [streams[0], streams[1]]);
+  assert.ok(!live.calls.includes("part"));
+});
+
+test("a recording handed over to new parts tells live text where each began, waits for its text, and keeps it for all its parts until one is added", async () => {
+  const live = fakeLiveClient();
+  const { session, store, streams, recorders } = await setup({ live: live.client });
+  const [audio] = audioContract().steps_requiring_input!;
+  // Room for 10 bytes beside a part's headroom (two chunks and the overlap at 4 bytes a millisecond).
+  session.setContract(audioContract({ steps_requiring_input: [{ ...audio, max_files: 3, max_file_size_bytes: 16_610 }] }));
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("x".repeat(20));
+  assert.equal(recorders.length, 2, "a new part on the same microphone");
+  assert.deepEqual(live.streams, [streams[0]]);
+  assert.deepEqual(live.calls.filter((call) => call === "part"), ["part"], "marked as it began");
+  recorders[1].emit("second");
   live.report({ finishing: true });
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
-  assert.equal(session.getSnapshot().finishing, false, "no wait for a transcript it cannot keep");
-  live.report({ status: "ended", transcriptId: "transcript-1" });
-  await settle();
-  assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
+  assert.equal(session.getSnapshot().finishing, true, "the text of both parts is waited for");
+
+  live.report({ status: "ended", finishing: false, transcriptId: "transcript-1" });
+  await until(() => !session.getSnapshot().finishing, "the transcript kept");
+  const stored = await store.get(id);
+  assert.deepEqual([stored?.parts.length, stored?.liveTranscriptId], [2, "transcript-1"]);
 
   await session.continueStopped();
-  assert.deepEqual(live.recordingIds, [id, undefined], "a preview only");
+  assert.equal((await store.get(id))?.liveTranscriptId, null, "a part added later forgets it");
+  assert.deepEqual(live.recordingIds, [id, undefined], "the new part's live text is a preview only");
 });
 
 test("a microphone that cannot start leaves no live session behind", async () => {
