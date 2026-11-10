@@ -458,8 +458,23 @@ export interface FlowRunStep {
   finished_at?: string;
   /** Sant när körningen skickade stegets filer som delar av samma inspelning. */
   runtime_input_single_recording?: boolean;
+  /** Who wrote the step's transcript, once written: the live text, or the transcription model ("batch"). */
+  transcript_origin?: "live" | "batch" | null;
+  /** Why the transcription model transcribes audio that was streamed instead of using its live text; set as the step decides. */
+  live_fallback_reason?: LiveFallbackReason | null;
+  /** The model that wrote the step's transcript, or that the step chose to write it when live_fallback_reason is set. */
+  transcript_model_name?: string | null;
   [k: string]: unknown;
 }
+
+export type LiveFallbackReason =
+  | "not_received"
+  | "not_found"
+  | "already_bound"
+  | "files_mismatch"
+  | "unavailable"
+  | "no_timing"
+  | "duration_mismatch";
 
 // ---------- Nya typer för refaktorerade Eneo-flows ----------
 

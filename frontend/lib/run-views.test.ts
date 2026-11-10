@@ -21,7 +21,7 @@ import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
 import type { TranscriptContext } from "./transcript-context";
 import { EMPTY_CORRECTIONS } from "./transcript-corrections";
-import { listOwnRuns } from "./api";
+import { listOwnRuns, type FlowRunStep } from "./api";
 import { inStaticRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
@@ -318,7 +318,11 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.doesNotMatch(html, /<main|role="main"/);
 });
 
-const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = [], extra: { onStartAgain?: () => void } = {}) =>
+const resultOf = (
+  run: Record<string, unknown>,
+  files: ResultFileView[] = [],
+  extra: { onStartAgain?: () => void; stepResults?: FlowRunStep[] } = {},
+) =>
   markup(
     createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
       flowId: "flow-1",
@@ -372,6 +376,66 @@ test("a run that sent its result on says so, with no document, and dates itself 
 
   const undated = resultOf({ result: { kind: "outbound_http" } });
   assert.doesNotMatch(text(undated), /Skapad/, "no time at all: none said");
+});
+
+/** The transcription step's result, as Eneo's steps endpoint gives it. */
+const transcription = (fields: Partial<FlowRunStep>): FlowRunStep => ({ id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", ...fields });
+// Each reason Eneo gives, in its own words.
+const FALLBACK_REASONS = {
+  not_received: "Körningen fick ingen färdig livetext.",
+  not_found: "Livetexten hittades inte.",
+  already_bound: "Livetexten hör redan till andra ljudfiler.",
+  files_mismatch: "Livetexten stämmer inte med ljudfilerna.",
+  unavailable: "Modellen som skrev livetexten är inte längre tillgänglig.",
+  no_timing: "Livetexten saknar tidsstämplar.",
+  duration_mismatch: "Ljudfilerna är inte lika långa som ljudet livetexten skrevs från.",
+} as const;
+const escaped = (words: string) => words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+test("a result whose streamed audio the transcription model wrote says why and with which model, in the open, as a note", () => {
+  for (const [reason, sentence] of Object.entries(FALLBACK_REASONS)) {
+    const html = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], {
+      stepResults: [transcription({ live_fallback_reason: reason as keyof typeof FALLBACK_REASONS, transcript_origin: "batch", transcript_model_name: "KB Whisper" })],
+    });
+    assert.match(
+      text(html),
+      new RegExp(`Livetexten kunde inte användas ${escaped(sentence)} Ljudfilerna transkriberades med KB Whisper i stället\\.`),
+      reason,
+    );
+    // A state that lasts, read where it stands: no live region, and nothing to open first.
+    const banner = html.slice(html.indexOf('<div role="note"'), html.indexOf("i stället."));
+    assert.match(banner, /^<div role="note"[^>]*astryx-banner-frame/, reason);
+    assert.doesNotMatch(banner, /role="(alert|status)"|aria-live|aria-expanded|<button/, reason);
+  }
+  const used = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], {
+    stepResults: [transcription({ transcript_origin: "live", transcript_model_name: "Voxtral" }), transcription({ id: "result-2", step_id: "step-report", step_order: 2 })],
+  });
+  assert.doesNotMatch(text(used), /Livetexten/, "the live text was used: nothing to say");
+  const nameless = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], {
+    stepResults: [transcription({ live_fallback_reason: "no_timing", transcript_origin: "batch", transcript_model_name: null })],
+  });
+  assert.match(text(nameless), /Livetexten kunde inte användas Livetexten saknar tidsstämplar\./, "no model named: the reason alone");
+  assert.doesNotMatch(text(nameless), /Ljudfilerna|i stället/, "and no model guessed");
+});
+
+test("a failed or cancelled run says which model was to write the text, unless it wrote it", () => {
+  const failure = (stepResults: FlowRunStep[], status = "failed") =>
+    text(markup(createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status, created_at: created }, failure: null, steps, stepResults, files: [] })));
+  for (const status of ["failed", "cancelled"]) {
+    for (const stepStatus of ["failed", "cancelled", "running"]) {
+      assert.match(
+        failure([transcription({ status: stepStatus, live_fallback_reason: "duration_mismatch", transcript_origin: null, transcript_model_name: "KB Whisper" })], status),
+        /Livetexten kunde inte användas Ljudfilerna är inte lika långa som ljudet livetexten skrevs från\. Ljudfilerna skulle transkriberas med KB Whisper i stället\./,
+        `${status}, its step ${stepStatus}`,
+      );
+    }
+  }
+  // Transcribed, and a later part of the run failed.
+  assert.match(
+    failure([transcription({ status: "completed", live_fallback_reason: "not_received", transcript_origin: "batch", transcript_model_name: "KB Whisper" })]),
+    /Körningen fick ingen färdig livetext\. Ljudfilerna transkriberades med KB Whisper i stället\./,
+  );
+  assert.doesNotMatch(failure([transcription({ status: "failed" })]), /Livetexten/);
 });
 
 test("a failure names the step, says Kördes inte for the rest, keeps the run id copyable and retries only with the same audio", () => {

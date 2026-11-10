@@ -15,7 +15,7 @@ import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { runOutcome, type StepView } from "@/lib/run-progress";
-import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
+import { liveFallbackNotice, outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
@@ -78,6 +78,7 @@ export function RunFailure({
   // person chose (with a new run of the same audio beside it, the filled one).
   const offerChooseInput = Boolean(onChooseInput) && (Boolean(failure?.inputMustChange) || cancelled);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
+  const fallback = liveFallbackNotice(stepResults);
   const [retrying, setRetrying] = useState(false);
 
   // The transcript's heading takes the focus and comes to the window's top, as a jump does; focus alone scrolls only as
@@ -184,6 +185,9 @@ export function RunFailure({
           </VStack>
         </VStack>
       </StateCard>
+
+      {/* Which model the run chose for the streamed audio, and why: after what went wrong and the way on, before the steps. */}
+      {fallback && <Banner status="info" role="note" collapsible={false} title={fallback.title} description={fallback.description} />}
 
       {steps.length > 0 && (
         <VStack as="section" aria-labelledby="run-steps" gap={3}>

@@ -508,6 +508,13 @@ PAUSES = {RUN["review"]: CHECKPOINT, RUN["reviewText"]: TEXT_CHECKPOINT, RUN["re
 # Runs started through the page: id -> status reads so far.
 STARTED = {}
 NEW_RUN = itertools.count(1)
+# As Eneo's relay: from the client's stop, how long the session may take to store its transcript.
+FINISH_WITHIN_SECONDS = 75
+# The live transcripts the relay stored, by id, and what a started run with streamed audio did with its own: Eneo uses
+# a transcript it can bind, and otherwise transcribes the files and says why.
+LIVE_TRANSCRIPTS = set()
+NEW_TRANSCRIPT = itertools.count(1)
+TRANSCRIBED = {}
 LIVE_WORDS = ("Välkomna till kommunstyrelsens möte. Första punkten gäller budgeten för nästa år. "
               "Ramen höjs med två procent och förvaltningen återkommer med en plan i oktober.").split(" ")
 
@@ -546,11 +553,25 @@ STATE = State()
 
 
 def run_state(run_id, poll=False):
-    """A started run counts its status polls: running for two, then done (one made again as REGENERATED has it)."""
+    """A started run counts its status polls: running for two, then done (one made again as REGENERATED has it). Its
+    transcription step says where its text came from when the audio was streamed."""
     if run_id in STARTED:
         STARTED[run_id] += poll
-        return REGENERATED.get(run_id, DONE) if STARTED[run_id] > 2 else RUNS[RUN["running"]]
+        if STARTED[run_id] <= 2:
+            return RUNS[RUN["running"]]
+        done = REGENERATED.get(run_id, DONE)
+        if run_id in TRANSCRIBED:
+            done = dict(done, steps=[dict(done["steps"][0], **TRANSCRIBED[run_id]), *done["steps"][1:]])
+        return done
     return RUNS.get(run_id)
+
+
+def transcribed(live_transcript_id):
+    """The source of a streamed recording's transcript, as Eneo's run step gives it."""
+    if live_transcript_id in LIVE_TRANSCRIPTS:
+        return {"transcript_origin": "live", "live_fallback_reason": None, "transcript_model_name": "Strömmande modell"}
+    return {"transcript_origin": "batch", "live_fallback_reason": "not_found" if live_transcript_id else "not_received",
+            "transcript_model_name": "KB Whisper"}
 
 
 def ws_send(wfile, opcode, payload):
@@ -663,7 +684,8 @@ class Handler(BaseHTTPRequestHandler):
         text = lambda obj: ws_send(self.wfile, 1, json.dumps(obj).encode())
         # As Eneo: a named recording keeps its text when the flow's transcription model streams it.
         named = "recording_id" in parse_qs(urlparse(self.path).query)
-        text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000, "keeps_transcript": named})
+        text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000, "keeps_transcript": named,
+              "finish_within_seconds": FINISH_WITHIN_SECONDS})
         said, frames = [], 0
         with STATE.lock:
             seen = STATE.stats["live_sessions"][recording] = {"frames": 0, "bytes": 0, **(handshake or {})}
@@ -683,8 +705,13 @@ class Handler(BaseHTTPRequestHandler):
                     if frames % 4 == 0:
                         said.append(LIVE_WORDS[len(said) % len(LIVE_WORDS)])
                         text({"type": "transcript.delta", "text": (" " if len(said) > 1 else "") + said[-1]})
-                elif opcode == 1 and json.loads(data).get("type") == "stop":
-                    text({"type": "transcript.done", "text": " ".join(said)})
+                elif opcode == 1 and (message := json.loads(data)).get("type") == "stop":
+                    done = {"type": "transcript.done", "text": " ".join(said)}
+                    # A named session stores its text when the stop counts the audio it was made from, and names it.
+                    if named and isinstance(message.get("produced_samples"), int):
+                        done["transcript_id"] = f"00000000-0000-4000-b000-{next(NEW_TRANSCRIPT):012d}"
+                        LIVE_TRANSCRIPTS.add(done["transcript_id"])
+                    text(done)
                     ws_send(self.wfile, 8, struct.pack(">H", 1000))
                     return
                 elif opcode == 9:  # a ping, as Eneo's server answers it: the backend's client closes a socket that does not pong in 20 s
@@ -1106,8 +1133,18 @@ class Handler(BaseHTTPRequestHandler):
             if rest == ["runs"]:
                 if fid == F3:
                     return self.send(409, {"code": "flow_run_stale_version", "detail": "The flow has a newer published version."})
+                # As Eneo checks a step's input: a live transcript only with streamed audio, and streamed only with files.
+                audio = next(iter((self.json_body().get("step_inputs") or {}).values()), {})
+                if audio.get("live_transcript_id") and not audio.get("streamed"):
+                    return self.send(400, {"code": "flow_run_live_transcript_requires_streamed",
+                                           "message": "A live transcript is sent only with streamed audio: set streamed."})
+                if audio.get("streamed") and not audio.get("file_ids"):
+                    return self.send(400, {"code": "flow_run_streamed_requires_audio_files",
+                                           "message": "Only the audio files of an audio step can have been streamed."})
                 run_id = new_run_id(next(NEW_RUN))
                 STARTED[run_id] = 0
+                if audio.get("streamed"):
+                    TRANSCRIBED[run_id] = transcribed(audio.get("live_transcript_id"))
                 return self.send(201, {"id": run_id, "flow_id": fid, "status": "queued",
                                        "flow_version": FLOWS[fid]["published"]["published_version"]})
         return self.send(404, {"detail": "stub: " + self.path})

@@ -1,4 +1,4 @@
-import type { FlowRunError, FlowRunResult, RunContract, RunContractStepInput } from "./api";
+import type { FlowRunError, FlowRunResult, FlowRunStep, LiveFallbackReason, RunContract, RunContractStepInput } from "./api";
 import { REVIEW_EXPIRED, REVIEW_REJECTED } from "./errors";
 import { makesText } from "./flow-output";
 import { formatDuration } from "./format";
@@ -182,4 +182,35 @@ export function runErrorView(
     ? [`Steg ${error.step_order}`, stepName].filter(Boolean).join(", ")
     : null;
   return { summary, step, detail: error.message, inputMustChange: error.code in INPUT_HINTS };
+}
+
+// Eneo's own words for each reason (web-next's run page), so a person reads the same in both.
+const LIVE_FALLBACK_REASONS: Record<LiveFallbackReason, string> = {
+  not_received: "Körningen fick ingen färdig livetext.",
+  not_found: "Livetexten hittades inte.",
+  already_bound: "Livetexten hör redan till andra ljudfiler.",
+  files_mismatch: "Livetexten stämmer inte med ljudfilerna.",
+  unavailable: "Modellen som skrev livetexten är inte längre tillgänglig.",
+  no_timing: "Livetexten saknar tidsstämplar.",
+  duration_mismatch: "Ljudfilerna är inte lika långa som ljudet livetexten skrevs från.",
+};
+
+/**
+ * Why a step's streamed audio was not written by its live text, and which model wrote it or was to: on a finished run
+ * and on one that failed or was cancelled. It says the files were transcribed only once Eneo says the transcription
+ * model wrote the transcript. Null when no step's live text went unused.
+ */
+export function liveFallbackNotice(steps: readonly FlowRunStep[]): { title: string; description: string } | null {
+  const step = steps.find((candidate) => candidate.live_fallback_reason);
+  if (!step?.live_fallback_reason) return null;
+  const model = step.transcript_model_name;
+  const transcribed = !model
+    ? null
+    : step.transcript_origin === "batch"
+      ? `Ljudfilerna transkriberades med ${model} i stället.`
+      : `Ljudfilerna skulle transkriberas med ${model} i stället.`;
+  return {
+    title: "Livetexten kunde inte användas",
+    description: [LIVE_FALLBACK_REASONS[step.live_fallback_reason], transcribed].filter(Boolean).join(" "),
+  };
 }

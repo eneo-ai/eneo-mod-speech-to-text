@@ -27,9 +27,10 @@ class FakeSocket implements LiveSocket {
   event(payload: object) {
     this.onmessage?.({ data: JSON.stringify(payload) });
   }
-  // Eneo keeps the text of a session that names its recording; keepsTranscript false is one it will not keep.
-  ready(keepsTranscript = true) {
-    this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000, keeps_transcript: keepsTranscript });
+  // Eneo keeps the text of a session that names its recording; keepsTranscript false is one it will not keep. The
+  // session may take finishWithin seconds from the stop to store its transcript.
+  ready(keepsTranscript = true, finishWithin: unknown = 75) {
+    this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000, keeps_transcript: keepsTranscript, finish_within_seconds: finishWithin });
   }
   drop(code: number, reason?: string) {
     this.onclose?.({ code, reason });
@@ -370,6 +371,44 @@ test("a counted stop is awaited: finishing from the recording's end until its fi
   broken.live.end();
   broken.live.stop();
   assert.ok(!broken.live.getSnapshot().finishing, "a stop without a count brings no transcript to wait for");
+});
+
+test("a stop waits for the final text as long as the session's ready said, from the stop on: a text after 20 s is still kept", () => {
+  const { live, sockets, at } = setup();
+  live.start();
+  at(1_000);
+  sockets[0].ready(true, 75);
+  live.pushFrame(frame(1));
+  at(30_000);
+  live.stop();
+  at(30_000 + 74_999);
+  assert.equal(live.getSnapshot().finishing, true, "the clock started at the stop, not at ready");
+  sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.deepEqual([live.getSnapshot().transcriptId, live.getSnapshot().finishing, live.getSnapshot().status], ["transcript-1", false, "ended"]);
+
+  const late = setup();
+  late.live.start();
+  late.sockets[0].ready(true, 75);
+  late.live.pushFrame(frame(1));
+  late.live.stop();
+  late.at(75_000);
+  assert.deepEqual([late.live.getSnapshot().finishing, late.live.getSnapshot().status], [false, "ended"], "the budget spent, it goes on without it");
+  assert.equal(late.sockets[0].closedWith, 1000);
+  late.sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.equal(late.live.getSnapshot().transcriptId, undefined, "a text after the budget is not taken");
+});
+
+test("a ready that gives no usable budget leaves nothing to wait for after the stop", () => {
+  for (const finishWithin of [undefined, 0, -5, "75", null]) {
+    const { live, sockets, at } = setup();
+    live.start();
+    const budget = finishWithin === undefined ? {} : { finish_within_seconds: finishWithin }; // undefined: no field at all
+    sockets[0].event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000, keeps_transcript: true, ...budget });
+    live.pushFrame(frame(1));
+    live.stop();
+    at(0);
+    assert.deepEqual([live.getSnapshot().finishing, live.getSnapshot().status], [false, "ended"], String(finishWithin));
+  }
 });
 
 test("a session Eneo will not keep holds nothing up: no count, no wait, no transcript id", () => {
@@ -794,9 +833,9 @@ test("a stop waits for the final text as long as the relay allows it, in the bac
 
   const late = setup();
   late.live.start();
-  late.sockets[0].ready();
+  late.sockets[0].ready(); // 75 s
   late.live.stop();
-  late.elapse(60_000);
+  late.elapse(75_000);
   assert.equal(late.live.getSnapshot().status, "ended");
 });
 

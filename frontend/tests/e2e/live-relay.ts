@@ -7,7 +7,7 @@ const SENTENCE = "Första punkten gäller budgeten för nästa år och ramen hö
 export async function longLiveText(page: Page) {
   await page.routeWebSocket(/\/api\/live\//, (ws) => {
     const send = (message: object) => ws.send(JSON.stringify(message));
-    send({ type: "ready", sample_rate: 16000, max_seconds: 18000 });
+    send({ type: "ready", sample_rate: 16000, max_seconds: 18000, finish_within_seconds: 75 });
     let sent = 0;
     const timer = setInterval(() => {
       if (sent >= WORDS) return clearInterval(timer);

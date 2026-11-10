@@ -6,15 +6,17 @@
  * a live-text failure only changes this client's status.
  *
  * The relay's contract: wait for `ready` {sample_rate, max_seconds,
- * keeps_transcript}, send binary frames of at most 64 KiB, end with
- * {"type":"stop", produced_samples, part_start_samples?}; it answers `transcript.delta` {text},
- * `transcript.done` {text, transcript_id?} and `error` {code, message,
- * retryable}. A refused handshake (signed out, wrong origin) shows only as
- * close 1006; 1011 means Eneo's socket broke. The address may name the
- * recording (?recording_id=): Eneo then keeps the text of a session that heard
- * all of it, as transcript_id (`keeps_transcript`), and the run uses that
- * text instead of transcribing the recording. When Eneo keeps nothing, the
- * run transcribes the recording and nothing waits for the session's text.
+ * keeps_transcript, finish_within_seconds}, send binary frames of at most
+ * 64 KiB, end with {"type":"stop", produced_samples, part_start_samples?}; it
+ * answers `transcript.delta` {text}, `transcript.done` {text, transcript_id?}
+ * and `error` {code, message, retryable}. The final text is waited for
+ * finish_within_seconds from the stop, Eneo's own budget, and no longer. A
+ * refused handshake (signed out, wrong origin) shows only as close 1006; 1011
+ * means Eneo's socket broke. The address may name the recording
+ * (?recording_id=): Eneo then keeps the text of a session that heard all of
+ * it, as transcript_id (`keeps_transcript`), and the run uses that text
+ * instead of transcribing the recording. Without it the run transcribes the
+ * recording and says why (submit-run.ts sends the recording as streamed).
  * It names the user the page was opened for (?expected_user=), as a browser
  * cannot set a header on a socket: for another user's session the relay
  * accepts the socket and closes it 1008 "user_changed"; a session that ends
@@ -101,9 +103,6 @@ const FIRST_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
 // Tries before the first session was live; after that, live text keeps trying.
 const START_ATTEMPTS = 3;
-// How long a stop waits, in the background, for the relay's final text: Eneo's allowance for it
-// (flow_live_transcription_final_text_timeout_seconds, 60 s by default).
-const FINAL_TEXT_WAIT_MS = 60_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
 const SENTENCE_ENDS = /[.!?…]["”'’)\]]*(?=\s|$)/g;
 
@@ -153,6 +152,8 @@ export class LiveTranscriber {
   private retryTimer: unknown = null;
   private commitTimer: unknown = null;
   private stopTimer: unknown = null;
+  // How long, from the stop, the session may take to store its transcript: Eneo's own budget, from its `ready`.
+  private finishWithinMs = 0;
   private lastWordsAt: number | null = null;
   // The start, or a break: the next piece opens a paragraph. After a pause in speech, one opens at a sentence's end.
   private opensParagraph = true;
@@ -258,7 +259,7 @@ export class LiveTranscriber {
       this.socket.send(JSON.stringify(stop));
       if (this.whole) this.awaitFinalText();
       else this.stopAwaiting();
-      this.stopTimer = this.deps.setTimer(() => this.finish(), FINAL_TEXT_WAIT_MS);
+      this.stopTimer = this.deps.setTimer(() => this.finish(), this.finishWithinMs);
     } else {
       this.finish();
     }
@@ -341,6 +342,7 @@ export class LiveTranscriber {
       retryable?: unknown;
       transcript_id?: unknown;
       keeps_transcript?: unknown;
+      finish_within_seconds?: unknown;
     };
     try {
       event = JSON.parse(String(data));
@@ -351,6 +353,9 @@ export class LiveTranscriber {
       case "ready":
         // Eneo will not keep this session's text: it is a preview from the start.
         if (event.keeps_transcript !== true) this.lose();
+        // Without a budget there is nothing to wait for after the stop.
+        this.finishWithinMs =
+          typeof event.finish_within_seconds === "number" && event.finish_within_seconds > 0 ? event.finish_within_seconds * 1000 : 0;
         this.ready = true;
         this.attempts = 0;
         this.retryMs = FIRST_RETRY_MS;

@@ -349,6 +349,15 @@ export async function sending(page: Page) {
  */
 export const NO_CONFIRMED_WORDS: Expectation = { console: /status of 404.*\/transcript-words\//, optional: true };
 
+/** The run's transcription step as Eneo gives it when the live text of streamed audio was not used, and why. */
+async function liveTextNotUsed(page: Page, runId: string, source: { live_fallback_reason: string; transcript_origin: string | null }) {
+  await page.route(new RegExp(`/runs/${runId}/steps/?$`), async (route) => {
+    const response = await route.fetch();
+    const [transcription, ...rest] = await response.json();
+    await route.fulfill({ response, json: [{ ...transcription, ...source, transcript_model_name: "KB Whisper" }, ...rest] });
+  });
+}
+
 export async function run(page: Page, id: string, flow = ids.flows.flow1) {
   declare(page, [NO_CONFIRMED_WORDS]);
   await page.goto(`/flows/${flow}?run=${id}`);
@@ -1357,6 +1366,26 @@ export const STATES: State[] = [
       });
       await run(page, ids.runs.failed);
       await heading(page, "Körningen avbröts");
+    },
+  },
+  {
+    // Streamed audio whose live text Eneo could not use: the transcription model wrote the text, and the result says why.
+    name: "result-live-fallback",
+    go: async (page) => {
+      await liveTextNotUsed(page, ids.runs.done, { live_fallback_reason: "not_received", transcript_origin: "batch" });
+      await run(page, ids.runs.done);
+      await heading(page, "Dokumentet är klart");
+      await expect(page.getByRole("note").filter({ hasText: "Livetexten kunde inte användas" })).toBeVisible();
+    },
+  },
+  {
+    // The same on a run whose transcription went through and whose report failed: said above the steps.
+    name: "failure-live-fallback",
+    go: async (page) => {
+      await liveTextNotUsed(page, ids.runs.failed, { live_fallback_reason: "duration_mismatch", transcript_origin: "batch" });
+      await run(page, ids.runs.failed);
+      await heading(page, "Dokumentet kunde inte skapas");
+      await expect(page.getByRole("note").filter({ hasText: "Livetexten kunde inte användas" })).toBeVisible();
     },
   },
   {

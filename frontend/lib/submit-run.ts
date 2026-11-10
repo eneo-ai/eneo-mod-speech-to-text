@@ -140,7 +140,12 @@ export interface SubmitParams extends RetryOptions {
   speakerLabels?: boolean;
   /** An upper bound on the speakers, as max_speakers; left out, Eneo uses the flow's own count field or decides. */
   maxSpeakers?: number;
-  /** Eneo's stored live transcript of the files, the parts of one recording in order, used instead of transcribing them again. */
+  /**
+   * The files are a recording streamed to live text as it was made (Strömma): its live text is the transcript asked
+   * for, and when Eneo cannot use it the run says why. Whatever became of the live session.
+   */
+  streamed?: boolean;
+  /** Eneo's stored live transcript of the streamed files, the parts of one recording in order; sent only with `streamed`. */
   liveTranscriptId?: string | null;
   /** The files are the parts of one recording; sent as such only where the contract offers it. */
   singleRecording?: boolean;
@@ -206,7 +211,10 @@ export async function submitRun(
   const body: Json = { expected_flow_version: contract.published_flow_version };
   if (fileIds.length > 0) {
     const input: Json = { file_ids: fileIds };
-    if (params.liveTranscriptId) input.live_transcript_id = params.liveTranscriptId;
+    if (params.streamed) {
+      input.streamed = true;
+      if (params.liveTranscriptId) input.live_transcript_id = params.liveTranscriptId;
+    }
     if (fileIds.length > 1 && params.singleRecording && contract.transcription?.single_recording) {
       input.single_recording = true;
     }
@@ -277,27 +285,6 @@ const lengthUnknown = (error: unknown) =>
 const refusedByEneo = (error: unknown) =>
   error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
 
-/**
- * Eneo will not use the request's live transcript: gone or expired, bound to other files, or not of as many parts as
- * the files. It made no run for the request, so the same request without it goes under the same key, and the run
- * transcribes the audio as for any recording.
- */
-const LIVE_TRANSCRIPT_REFUSALS = new Set([
-  "flow_run_live_transcript_not_found",
-  "flow_run_live_transcript_already_bound",
-  "flow_run_live_transcript_files_mismatch",
-]);
-
-/** The request without the live transcript it names, or null when it names none. */
-function withoutLiveTranscript({ body, idempotencyKey }: RunRequest): RunRequest | null {
-  const inputs = body.step_inputs as Record<string, Json> | undefined;
-  if (!inputs || !Object.values(inputs).some((input) => "live_transcript_id" in input)) return null;
-  const plain = Object.fromEntries(
-    Object.entries(inputs).map(([stepId, { live_transcript_id: _, ...input }]) => [stepId, input]),
-  );
-  return { body: { ...body, step_inputs: plain }, idempotencyKey };
-}
-
 async function sendLeased(
   store: RecordingStore,
   id: string,
@@ -321,22 +308,12 @@ async function sendLeased(
   };
   const ask = (request: RunRequest) =>
     askRun(() => attempt(params.flowId, request.body, request.idempotencyKey, params.signal), params);
-  // Once, when Eneo will not use the live transcript: it is forgotten, and the request without it is kept and asked.
-  const withoutLive = async (error: unknown): Promise<FlowRunPublic> => {
-    const refused = error instanceof ApiError && LIVE_TRANSCRIPT_REFUSALS.has(error.code ?? "");
-    const plain = refused && asked ? withoutLiveTranscript(asked) : null;
-    if (!plain) throw error;
-    await store.dropLiveTranscript(id, plain);
-    asked = plain;
-    await params.onStarting?.(plain);
-    return ask(plain);
-  };
   let run: FlowRunPublic;
   try {
     if (asked) {
       // An earlier send never heard Eneo's answer: the same request gets the run it made.
       await params.onStarting?.(asked);
-      run = await ask(asked).catch(withoutLive);
+      run = await ask(asked);
     } else {
       // A part that ran past Eneo's time per file (a page the browser suspended past the handover) would be
       // refused only after Eneo took the run, and the device's copy with it: the recording as it is stored now
@@ -364,6 +341,8 @@ async function sendLeased(
         {
           ...params,
           idempotencyKey: `flow-run:recording:${id}`,
+          // As it was recorded, however the live session went: Eneo uses the transcript where it can, and otherwise says why.
+          streamed: recording.inputMode === "stream",
           liveTranscriptId: recording.liveTranscriptId,
           singleRecording: true,
           files: files.map((file) => {
@@ -379,7 +358,7 @@ async function sendLeased(
           },
         },
         { upload: deps?.upload ?? uploadStepRuntimeFile, startRun: attempt },
-      ).catch(withoutLive);
+      );
     }
   } catch (error) {
     // The recording's key already made a run, from another request: it is

@@ -243,7 +243,7 @@ interface SessionSnapshot {
   fileChecking: boolean;
   /** Strömma's live text for the recording, when there is one. */
   live: LiveSession | null;
-  /** Strömma's final text may still let the run use the streamed text: Skapa dokument waits for it, briefly. */
+  /** Strömma's final text may still let the run use the streamed text: Skapa dokument waits for it, as long as Eneo said it may take. */
   finishing: boolean;
   /** Skapa dokument was pressed while the final text is being finished: it sends once that is done. */
   finishQueued: boolean;
@@ -505,10 +505,6 @@ export interface LiveClient {
   open(stepId: string, recordingId?: string, earlier?: LivePiece[]): LiveSession;
 }
 
-// How long Skapa dokument waits for Strömma's final text and its keeping: measured at 4 s on an idle machine and
-// over 10 s under load, against minutes for transcribing the audio again.
-const FINISHING_WAIT_MS = 20_000;
-
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
 const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
   const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false };
@@ -596,11 +592,8 @@ export class FlowSession {
   private finishing = false;
   /** A press of Skapa dokument made during the wait, sent when the wait ends. */
   private sendQueued = false;
-  private finishingTimer: ReturnType<typeof setTimeout> | null = null;
   // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
   private keepTranscript: (() => void) | null = null;
-  // A transcript being written to the device holds the store's queue: a send meanwhile says so instead of waiting.
-  private keepInFlight = false;
   private creating = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
@@ -865,11 +858,6 @@ export class FlowSession {
     // The button says it waits; a press meanwhile is kept, and sends when the text is in.
     if (this.finishing) {
       this.sendQueued = true;
-      this.emit();
-      return false;
-    }
-    if (this.keepInFlight && this.snapshot.phase === "ready") {
-      this.problem = { title: "Texten sparas fortfarande.", detail: "Försök igen om en stund." };
       this.emit();
       return false;
     }
@@ -1165,7 +1153,9 @@ export class FlowSession {
 
   /**
    * Stops live text that named the recording. A clean session's stored transcript goes with the recording, so its
-   * run need not transcribe the audio again; while live text awaits it, and until it is kept, Skapa dokument waits.
+   * run need not transcribe the audio again; while live text awaits it (for as long as Eneo said, LiveTranscriber),
+   * and until it is kept, Skapa dokument waits. Without it the recording is sent as streamed all the same, and the run
+   * says why the transcription model wrote the text: a transcript not kept is said in the console, for support.
    */
   private stopKeepingTranscript(live: LiveSession, recordingId: string) {
     let kept = false;
@@ -1183,18 +1173,17 @@ export class FlowSession {
       if (kept || !transcriptId || status !== "stopped" || recording?.id !== recordingId) return;
       kept = true;
       this.keepTranscript = null;
-      this.keepInFlight = true;
       // The text is of the parts recorded until the stop, in order.
       const parts = recording.parts.length;
       void Promise.resolve(this.options.openStore())
         .then((store) => store.keepLiveTranscript(recordingId, transcriptId, parts))
-        .catch(() => undefined)
-        .finally(() => {
-          this.keepInFlight = false;
-          if (this.problem?.title === "Texten sparas fortfarande.") this.problem = null;
-          done();
-          this.emit();
-        });
+        .then(
+          (outcome) => {
+            if (outcome !== "kept") console.warn(`The live transcript was not kept with the recording (${outcome}).`);
+          },
+          (error: unknown) => console.warn(`The live transcript was not kept with the recording (${String(error)}).`),
+        )
+        .finally(done);
     });
     const unsubscribe = live.subscribe(() => {
       const { status, transcriptId, finishing } = live.getSnapshot();
@@ -1203,15 +1192,10 @@ export class FlowSession {
       if (status === "ended") unsubscribe();
     });
     live.stop();
-    if (!live.getSnapshot().finishing) return;
-    // The whole wait, the text and its keeping, is bounded here; after it the text is still kept if it comes.
-    this.finishing = true;
-    this.finishingTimer = setTimeout(done, FINISHING_WAIT_MS);
+    if (live.getSnapshot().finishing) this.finishing = true;
   }
 
   private clearFinishing() {
-    if (this.finishingTimer !== null) clearTimeout(this.finishingTimer);
-    this.finishingTimer = null;
     this.finishing = false;
     this.sendQueued = false;
   }
