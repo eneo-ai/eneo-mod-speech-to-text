@@ -1,5 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, Mic, Pause, Play, Plus } from "lucide-react";
+import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -23,7 +24,7 @@ import type { Playback } from "@/lib/playback";
 import { rememberPosition } from "@/lib/playback-position";
 import { fileText, runFileName, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { ofContractVersion, type StepView } from "@/lib/run-progress";
-import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
+import { liveFallbackNotice, outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
 import { IconTile } from "@/components/IconTile";
 import { useAuthenticatedUser } from "@/components/AuthGate";
@@ -114,6 +115,7 @@ export function RunResult({
   // Blank text is no text, and a run with no file either has nothing to show: the page says that, not that it is ready.
   const text = shown?.trim() ? shown : null;
   const empty = !delivered && !text && files.length === 0;
+  const fallback = liveFallbackNotice(stepResults);
   const heading = usePhaseHeading(empty ? `Resultatet är tomt · ${flowName}` : `Klart · ${flowName}`);
   const finished = run.finished_at ?? run.created_at;
   // The document's file is the result's own (Eneo's run.result, not any step's file) that can be fetched; any other
@@ -294,6 +296,8 @@ export function RunResult({
           )}
         </VStack>
       )}
+      {/* How the transcript was made, which lasts: a note read where it stands, as the run's other notes. */}
+      {fallback && <Banner status="info" role="note" collapsible={false} title={fallback.title} description={fallback.description} />}
       {regenerates && (
         <RegenerateNotice
           offer={offer}

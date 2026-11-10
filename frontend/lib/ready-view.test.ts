@@ -37,6 +37,7 @@ test("for a flow that makes text, the ready state speaks of the text, never the 
     subscribe: () => () => {},
     listen: noop,
     setRecording: noop,
+    markPart: noop,
     stop: noop,
     dispose: noop,
   };
@@ -129,6 +130,7 @@ test("after Stoppa, Strömma's live text stays to read and copy, marked as preli
     subscribe: () => () => {},
     listen: noop,
     setRecording: noop,
+    markPart: noop,
     stop: noop,
     dispose: noop,
   });

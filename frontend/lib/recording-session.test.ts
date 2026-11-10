@@ -1487,9 +1487,11 @@ test("before a part is too large to send, a new part starts, and the two overlap
   await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 3 });
   for (let i = 0; i < 4; i += 1) recorders[0].emit(CHUNK);
   assert.equal(recorders.length, 1, "room for the next chunk and the overlap");
+  assert.equal(capture.getSnapshot().partsBegun, 1);
   now = 10_000;
   recorders[0].emit(CHUNK);
   assert.equal(recorders.length, 2, "the next part starts at once");
+  assert.equal(capture.getSnapshot().partsBegun, 2, "and says so as it starts");
   assert.equal(recorders[1].state, "recording");
   assert.equal(recorders[0].state, "recording", "while the full part still records");
   assert.equal(capture.elapsedMs(), 10_000, "the recorded time goes on across parts");

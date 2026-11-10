@@ -87,7 +87,7 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
 
 /** A live session that holds one snapshot. */
 function liveOf(snapshot: LiveSnapshot): LiveSession {
-  return { getSnapshot: () => snapshot, subscribe: () => () => {}, listen: () => {}, setRecording: () => {}, stop: () => {}, dispose: () => {} };
+  return { getSnapshot: () => snapshot, subscribe: () => () => {}, listen: () => {}, setRecording: () => {}, markPart: () => {}, stop: () => {}, dispose: () => {} };
 }
 
 test("the live sheet is a named log of committed text; words still arriving are shown, not read", async () => {

@@ -79,6 +79,6 @@ Under överföringen och starten står det att sidan ska vara öppen tills flöd
 
 ## Format
 
-WebM/Opus när flödet tar emot det, annars `audio/mp4`, i mono och med en bithastighet för tal. `MediaRecorder` lämnar delar om 2 sekunder, så att ett långt möte inte samlas i en enda buffert; fem timmar blir i Chrome ungefär 72 MB. Eneo-körningen startar först när hela filen är uppladdad. Livetexten är bara en förhandstext ([Eneo-integration](eneo-integration.md#live-text-strömma)).
+WebM/Opus när flödet tar emot det, annars `audio/mp4`, i mono och med en bithastighet för tal. `MediaRecorder` lämnar delar om 2 sekunder, så att ett långt möte inte samlas i en enda buffert; fem timmar blir i Chrome ungefär 72 MB. Eneo-körningen startar först när hela filen är uppladdad. En inspelning med Strömma skickas som strömmad, och när livetexten kan användas blir den körningens text ([Eneo-integration](eneo-integration.md#live-text-strömma)).
 
 Före uppladdningen får en WebM-fil det en spelare behöver. Chrome skriver ingen längd, så den skrivs in (`frontend/lib/webm-duration.ts`). Safari markerar inga ljudblock som keyframes, och då kan Chrome och Edge inte spela filen, så varje block markeras med en byte (`frontend/lib/webm-keyframes.ts`).

@@ -714,9 +714,12 @@ const meeting: NewRecording = {
   mimeType: "audio/webm;codecs=opus",
 };
 
+/** The same meeting, streamed with Strömma as it was recorded. */
+const streamedMeeting: NewRecording = { ...meeting, inputMode: "stream" };
+
 /** A recording made and stopped in a tab, whose lease has ended. */
-async function stoppedRecording(store: RecordingStore, parts: string[][]) {
-  const recording = await store.create(meeting);
+async function stoppedRecording(store: RecordingStore, parts: string[][], made: NewRecording = meeting) {
+  const recording = await store.create(made);
   for (const chunks of parts) {
     const index = await store.startPart(recording.id);
     for (const chunk of chunks) await store.append(recording.id, index, new Blob([chunk]), 1_000);
@@ -1516,11 +1519,11 @@ test("a recording's count is kept in its stored request, and the repeat after a 
   assert.equal(eneo.runs.size, 1);
 });
 
-test("a live transcript goes beside a recording's one file, in the request a lost answer repeats; never beside two files", async (t) => {
+test("a live transcript goes beside a streamed recording's files, in the request a lost answer repeats", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const store = await openRecordingStore({});
-  const recording = await stoppedRecording(store, [["a"]]);
-  await store.keepLiveTranscript(recording.id, "transcript-1");
+  const recording = await stoppedRecording(store, [["a"]], streamedMeeting);
+  await store.keepLiveTranscript(recording.id, "transcript-1", 1);
   const eneo = fakeEneo();
   const bodies: Json[] = [];
   const upload: SubmitDeps["upload"] = async () => ({ id: "file-1" });
@@ -1543,7 +1546,7 @@ test("a live transcript goes beside a recording's one file, in the request a los
   cancel.abort();
   await assert.rejects(sending);
   t.mock.timers.reset();
-  assert.deepEqual(bodies[0].step_inputs, { "step-audio": { file_ids: ["file-1"], live_transcript_id: "transcript-1" } });
+  assert.deepEqual(bodies[0].step_inputs, { "step-audio": { file_ids: ["file-1"], streamed: true, live_transcript_id: "transcript-1" } });
 
   const run = await submitRecording(store, recording.id, params(), {
     upload,
@@ -1554,55 +1557,92 @@ test("a live transcript goes beside a recording's one file, in the request a los
   });
   assert.equal(run.id, "run-1", "the run the first request made");
   assert.deepEqual(bodies[1], bodies[0]);
-
-  const twoFiles: Json[] = [];
-  await submitRun(
-    params({ files: ["1", "2"].map((n) => ({ blob: new Blob([n]), filename: `del-${n}.webm` })), liveTranscriptId: "transcript-2" }),
-    { upload: async (_flowId, _stepId, blob) => ({ id: await blob.text() }), startRun: async (_flowId, body) => (twoFiles.push(body), queuedRun) },
-  );
-  assert.deepEqual(twoFiles[0].step_inputs, { "step-audio": { file_ids: ["1", "2"] } });
 });
 
-test("a live transcript Eneo will not use is forgotten, and the run is asked once more without it, under the same key", async () => {
+test("a live transcript of a recording in parts goes beside every part, in recording order, as one recording", async () => {
+  const offering: RunContract = {
+    ...contract,
+    transcription: {
+      live: { available: true, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      single_recording: true,
+    },
+  };
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"], ["b"], ["c"]], streamedMeeting);
+  await store.keepLiveTranscript(recording.id, "transcript-1", 3);
+  let body: Json = {};
+  await submitRecording(store, recording.id, params({ contract: offering }), {
+    upload: async (_flowId, _stepId, blob) => ({ id: `file-${await blob.text()}` }),
+    startRun: async (_flowId, asked) => {
+      body = asked;
+      return queuedRun;
+    },
+  });
+  assert.deepEqual(body.step_inputs, {
+    "step-audio": { file_ids: ["file-a", "file-b", "file-c"], streamed: true, live_transcript_id: "transcript-1", single_recording: true },
+  });
+});
+
+test("a streamed recording goes as streamed whatever became of its live text, also after a reload; a recorded one and a chosen file never do", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const tab = await openRecordingStore(device);
+  const inputsOf = async (send: (startRun: SubmitDeps["startRun"]) => Promise<unknown>) => {
+    let body: Json = {};
+    await send(async (_flowId, asked) => {
+      body = asked;
+      return queuedRun;
+    });
+    return body.step_inputs;
+  };
+  const upload: SubmitDeps["upload"] = async () => ({ id: "file-1" });
+  const send = (store: RecordingStore, id: string) => (startRun: SubmitDeps["startRun"]) => submitRecording(store, id, params(), { upload, startRun });
+
+  // No transcript with it: the live session never started, its text did not come in time, or keeping it failed.
+  const withoutText = await stoppedRecording(tab, [["a"]], streamedMeeting);
+  assert.deepEqual(await inputsOf(send(tab, withoutText.id)), { "step-audio": { file_ids: ["file-1"], streamed: true } });
+  // Left on the device, and sent after a reload from the unsent list.
+  const left = await stoppedRecording(tab, [["a"]], streamedMeeting);
+  const afterReload = await openRecordingStore(device);
+  assert.deepEqual(await inputsOf(send(afterReload, left.id)), { "step-audio": { file_ids: ["file-1"], streamed: true } });
+  // Spela in, and Ladda upp.
+  const recorded = await stoppedRecording(afterReload, [["a"]]);
+  assert.deepEqual(await inputsOf(send(afterReload, recorded.id)), { "step-audio": { file_ids: ["file-1"] } });
+  const chosen = await inputsOf((startRun) => submitRun(params({ files: [{ blob: new Blob(["a"]), filename: "mote.webm" }] }), { upload, startRun }));
+  assert.deepEqual(chosen, { "step-audio": { file_ids: ["file-1"] } });
+});
+
+test("Eneo's refusal of a streamed recording's run is the send's answer: nothing is asked again, with or without its transcript", async () => {
   const refusals = [
     apiError(404, "flow_run_live_transcript_not_found"),
     apiError(409, "flow_run_live_transcript_already_bound"),
-    apiError(400, "flow_run_live_transcript_requires_one_audio_file"),
+    apiError(400, "flow_run_live_transcript_files_mismatch"),
+    apiError(400, "flow_run_live_transcript_requires_streamed"),
+    apiError(400, "flow_run_streamed_requires_audio_files"),
+    apiError(422),
   ];
-  const withTranscript = { "step-audio": { file_ids: ["file-1"], live_transcript_id: "transcript-1" } };
-  for (const [refusal, repeated] of refusals.flatMap((refusal) => [[refusal, false], [refusal, true]] as const)) {
-    const what = `${refusal.code}${repeated ? ", on a repeat" : ""}`;
+  for (const refusal of refusals) {
     const store = await openRecordingStore({});
-    const recording = await stoppedRecording(store, [["a"]]);
-    await store.keepLiveTranscript(recording.id, "transcript-1");
-    if (repeated) {
-      // An earlier send asked with the transcript and never heard back.
-      await store.setPartFileId(recording.id, 0, "file-1");
-      await store.startSubmission(recording.id, {
-        body: { expected_flow_version: 3, step_inputs: withTranscript },
-        idempotencyKey: `flow-run:recording:${recording.id}`,
-      });
-    }
-    const asked: Array<[Json, string | undefined]> = [];
-    let kept: StoredRecording | null = null;
-    const run = await submitRecording(store, recording.id, params(), {
-      upload: async () => ({ id: "file-1" }),
-      startRun: async (_flowId, body, key) => {
-        asked.push([body, key]);
-        if (asked.length === 1) throw refusal;
-        kept = await store.get(recording.id);
-        return queuedRun;
-      },
-    });
-    assert.equal(run.id, "run-1", what);
-    assert.deepEqual(
-      asked.map(([body]) => body.step_inputs),
-      [withTranscript, { "step-audio": { file_ids: ["file-1"] } }],
-      what,
+    const recording = await stoppedRecording(store, [["a"]], streamedMeeting);
+    await store.keepLiveTranscript(recording.id, "transcript-1", 1);
+    const asked: Json[] = [];
+    await assert.rejects(
+      submitRecording(store, recording.id, params(), {
+        upload: async () => ({ id: "file-1" }),
+        startRun: async (_flowId, body) => {
+          asked.push(body);
+          throw refusal;
+        },
+      }),
+      (error) => error === refusal,
     );
-    assert.equal(asked[1][1], asked[0][1], `${what}: the same key`);
-    const stored = kept as StoredRecording | null;
-    assert.deepEqual([stored?.submission?.body, stored?.liveTranscriptId], [asked[1][0], null], `${what}: kept before it is asked`);
+    const what = `${refusal.status} ${refusal.code ?? ""}`;
+    assert.deepEqual(
+      asked.map((body) => body.step_inputs),
+      [{ "step-audio": { file_ids: ["file-1"], streamed: true, live_transcript_id: "transcript-1" } }],
+      `${what}: asked once`,
+    );
+    assert.equal((await store.get(recording.id))?.liveTranscriptId, "transcript-1", `${what}: the transcript stays with the recording`);
   }
 });
 
@@ -2007,6 +2047,43 @@ test("a new run keeps a recording's parts together where the step says so and th
   assert.deepEqual(input(parts(true), offering), { file_ids: ["file-a", "file-b"], single_recording: true });
   assert.deepEqual(input(parts(true), contract), { file_ids: ["file-a", "file-b"] }, "not offered now: dropped");
   assert.deepEqual(input(parts(false), offering), { file_ids: ["file-a", "file-b"] }, "separate files stay separate");
+});
+
+test("a new run of streamed audio goes as streamed with the live transcript the run named; other audio goes as files alone", () => {
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed" };
+  const audio = (submitted: Partial<FlowRunStep>): FlowRunStep[] => [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"], ...submitted },
+  ];
+  const offering: RunContract = {
+    ...contract,
+    transcription: {
+      live: { available: true, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      single_recording: true,
+    },
+  };
+  const input = (steps: FlowRunStep[]) => {
+    const request = startAgainRequest(failed, steps, offering);
+    assert.ok(request && "body" in request);
+    return (request.body.step_inputs as Record<string, Json>)["step-audio"];
+  };
+
+  assert.deepEqual(
+    input(audio({ runtime_input_single_recording: true, runtime_input_streamed: true, runtime_input_live_transcript_id: "transcript-1" })),
+    { file_ids: ["file-a", "file-b"], single_recording: true, streamed: true, live_transcript_id: "transcript-1" },
+  );
+  assert.deepEqual(
+    input(audio({ runtime_input_streamed: true, runtime_input_live_transcript_id: null })),
+    { file_ids: ["file-a", "file-b"], streamed: true },
+    "streamed with no live text that reached the run: streamed still",
+  );
+  assert.deepEqual(input(audio({ runtime_input_streamed: false })), { file_ids: ["file-a", "file-b"] }, "recorded or chosen: neither");
+  assert.deepEqual(
+    input(audio({ runtime_input_streamed: false, runtime_input_live_transcript_id: "transcript-1" })),
+    { file_ids: ["file-a", "file-b"] },
+    "a transcript only beside streamed",
+  );
+  assert.deepEqual(input(audio({})), { file_ids: ["file-a", "file-b"] }, "a step that says nothing of it: neither");
 });
 
 test("a recording sent as one is not sent past Eneo's longest recording, all parts together; parts sent apart are", async () => {

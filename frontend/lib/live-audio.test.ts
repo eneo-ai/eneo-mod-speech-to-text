@@ -208,6 +208,38 @@ test("the stop counts every sample the audio thread gathered for the recording, 
   assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop", produced_samples: captured });
 });
 
+test("a new part begins where the audio thread is when it hears of it, the audio still on its way included", async () => {
+  const { client, sockets, play } = setupLive();
+  const session = client.open("step-audio", "recording-1");
+  await settle();
+  session.listen(stream);
+  await settle();
+  sockets[0].ready();
+  play(0.25, 2_500); // on its way to the page when the part begins
+  session.markPart();
+  play(0.25, 1_000); // gathered before the audio thread hears of the new part
+  deliver();
+  play(0.5, 3_000); // the new part's
+  session.stop();
+  deliver();
+
+  assert.equal(sockets[0].samples().length, 6_500, "the mark holds back no audio");
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), {
+    type: "stop",
+    produced_samples: 6_500,
+    part_start_samples: [3_500],
+  });
+});
+
+test("a new part live text cannot place leaves the recording's text a preview", async () => {
+  const { client, sockets } = setupLive();
+  const session = client.open("step-audio", "recording-1");
+  sockets[0].ready();
+  session.markPart(); // no audio thread to ask
+  session.stop();
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop" });
+});
+
 test("audio live text cannot account for leaves the recording's text a preview: a new microphone stream, or a stop the audio thread never answers", async () => {
   for (const lost of ["new stream", "no answer"]) {
     const { client, sockets, play, elapse } = setupLive();

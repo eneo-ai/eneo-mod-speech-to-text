@@ -47,6 +47,7 @@ export interface StoredRecording {
   flowId: string;
   flowName: string;
   stepId: string;
+  /** "stream": made with Strömma, its audio streamed to live text as it was recorded. Its run is sent as streamed. */
   inputMode: RecordingInputMode;
   mimeType: string;
   startedAt: number;
@@ -60,11 +61,17 @@ export interface StoredRecording {
    */
   submission?: RunRequest | null;
   /**
-   * Eneo's stored text of the live session (Strömma) that heard the whole recording, while it is one part: the
-   * run uses it instead of transcribing the audio again. A new part forgets it.
+   * Eneo's stored text of the live session (Strömma) that heard the whole recording, of its parts in order: the run
+   * names it, and uses it instead of transcribing the audio again where Eneo can. A part added later forgets it.
    */
   liveTranscriptId?: string | null;
 }
+
+/**
+ * What became of a live transcript given to keepLiveTranscript: kept with the recording; not, as another tab holds the
+ * recording; or not, as the recording is no longer what the session heard (a part added, a send begun, or gone).
+ */
+export type KeepOutcome = "kept" | "in_use" | "changed";
 
 export interface RunRequest {
   body: Json;
@@ -505,32 +512,23 @@ export class RecordingStore {
   }
 
   /**
-   * Keeps a live session's stored transcript with the recording it heard whole: still one part, and no send begun,
-   * which asked without it. Under the lease, so a send or a new part in another tab is never written over; a
-   * recording in use is left as it is, and its run transcribes the audio.
+   * Keeps a live session's stored transcript with the recording it heard whole: still the `parts` it heard, and no
+   * send begun, which asked without it. Under the lease, so a send or a new part in another tab is never written over;
+   * a recording in use is left as it is. A recording without it is still sent as streamed, and its run says why the
+   * transcription model wrote the text.
    */
-  async keepLiveTranscript(id: string, transcriptId: string): Promise<void> {
-    if (!(await this.lease(id))) return;
+  async keepLiveTranscript(id: string, transcriptId: string, parts: number): Promise<KeepOutcome> {
+    if (!(await this.lease(id))) return "in_use";
     try {
-      await this.change(async () => {
+      return await this.change(async () => {
         const recording = await this.load(id);
-        if (recording?.parts.length === 1 && !sealed(recording)) {
-          await this.write({ ...recording, liveTranscriptId: transcriptId });
-        }
+        if (recording?.parts.length !== parts || sealed(recording)) return "changed";
+        await this.write({ ...recording, liveTranscriptId: transcriptId });
+        return "kept";
       });
     } finally {
       this.release(id);
     }
-  }
-
-  /** Eneo will not use the live transcript: it is forgotten, and the request without it is the one kept. */
-  dropLiveTranscript(id: string, request: RunRequest): Promise<void> {
-    return this.update(id, (recording) => ({
-      ...recording,
-      state: "uploaded",
-      submission: request,
-      liveTranscriptId: null,
-    }));
   }
 
   /** Drops a run request that can never be answered; the uploads stay, and the recording sealed. */

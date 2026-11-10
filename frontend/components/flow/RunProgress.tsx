@@ -44,6 +44,7 @@ export function RunProgress({
   steps,
   stage,
   startedAt,
+  liveFallback = null,
   error = null,
   makesText = false,
   unattended = false,
@@ -55,6 +56,8 @@ export function RunProgress({
   stage: string;
   /** When Eneo created the run; unknown until its first status read. */
   startedAt?: string | null;
+  /** Why the run's streamed audio is transcribed instead of written by its live text (lib/run-result goingLiveFallbackNotice). */
+  liveFallback?: { title: string; description: string } | null;
   error?: string | null;
   /** The flow ends in text, not a file (lib/flow-output makesText). */
   makesText?: boolean;
@@ -141,6 +144,8 @@ export function RunProgress({
             <Steps steps={steps} />
           </VStack>
         )}
+        {/* A decision that lasts, under the steps it is about: a note read where it stands, not announced. */}
+        {liveFallback && <Banner status="info" role="note" collapsible={false} title={liveFallback.title} description={liveFallback.description} />}
         {/* Reassurance for a page closed by mistake, not a request to close it, and where to find the run then: the
             flow's page lists it among its runs (EarlierRuns). A review still ahead (a step with its note)
             stops the run until the person answers; the result is promised only where the run is known to finish

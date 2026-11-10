@@ -136,8 +136,10 @@ export function liveClient(env: LiveEnv): LiveClient {
             numberOfOutputs: 0,
             processorOptions: { recording },
           });
-          node.port.onmessage = ({ data }: MessageEvent<{ samples: Float32Array; end: boolean }>) => {
+          node.port.onmessage = ({ data }: MessageEvent<{ samples: Float32Array; end: boolean; mark?: boolean }>) => {
             encoder?.push(data.samples);
+            // All the audio gathered before the new part is here: it begins after it, the encoder's unsent samples too.
+            if (data.mark && encoder) transcriber.markPart(encoder.pending);
             if (!data.end) return;
             // A pause or the stop reached the audio thread, and all it gathered before is here: the stretch ends.
             encoder?.flush();
@@ -192,6 +194,11 @@ export function liveClient(env: LiveEnv): LiveClient {
           recording = on;
           ask({ recording });
           transcriber.setRecording(on);
+        },
+        // A new part begins where the audio thread is when it hears of it; without one, live text cannot place it.
+        markPart() {
+          if (!node) return transcriber.lose();
+          node.port.postMessage({ mark: true });
         },
         // The audio thread's last audio first, then the stop message.
         stop() {
