@@ -161,6 +161,24 @@ test("a date detail shows the date it holds once its calendar has loaded", async
   assert.match(date.textContent + (date.querySelector("input")?.value ?? "") + ((date as HTMLInputElement).value ?? ""), /2026|24/, "and shows the date it holds");
 });
 
+test("a choice of several gives the design system's group only what it takes: nothing reaches the page as an unknown attribute", async (t) => {
+  const errors: string[] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => void errors.push(args.map(String).join(" ")));
+  const { DetailsForm } = await import("../components/flow/DetailsForm");
+  const view = await mount(
+    createElement(DetailsForm, {
+      fields: [{ name: "omraden", label: "Områden", type: "multiselect", options: ["Kommunikation", "Lärande"] }],
+      details: {},
+      invalid: [],
+      onChange: () => {},
+      suggestions: [],
+      onNamesAdded: () => {},
+    }),
+  );
+  assert.ok(view.container.querySelector('[data-detail-field="omraden"]'), "the group is there");
+  assert.deepEqual(errors.filter((error) => /does not recognize/.test(error)), []);
+});
+
 test("the design system's busy button stays enabled when it may be interrupted, which the start relies on to keep focus", async () => {
   const { Button } = await import("@astryxdesign/core/Button");
   const { renderToStaticMarkup } = await import("react-dom/server");

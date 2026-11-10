@@ -143,15 +143,16 @@ export function DetailsForm({
               ? `Skriv ett heltal från 1${field.required ? "" : ", eller lämna fältet tomt"}.`
               : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`
             : undefined;
-          const common = {
+          // A checkbox group has no status variant: the design system passes props it does not know on to the page.
+          const group = {
             label,
             description,
             isOptional: !field.required,
             isRequired: !!field.required,
             status: error ? ({ type: "error", message: error } as const) : undefined,
-            statusVariant: "detached",
             "data-detail-field": field.name,
           } as const;
+          const common = { ...group, statusVariant: "detached" } as const;
           const opts = options(field);
           if (field.type === "list") {
             return (
@@ -173,7 +174,7 @@ export function DetailsForm({
           }
           if (field.type === "multiselect") {
             return (
-              <CheckboxList key={field.name} {...common} containerClassName={styles.choices} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
+              <CheckboxList key={field.name} {...group} containerClassName={styles.choices} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
                 {opts.map((option) => (
                   <CheckboxListItem key={option} value={option} label={option} />
                 ))}

@@ -102,6 +102,7 @@ export const eneoTheme = {
     "--font-family-heading": "\"Figtree Variable\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
     "--font-family-code": "ui-monospace, \"SFMono-Regular\", Consolas, monospace",
     "--color-success": "light-dark(#1E7A32, #6CC382)",
+    "--color-info-muted": "light-dark(#E3EDFB, #13253F)",
     "--color-success-muted": "light-dark(#E2F2E5, #16291C)",
     "--color-warning": "light-dark(#8A5A00, #E9B949)",
     "--color-warning-muted": "light-dark(#FCF0D4, #2E2614)",

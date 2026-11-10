@@ -260,6 +260,9 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await page.keyboard.press("Enter");
   await expect(back).toBeDisabled();
   await expect(position).toBeFocused();
+  // A disabled skip stays a Tab stop, said to be unavailable (the design system's aria-disabled), so it can be found.
+  await page.keyboard.press("Tab");
+  await expect(back).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(forward).toBeFocused();
   await position.focus();

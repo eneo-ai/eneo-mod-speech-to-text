@@ -73,7 +73,9 @@ export const eneoTheme = defineTheme({
     '--color-border': ['rgba(20, 40, 80, 0.08)', 'rgba(255, 255, 255, 0.07)'],
     '--color-success': ['#1E7A32', '#6CC382'],
     // A notice's fill keeps its status's hue in dark mode too: a mix into the blue card lost the yellow's to the blue,
-    // so a warning read as a grey panel.
+    // so a warning read as a grey panel. Each is solid: a banner's title is in its status's own colour, which the
+    // design system's translucent blue left under 4.5:1 on a dark card.
+    '--color-info-muted': ['#E3EDFB', '#13253F'],
     '--color-success-muted': ['#E2F2E5', '#16291C'],
     '--color-warning': ['#8A5A00', '#E9B949'],
     '--color-warning-muted': ['#FCF0D4', '#2E2614'],
