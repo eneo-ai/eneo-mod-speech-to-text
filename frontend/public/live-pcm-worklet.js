@@ -3,6 +3,9 @@
 // While the recording is paused nothing is gathered. Each message from the page
 // (a pause, a resume, the stop) is answered with the audio gathered up to it,
 // marked `end`, so the page knows all of that stretch is there and none is lost.
+// A new part of the recording (`mark`) is answered with the audio gathered up to
+// it, marked `mark`, and the recording goes on: the page counts the part's start
+// where this thread heard of it, not where the page's own count had got to.
 // Served from /public, so the Content-Security-Policy's script-src 'self' allows it.
 
 const BLOCK = 2048;
@@ -14,14 +17,15 @@ class LivePcmProcessor extends AudioWorkletProcessor {
     this.block = new Float32Array(BLOCK);
     this.filled = 0;
     this.port.onmessage = ({ data }) => {
+      if (data.mark) return this.hand(false, true);
       this.hand(true);
       this.recording = data.recording;
     };
   }
 
-  hand(end) {
+  hand(end, mark = false) {
     const samples = this.block.slice(0, this.filled);
-    this.port.postMessage({ samples, end }, [samples.buffer]);
+    this.port.postMessage({ samples, end, mark }, [samples.buffer]);
     this.filled = 0;
   }
 

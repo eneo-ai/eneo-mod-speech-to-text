@@ -60,7 +60,7 @@ import {
   runSteps,
   runLabelsSpeakers,
 } from "@/lib/run-progress";
-import { runErrorView } from "@/lib/run-result";
+import { goingLiveFallbackNotice, runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
   startAgain,
@@ -90,7 +90,8 @@ type RunState =
   | { kind: "opening"; runId: string }
   // The run has ended, or waits for review (`review`), but its result, steps or pause could not be read.
   | { kind: "unread"; runId: string; message: string; review?: boolean }
-  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
+  // `steps`: read while it goes only when a step decided against its live text (followRun).
+  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null; steps?: FlowRunStep[] }
   | {
       kind: "awaiting_review";
       run: FlowRunPublic;
@@ -496,9 +497,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
       const last = await followRun(flowId, runId, {
         signal,
         onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
-        onSnapshot: ({ run: current, graph: runGraph }) => {
+        onSnapshot: ({ run: current, graph: runGraph, steps }) => {
           if (runOutcome(current.status) || current.status === "awaiting_review") return;
-          setRun({ kind: "running", run: current, graph: runGraph });
+          setRun({ kind: "running", run: current, graph: runGraph, steps });
         },
       });
       if (!last || signal.aborted) return;
@@ -855,6 +856,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
             runLabelsSpeakers(started.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
           )}
           startedAt={run.run.created_at}
+          liveFallback={goingLiveFallbackNotice(run.graph, run.steps ?? [])}
           error={runError}
           retrying={pollTrouble ? { onRetry: () => void follow(run.run.id) } : null}
           // Today's contract speaks only for a run of its own version.
