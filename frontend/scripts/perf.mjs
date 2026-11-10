@@ -16,7 +16,7 @@
 //                                           a fixed list of interactions on that page
 //   list -> flow                            the time from the click on a flow to its setup page
 //   long transcript                         INP of the filter, search and correction on the run with 2,000 passages, and in
-//                                           the last run where their frames went (style, layout, paint) by a Chrome trace
+//                                           the last run where their frames went (script, style, layout, paint) by a Chrome trace
 // CLS and INP are stable and fail the run when over budget (exit 2, apart from a run that broke, exit 1); LCP, blocking
 // time and times are reported, since a shared machine moves them. A run writes test-results/perf/<label>.json (ignored by git).
 // .github/workflows/perf.yml measures a pull request's base and head on the same runner and compares them with
@@ -266,9 +266,12 @@ async function open(ctx, profile) {
   return { page, cdp };
 }
 
-// The frame after an interaction's handlers, split by Chrome's trace into the browser's work: style (UpdateLayoutTree),
-// layout and paint (PrePaint, Paint, Layerize), in ms. Event Timing says how long the frame took; this says what it did.
+// The frame after an interaction's longest event, split by Chrome's trace, in ms: style (UpdateLayoutTree), layout, paint
+// (PrePaint, Paint, Layerize), script (the time inside events, callbacks and microtasks: on a tap the click and its renders
+// run after the pointer events, so inside this frame; style and layout they force count as style and layout), and other
+// (the browser's own work and waiting). Event Timing says how long the frame took; this says what it did.
 const FRAME_WORK = { style: ["UpdateLayoutTree"], layout: ["Layout"], paint: ["PrePaint", "Paint", "Layerize"] };
+const SCRIPT = ["EventDispatch", "FunctionCall", "RunMicrotasks", "FireAnimationFrame", "TimerFire"];
 async function traced(cdp, act) {
   const events = [];
   const collect = ({ value }) => events.push(...value);
@@ -290,11 +293,27 @@ async function traced(cdp, act) {
   const { duration, processingEnd, timeStamp } = longest.args.data;
   const from = longest.ts + (processingEnd - timeStamp) * 1000;
   const to = longest.ts + duration * 1000;
-  const split = {};
-  for (const [part, names] of Object.entries(FRAME_WORK))
-    split[part] = events
-      .filter((event) => names.includes(event.name) && event.tid === longest.tid && event.ts >= from && event.ts < to)
-      .reduce((sum, event) => sum + (event.dur ?? 0) / 1000, 0);
+  const inFrame = (names) =>
+    events.filter((event) => names.includes(event.name) && event.tid === longest.tid && event.ts >= from && event.ts < to && event.dur);
+  const split = { frame: (to - from) / 1000 };
+  const browserWork = [];
+  for (const [part, names] of Object.entries(FRAME_WORK)) {
+    const found = inFrame(names);
+    browserWork.push(...found);
+    split[part] = found.reduce((sum, event) => sum + event.dur / 1000, 0);
+  }
+  // Script events nest (a dispatch holds its calls), so their time is the union of their spans, less the style, layout and
+  // paint inside it.
+  const spans = inFrame(SCRIPT)
+    .map((event) => [event.ts, Math.min(event.ts + event.dur, to)])
+    .sort((a, b) => a[0] - b[0]);
+  const union = [];
+  for (const [start, end] of spans)
+    if (union.length && start <= union.at(-1)[1]) union.at(-1)[1] = Math.max(union.at(-1)[1], end);
+    else union.push([start, end]);
+  const inside = browserWork.filter((event) => union.some(([start, end]) => event.ts >= start && event.ts < end));
+  split.script = (union.reduce((sum, [start, end]) => sum + end - start, 0) - inside.reduce((sum, event) => sum + event.dur, 0)) / 1000;
+  split.other = split.frame - split.style - split.layout - split.paint - split.script;
   return split;
 }
 
@@ -324,24 +343,27 @@ async function interaction({ page }, act, label) {
 async function frames(browser, profile) {
   const found = [];
   const ctx = await signedIn(browser, profile);
-  const { page, cdp } = await open(ctx, profile);
-  await page.goto(BASE + LONG);
-  await page.getByText("Välkomna till kommunstyrelsens möte.").first().waitFor({ state: "attached", timeout: 60_000 });
-  await page.waitForTimeout(1500);
-  for (const [label, act] of LONG_ACTIONS) {
-    const split = await traced(cdp, async () => {
-      await act(page).catch((error) => {
-        error.message = `long transcript ${label}: ${error.message}`;
-        throw error;
+  try {
+    const { page, cdp } = await open(ctx, profile);
+    await page.goto(BASE + LONG);
+    await page.getByText("Välkomna till kommunstyrelsens möte.").first().waitFor({ state: "attached", timeout: 60_000 });
+    await page.waitForTimeout(1500);
+    for (const [label, act] of LONG_ACTIONS) {
+      const split = await traced(cdp, async () => {
+        await act(page).catch((error) => {
+          error.message = `long transcript ${label}: ${error.message}`;
+          throw error;
+        });
+        await page.waitForTimeout(600);
       });
-      await page.waitForTimeout(600);
-    });
-    if (!split) continue;
-    const ms = (value) => Math.round(value);
-    console.log(`  long transcript ${label} frame: style ${ms(split.style)} + layout ${ms(split.layout)} + paint ${ms(split.paint)}`);
-    for (const [part, value] of Object.entries(split)) found.push(["long transcript frame", `${part} ${label}`, "report", "ms", value]);
+      if (!split) continue;
+      const ms = (value) => Math.round(value);
+      console.log(`  long transcript ${label} frame ${ms(split.frame)} ms = script ${ms(split.script)} + style ${ms(split.style)} + layout ${ms(split.layout)} + paint ${ms(split.paint)} + other ${ms(split.other)}`);
+      for (const [part, value] of Object.entries(split)) found.push(["long transcript frame", `${part} ${label}`, "report", "ms", value]);
+    }
+  } finally {
+    await ctx.close();
   }
-  await ctx.close();
   return found;
 }
 
@@ -415,7 +437,9 @@ try {
           error.message = `${profile}, run ${n}: ${error.message}`;
           throw error;
         });
-        if (n === runs) found.push(...(await frames(browser, settings)));
+        // Reported only: a trace that breaks costs its lines, not the run.
+        if (n === runs)
+          found.push(...(await frames(browser, settings).catch((error) => (console.warn(`  ${profile}: no frame trace: ${error.message.split("\n")[0]}`), []))));
         for (const [group, metric, kind, unit, value] of found) {
           const key = `${profile}\t${group}\t${metric}`;
           samples.set(key, { profile, group, name: metric, kind, unit, values: [...(samples.get(key)?.values ?? []), value] });
