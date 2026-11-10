@@ -337,19 +337,23 @@ export function RunResult({
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side
-  // they are plain columns, not tab panels. A panel is a plain element, not a stack: a stack's display would beat the
-  // hidden attribute that hides the panel of the tab not chosen.
-  const panel = (view_: View, isChosen: boolean, content: ReactNode, className?: string) => (
-    <section
-      id={PANELS[view_].panel}
-      role={tabs ? "tabpanel" : undefined}
-      aria-labelledby={tabs ? PANELS[view_].tab : undefined}
-      hidden={tabs && !isChosen}
-      className={className ? `${styles.panel} ${className}` : styles.panel}
-    >
-      {content}
-    </section>
-  );
+  // they are plain columns, not tab panels. The panel of the tab not chosen is inert (out of the tab order and the
+  // accessibility tree) and takes no room (styles.inactive), but keeps its layout: from `hidden` (display:none) a long
+  // transcript's two thousand passages were laid out anew at every switch, a fifth of a second on a phone.
+  const panel = (view_: View, isChosen: boolean, content: ReactNode, className?: string) => {
+    const inactive = tabs && !isChosen;
+    return (
+      <section
+        id={PANELS[view_].panel}
+        role={tabs ? "tabpanel" : undefined}
+        aria-labelledby={tabs ? PANELS[view_].tab : undefined}
+        inert={inactive}
+        className={[styles.panel, className, inactive && styles.inactive].filter(Boolean).join(" ")}
+      >
+        {content}
+      </section>
+    );
+  };
 
   return (
     // The frame gives the page its width and edges, and every result has the whole column; its text keeps a reading

@@ -80,3 +80,13 @@
   flex-shrink: 0;
   margin-block: calc((var(--spacing-10) - var(--size-element-md)) / 2);
 }
+
+/* The panel of the tab not chosen (RunResult also makes it inert): no room and nothing drawn, in every browser, by its
+   size and clip. Its rendering is skipped but kept (content-visibility), so choosing its tab lays out nothing anew. Last
+   in the file, over the panel's own margin. */
+.inactive {
+  block-size: 0;
+  margin: 0;
+  overflow: clip;
+  content-visibility: hidden;
+}
