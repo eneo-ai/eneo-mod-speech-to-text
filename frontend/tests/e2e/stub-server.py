@@ -683,8 +683,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
         text = lambda obj: ws_send(self.wfile, 1, json.dumps(obj).encode())
-        # As Eneo: a named recording keeps its text when the flow's transcription model streams it.
-        named = "recording_id" in parse_qs(urlparse(self.path).query)
+        # As Eneo: a named recording keeps its text when the flow's transcription model streams it. The name comes with the
+        # ticket on Eneo's own socket (the real backend's way in) and in the address on the BFF role's.
+        named = bool(recording)
         text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000, "keeps_transcript": named,
               "finish_within_seconds": FINISH_WITHIN_SECONDS})
         said, frames = [], 0
