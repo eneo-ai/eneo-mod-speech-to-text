@@ -27,7 +27,7 @@ class FakeSocket implements LiveSocket {
   event(payload: object) {
     this.onmessage?.({ data: JSON.stringify(payload) });
   }
-  // Eneo keeps the text of a session through the flow's transcription model; a separate live model only previews.
+  // Eneo keeps the text of a session that names its recording; keepsTranscript false is one it will not keep.
   ready(keepsTranscript = true) {
     this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000, keeps_transcript: keepsTranscript });
   }
@@ -372,7 +372,7 @@ test("a counted stop is awaited: finishing from the recording's end until its fi
   assert.ok(!broken.live.getSnapshot().finishing, "a stop without a count brings no transcript to wait for");
 });
 
-test("a preview Eneo will not keep holds nothing up: no count, no wait, no transcript id", () => {
+test("a session Eneo will not keep holds nothing up: no count, no wait, no transcript id", () => {
   const { live, sockets } = setup();
   live.start();
   sockets[0].ready(false);

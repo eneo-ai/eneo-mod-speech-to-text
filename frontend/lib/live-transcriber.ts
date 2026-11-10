@@ -12,9 +12,9 @@
  * retryable}. A refused handshake (signed out, wrong origin) shows only as
  * close 1006; 1011 means Eneo's socket broke. The address may name the
  * recording (?recording_id=): Eneo then keeps the text of a session that heard
- * all of it, as transcript_id, when the flow's transcription model streamed it
- * (`keeps_transcript`). A separate live model's text is only a preview: the
- * run transcribes the recording, and nothing waits for that text.
+ * all of it, as transcript_id (`keeps_transcript`), and the run uses that
+ * text instead of transcribing the recording. When Eneo keeps nothing, the
+ * run transcribes the recording and nothing waits for the session's text.
  * It names the user the page was opened for (?expected_user=), as a browser
  * cannot set a header on a socket: for another user's session the relay
  * accepts the socket and closes it 1008 "user_changed"; a session that ends
