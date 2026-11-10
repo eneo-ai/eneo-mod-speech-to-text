@@ -153,7 +153,16 @@ const OBSERVE = () => {
   watch("layout-shift", (entry) => { if (!entry.hadRecentInput) seen.cls += entry.value; });
   watch("largest-contentful-paint", (entry) => { seen.lcp = entry.startTime; });
   watch("longtask", (entry) => seen.tasks.push(entry.duration));
-  watch("event", (entry) => { if (entry.interactionId) seen.events.push(entry.duration); }, { durationThreshold: 16 });
+  // An interaction's time in its three phases: waiting for the main thread, its handlers, and the frame after them.
+  watch("event", (entry) => {
+    if (entry.interactionId)
+      seen.events.push({
+        duration: entry.duration,
+        input: entry.processingStart - entry.startTime,
+        processing: entry.processingEnd - entry.processingStart,
+        paint: entry.startTime + entry.duration - entry.processingEnd,
+      });
+  }, { durationThreshold: 16 });
 };
 
 const PROFILES = {
@@ -256,7 +265,10 @@ async function open(ctx, profile) {
   return page;
 }
 
-/** The longest an interaction took from input to paint, 0 for one under a frame; INP of one interaction. */
+/**
+ * The longest an interaction took from input to paint, 0 for one under a frame; INP of one interaction. Its phases are
+ * logged, so a change in a run's number shows where the time went.
+ */
 async function interaction(page, act, label) {
   await page.evaluate(() => (window.__perf.events = []));
   await act(page).catch((error) => {
@@ -264,7 +276,12 @@ async function interaction(page, act, label) {
     throw error;
   });
   await page.waitForTimeout(600);
-  return page.evaluate(() => Math.max(0, ...window.__perf.events));
+  const longest = await page.evaluate(() => window.__perf.events.reduce((a, b) => (b.duration > a.duration ? b : a), { duration: 0 }));
+  if (longest.duration > 0) {
+    const ms = (value) => Math.round(value);
+    console.log(`  ${label}: ${ms(longest.duration)} ms = input ${ms(longest.input)} + handlers ${ms(longest.processing)} + frame ${ms(longest.paint)}`);
+  }
+  return longest.duration;
 }
 
 // One round on one profile: the numbers by [group, name, kind, unit].
@@ -304,6 +321,7 @@ async function round(browser, profile) {
   await long.getByRole("heading", { name: /Dokumentet är klart/ }).waitFor();
   await long.getByText("Välkomna till kommunstyrelsens möte.").first().waitFor({ state: "attached", timeout: 60_000 });
   found.push(["long transcript", "ready", "report", "ms", Date.now() - begun]);
+  found.push(["long transcript", "elements", "report", "count", await long.evaluate(() => document.querySelectorAll("*").length)]);
   await long.waitForTimeout(1500);
   for (const [label, act] of LONG_ACTIONS) found.push(["long transcript", `INP ${label}`, "inpLong", "ms", await interaction(long, act, `long transcript ${label}`)]);
   await ctx.close();
@@ -329,6 +347,7 @@ try {
     for (let n = 1; n <= runs; n++) {
       console.log(`Run ${n} of ${runs}`);
       for (const [profile, settings] of Object.entries(PROFILES)) {
+        console.log(` ${profile}`);
         const found = await round(browser, settings).catch((error) => {
           error.message = `${profile}, run ${n}: ${error.message}`;
           throw error;
