@@ -70,8 +70,7 @@ export function RegenerateNotice({
   }
 
   return (
-    // A note, not an alarm: it is there when the page opens and needs no announcement (the design system's warning
-    // is an alert).
+    // A note, not an alarm: it is there when the page opens and needs no announcement.
     <Banner
       status="warning"
       role="note"

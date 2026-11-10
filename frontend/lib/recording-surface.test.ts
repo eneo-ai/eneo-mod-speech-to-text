@@ -4,7 +4,7 @@ import test, { afterEach } from "node:test";
 import type { LiveSession } from "./flow-session";
 import type { LiveSnapshot } from "./live-transcriber";
 import { openRecordingStore } from "./recording-store";
-import { cleanup, installDom, mount } from "./test-dom";
+import { cleanup, installDom, isOff, mount } from "./test-dom";
 
 // The recording's surfaces (Recorder, LiveSheet) in a document, queried by role, name and attribute.
 installDom();
@@ -72,8 +72,8 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
   const [pauseWhileStopping, stopWhileStopping] = stopping.container.querySelectorAll("button");
   assert.equal(stopWhileStopping.getAttribute("aria-label"), "Sparar…");
   assert.equal(stopWhileStopping.getAttribute("aria-busy"), "true");
-  assert.equal(stopWhileStopping.disabled, false, "busy, not disabled: the focus stays on it");
-  assert.equal(pauseWhileStopping.disabled, true);
+  assert.equal(isOff(stopWhileStopping), false, "busy, not disabled: the focus stays on it");
+  assert.equal(isOff(pauseWhileStopping), true);
 
   const recorder = await mount(createElement(FocusedRecorder, { capture, phase: "recording", stream: null }));
   for (const view of [running, recorder]) {

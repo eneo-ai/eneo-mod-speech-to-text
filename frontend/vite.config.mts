@@ -2,12 +2,14 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { brandingMarker } from "./lib/branding-marker.mts";
+import { layerSlideRules } from "./lib/layer-slide-rules.mts";
 
 const API = process.env.DEV_API_BASE ?? "http://127.0.0.1:8000";
 
 export default defineConfig(({ mode }) => ({
-  // The dev server fills the organisation's marker as the backend does in production (lib/branding-marker.mts).
-  plugins: [react(), brandingMarker(API)],
+  // The dev server fills the organisation's marker as the backend does in production (lib/branding-marker.mts). The
+  // layers' position rules are the app's stylesheet, not a <style> the strict policy blocks (lib/layer-slide-rules.mts).
+  plugins: [react(), brandingMarker(API), layerSlideRules()],
   // `@/x` is `<frontend>/x`, as tsconfig "paths" says; the regex consumes the slash, so no `//` is left in the path.
   resolve: { alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./", import.meta.url)) }] },
   // Build-time flags. Undefined in the unit tests, which is false there as process.env was.

@@ -119,10 +119,10 @@ type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
-// What a phone's keyboard reads, which Astryx's types leave out and its fields pass on: a search is no word to correct or
-// capitalise, and its key says Sök; a line's editor saves on Enter, so its key says Klar.
-const SEARCH_HINTS = { autoCorrect: "off", autoCapitalize: "none", spellCheck: "false", enterKeyHint: "search" } as Record<string, string>;
-const DONE_HINT = { enterKeyHint: "done" } as Record<string, string>;
+// What a phone's keyboard reads: a search is no word to correct or capitalise, and its key says Sök; a line's editor
+// saves on Enter, so its key says Klar.
+const SEARCH_HINTS = { hasAutoCorrect: false, autoCapitalize: "none", hasSpellCheck: false, enterKeyHint: "search" } as const;
+const DONE_HINT = { enterKeyHint: "done" } as const;
 
 /**
  * The transcript's keys: Space or K plays and pauses, the arrow keys move five
@@ -1205,12 +1205,12 @@ export function TranscriptPlayer(
 
       {correctionProblem && (
         <div className={styles.notice}>
-          <Banner status="error" title={correctionProblem} collapsible={false} />
+          <Banner role="alert" status="error" title={correctionProblem} collapsible={false} />
         </div>
       )}
       {editError && (
         <div className={styles.notice}>
-          <Banner status="error" title={editError} collapsible={false} />
+          <Banner role="alert" status="error" title={editError} collapsible={false} />
         </div>
       )}
 
@@ -1713,7 +1713,7 @@ function SpeakerPicker({
                 )}
                 {problem && (
                   <div className={styles.pickerSection}>
-                    <Banner status="error" title={problem} collapsible={false} />
+                    <Banner role="alert" status="error" title={problem} collapsible={false} />
                   </div>
                 )}
               </LayoutContent>

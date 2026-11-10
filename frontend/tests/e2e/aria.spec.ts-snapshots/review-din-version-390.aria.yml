@@ -3,18 +3,17 @@
   - paragraph: Nämndmöte till rapport
   - paragraph: /Granska senast 3 jan \d+ \d+:\d+\. Därefter avbryts körningen\./
   - paragraph: Du kan ändra texten innan du godkänner och fortsätter.
-  - alert:
-    - text: Någon har ändrat texten medan du redigerade Här visas den senaste versionen. Din ändring är inte sparad i Eneo, men finns kvar i den här fliken.
-    - paragraph: Kommunstyrelsen beslutade att höja budgetramen med tre procent.
-    - button "Kopiera din version":
-      - text: ""
-      - status
-    - button "Använd din version":
-      - text: ""
-      - status
-    - button "Ta bort din version":
-      - text: ""
-      - status
+  - alert: Någon har ändrat texten medan du redigerade Här visas den senaste versionen. Din ändring är inte sparad i Eneo, men finns kvar i den här fliken.
+  - paragraph: Kommunstyrelsen beslutade att höja budgetramen med tre procent.
+  - button "Kopiera din version":
+    - text: ""
+    - status
+  - button "Använd din version":
+    - text: ""
+    - status
+  - button "Ta bort din version":
+    - text: ""
+    - status
   - region "Innehåll för granskning":
     - heading "Innehåll för granskning" [level=2]
     - button "Redigera":

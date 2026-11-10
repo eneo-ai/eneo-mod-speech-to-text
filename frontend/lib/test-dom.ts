@@ -140,6 +140,11 @@ export function button(within: ParentNode, name: string): HTMLButtonElement | nu
   return [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;
 }
 
+/** Whether a control is off. The design system's controls say so with `aria-disabled` and keep their focus. */
+export function isOff(control: Element | null | undefined): boolean {
+  return control?.getAttribute("aria-disabled") === "true";
+}
+
 /** `element` as a page behind AuthGate has it: with the signed-in person. */
 export async function asPerson(element: import("react").ReactElement, user = { id: "user-1", email: "anna@example.se", username: "Anna Berg" }) {
   const { createElement } = await import("react");
@@ -152,8 +157,8 @@ export async function asPerson(element: import("react").ReactElement, user = { i
  * window whose layout is as tall as jsdom's window (jsdom lays nothing out, so its clientHeight is 0).
  */
 export function visualViewport(t: import("node:test").TestContext) {
-  const listeners = new Set<() => void>();
-  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+  const listeners = new Set<(event: Event) => void>();
+  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: (event: Event) => void) => listeners.add(listener), removeEventListener: (_: string, listener: (event: Event) => void) => listeners.delete(listener) };
   Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
   Object.defineProperty(document.documentElement, "clientHeight", { value: window.innerHeight, configurable: true });
   t.after(() => {
@@ -162,7 +167,7 @@ export function visualViewport(t: import("node:test").TestContext) {
   });
   const move = (height: number, offsetTop: number) => {
     Object.assign(viewport, { height, offsetTop });
-    listeners.forEach((listener) => listener());
+    listeners.forEach((listener) => listener(new window.Event("resize")));
   };
   return move;
 }

@@ -136,7 +136,7 @@ export function RunTranscriptView({
         </Heading>
         {transcript.correctionProblem ? (
           <>
-            <Banner status="error" collapsible={false} title={transcript.correctionProblem} />
+            <Banner role="alert" status="error" collapsible={false} title={transcript.correctionProblem} />
             <Button icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
           </>
         ) : (
@@ -188,7 +188,7 @@ export function RunTranscriptView({
               <Button size="sm" icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
             </HStack>
           )}
-          {localError && <Banner status="error" collapsible={false} title={localError} />}
+          {localError && <Banner role="alert" status="error" collapsible={false} title={localError} />}
           {hasDropped && <Button variant="ghost" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
           {saveState === "error" && (
             <HStack wrap="wrap" gap={2}>

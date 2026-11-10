@@ -43,7 +43,7 @@ test("while the session is asked for, the page is the shell's one main region, h
   const { container, act } = await openLoginPage(t, () => response.promise);
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
   assert.deepEqual([...container.querySelectorAll("h1")].map((heading) => heading.textContent), ["Tal till text"]);
-  assert.ok(container.querySelector('[role="status"]'), "something says that it is loading");
+  assert.match(container.querySelector('main, [role="main"]')?.textContent ?? "", /Laddar/, "something says that it is loading");
   assert.match(container.textContent ?? "", /Hoppa till innehåll/, "the shell's skip link");
   assert.ok(container.querySelector('nav[aria-label="Tal till text"]'), "the shell's named navigation landmark");
   await act(async () => response.resolve(signedOut()));

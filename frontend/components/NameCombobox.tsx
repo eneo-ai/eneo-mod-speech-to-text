@@ -11,9 +11,8 @@ const ADD_ID = "add";
 const WRITE_ID = "write";
 
 // A name, as the participants' field takes one: each word starts with a capital on a phone's keyboard, no spelling
-// check underlines it and iOS does not autocorrect it. Astryx's types leave these attributes out, but its field passes
-// them on to the input.
-const NAME_HINTS = { autoCapitalize: "words", autoCorrect: "off", spellCheck: "false" } as Record<string, string>;
+// check underlines it and iOS does not autocorrect it.
+const NAME_HINTS = { autoCapitalize: "words", hasAutoCorrect: false, hasSpellCheck: false } as const;
 
 type Option =
   | { id: string; kind: "name"; name: string }
@@ -84,8 +83,6 @@ export function NameCombobox({
     triggerRef(rootRef.current);
     return () => triggerRef(null);
   }, [triggerRef]);
-  // A name is no word to spell-check; the design system's input takes no spellCheck prop.
-  useEffect(() => inputRef.current?.setAttribute("spellcheck", "false"), []);
   // The row the arrow keys or a moving mouse marked; until then the list marks the field's own name, so Enter
   // keeps what is in the field: a name opened by a click, and a name typed or pasted (never the first suggestion).
   const [moved, setMoved] = useState<number | null>(null);
@@ -220,13 +217,13 @@ export function NameCombobox({
         aria-activedescendant={activeId}
         autoComplete="off"
         {...NAME_HINTS}
-        {...({ enterKeyHint } as Record<string, string | undefined>)}
+        enterKeyHint={enterKeyHint}
         value={text}
         placeholder={placeholder}
         isDisabled={disabled}
         status={problem ? { type: "error", message: problem } : undefined}
         statusVariant="detached"
-        className={styles.field}
+        controlClassName={styles.field}
         onChange={(next) => {
           onChange(next === "" ? null : next);
           setTyping(true);

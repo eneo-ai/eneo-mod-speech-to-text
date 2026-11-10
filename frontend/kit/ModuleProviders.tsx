@@ -8,6 +8,15 @@ import { RouterLink } from "@/kit/RouterLink";
 import { eneoTheme } from "@/kit/theme/built/eneo";
 
 const MESSAGES = { "sv-SE": sv };
+// The design system's words this module can show that its Swedish catalog does not have yet; without them they are English.
+const SWEDISH = {
+  "sv-SE": {
+    "@astryx.scrollRegion.label": "Innehåll",
+    "@astryx.inputClearButton.tooltip": "Rensa",
+    "@astryx.codeBlock.copyFailed": "Det gick inte att kopiera till urklipp.",
+    "@astryx.dateInput.nonexistentDate": "Det datumet finns inte.",
+  },
+};
 
 /** The theme in the mode the person chose (or the system's): `<Theme>` paints it and tells `<html>` with `data-theme`. */
 function Themed({ children }: { children: ReactNode }) {
@@ -29,7 +38,7 @@ function Themed({ children }: { children: ReactNode }) {
 export function ModuleProviders({ children }: { children: ReactNode }) {
   return (
     <ColorModeProvider>
-      <InternationalizationProvider locale="sv-SE" messages={MESSAGES}>
+      <InternationalizationProvider locale="sv-SE" messages={MESSAGES} overrides={SWEDISH}>
         <Themed>
           <LinkProvider component={RouterLink}>{children}</LinkProvider>
         </Themed>

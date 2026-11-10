@@ -104,7 +104,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
 
   function focusTools() {
     const tools = toolbar.current?.querySelector<HTMLElement>('[aria-label="Markerade ord"]') ?? toolbar.current;
-    tools?.querySelector<HTMLElement>('button:not(:disabled), select:not(:disabled)')?.focus();
+    tools?.querySelector<HTMLElement>('button:not(:disabled, [aria-disabled="true"]), select:not(:disabled)')?.focus();
   }
   // Reserve space for the actual toolbar height when scrolling keyboard focus into view.
   useEffect(() => {
@@ -123,8 +123,8 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     setUndo({ before: corrections, after: next }); onChange?.(next); setNotice(message); setError(null); setEditing(false);
     window.getSelection()?.removeAllRanges();
     if (focused && toolbar.current?.contains(focused)) requestAnimationFrame(() => {
-      if (!focused.isConnected || focused.matches(":disabled")) {
-        (toolbar.current?.querySelector<HTMLElement>('[data-undo]:not(:disabled)') ?? body.current)?.focus({ preventScroll: true });
+      if (!focused.isConnected || focused.matches(':disabled, [aria-disabled="true"]')) {
+        (toolbar.current?.querySelector<HTMLElement>('[data-undo]:not(:disabled, [aria-disabled="true"])') ?? body.current)?.focus({ preventScroll: true });
       }
     });
   }
@@ -330,7 +330,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
               label={`Bekräfta förslagen i markeringen (${selectedSuggestions.length})`}
               onClick={() => confirmSuggestions(selectedSuggestions)} />
           </>}
-          <Selector className={styles.speakers} variant="ghost" width="12rem" label="Tilldela talare" isLabelHidden placeholder="Tilldela talare…" value="" isDisabled={!editable}
+          <Selector controlClassName={styles.speakers} variant="ghost" width="12rem" label="Tilldela talare" isLabelHidden placeholder="Tilldela talare…" value="" isDisabled={!editable}
             options={[
               ...speakerOptions.map((speaker) => ({ value: speaker, disabled: !audioAvailable,
                 label: `${displayName(speaker)}${selectedSpans.length && selectedSpans.every((s) => s.speaker === speaker) ? " – bekräfta" : ""}` })),
@@ -353,7 +353,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
       <div className={styles.said}><span role="status" aria-atomic="true" className={styles.quiet}>{notice}</span>{undoAvailable && <Button size="sm" variant="ghost" data-undo icon={<Icon icon={Undo2} />} label="Ångra" isDisabled={!textEditable} onClick={() => {
         onChange?.({ ...corrections, occurrences: undo!.before.occurrences, speaker_edits: undo!.before.speaker_edits }); setUndo(null); setNotice("Ändringen är ångrad."); body.current?.focus({ preventScroll: true });
       }} />}</div>
-      {error && <Banner status="error" title={error} collapsible={false} />}
+      {error && <Banner role="alert" status="error" title={error} collapsible={false} />}
     </div>
     <Section variant="transparent" padding={4} paddingBlock={2} dividers={["bottom"]}>
     <Collapsible trigger="Detaljer" isOpen={details} onOpenChange={setDetails}>

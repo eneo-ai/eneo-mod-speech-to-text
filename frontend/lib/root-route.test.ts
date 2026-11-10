@@ -32,7 +32,7 @@ test("while the first page's code is on its way the frame shows the loading shel
   let arrive!: () => void;
   const { container, act } = await open(t, () => new Promise((resolve) => (arrive = () => resolve({ Component: () => createElement("h1", null, "Sidan") }))));
   assert.deepEqual(headings(container), ["Tal till text"], "the shell's heading");
-  assert.ok(container.querySelector('[role="status"], [aria-label="Laddar"]'), "a spinner that says it is loading");
+  assert.match(container.querySelector('main, [role="main"]')?.textContent ?? "", /Laddar/, "words that say it is loading");
   assert.ok(container.querySelector("nav[aria-label='Tal till text']"), "the bar");
   await act(async () => arrive());
   assert.deepEqual(headings(container), ["Sidan"], "then the page");

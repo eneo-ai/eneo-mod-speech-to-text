@@ -36,7 +36,7 @@ for (const [name, what, says, refused] of FAULTS) {
     await chooseFile(page, `${name}-mote.wav`);
     await page.getByRole("button", { name: "Skapa dokument" }).click();
 
-    await expect(page.getByRole("alert")).toHaveText(`${says}${KEPT}`, { timeout: 30_000 });
+    await expect(page.getByRole("alert")).toHaveText(`${says} ${KEPT}`, { timeout: 30_000 });
     await expect(page.getByText(`${name}-mote.wav`, { exact: true }), "the file is still chosen").toBeVisible();
     await expect(page.getByRole("button", { name: "Skapa dokument" })).toBeEnabled();
     await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }), "the person is back at the question").toBeFocused();

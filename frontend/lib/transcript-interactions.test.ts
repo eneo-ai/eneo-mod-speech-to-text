@@ -3,7 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { computeAccessibleName } from "dom-accessibility-api";
 import { wordKey } from "./confirmed-words";
-import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
+import { button, cleanup, installDom, isOff, mount, type, visualViewport } from "./test-dom";
 import type { CorrectionSet, SpeakerNames } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
 
@@ -75,7 +75,7 @@ test("search counts the hits, marks them, and steps through them with buttons an
 
   await view.act(async () => type(field, "ingenting sådant"));
   assert.equal(status(view.container), "Inga träffar");
-  assert.equal(button(view.container, "Nästa träff")!.disabled, true);
+  assert.equal(isOff(button(view.container, "Nästa träff")), true);
 });
 
 test("the speaker row filters and does nothing else; the search follows the filter", async () => {

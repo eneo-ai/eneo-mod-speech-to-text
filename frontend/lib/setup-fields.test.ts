@@ -166,7 +166,8 @@ test("the design system's busy button stays enabled when it may be interrupted, 
   const { renderToStaticMarkup } = await import("react-dom/server");
   const html = renderToStaticMarkup(createElement(Button, { label: "Startar…", isLoading: true, isInterruptible: true }));
   assert.match(html, /aria-busy="true"/);
-  assert.doesNotMatch(html, /\sdisabled=/, "a disabled button drops the focus the person is on");
+  assert.doesNotMatch(html, /\sdisabled=|aria-disabled=/, "it can still be pressed");
   const plain = renderToStaticMarkup(createElement(Button, { label: "Startar…", isLoading: true }));
-  assert.match(plain, /\sdisabled=""/, "without it, busy means disabled");
+  assert.match(plain, /aria-disabled="true"/, "without it, busy means it cannot be pressed");
+  assert.doesNotMatch(plain, /\sdisabled=/, "but it keeps the focus the person is on");
 });

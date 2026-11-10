@@ -29,12 +29,20 @@ test("the design system is styled, themed and working in the built app @fixture"
   expect(problems).toEqual([]);
 });
 
-test("a signed-in page of the built app loads with nothing blocked or broken", async ({ session, page }) => {
+test("a signed-in page of the built app loads with nothing blocked or broken", async ({ session, page, browserName }) => {
   expect(session.user).toBeTruthy();
   const problems = problemsOf(page);
   await page.goto("/flows");
   await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
+  // A layer opens: Astryx finds its position rules in the app's stylesheet (lib/layer-slide-rules.mts) and writes no <style>.
+  await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+  await expect(page.getByRole("menuitem", { name: "Logga ut" })).toBeVisible();
+  // Chromium is the engine that reads @position-try.
+  if (browserName === "chromium") {
+    const rules = await page.evaluate(() => [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]).filter((rule) => rule.constructor.name === "CSSPositionTryRule").length);
+    expect(rules, "the layers' position rules").toBeGreaterThan(0);
+  }
   expect(problems).toEqual([]);
 });
 

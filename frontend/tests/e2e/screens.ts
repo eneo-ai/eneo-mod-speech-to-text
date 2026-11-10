@@ -55,7 +55,7 @@ export async function signIn(page: Page, query = "") {
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
   await page.goto(path);
-  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await expect(page.getByText("Laddar", { exact: true })).toBeVisible();
 }
 
 /** The flow list five minutes before the login ends: the warning is open. */

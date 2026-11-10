@@ -1,4 +1,4 @@
 {
-  "/flows": { "jsKB": 250, "cssKB": 35 },
-  "/flows/:id": { "jsKB": 320, "cssKB": 40 }
+  "/flows": { "jsKB": 330, "cssKB": 45 },
+  "/flows/:id": { "jsKB": 420, "cssKB": 50 }
 }

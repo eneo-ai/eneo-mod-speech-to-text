@@ -36,6 +36,8 @@ const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "
 // A region waiting for its words is there from the start, empty; it says nothing yet.
 const statuses = (html: string) =>
   [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner)).filter(Boolean);
+// The progress bars a screen reader finds. The design system's spinner is one too, hidden beside the words it goes with.
+const bars = (html: string) => [...html.matchAll(/<[^>]*role="progressbar"[^>]*>/g)].filter(([tag]) => !/aria-hidden="true"/.test(tag));
 
 const running: StepView[] = [
   { order: 1, label: "Transkribera mötet", state: "done", transcribes: true, note: null },
@@ -187,7 +189,7 @@ test("the counting bytes and percent hold still: tabular figures, and the percen
 
 test("an upload of unknown size moves without a value and says Pågår, never a made-up percent", () => {
   const html = uploading({ percent: null, total: null, loaded: 4096 });
-  assert.match(html, /role="progressbar"/);
+  assert.equal(bars(html).length, 1);
   assert.doesNotMatch(html, /aria-valuenow/);
   const words = text(html);
   assert.match(words, /Pågår/);
@@ -218,7 +220,8 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
     markup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
   const idle = send({ kind: "idle" });
   assert.deepEqual(statuses(idle), ["Skickar…"]);
-  assert.doesNotMatch(idle, /progressbar|Avbryt/);
+  assert.equal(bars(idle).length, 0);
+  assert.doesNotMatch(idle, /Avbryt/);
 
   const starting = send({ kind: "starting", wait: null });
   assert.equal(statuses(starting)[0], "Startar flödet…");
@@ -229,7 +232,7 @@ test("before the file moves there is no bar and no Avbryt; once the run is being
   assert.equal(statuses(waiting)[0], "Startar flödet…");
   assert.match(text(waiting), /Filen är uppladdad\. Vi försöker starta flödet igen\./);
   assert.match(text(waiting), /Försöker igen om \d+ s\. Försök nu Avbryt/);
-  assert.doesNotMatch(waiting, /progressbar/);
+  assert.equal(bars(waiting).length, 0);
 
   const stopped = send({ kind: "starting", wait: { retryAt: null, retryNow: () => undefined } });
   assert.match(text(stopped), /Filen är uppladdad\. Flödet startar inte just nu\./);
@@ -630,7 +633,7 @@ test("more earlier runs than a page: 'Visa fler körningar' below the list, with
   // The design system's button holds its words in a span or two and a live region after them.
   const labelled = (name: string) => new RegExp(`<button[^>]*>(?:<[^>]+>)*${name}(?:<[^>]+>)*</button>`);
   assert.match(render({}), labelled("Visa fler körningar"));
-  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>(?:<[^>]+>)*Hämtar körningar…(?:<[^>]+>)*<\/button>/);
+  assert.match(render({ loading: true }), /<button[^>]*aria-disabled="true"[^>]*>(?:<[^>]+>)*Hämtar körningar…(?:<[^>]+>)*<\/button>/);
   const failed = render({ failed: "next" });
   assert.match(failed, /Fler körningar kunde inte hämtas\./);
   assert.match(failed, labelled("Visa fler körningar"), "another try");
@@ -777,7 +780,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
 const buttonsIn = (html: string) =>
   [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)].map(
     ([, attrs, inner]) =>
-      [/\saria-label="([^"]*)"/.exec(attrs)?.[1] ?? inner.replace(/<[^>]+>/g, "").trim(), /\sdisabled=""/.test(attrs)] as const,
+      [/\saria-label="([^"]*)"/.exec(attrs)?.[1] ?? inner.replace(/<[^>]+>/g, "").trim(), /\saria-disabled="true"/.test(attrs)] as const,
   );
 const exportButtons = (html: string) => buttonsIn(html).filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
 const names = (html: string) => buttonsIn(html).map(([name]) => name);

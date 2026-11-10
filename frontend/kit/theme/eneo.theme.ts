@@ -132,6 +132,23 @@ export const eneoTheme = defineTheme({
     '--color-error': ['#AA181D', '#F47B7F'],
     // A control's edge: 3:1 on every ground (WCAG 1.4.11).
     '--color-border-emphasized': ['#758093', '#6E7E96'],
+    // Gaps in px: a reader's larger text grows the words, not every gap between them. In Astryx's rem a phone at 53 px
+    // text spent its width on gaps, and a filter, a bar and a button lost their words (tests/e2e/large-text.spec.ts).
+    '--spacing-0': '0px',
+    '--spacing-0-5': '2px',
+    '--spacing-1': '4px',
+    '--spacing-1-5': '6px',
+    '--spacing-2': '8px',
+    '--spacing-3': '12px',
+    '--spacing-4': '16px',
+    '--spacing-5': '20px',
+    '--spacing-6': '24px',
+    '--spacing-7': '28px',
+    '--spacing-8': '32px',
+    '--spacing-9': '36px',
+    '--spacing-10': '40px',
+    '--spacing-11': '44px',
+    '--spacing-12': '48px',
   },
   components: {
     // The page rests on the body colour (ModuleShell's "wash" variant); the bar above it is the surface, as web-next's.
@@ -222,9 +239,10 @@ export const eneoTheme = defineTheme({
     },
     // Tabs that do not fit beside each other (the reader's large text, a phone's zoom) stand in rows, each with its words
     // whole and hyphenated where one is longer than the row: the design system's strip scrolled them sideways and cut
-    // the one not chosen at the window's edge.
+    // the one not chosen at the window's edge. A tab is never wider than its row (the design system does not let it
+    // shrink), and a word may break where it has to, so the label can be narrower than its longest word.
     'tab-strip': {base: {flexWrap: 'wrap'}},
-    tab: {base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', overflowWrap: 'break-word', hyphens: 'auto'}},
+    tab: {base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', maxWidth: '100%', overflowWrap: 'anywhere', hyphens: 'auto'}},
     // The position slider's unplayed track is a control's edge colour: 3:1 on the card (WCAG 1.4.11), so where the
     // recording ends shows at its start. The design system's track (--color-track) is 1.3:1; the level meter and the
     // upload's bar keep that token, beside words that say the same.
@@ -305,6 +323,9 @@ export const eneoTheme = defineTheme({
         // the two read as one control and not as a field cut off; its words alone say that it waits.
         [`:is(.astryx-input-group > *)${DISABLED}`]: {boxShadow: 'inset 0 0 0 var(--border-width) var(--color-border-emphasized)'},
       },
+      // An off control keeps its focus (the player's Bakåt at the start): the design system's half opacity dimmed its ring
+      // as well, under 3:1. The disabled colour says it is off, at full opacity, so the ring stays whole.
+      'variant:ghost': {[DISABLED]: {opacity: '1', color: 'var(--color-text-disabled)'}},
     },
     // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
     // 4.28:1 in dark mode, the primary one 8.5:1.

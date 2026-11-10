@@ -154,7 +154,7 @@ export function RunProgress({
                 ? "Texten blir klar även om du stänger sidan. Du hittar den sedan bland körningarna i flödet."
                 : "Dokumentet blir klart även om du stänger sidan. Du hittar det sedan bland körningarna i flödet."}
         </Text>
-        {error && <Banner status="error" title={error} collapsible={false} />}
+        {error && <Banner role="alert" status="error" title={error} collapsible={false} />}
         <HStack>
           {/* Busy, not disabled, so the focus the question gives back stays on it (a refused cancel is said above it); a
               press while the cancel is on its way asks nothing, so it is sent once. */}

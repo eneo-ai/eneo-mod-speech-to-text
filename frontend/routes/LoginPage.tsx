@@ -100,7 +100,9 @@ export default function LoginPage() {
       <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
         <VStack hAlign="center" paddingBlock={10}>
           <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-          <Spinner aria-label="Laddar" />
+          {/* Not read out: what is said is the page that follows (RouteEffects). */}
+          <Spinner aria-hidden />
+          <VisuallyHidden as="p">Laddar</VisuallyHidden>
         </VStack>
       </ModuleShell>
     );
@@ -130,7 +132,7 @@ export default function LoginPage() {
                   )}
                 </VStack>
 
-                {authError && <Banner status="error" title={authError} collapsible={false} />}
+                {authError && <Banner role="alert" status="error" title={authError} collapsible={false} />}
                 {/* The one action the page exists for: the primary's own size, across the card. */}
                 {reachable && (
                   <Button

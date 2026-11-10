@@ -745,7 +745,12 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeHidden();
-  // The names follow the field, and "Lägg till" is off while nothing is typed: Tab passes it to the first name's button.
+  // The names follow the field and its "Lägg till", which is off while nothing is typed and keeps its place in the order:
+  // a screen reader finds it, said to be off.
+  await page.keyboard.press(tabKey(page));
+  const add = page.getByRole("button", { name: "Lägg till", exact: true });
+  await expect(add).toBeFocused();
+  await expect(add).toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press(tabKey(page));
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
   await page.keyboard.press("Enter");

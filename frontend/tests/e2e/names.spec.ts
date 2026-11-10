@@ -316,7 +316,7 @@ test("a page that is still loading says so, under the page's heading", async ({ 
   await page.route("**/api/auth/status", () => {});
   for (const path of ["/", "/flows"]) {
     await page.goto(path);
-    await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+    await expect(page.getByText("Laddar", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Tal till text" })).toBeAttached();
   }
 });

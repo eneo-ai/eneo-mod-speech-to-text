@@ -15,9 +15,11 @@ export function LoadingShell() {
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
       <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-      {/* Most answers come within a moment: the spinner waits that long before it shows. */}
+      {/* Most answers come within a moment: the spinner waits that long before it shows. It is not read out: what is said
+          is the page, once it has its content (RouteEffects). Its words are there for a screen reader to find. */}
       <Center minHeight="60dvh" className={styles.wait}>
-        <Spinner size="lg" aria-label="Laddar" />
+        <Spinner size="lg" aria-hidden />
+        <VisuallyHidden as="p">Laddar</VisuallyHidden>
       </Center>
     </ModuleShell>
   );

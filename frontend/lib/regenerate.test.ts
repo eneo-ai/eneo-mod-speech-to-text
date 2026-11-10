@@ -3,7 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { ApiError, type FlowRunPublic, type FlowRunStep, type TranscriptCorrectionsPublic } from "./api";
 import { correctionsNewerThanDocument, namesOnly, regenerate, regenerationOffer, regenerationRefusal } from "./regenerate";
-import { button, cleanup, installDom, mount } from "./test-dom";
+import { button, cleanup, installDom, isOff, mount } from "./test-dom";
 import type { CorrectionSet } from "./transcript-corrections";
 
 installDom();
@@ -136,7 +136,7 @@ test("while corrections are being saved, the new document waits for them", async
   const view = await mount(
     createElement(RegenerateNotice, { offer: regenerationOffer(base)!, saveState: "saving", onStarted: () => undefined, onReload: () => undefined }),
   );
-  assert.equal(button(view.container, "Sparar rättningarna…")!.disabled, true);
+  assert.equal(isOff(button(view.container, "Sparar rättningarna…")), true);
 });
 
 test("a save that only named speakers offers a new document like any other, under the key of its own revision", () => {
@@ -206,7 +206,7 @@ test("the notice stands while the transcript is read, its button waiting, and sa
 
   const reading = await mount(createElement(RegenerateNotice, { ...props, reading: true }));
   const make = button(reading.container, "Skapa dokumentet igen")!;
-  assert.ok(seen(make) && make.disabled, "waits for the transcript");
+  assert.ok(seen(make) && isOff(make), "waits for the transcript");
   assert.ok(seen(words(reading.container, "Den nya versionen görs från den rättade transkriberingen och tar en stund. Dokumentet som visas nu finns kvar bland körningarna i flödet.")));
   assert.ok(!seen(button(reading.container, "Läs in igen")));
   await reading.unmount();

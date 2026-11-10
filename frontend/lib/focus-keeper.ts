@@ -1,7 +1,7 @@
 /**
- * The one owner of "a control that was pressed and then busy keeps the focus". A button disabled while its action runs
- * (the design system's isLoading, or isDisabled while the page is busy) loses the keyboard focus to the page's body,
- * and the browser gives nothing back when it is enabled again (WCAG 2.4.3). This gives the focus back to it then,
+ * The one owner of "a control that was pressed and then busy keeps the focus". A native control disabled while its action
+ * runs loses the keyboard focus to the page's body, and the browser gives nothing back when it is enabled again (WCAG
+ * 2.4.3); the design system's buttons are only aria-disabled and keep it. This gives the focus back to it then,
  * unless the person has moved it somewhere else meanwhile. A control that is replaced rather than enabled again (a notice
  * shown anew) takes the focus itself where that is its job (ProblemAlert's focusRetry).
  */

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { button, installDom, mount, type } from "./test-dom";
+import { button, installDom, isOff, mount, type } from "./test-dom";
 import { EarlierRunsList } from "./earlier-runs";
 import { withRouter } from "./test-router";
 
@@ -17,11 +17,11 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
     createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
   const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
-  assert.equal(button(view.container, "Lägg till")?.disabled, true, "Lägg till is there, and off, while nothing is typed");
+  assert.equal(isOff(button(view.container, "Lägg till")), true, "Lägg till is there, and off, while nothing is typed");
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Anna Berg"));
   const add = button(view.container, "Lägg till")!;
-  assert.equal(add.disabled, false, "and on while a name is typed");
+  assert.equal(isOff(add), false, "and on while a name is typed");
   // Tab to the button: not yet added, the button adds it.
   await view.act(async () => add.focus());
   assert.deepEqual(changes, []);
@@ -61,7 +61,7 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   await view.act(async () => add.click());
   assert.deepEqual(changes, [["Erik Lund"]], "added once");
   assert.equal(document.activeElement, field);
-  assert.equal(add.disabled, true, "and Lägg till is off again, beside the empty field");
+  assert.equal(isOff(add), true, "and Lägg till is off again, beside the empty field");
   await view.unmount();
 });
 
@@ -527,7 +527,7 @@ test("a microphone the browser refuses is said with what to do, and Försök ige
   const view = await mount(createElement(MicrophoneCheck, { active: true }));
   await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  assert.match(view.container.textContent ?? "", /Mikrofonen är blockerad\.Tillåt mikrofonen för den här sidan i webbläsaren/);
+  assert.match(view.container.textContent ?? "", /Mikrofonen är blockerad\. Tillåt mikrofonen för den här sidan i webbläsaren/);
   assert.equal(button(view.container, "Testa mikrofonen") !== null, true, "no test is running");
   await view.act(async () => button(view.container, "Försök igen")!.click());
   assert.equal(asked, 2);
@@ -1083,7 +1083,7 @@ test("a cancel that is on its way takes no second press until Eneo has answered,
   const trigger = () => button(view.container, "Avbryt körningen")!;
   assert.equal(view.container.querySelectorAll('[role="alert"]').length, 1);
   assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /Körningen kunde inte avbrytas just nu\./);
-  assert.equal(trigger().disabled, false);
+  assert.equal(isOff(trigger()), false);
 
   await ask();
   await view.act(async () => button(question(), "Avbryt körningen")!.click());
@@ -1103,11 +1103,11 @@ test("a run that ends while its cancel question is open takes the question and t
   const { view, question, ask } = await mountRunning(async () => undefined);
   await ask();
   assert.equal(question().hasAttribute("open"), true);
-  assert.equal(document.body.style.position, "fixed", "the page is held still while it is asked");
+  assert.equal(document.documentElement.style.overflow, "hidden", "the page is held still while it is asked");
   await view.unmount();
   assert.equal(document.body.querySelector("dialog[open]"), null, "no question left open");
-  assert.equal(document.body.style.position, "", "the page scrolls again");
-  assert.equal(document.body.style.overflow, "");
+  assert.equal(document.documentElement.style.overflow, "", "the page scrolls again");
+  assert.equal(document.body.style.overscrollBehaviorY, "");
 });
 
 test("the cancel question is closed while the login has ended and asked again after the new one", async () => {
@@ -1150,14 +1150,14 @@ test("Försök igen on a failed run is busy and off while Eneo answers, so a sec
     }),
   );
   const retry = () => button(view.container, "Försök igen")!;
-  assert.equal(retry().disabled, false);
+  assert.equal(isOff(retry()), false);
   await view.act(async () => retry().click());
   await view.act(async () => retry().click());
   assert.equal(retries, 1);
-  assert.equal(retry().disabled, true);
+  assert.equal(isOff(retry()), true);
   assert.equal(retry().getAttribute("aria-busy"), "true");
   await view.act(async () => answer());
-  assert.equal(retry().disabled, false, "free again once Eneo has answered");
+  assert.equal(isOff(retry()), false, "free again once Eneo has answered");
   await view.unmount();
 });
 
