@@ -14,7 +14,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
-import { measureDocks, useDock } from "@/lib/dock";
+import { measureDocks, outOfSight, useDock } from "@/lib/dock";
 import { useNarrowerThan } from "./useRoomInRow";
 import { useWorkspace } from "@/lib/workspace";
 import { formatClock, formatRelativeDate } from "@/lib/format";
@@ -352,6 +352,10 @@ export function RunResult({
         role={tabs ? "tabpanel" : undefined}
         aria-labelledby={tabs ? PANELS[view_].tab : undefined}
         inert={inactive}
+        // Said hidden too, which every accessibility tree and checker reads, inert or not (Playwright's WebKit), and out of
+        // sight to the docks in it (its player).
+        aria-hidden={inactive || undefined}
+        {...(inactive ? outOfSight : undefined)}
         className={[styles.panel, className, inactive && styles.inactive].filter(Boolean).join(" ")}
       >
         {content}

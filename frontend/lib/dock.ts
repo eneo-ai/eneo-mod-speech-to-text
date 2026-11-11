@@ -56,6 +56,16 @@ function publish() {
   else root.removeAttribute("data-dock");
 }
 
+const OUT_OF_SIGHT = "[data-out-of-sight]";
+
+/**
+ * Spread on a part of the page kept laid out but out of sight (the result's tab not chosen): a dock in it covers and
+ * ends nothing, and its height is not read there, which would lay out what the browser skips. Said by the page, not
+ * asked of the browser: one without content-visibility (Safari 17) still lays the part out and reports it shown. Call
+ * measureDocks once the part is shown or put out of sight.
+ */
+export const outOfSight = { "data-out-of-sight": "" } as const;
+
 /**
  * The most of the window's height a dock may cover. Large text (the reader's own size, iOS's text size) can make a dock
  * half the screen; past this share it stands in the page's flow at its end (`data-dock-too-tall`, styles/globals.css).
@@ -72,15 +82,8 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   // The dock's height as last laid out (its observer and the window say when it changes): a measure on a focus reads no
   // layout, which on a long transcript would be laid out again for every focus that opens a passage's editor.
   let height = 0;
-  // Whether it is shown: a dock in a part of the page hidden but kept laid out (the result's tab not chosen, which is
-  // visibility:hidden over a skipped layout) covers and ends nothing, and its height is not read there, which would lay
-  // out what the browser skips.
-  let seen = true;
   const measure = (read = true) => {
-    if (read) {
-      seen = getComputedStyle(dock).visibility !== "hidden";
-      height = seen ? dock.offsetHeight : 0;
-    }
+    if (read) height = dock.closest(OUT_OF_SIGHT) ? 0 : dock.offsetHeight;
     const others = yields ? [...docks].reduce((sum, [other, { size, yields: alsoYields }]) => sum + (other === dock || alsoYields ? 0 : size), 0) : 0;
     const tooTall = height + others > window.innerHeight * MOST_OF_WINDOW;
     const covers = !tooTall && height > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);

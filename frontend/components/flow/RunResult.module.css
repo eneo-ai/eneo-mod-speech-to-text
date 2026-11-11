@@ -82,13 +82,12 @@
 }
 
 /* The panel of the tab not chosen (RunResult also makes it inert): no room and nothing drawn, in every browser, by its
-   size and clip. Its rendering is skipped but kept (content-visibility), so choosing its tab lays out nothing anew.
-   Hidden too (visibility), which every browser and checker reads as not there: what it holds is no target beside the
-   chosen panel's and no second control of the same name. Last in the file, over the panel's own margin. */
+   size and clip. Its rendering is skipped but kept (content-visibility), so choosing its tab lays out and styles
+   nothing anew: no inherited property (visibility) changes on its passages. Last in the file, over the panel's own
+   margin. */
 .inactive {
   block-size: 0;
   margin: 0;
   overflow: clip;
   content-visibility: hidden;
-  visibility: hidden;
 }

@@ -70,6 +70,23 @@ async function fillContrast(target: Locator) {
   });
 }
 
+test("on a phone, the transcript's player keeps room at the page's end on its own tab only", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "phone-390-webkit"].includes(info.project.name));
+  await result(page);
+  // What the page's docks cover, as lib/dock.ts tells the page (on <html>).
+  const covered = () =>
+    page.evaluate(() => ({
+      size: document.documentElement.style.getPropertyValue("--dock-block-size"),
+      edges: document.documentElement.getAttribute("data-dock"),
+    }));
+  const document_ = await covered();
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  await expect.poll(async () => (await covered()).edges, "the player ends the transcript").toContain("bottom");
+  expect((await covered()).size, "and covers its last rows").not.toBe(document_.size);
+  await page.getByRole("tab", { name: "Dokument" }).click();
+  await expect.poll(covered, "the document's page has no room kept for the player out of sight").toEqual(document_);
+});
+
 test("the position slider's track shows where the recording ends, at 3:1 on its card in both colour modes", async ({ page }, info) => {
   test.skip(!["phone-390-light", "phone-390-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name));
   await result(page);
