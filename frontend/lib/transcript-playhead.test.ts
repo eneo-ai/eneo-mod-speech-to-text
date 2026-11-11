@@ -160,6 +160,27 @@ const editorActive = (raw: TranscriptSegment[], shown: TranscriptSegment[], time
     onInteract: () => {}, confirmedWords: new Set<string>(),
   })).matchAll(/<span (?:data-word-start="([\d.]+)" )?[^>]*data-active=""/g)].map((match) => match[1] ?? "no word");
 
+test("a spread word corrected away still ends where the next word starts, and so does its sentence", () => {
+  const raw: TranscriptSegment[] = [
+    { fileIndex: 0, start: 0, end: 10, speaker: "SPEAKER_00", text: "a b c", words: locateWords("a b c", [
+      { word: "a", start: 0, end: 10, probability: 0 }, { word: "b", start: 1, end: 2, probability: 0.9 },
+      { word: "c", start: 2, end: 3, probability: 0.9 },
+    ], "forced") },
+    { fileIndex: 0, start: 4, end: 6, speaker: "SPEAKER_01", text: "d", words: locateWords("d", [{ word: "d", start: 4, end: 6, probability: 0.9 }], "forced") },
+  ];
+  const shown = correctionOf(raw, 0, 0, "a");
+  const at5 = playheadTargets(shown, 0, 5, raw);
+  assert.deepEqual([at5.segments, at5.follow], [[1], 1]);
+  // In the meeting, segment 4's only word corrected: at 40 s the passage being said is followed, not the one it spread over.
+  const meeting = spread();
+  const fixed = correctionOf(meeting, 4, 0, "o0");
+  const turns = computeTurns(fixed);
+  const { follow } = playheadTargets(fixed, 0, 40, meeting);
+  assert.equal(turns.find((turn) => turn.parts.some((part) => part.segmentIndex === follow))!.index, 4);
+  // The review editor does not tint the corrected sentence after its cut end either.
+  assert.deepEqual(editorActive(meeting, fixed, 40), ["39.95"]);
+});
+
 test("the review editor times a corrected transcript by the words as they came", () => {
   const raw: TranscriptSegment[] = [{ fileIndex: 0, start: 0, end: 10, speaker: "SPEAKER_00", text: "a b c", words: locateWords("a b c", [
     { word: "a", start: 0, end: 10, probability: 0 }, { word: "b", start: 1, end: 2, probability: 0.9 },

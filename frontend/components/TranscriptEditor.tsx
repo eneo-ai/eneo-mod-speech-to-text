@@ -12,7 +12,7 @@ import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { wordKey } from "@/lib/confirmed-words";
 import { formatClock } from "@/lib/format";
-import { modelSpeakerOf, playbackWordHighlights, needsSpeakerReview, speakerColorIndex, UNDECIDED_SPEAKER, type TranscriptSegment } from "@/lib/transcript";
+import { modelSpeakerOf, playbackSpans, playbackWordHighlights, needsSpeakerReview, speakerColorIndex, UNDECIDED_SPEAKER, type TranscriptSegment } from "@/lib/transcript";
 import { scrollBehavior } from "@/lib/motion";
 import { reviewPassages, type FileSpeakerReview } from "@/lib/speaker-review";
 import { applyCorrections, correctedSegmentText, EMPTY_CORRECTIONS, occurrencesForLine, withLineCorrection, type CorrectionSet } from "@/lib/transcript-corrections";
@@ -53,6 +53,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
   const allSuggestions = pendingSpeakerSuggestions(raw, shown, corrections);
   const selectedSuggestions = selection.length ? pendingSpeakerSuggestions(raw, shown, corrections, selection) : [];
   const highlightedWords = useMemo(() => playbackWordHighlights(shown, currentFile, currentTime, raw), [shown, currentFile, currentTime, raw]);
+  const played = useMemo(() => playbackSpans(shown, raw), [shown, raw]);
   const selectedText = selectedTranscriptText(selection, raw, corrections);
   const wordCount = selectedText.match(/\S+/gu)?.length ?? 0;
   const selectedSources = selection.map((s) => raw[s.segmentIndex]);
@@ -290,7 +291,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         const end = cuts[i + 1];
         const word = words.find((w) => w.charStart <= start && w.charEnd >= end);
         const selected = bounds.some((b) => start < b.end && end > b.start);
-        const active = segment.fileIndex === currentFile && (word ? highlightedWords.get(word) === true : !words.length && currentTime >= segment.start && currentTime < segment.end);
+        const active = segment.fileIndex === currentFile && (word ? highlightedWords.get(word) === true : !words.length && currentTime >= segment.start && currentTime < played[index].end);
         const currentWord = Boolean(word && highlightedWords.has(word));
         return <span key={start} data-word-start={word?.start} aria-current={currentWord ? "true" : undefined} className={styles.word}
           data-selected={selected ? "" : undefined} data-active={active ? "" : undefined}

@@ -361,15 +361,14 @@ const playbackViews = new WeakMap<
   readonly TranscriptSegment[],
   { source: readonly TranscriptSegment[]; view: readonly TranscriptSegment[] }
 >();
-/** A cut word's end in playback, by the word as it came. */
-const playedEnds = new WeakMap<TranscriptWord, number>();
 
 /**
  * The spans playback lights and follows. A word the forced alignment could not place (`uncertain`) comes spread over
  * the rest of its window, over the words said after it; here it ends where the next word of its recording starts, and a
- * sentence it made longer ends with its words. The times come from `source`, the segments as they came before corrections,
- * which drop a corrected word's time but not its audio. Indices match `segments`, and what is not cut stays the same
- * object. Built once per array and source.
+ * sentence it made longer ends with its words. The times come from `source`, the segments as they came before
+ * corrections, which drop a corrected word's time but not its audio: a sentence ends with its source words, a spread
+ * one corrected away cut too. Indices match `segments`, and what is not cut stays the same object. Built once per array
+ * and source.
  */
 export function playbackSpans(segments: readonly TranscriptSegment[], source: readonly TranscriptSegment[] = segments): readonly TranscriptSegment[] {
   const known = playbackViews.get(segments);
@@ -381,18 +380,17 @@ export function playbackSpans(segments: readonly TranscriptSegment[], source: re
     return end;
   };
   const view = segments.map((s, i) => {
-    if (!s.words?.some((w) => w.uncertain)) return s;
-    const words = s.words.map((w) => {
-      const end = clip(w, s.fileIndex);
-      if (!(end < w.end)) return w;
-      playedEnds.set(w, end);
-      return { ...w, end };
-    });
-    if (words.every((w, j) => w === s.words![j])) return s;
-    // The sentence ends with its source words, corrected ones included: a correction drops a word's time, not its audio.
+    const all = source[s.sourceSegmentIndex ?? i]?.words;
+    if (!s.words?.some((w) => w.uncertain) && !all?.some((w) => w.uncertain)) return s;
     const from = s.sourceCharStart ?? 0, to = s.sourceCharEnd ?? Infinity;
-    const said = (source[s.sourceSegmentIndex ?? i]?.words ?? []).filter((w) => w.charStart < to && w.charEnd > from);
-    return { ...s, words, end: Math.min(s.end, Math.max(...words.map((w) => w.end), ...said.map((w) => clip(w, s.fileIndex)))) };
+    const said = (all ?? []).filter((w) => w.charStart < to && w.charEnd > from);
+    const ends = said.map((w) => clip(w, s.fileIndex));
+    const words = s.words?.map((w) => {
+      const end = clip(w, s.fileIndex);
+      return end < w.end ? { ...w, end } : w;
+    });
+    if (words?.every((w, j) => w === s.words![j]) !== false && ends.every((end, j) => end === said[j].end)) return s;
+    return { ...s, words, end: Math.min(s.end, Math.max(...(words ?? []).map((w) => w.end), ...ends)) };
   });
   playbackViews.set(segments, { source, view });
   return view;
@@ -408,23 +406,23 @@ export function playbackWordHighlights(
   time: number,
   source: readonly TranscriptSegment[] = segments,
 ): Map<TranscriptWord, boolean> {
-  playbackSpans(segments, source);
+  const view = playbackSpans(segments, source);
   const active = new Map<TranscriptWord, boolean>();
   const previous = new Map<TranscriptWord, boolean>();
   let lastEnd = -Infinity;
-  for (const segment of segments) {
-    if (segment.fileIndex !== fileIndex) continue;
-    for (const word of segment.words ?? []) {
-      const { start } = word, end = playedEnds.get(word) ?? word.end;
+  segments.forEach((segment, i) => {
+    if (segment.fileIndex !== fileIndex) return;
+    (segment.words ?? []).forEach((word, j) => {
+      const { start, end } = view[i].words![j];
       if (word.charStart < 0 || word.charEnd <= word.charStart || !Number.isFinite(start) ||
-          !Number.isFinite(end) || end < start) continue;
+          !Number.isFinite(end) || end < start) return;
       if (start <= time && time < end) active.set(word, true);
       if (end <= time) {
         if (end > lastEnd) { previous.clear(); lastEnd = end; }
         if (end === lastEnd) previous.set(word, false);
       }
-    }
-  }
+    });
+  });
   return active.size ? active : previous;
 }
 
