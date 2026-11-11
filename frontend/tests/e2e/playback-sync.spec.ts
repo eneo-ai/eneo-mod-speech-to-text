@@ -401,13 +401,27 @@ test("in a passage taller than the window, the sentence being said stays in view
   // A presentation of some three minutes by one speaker between two short turns: one passage, taller than the window.
   const presentation = Array.from({ length: 8 }, () => TURNS[2][1]).flat();
   await meeting(page, info, { bytes: wav(4 * MEETING_S), type: "audio/wav" }, [TURNS[0], TURNS[1], ["SPEAKER_00", presentation], TURNS[3]]);
-  // Its last sentence, pressed where it is read, and played on.
-  const last = page.locator('[data-turn-index="2"] [data-segment-index]').last().locator("[data-word-start]").first();
-  await last.scrollIntoViewIfNeeded();
-  await last.click();
-  const samples = await sample(page, 3_000);
+  const passage = page.locator('[data-turn-index="2"]');
+  // Taller than the part of what can be read (the list where it scrolls, else the window) that the follow keeps a block in.
+  const ratio = await passage.evaluate((element) => {
+    let list = element.parentElement;
+    while (list && !(/(auto|scroll)/.test(getComputedStyle(list).overflowY) && list.scrollHeight > list.clientHeight)) list = list.parentElement;
+    return element.getBoundingClientRect().height / (list ? list.getBoundingClientRect().height : innerHeight);
+  });
+  expect(ratio, "the passage is taller than 0.7 of what can be read").toBeGreaterThan(0.7);
+  // Its sentence before last, pressed where it is read, and played on into its last: followed twice.
+  const sentences = passage.locator("[data-segment-index]");
+  const count = await sentences.count();
+  const [beforeLast, last] = await Promise.all([count - 2, count - 1].map((i) => sentences.nth(i).getAttribute("data-segment-index").then(Number)));
+  const first = sentences.nth(count - 2).locator("[data-word-start]").first();
+  await first.scrollIntoViewIfNeeded();
+  await first.click();
+  const samples = await sample(page, 5_000);
   await pause(page);
   const out = samples.filter((s) => s.litInView === false);
-  measure(info, "tall", { outFrames: out.length, frames: samples.length });
+  // The sentences said, in order (none in the pause between them).
+  const said = [...new Set(samples.map((s) => s.sentence).filter((s) => s >= 0))];
+  measure(info, "tall", { ratio: +ratio.toFixed(2), said, outFrames: out.length, frames: samples.length });
+  expect(said, "the sentence before last, then the last").toEqual([beforeLast, last]);
   expect(out.length, "the word being said is in view").toBe(0);
 });
