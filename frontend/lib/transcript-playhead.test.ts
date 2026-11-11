@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TranscriptEditor } from "../components/TranscriptEditor";
 import { cleanup, installDom, mount } from "./test-dom";
 import { Playback, type MediaLike } from "./playback";
-import { computeTurns, locateWords, playbackWordHighlights, type TranscriptSegment } from "./transcript";
+import { computeTurns, locateWords, playbackSpans, playbackWordHighlights, type TranscriptSegment } from "./transcript";
 import { applyCorrections } from "./transcript-corrections";
 import { NOTHING_LIT, PlayheadPainter, playheadTargets } from "./transcript-playhead";
 
@@ -67,8 +67,13 @@ const editorLit = (segments: TranscriptSegment[], time: number) =>
   });
 
 test("a word spread over its window ends where the next word starts, so it does not hide the words after it", () => {
-  const segments = spread();
+  // A second recording, with a word that starts inside segment 3's spread word 9 (27.59 to 48.3 s).
+  const other = locateWords("o0", [{ word: "o0", start: 27.6, end: 28, probability: 0.9 }], "forced");
+  const segments = [...spread(), { fileIndex: 1, start: 27.6, end: 28, speaker: "SPEAKER_00", text: "o0", words: other }];
   const lit = (time: number) => playheadTargets(segments, 0, time).words.map(({ segment, word }) => [segment, word]);
+  // Word 9 ends where the next word of its own recording starts, not where the other recording's word does.
+  assert.equal(playbackSpans(segments)[3].words![9].end, 27.69);
+  assert.deepEqual(editorLit(segments, 27.66), [[3, 9]]);
   // In segment 3's pause after its word 15, that word; not word 9, whose span came spread to 48.3 s.
   assert.deepEqual(lit(30), [[3, 15]]);
   // Where segment 4's spread word came spanning them, one word: the one being said in segment 5, then in segment 6.
