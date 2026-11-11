@@ -38,9 +38,47 @@ function typing(region: HTMLElement, on: boolean) {
  * focus.
  */
 export const whileTyping = {
-  onFocus: (event: ReactFocusEvent<HTMLElement>) => typing(event.currentTarget, (event.target as Element).matches("input, textarea")),
-  onBlur: (event: ReactFocusEvent<HTMLElement>) => typing(event.currentTarget, false),
+  onFocus: (event: ReactFocusEvent<HTMLElement>) => {
+    listen();
+    settle(event.currentTarget, (event.target as Element).matches("input, textarea"));
+  },
+  onBlur: (event: ReactFocusEvent<HTMLElement>) => settle(event.currentTarget, false),
 };
+
+/**
+ * How the focus is moved. One a press gives (a finger, the pointer) is where the press is: no dock uncovers it
+ * (`pressed`, until a key is pressed), and a region's typing ends only once the press is let go (`held`, from its mouse
+ * button's down to its up; a finger's press sends them once lifted, and the browser looks again for what the up lands on
+ * when the page changed under it): a dock stuck again between the two would stand over what was pressed, and the press
+ * would land on the dock. A focus the keyboard moves ends the typing at once.
+ */
+let pressed = false;
+let held = false;
+const letGo = new Set<HTMLElement>();
+let listening = false;
+
+function listen() {
+  if (listening) return;
+  listening = true;
+  const release = () => {
+    held = false;
+    const focused = document.activeElement;
+    letGo.forEach((region) => typing(region, !!focused && region.contains(focused) && focused.matches("input, textarea")));
+    letGo.clear();
+  };
+  document.addEventListener("pointerdown", () => (pressed = true), true);
+  document.addEventListener("mousedown", () => (held = true), true);
+  document.addEventListener("mouseup", release, true);
+  document.addEventListener("keydown", () => {
+    pressed = false;
+    release();
+  }, true);
+}
+
+function settle(region: HTMLElement, on: boolean) {
+  if (!on && held) letGo.add(region);
+  else typing(region, on);
+}
 
 function publish() {
   const shown = [...docks.values()];
@@ -94,13 +132,7 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   // What holds the dock (a player's region) moves with it: no scroll uncovers it. A focus a press gives is where the
   // finger or the pointer is: a scroll between the press's down and up would land the press beside what was pressed (a
   // word of the review's text, whose passage takes the focus), so only the keyboard's focus is uncovered.
-  let pressed = false;
-  const press = () => {
-    pressed = true;
-  };
-  const key = () => {
-    pressed = false;
-  };
+  listen();
   // A dock a region put in its flow for a soft keyboard (whileTyping) is measured once that has been laid out. One
   // measured covering nothing (the window resized for the keyboard) is looked at again before a control is uncovered
   // while it says it covers none.
@@ -124,15 +156,11 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   // A dock that is no longer stuck (a window made wider or lower) can keep its size: the window says so.
   const resized = () => measure();
   window.addEventListener("resize", resized);
-  document.addEventListener("pointerdown", press, true);
-  document.addEventListener("keydown", key, true);
   document.addEventListener("focusin", uncover);
   measure();
   return () => {
     observer.disconnect();
     window.removeEventListener("resize", resized);
-    document.removeEventListener("pointerdown", press, true);
-    document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
     yielding.delete(remeasure);
     measures.delete(remeasure);

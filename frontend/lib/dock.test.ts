@@ -256,6 +256,30 @@ test("a region whose docks stand in the page while a field has the focus says so
   field.focus();
   button.focus();
   assert.ok(!region.hasAttribute("data-typing"), "a button is no field");
+  // A finger's press on a button under the field, in the order a phone's browser sends it: the pointer's down and up,
+  // then the mouse's down, which moves the focus, and its up. The dock stays in the text until the mouse's up, so the
+  // press lands where it began.
+  const send = (type: string) => document.dispatchEvent(new window.Event(type));
+  field.focus();
+  ["pointerdown", "pointerup", "mousedown"].forEach(send);
+  button.focus();
+  assert.ok(region.hasAttribute("data-typing"), "pressed: still in the text");
+  send("mouseup");
+  assert.ok(!region.hasAttribute("data-typing"), "let go: docked again");
+  // A press from one field to another keeps the region typing.
+  const other = document.createElement("input");
+  region.append(other);
+  field.focus();
+  send("mousedown");
+  other.focus();
+  send("mouseup");
+  assert.ok(region.hasAttribute("data-typing"), "another field: still typing");
+  // A key pressed while a press is held lets it go: the keyboard's focus is never kept waiting.
+  send("mousedown");
+  button.focus();
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab" }));
+  assert.ok(!region.hasAttribute("data-typing"), "a key: docked again");
+  other.remove();
   stop();
   [region, bar].forEach((element) => element.remove());
 });
