@@ -366,33 +366,18 @@ const playbackViews = new WeakMap<readonly TranscriptSegment[], readonly Transcr
  * Built once per array.
  */
 export function playbackSpans(segments: readonly TranscriptSegment[]): readonly TranscriptSegment[] {
-  const known = playbackViews.get(segments);
-  if (known) return known;
-  const starts = new Map<number, number[]>();
-  for (const s of segments) {
-    const list = starts.get(s.fileIndex) ?? [];
-    starts.set(s.fileIndex, list);
-    for (const w of s.words ?? []) if (Number.isFinite(w.start)) list.push(w.start);
-  }
-  for (const list of starts.values()) list.sort((a, b) => a - b);
-  const nextStart = (fileIndex: number, after: number) => {
-    const list = starts.get(fileIndex) ?? [];
-    let low = 0;
-    for (let high = list.length; low < high; ) {
-      const mid = (low + high) >> 1;
-      if (list[mid] > after) high = mid; else low = mid + 1;
-    }
-    return list[low] ?? Infinity;
-  };
-  const view = segments.map((s) => {
-    let cut = false;
-    const words = s.words?.map((w) => {
-      const end = w.uncertain && Number.isFinite(w.start) ? Math.min(w.end, nextStart(s.fileIndex, w.start)) : w.end;
-      if (!(end < w.end)) return w;
-      cut = true;
-      return { ...w, end };
+  let view = playbackViews.get(segments);
+  if (view) return view;
+  view = segments.map((s) => {
+    if (!s.words?.some((w) => w.uncertain)) return s;
+    // ponytail: scans the recording's words per spread word; they come about once per 30 s window.
+    const words = s.words.map((w) => {
+      if (!w.uncertain) return w;
+      let end = w.end;
+      for (const o of segments) if (o.fileIndex === s.fileIndex) for (const n of o.words ?? []) if (n.start > w.start && n.start < end) end = n.start;
+      return end < w.end ? { ...w, end } : w;
     });
-    return cut && words ? { ...s, words, end: Math.min(s.end, Math.max(...words.map((w) => w.end))) } : s;
+    return words.every((w, i) => w === s.words![i]) ? s : { ...s, words, end: Math.min(s.end, Math.max(...words.map((w) => w.end))) };
   });
   playbackViews.set(segments, view);
   return view;
