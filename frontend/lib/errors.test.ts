@@ -149,6 +149,70 @@ test("an answer that is not the JSON it claims to be is said in Swedish, and try
   assert.equal(advice.retry, true);
 });
 
+// Eneo's refusal of the module's key, as `raise_api_key_http_error` answers it: the code and its context at the top level.
+const keyRefused = (code: string, context?: Record<string, string>) =>
+  new ApiError(403, "API key does not have 'flows' read permission.", { code, message: "x", ...(context && { context }) }, code);
+
+test("Eneo refusing the module's key names the key and the right it needs, not the person", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const flows = "Tal till text saknar rättighet till flöden i Eneo. Den som ansvarar för Tal till text behöver ge modulens nyckel rättigheten Flöden: Skriv.";
+  // The list asks first and only for read; every run, upload and review needs write, so Skriv is the fix all the same.
+  for (const required_level of ["read", "write"]) {
+    const advice = errorAdvice(
+      keyRefused("insufficient_resource_permission", { resource_type: "flows", required_level, auth_layer: "api_key_resource" }),
+    );
+    assert.deepEqual(advice, { message: flows, retry: false, ownerMustFix: false }, required_level);
+  }
+  // Key data Eneo could not read sends no resource_type; the module reaches flows only, so the fix is the same.
+  assert.equal(friendlyError(keyRefused("insufficient_resource_permission")), flows);
+  assert.equal(friendlyError(keyRefused("insufficient_resource_permission", { auth_layer: "api_key_resource" })), flows);
+  // A right the module never asks for is not named as Flöden.
+  assert.equal(
+    friendlyError(keyRefused("insufficient_resource_permission", { resource_type: "files", required_level: "read" })),
+    "Tal till text saknar en rättighet i Eneo. Den som ansvarar för Tal till text behöver se över modulens nyckel.",
+  );
+  assert.equal(
+    friendlyError(keyRefused("insufficient_scope", { auth_layer: "api_key_scope" })),
+    "Tal till text når inte det här flödet: nyckelns omfång i Eneo täcker det inte. Kontakta den som ansvarar för Tal till text.",
+  );
+});
+
+test("Eneo's refusal that the module's own answer carries under detail (a file's signed address) is read as Eneo's", async (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    Response.json(
+      { detail: { code: "insufficient_resource_permission", message: "x", context: { resource_type: "flows" } } },
+      { status: 403 },
+    )) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const { checkRunArtifact } = await import("./api");
+  const error = await checkRunArtifact("flow-1", "run-1", "file-1").then(
+    () => assert.fail("a refusal is not a file"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof ApiError);
+  assert.equal(error.code, "insufficient_resource_permission");
+  assert.equal(
+    friendlyError(error),
+    "Tal till text saknar rättighet till flöden i Eneo. Den som ansvarar för Tal till text behöver ge modulens nyckel rättigheten Flöden: Skriv.",
+  );
+});
+
+test("the person's own refusal and Eneo's coded 401 keep their sentences", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  assert.equal(
+    friendlyError(eneo(403, "insufficient_space_permission", "You do not have access to this space.")),
+    "Du har inte behörighet till det här. Kontakta den som ansvarar för Eneo i din verksamhet om du behöver det.",
+  );
+  assert.equal(
+    friendlyError(eneo(401, "authentication_error", "Unauthenticated")),
+    "Tal till text har inte behörighet till det här flödet. Kontakta den som ansvarar för Tal till text.",
+  );
+});
+
 test("a request our own login's end refused is read after the new login, so it says to try again, not to log in", () => {
   const advice = errorAdvice(new ApiError(401, "Session expired", { detail: "Session expired" }));
   assert.equal(advice.message, "Inloggningen hade gått ut och det här skickades inte. Försök igen.");
