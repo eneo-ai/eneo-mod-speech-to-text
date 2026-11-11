@@ -373,11 +373,26 @@ const playbackViews = new WeakMap<
 export function playbackSpans(segments: readonly TranscriptSegment[], source: readonly TranscriptSegment[] = segments): readonly TranscriptSegment[] {
   const known = playbackViews.get(segments);
   if (known?.source === source) return known.view;
-  // ponytail: scans the recording's words per spread word; they come about once per 30 s window.
+  let starts: Map<number, number[]> | undefined;
+  // The next word's start in the recording, by a binary search of its starts, sorted once per call.
   const clip = (w: TranscriptWord, fileIndex: number) => {
-    let end = w.end;
-    if (w.uncertain) for (const o of source) if (o.fileIndex === fileIndex) for (const n of o.words ?? []) if (n.start > w.start && n.start < end) end = n.start;
-    return end;
+    if (!w.uncertain) return w.end;
+    if (!starts) {
+      starts = new Map();
+      for (const o of source) {
+        const list = starts.get(o.fileIndex) ?? [];
+        starts.set(o.fileIndex, list);
+        for (const n of o.words ?? []) if (Number.isFinite(n.start)) list.push(n.start);
+      }
+      for (const list of starts.values()) list.sort((a, b) => a - b);
+    }
+    const list = starts.get(fileIndex) ?? [];
+    let low = 0;
+    for (let high = list.length; low < high; ) {
+      const mid = (low + high) >> 1;
+      if (list[mid] > w.start) high = mid; else low = mid + 1;
+    }
+    return Math.min(w.end, list[low] ?? Infinity);
   };
   const view = segments.map((s, i) => {
     const all = source[s.sourceSegmentIndex ?? i]?.words;
