@@ -163,8 +163,9 @@ test("Eneo refusing the module's key names the key and the right it needs, not t
     );
     assert.deepEqual(advice, { message: flows, retry: false, ownerMustFix: false }, required_level);
   }
-  // Key data Eneo could not read answers without context; the module reaches flows only, so the fix is the same.
+  // Key data Eneo could not read sends no resource_type; the module reaches flows only, so the fix is the same.
   assert.equal(friendlyError(keyRefused("insufficient_resource_permission")), flows);
+  assert.equal(friendlyError(keyRefused("insufficient_resource_permission", { auth_layer: "api_key_resource" })), flows);
   // A right the module never asks for is not named as Flöden.
   assert.equal(
     friendlyError(keyRefused("insufficient_resource_permission", { resource_type: "files", required_level: "read" })),
@@ -173,6 +174,30 @@ test("Eneo refusing the module's key names the key and the right it needs, not t
   assert.equal(
     friendlyError(keyRefused("insufficient_scope", { auth_layer: "api_key_scope" })),
     "Tal till text når inte det här flödet: nyckelns omfång i Eneo täcker det inte. Kontakta den som ansvarar för Tal till text.",
+  );
+});
+
+test("Eneo's refusal that the module's own answer carries under detail (a file's signed address) is read as Eneo's", async (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    Response.json(
+      { detail: { code: "insufficient_resource_permission", message: "x", context: { resource_type: "flows" } } },
+      { status: 403 },
+    )) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const { checkRunArtifact } = await import("./api");
+  const error = await checkRunArtifact("flow-1", "run-1", "file-1").then(
+    () => assert.fail("a refusal is not a file"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof ApiError);
+  assert.equal(error.code, "insufficient_resource_permission");
+  assert.equal(
+    friendlyError(error),
+    "Tal till text saknar rättighet till flöden i Eneo. Den som ansvarar för Tal till text behöver ge modulens nyckel rättigheten Flöden: Skriv.",
   );
 });
 

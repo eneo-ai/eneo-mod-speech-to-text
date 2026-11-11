@@ -42,7 +42,12 @@ function apiErrorFrom(status: number, text: string): ApiError {
   try {
     body = text ? JSON.parse(text) : null;
     if (body && typeof body === "object") {
-      const b = body as Record<string, unknown>;
+      let b = body as Record<string, unknown>;
+      // The module's own refusal that carries Eneo's answer (a file's signed address) nests it under `detail`: Eneo's
+      // answer is read there. FastAPI's 422 list and an answer with a code of its own stay as they are.
+      if (typeof b.code !== "string" && typeof b.error !== "string" && b.detail && typeof b.detail === "object" && !Array.isArray(b.detail)) {
+        body = b = b.detail as Record<string, unknown>;
+      }
       if (typeof b.code === "string") code = b.code;
       else if (typeof b.error === "string") code = b.error;
       if (typeof b.detail === "string") detail = b.detail;
