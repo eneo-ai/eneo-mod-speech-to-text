@@ -14,7 +14,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
-import { useDock } from "@/lib/dock";
+import { measureDocks, useDock } from "@/lib/dock";
 import { useNarrowerThan } from "./useRoomInRow";
 import { useWorkspace } from "@/lib/workspace";
 import { formatClock, formatRelativeDate } from "@/lib/format";
@@ -198,12 +198,16 @@ export function RunResult({
     setView(next);
   };
   useLayoutEffect(() => {
-    if (!tabs) return;
-    const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
-    const saved = positions.current[view];
-    window.scrollTo({ top: saved ?? (switched.current ? top : Math.min(window.scrollY, top)) });
-    if (focusTab.current) document.getElementById(PANELS[view].tab)?.focus({ preventScroll: true });
-    focusTab.current = false;
+    if (tabs) {
+      const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
+      const saved = positions.current[view];
+      window.scrollTo({ top: saved ?? (switched.current ? top : Math.min(window.scrollY, top)) });
+      if (focusTab.current) document.getElementById(PANELS[view].tab)?.focus({ preventScroll: true });
+      focusTab.current = false;
+    }
+    // The panel not chosen keeps the transcript's player laid out but hidden: what the page's docks cover is read again
+    // for the panel shown, after the reads above, so the page is laid out once.
+    measureDocks();
   }, [view, tabs]);
 
   // Starting over is the page's quiet way, the least likely next step: a ghost button at the end of the title's row from
@@ -370,7 +374,9 @@ export function RunResult({
               document stands 24 px under it. */}
           <VStack gap={tabs ? 3 : 6}>
             {head}
-            <VStack gap={4}>
+            {/* No gap: the panel after the tabs keeps its own distance (styles.afterTabs), and a panel not chosen keeps
+                none, as the transcript's does in its span. */}
+            <VStack>
               {tabs && (
                 <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)} className={styles.tabs}>
                   {/* The notice that the document can be made again is in this panel: while the other tab is chosen it is
@@ -398,8 +404,9 @@ export function RunResult({
                 view === "document",
                 <VStack gap={6}>
                   {documentColumn}
-                  {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
+                  {tabs && view === "document" && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
                 </VStack>,
+                tabs ? styles.afterTabs : undefined,
               )}
             </VStack>
           </VStack>

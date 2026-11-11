@@ -13,8 +13,11 @@ type DockEdge = "bottom" | "top";
 const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null; yields: boolean }>();
 /** The measures of the docks that yield, run again when a dock that does not yield changes what it covers. */
 const yielding = new Set<() => void>();
-/** Every dock's measure, run again when a region puts its docks in the page's flow for a soft keyboard (whileTyping). */
-const measures = new Set<() => void>();
+/**
+ * Every dock's measure: run again from what was last read when a region puts its docks in the page's flow for a soft
+ * keyboard (whileTyping), and reading anew when a part of the page is shown or put out of sight (measureDocks).
+ */
+const measures = new Set<(read: boolean) => void>();
 
 let typingMeasure = 0;
 
@@ -25,7 +28,7 @@ function typing(region: HTMLElement, on: boolean) {
   // a long transcript read in the middle of that would be laid out twice.
   typingMeasure ||= requestAnimationFrame(() => {
     typingMeasure = 0;
-    measures.forEach((again) => again());
+    measures.forEach((again) => again(false));
   });
 }
 
@@ -69,8 +72,15 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   // The dock's height as last laid out (its observer and the window say when it changes): a measure on a focus reads no
   // layout, which on a long transcript would be laid out again for every focus that opens a passage's editor.
   let height = 0;
+  // Whether it is shown: a dock in a part of the page hidden but kept laid out (the result's tab not chosen, which is
+  // visibility:hidden over a skipped layout) covers and ends nothing, and its height is not read there, which would lay
+  // out what the browser skips.
+  let seen = true;
   const measure = (read = true) => {
-    if (read) height = dock.offsetHeight;
+    if (read) {
+      seen = getComputedStyle(dock).visibility !== "hidden";
+      height = seen ? dock.offsetHeight : 0;
+    }
     const others = yields ? [...docks].reduce((sum, [other, { size, yields: alsoYields }]) => sum + (other === dock || alsoYields ? 0 : size), 0) : 0;
     const tooTall = height + others > window.innerHeight * MOST_OF_WINDOW;
     const covers = !tooTall && height > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
@@ -85,7 +95,7 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     if (!yields && before?.size !== size) yielding.forEach((again) => again());
   };
   const remeasure = () => measure(false);
-  measures.add(remeasure);
+  measures.add(measure);
   if (yields) yielding.add(remeasure);
   // Safari scrolls a focused control into view only when it is outside the window, not when it is inside it under the
   // dock: the scroll padding does not count there. Such a control is scrolled clear here, as far as the padding says. One
@@ -135,11 +145,19 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
     document.removeEventListener("keydown", key, true);
     document.removeEventListener("focusin", uncover);
     yielding.delete(remeasure);
-    measures.delete(remeasure);
+    measures.delete(measure);
     docks.delete(dock);
     publish();
     if (!yields) yielding.forEach((again) => again());
   };
+}
+
+/**
+ * Measures every dock again, reading what is laid out: for a part of the page shown or put out of sight with no change
+ * of its own size (a tab chosen), which no observer reports.
+ */
+export function measureDocks() {
+  measures.forEach((again) => again(true));
 }
 
 /**
