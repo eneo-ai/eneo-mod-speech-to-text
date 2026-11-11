@@ -13,8 +13,9 @@
  *   Finding them all again made the pass after the tab Transkribering a task of 65 to 75 ms on a laptop with the
  *   phone's slowed processor; keeping them, 10 ms.
  *
- * The build and the dev server's prebundle both apply it (vite.config.mts). A release in which a patched line is not
- * there once fails the build, so the change is looked at again on every upgrade.
+ * The build and the dev server's prebundle both apply it (vite.config.mts). A release in which a patched line is missing,
+ * or there twice, fails the build. A release that no longer reads its hit areas through this file builds without the
+ * patch: tests/prod/hit-area.spec.ts catches that, by the boxes one key reads in the built app.
  */
 import type { Plugin } from "vite";
 
