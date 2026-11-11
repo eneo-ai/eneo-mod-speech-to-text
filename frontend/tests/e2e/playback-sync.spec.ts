@@ -206,40 +206,50 @@ const measure = (info: TestInfo, type: string, measured: unknown) => {
   console.log(`[${type} ${info.project.name}]`, JSON.stringify(measured));
 };
 
-test("while a meeting plays, the word lit, the time and the slider keep to the audio's clock, every frame", async ({ page }, info) => {
-  test.skip(!PROJECTS.includes(info.project.name));
-  await meeting(page, info, { bytes: wav(MEETING_S), type: "audio/wav" });
-  await play(page).click();
-  await expect.poll(() => currentTime(page)).toBeGreaterThan(0.3);
-  const samples = await sample(page, 6_000);
-  await pause(page);
+// With reduced motion the slider does not glide (it moves with the time updates), but the time beside it still turns
+// with the audio: only the time is held to the clock there.
+for (const reduced of [false, true]) {
+  const title = reduced
+    ? "with reduced motion, the time keeps to the audio's clock while a meeting plays"
+    : "while a meeting plays, the word lit, the time and the slider keep to the audio's clock, every frame";
+  test(title, async ({ page }, info) => {
+    test.skip(!PROJECTS.includes(info.project.name));
+    if (reduced) await page.emulateMedia({ reducedMotion: "reduce" });
+    await meeting(page, info, { bytes: wav(MEETING_S), type: "audio/wav" });
+    expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), "the page has the motion asked for").toBe(reduced);
+    await play(page).click();
+    await expect.poll(() => currentTime(page)).toBeGreaterThan(0.3);
+    const samples = await sample(page, 6_000);
+    await pause(page);
 
-  const gaps = samples.slice(1).map((s, i) => s.wall - samples[i].wall);
-  const lit = samples.filter((s) => s.lit !== null);
-  const wordOff = lit.filter((s) => s.t < s.lit! - 0.1 || (s.next !== null && s.t > s.next + 0.15));
-  // The time shows whole seconds: how long after a second has passed it still shows the one before.
-  const clockLate = Math.max(...samples.map((s) => s.t - (shownSeconds(s.clock) + 1)));
-  const clockEarly = Math.max(...samples.map((s) => shownSeconds(s.clock) - s.t));
-  const sliderOff = Math.max(...samples.map((s) => Math.abs(s.slider - s.t)));
-  const measured = {
-    frames: samples.length,
-    maxFrameGapMs: Math.round(Math.max(...gaps)),
-    litFrames: lit.length,
-    wordOffFrames: wordOff.length,
-    clockLateMs: Math.round(clockLate * 1_000),
-    clockEarlyMs: Math.round(clockEarly * 1_000),
-    sliderOffMs: Math.round(sliderOff * 1_000),
-  };
-  measure(info, "sync", measured);
+    const gaps = samples.slice(1).map((s, i) => s.wall - samples[i].wall);
+    const lit = samples.filter((s) => s.lit !== null);
+    const wordOff = lit.filter((s) => s.t < s.lit! - 0.1 || (s.next !== null && s.t > s.next + 0.15));
+    // The time shows whole seconds: how long after a second has passed it still shows the one before.
+    const clockLate = Math.max(...samples.map((s) => s.t - (shownSeconds(s.clock) + 1)));
+    const clockEarly = Math.max(...samples.map((s) => shownSeconds(s.clock) - s.t));
+    const sliderOff = Math.max(...samples.map((s) => Math.abs(s.slider - s.t)));
+    const measured = {
+      frames: samples.length,
+      maxFrameGapMs: Math.round(Math.max(...gaps)),
+      litFrames: lit.length,
+      wordOffFrames: wordOff.length,
+      clockLateMs: Math.round(clockLate * 1_000),
+      clockEarlyMs: Math.round(clockEarly * 1_000),
+      sliderOffMs: Math.round(sliderOff * 1_000),
+    };
+    measure(info, reduced ? "sync-reduced" : "sync", measured);
 
-  expect(lit.length, "a word is lit while the meeting is spoken").toBeGreaterThan(samples.length / 2);
-  expect(wordOff, "the word lit is the one the audio is at (from 0.1 s before it starts to 0.15 s after the next starts)").toEqual([]);
-  expect(measured.maxFrameGapMs, "no frame is held up").toBeLessThan(120);
-  // The slider moves in steps of a pixel of its track (at least 50 ms), drawn at the next frame.
-  expect(measured.sliderOffMs, "the slider is where the audio is, within a step and a frame").toBeLessThanOrEqual(150);
-  expect(measured.clockEarlyMs, "the time never runs ahead of the audio").toBeLessThanOrEqual(50);
-  expect(measured.clockLateMs, "the time turns to the next second with the audio, within a frame or two").toBeLessThanOrEqual(100);
-});
+    expect(measured.clockEarlyMs, "the time never runs ahead of the audio").toBeLessThanOrEqual(50);
+    expect(measured.clockLateMs, "the time turns to the next second with the audio, within a frame or two").toBeLessThanOrEqual(100);
+    if (reduced) return;
+    expect(lit.length, "a word is lit while the meeting is spoken").toBeGreaterThan(samples.length / 2);
+    expect(wordOff, "the word lit is the one the audio is at (from 0.1 s before it starts to 0.15 s after the next starts)").toEqual([]);
+    expect(measured.maxFrameGapMs, "no frame is held up").toBeLessThan(120);
+    // The slider moves in steps of a pixel of its track (at least 50 ms), drawn at the next frame.
+    expect(measured.sliderOffMs, "the slider is where the audio is, within a step and a frame").toBeLessThanOrEqual(150);
+  });
+}
 
 type Probe = { pressed: number; base: number; stepped: number; playing: number; waiting: number };
 
