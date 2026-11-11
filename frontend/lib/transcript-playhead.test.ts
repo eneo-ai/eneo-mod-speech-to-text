@@ -169,6 +169,16 @@ test("the review editor times a corrected transcript by the words as they came",
   assert.deepEqual(editorActive(raw, correctionOf(raw, 0, 2, "b"), 1.5), []);
 });
 
+test("playback spans are read again for another source", () => {
+  const raw: TranscriptSegment[] = [{ fileIndex: 0, start: 0, end: 10, speaker: "SPEAKER_00", text: "a b c", words: locateWords("a b c", [
+    { word: "a", start: 0, end: 10, probability: 0 }, { word: "b", start: 1, end: 2, probability: 0.9 },
+    { word: "c", start: 2, end: 3, probability: 0.9 },
+  ], "forced") }];
+  const shown = correctionOf(raw, 0, 2, "b");
+  assert.equal(playbackSpans(shown)[0].words![0].end, 2);
+  assert.equal(playbackSpans(shown, raw)[0].words![0].end, 1);
+});
+
 test("spans with no spread word are lit and followed as they come", () => {
   const segments = apart(spread());
   // The rule before: the first span the time is in, else the last one started.

@@ -357,7 +357,10 @@ export function findActiveWordIndex(
   return lastStarted;
 }
 
-const playbackViews = new WeakMap<readonly TranscriptSegment[], readonly TranscriptSegment[]>();
+const playbackViews = new WeakMap<
+  readonly TranscriptSegment[],
+  { source: readonly TranscriptSegment[]; view: readonly TranscriptSegment[] }
+>();
 /** A cut word's end in playback, by the word as it came. */
 const playedEnds = new WeakMap<TranscriptWord, number>();
 
@@ -366,18 +369,18 @@ const playedEnds = new WeakMap<TranscriptWord, number>();
  * the rest of its window, over the words said after it; here it ends where the next word of its recording starts, and a
  * sentence it made longer ends with its words. The times come from `source`, the segments as they came before corrections,
  * which drop a corrected word's time but not its audio. Indices match `segments`, and what is not cut stays the same
- * object. Built once per array.
+ * object. Built once per array and source.
  */
 export function playbackSpans(segments: readonly TranscriptSegment[], source: readonly TranscriptSegment[] = segments): readonly TranscriptSegment[] {
-  let view = playbackViews.get(segments);
-  if (view) return view;
+  const known = playbackViews.get(segments);
+  if (known?.source === source) return known.view;
   // ponytail: scans the recording's words per spread word; they come about once per 30 s window.
   const clip = (w: TranscriptWord, fileIndex: number) => {
     let end = w.end;
     if (w.uncertain) for (const o of source) if (o.fileIndex === fileIndex) for (const n of o.words ?? []) if (n.start > w.start && n.start < end) end = n.start;
     return end;
   };
-  view = segments.map((s, i) => {
+  const view = segments.map((s, i) => {
     if (!s.words?.some((w) => w.uncertain)) return s;
     const words = s.words.map((w) => {
       const end = clip(w, s.fileIndex);
@@ -391,7 +394,7 @@ export function playbackSpans(segments: readonly TranscriptSegment[], source: re
     const said = (source[s.sourceSegmentIndex ?? i]?.words ?? []).filter((w) => w.charStart < to && w.charEnd > from);
     return { ...s, words, end: Math.min(s.end, Math.max(...words.map((w) => w.end), ...said.map((w) => clip(w, s.fileIndex)))) };
   });
-  playbackViews.set(segments, view);
+  playbackViews.set(segments, { source, view });
   return view;
 }
 
