@@ -111,6 +111,32 @@ test("selected-word actions keep the speaker picker's keyboard navigation and th
   await expect(tools(page).getByRole("button", { name: "Avmarkera", exact: true })).toBeFocused();
 });
 
+// A finger's tap sends its mouse events once lifted, and the browser looks again for what their up lands on; a click is
+// the pointer's press. Both move the focus out of the field between their down and up.
+for (const press of ["click", "tap"] as const) {
+  test(`a ${press} on Avbryt where the player docks again once the field lets go of the focus closes the field`, async ({ page }, info) => {
+    test.skip(info.project.name !== "phone-390-light", "a finger: the player stands in the text only while a field has the focus");
+    await reviewEditor(page);
+    await tools(page).getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+    await page.getByRole("toolbar", { name: "Åtgärder för markerade ord" }).getByRole("button", { name: "Rätta text", exact: true }).click();
+    const field = page.getByRole("textbox", { name: "Rätta markerad text" });
+    await expect(field).toBeFocused();
+    const cancel = tools(page).getByRole("button", { name: "Avbryt", exact: true });
+    // Avbryt in the band at the window's bottom that the player covers once it is docked again.
+    const at = await cancel.evaluate((button) => {
+      const dock = document.querySelector<HTMLElement>("[data-docked-player]")!.offsetHeight;
+      const before = button.getBoundingClientRect();
+      window.scrollBy({ top: before.top + before.height / 2 - (innerHeight - dock / 2), behavior: "instant" });
+      const { top, bottom } = button.getBoundingClientRect();
+      return { top, bottom, window: innerHeight, dock };
+    });
+    expect(at.top, "Avbryt starts below the docked player's top edge").toBeGreaterThanOrEqual(at.window - at.dock);
+    expect(at.bottom, "and ends inside the window").toBeLessThanOrEqual(at.window);
+    await cancel[press]();
+    await expect(field).toBeHidden();
+  });
+}
+
 test("words selected with Shift and the arrows are given to a speaker, and Ångra takes the speaker back", async ({ page }) => {
   await reviewEditor(page);
   const text = transcript(page);

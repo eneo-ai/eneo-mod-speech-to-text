@@ -5,6 +5,8 @@ import { installDom } from "./test-dom";
 installDom();
 
 const size = () => document.documentElement.style.getPropertyValue("--dock-block-size");
+/** A key pressed: the page's press is over, so a test that presses leaves none behind for the next (lib/dock.ts keeps it page-wide). */
+const keyUp = () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Shift" }));
 
 /** A dock of the given height; jsdom has no layout, so its height is said. */
 function dock(height: number, position = "sticky") {
@@ -96,9 +98,10 @@ test("a dock taller than a third of the window stands in the page instead of cov
 });
 
 test("a control the keyboard focuses under a dock, inside the window, is scrolled clear of it, as Safari does not", async (t) => {
+  t.after(keyUp);
   const { observeDock } = await import("./dock");
   const bar = dock(100);
-  const stop = observeDock(bar);
+  let stop = observeDock(bar);
   // The page's scroll padding: the dock's height and a margin (styles/globals.css).
   document.documentElement.style.scrollPaddingBottom = "124px";
   const box = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 100, width: 100, height, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
@@ -150,6 +153,13 @@ test("a control the keyboard focuses under a dock, inside the window, is scrolle
   document.dispatchEvent(new window.Event("pointerdown", { bubbles: true }));
   field.focus();
   assert.deepEqual(scrolled, [118], "a control a press focuses stays under the finger");
+  // The press is the page's, not a dock's: a dock observed again after it (a player that moved between a tablet's top
+  // and its text) still leaves where the press put the focus.
+  field.blur();
+  stop();
+  stop = observeDock(bar);
+  field.focus();
+  assert.deepEqual(scrolled, [118], "a dock observed again after the press does not move what the press focused");
   field.blur();
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
   field.focus();
@@ -227,6 +237,7 @@ test("a focus that changes nothing about a dock writes nothing to the page's roo
 });
 
 test("a region whose docks stand in the page while a field has the focus says so, and the docks are measured a frame after it changes", async (t) => {
+  t.after(keyUp);
   const { observeDock, whileTyping } = await import("./dock");
   const region = document.createElement("section");
   const field = document.createElement("textarea");
@@ -256,6 +267,64 @@ test("a region whose docks stand in the page while a field has the focus says so
   field.focus();
   button.focus();
   assert.ok(!region.hasAttribute("data-typing"), "a button is no field");
+  // A finger's press on a button under the field, in the order a phone's browser sends it: the pointer's down and up,
+  // then the mouse's down, which moves the focus, and its up. The dock stays in the text until the mouse's up, so the
+  // press lands where it began.
+  const send = (type: string) => document.dispatchEvent(new window.Event(type));
+  field.focus();
+  ["pointerdown", "pointerup", "mousedown"].forEach(send);
+  button.focus();
+  assert.ok(region.hasAttribute("data-typing"), "pressed: still in the text");
+  send("mouseup");
+  assert.ok(!region.hasAttribute("data-typing"), "let go: docked again");
+  // A press from one field to another keeps the region typing.
+  const other = document.createElement("input");
+  region.append(other);
+  field.focus();
+  send("mousedown");
+  other.focus();
+  send("mouseup");
+  assert.ok(region.hasAttribute("data-typing"), "another field: still typing");
+  // A key pressed while a press is held lets it go: the keyboard's focus is never kept waiting.
+  send("mousedown");
+  button.focus();
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab" }));
+  assert.ok(!region.hasAttribute("data-typing"), "a key: docked again");
+  other.remove();
   stop();
   [region, bar].forEach((element) => element.remove());
+});
+
+test("a press that ends with no mouse up (cancelled, dragged, a context menu, the window left) lets the dock back at once", async (t) => {
+  t.after(keyUp);
+  const { whileTyping } = await import("./dock");
+  const region = document.createElement("section");
+  const field = document.createElement("textarea");
+  const button = document.createElement("button");
+  region.append(field, button);
+  document.body.append(region);
+  region.addEventListener("focusin", (event) => whileTyping.onFocus({ currentTarget: region, target: event.target } as unknown as import("react").FocusEvent<HTMLElement>));
+  region.addEventListener("focusout", (event) => whileTyping.onBlur({ currentTarget: region, target: event.target } as unknown as import("react").FocusEvent<HTMLElement>));
+  const ends: [string, () => void][] = [
+    ["pointercancel", () => document.dispatchEvent(new window.Event("pointercancel"))],
+    ["dragend", () => document.dispatchEvent(new window.Event("dragend"))],
+    ["contextmenu", () => document.dispatchEvent(new window.Event("contextmenu"))],
+    ["the window's blur", () => window.dispatchEvent(new window.Event("blur"))],
+  ];
+  for (const [name, end] of ends) {
+    // The focus left during the press, then the press ended without its mouse up.
+    field.focus();
+    document.dispatchEvent(new window.Event("mousedown"));
+    button.focus();
+    assert.ok(region.hasAttribute("data-typing"), `${name}: still in the text while pressed`);
+    end();
+    assert.ok(!region.hasAttribute("data-typing"), `${name}: the press is over, docked again`);
+    // The press ended first, and the focus leaves later: nothing is held any more.
+    field.focus();
+    document.dispatchEvent(new window.Event("mousedown"));
+    end();
+    button.focus();
+    assert.ok(!region.hasAttribute("data-typing"), `${name}: a focus leaving after the press docks at once`);
+  }
+  region.remove();
 });
