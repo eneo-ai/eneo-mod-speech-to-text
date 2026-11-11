@@ -31,8 +31,8 @@
   column-gap: var(--spacing-2);
 }
 
-/* Below a laptop's width each panel stands 16 px under the tabs: the document's in the tabs' own span, the
-   transcript's in the span after it. */
+/* Below a laptop's width the transcript is the second tab's panel, in the span after the tabs' own: as far from them
+   as the first. */
 .afterTabs {
   margin-block-start: var(--spacing-4);
 }
@@ -79,15 +79,4 @@
 .quietEnd {
   flex-shrink: 0;
   margin-block: calc((var(--spacing-10) - var(--size-element-md)) / 2);
-}
-
-/* The panel of the tab not chosen (RunResult also makes it inert): no room and nothing drawn, in every browser, by its
-   size and clip. Its rendering is skipped but kept (content-visibility), so choosing its tab lays out and styles
-   nothing anew: no inherited property (visibility) changes on its passages. Last in the file, over the panel's own
-   margin. */
-.inactive {
-  block-size: 0;
-  margin: 0;
-  overflow: clip;
-  content-visibility: hidden;
 }

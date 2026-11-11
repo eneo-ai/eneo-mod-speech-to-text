@@ -721,8 +721,7 @@ export function TranscriptPlayer(
   const following = useRef({ follow, editing: editingIndex >= 0 });
   following.current = { follow, editing: editingIndex >= 0 };
   const keepInView = useCallback((segmentIndex: number) => {
-    // Under the tab not chosen the list is in the page but inert and out of sight: it moves nothing, and reads no layout.
-    if (!following.current.follow || following.current.editing || !listRef.current || listRef.current.closest("[inert]")) return;
+    if (!following.current.follow || following.current.editing || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     // A passage the speaker filter hides is not on screen to keep in view.
@@ -745,7 +744,7 @@ export function TranscriptPlayer(
   // The search's current hit is brought into view, and playback stops pulling the text away from it. At once, as a
   // browser's own find does: a glide restarted by every typed letter or step lags behind the hit it goes to.
   useEffect(() => {
-    if (currentHit < 0 || !listRef.current || listRef.current.closest("[inert]")) return;
+    if (currentHit < 0 || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>('[data-hit="current"]');
     if (!el) return;
     programmaticScrollUntil.current = Date.now() + 800;

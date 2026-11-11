@@ -43,30 +43,6 @@ test("a dock that is not stuck to the window's edge, or is not shown, covers not
   hidden.remove();
 });
 
-test("a dock in a part of the page out of sight (a tab not chosen) covers nothing, and counts again when shown", async () => {
-  const { measureDocks, observeDock, outOfSight } = await import("./dock");
-  const panel = document.createElement("section");
-  document.body.append(panel);
-  const out = Object.keys(outOfSight)[0];
-  panel.setAttribute(out, "");
-  const bar = dock(61);
-  panel.append(bar);
-  let reads = 0;
-  Object.defineProperty(bar, "offsetHeight", { configurable: true, get: () => (reads++, 61) });
-  const stop = observeDock(bar);
-  assert.equal(size(), "", "out of sight, it covers nothing");
-  assert.equal(document.documentElement.getAttribute("data-dock"), null, "and ends nothing");
-  assert.equal(reads, 0, "its height is not read where the browser skips its layout");
-  panel.removeAttribute(out);
-  measureDocks();
-  assert.equal(size(), "61px", "its tab chosen, it covers the page's end again");
-  panel.setAttribute(out, "");
-  measureDocks();
-  assert.equal(size(), "", "and nothing once its tab is left");
-  stop();
-  panel.remove();
-});
-
 test("a dock that stops being stuck when the window changes is measured again", async () => {
   const { observeDock } = await import("./dock");
   const bar = dock(120);
