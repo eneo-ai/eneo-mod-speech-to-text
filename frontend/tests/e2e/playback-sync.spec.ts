@@ -385,3 +385,19 @@ test("following a meeting as it plays, the word being said stays in view from pa
   expect(late.length, "several sentences start, of several passages").toBeGreaterThan(6);
   expect(longestOut, "the word being said is never out of view for longer than a frame or two").toBeLessThanOrEqual(50);
 });
+
+test("in a passage taller than the window, the sentence being said stays in view as it plays", async ({ page }, info) => {
+  test.skip(!PROJECTS.includes(info.project.name));
+  // A presentation of some three minutes by one speaker between two short turns: one passage, taller than the window.
+  const presentation = Array.from({ length: 8 }, () => TURNS[2][1]).flat();
+  await meeting(page, info, { bytes: wav(4 * MEETING_S), type: "audio/wav" }, [TURNS[0], TURNS[1], ["SPEAKER_00", presentation], TURNS[3]]);
+  // Its last sentence, pressed where it is read, and played on.
+  const last = page.locator('[data-turn-index="2"] [data-segment-index]').last().locator("[data-word-start]").first();
+  await last.scrollIntoViewIfNeeded();
+  await last.click();
+  const samples = await sample(page, 3_000);
+  await pause(page);
+  const out = samples.filter((s) => s.litInView === false);
+  measure(info, "tall", { outFrames: out.length, frames: samples.length });
+  expect(out.length, "the word being said is in view").toBe(0);
+});
