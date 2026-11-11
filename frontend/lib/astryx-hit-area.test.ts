@@ -76,6 +76,10 @@ test("a pass reads the page's elements again after a change to which take taps, 
 
 test("a release without that read fails the build instead of shipping the slow read unnoticed", () => {
   assert.throws(() => patchHitArea("export function readCandidates() {}"), /hitArea\.js/);
+  // A line twice, or a later line gone, fails it too.
+  assert.throws(() => patchHitArea(`${INSTALLED}\nlet interactive = null;`), /`let interactive = null;` once/);
+  const observe = "observeMutations(doc, CANDIDATE_MUTATIONS, forgetInteractive);";
+  assert.throws(() => patchHitArea(INSTALLED.replace(observe, "")), /`observeMutations\(doc, CANDIDATE_MUTATIONS, forgetInteractive\);` once/);
 });
 
 test("the build changes Astryx's hit-area module and nothing else", () => {
