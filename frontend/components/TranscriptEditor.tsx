@@ -290,7 +290,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         const end = cuts[i + 1];
         const word = words.find((w) => w.charStart <= start && w.charEnd >= end);
         const selected = bounds.some((b) => start < b.end && end > b.start);
-        const active = segment.fileIndex === currentFile && (word ? highlightedWords.get(word) === true : !words.length && currentTime >= segment.start && currentTime < segment.end);
+        const active = segment.fileIndex === currentFile && (word ? currentTime >= word.start && currentTime < word.end : !words.length && currentTime >= segment.start && currentTime < segment.end);
         const currentWord = Boolean(word && highlightedWords.has(word));
         return <span key={start} data-word-start={word?.start} aria-current={currentWord ? "true" : undefined} className={styles.word}
           data-selected={selected ? "" : undefined} data-active={active ? "" : undefined}

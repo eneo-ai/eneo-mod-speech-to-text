@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 import type { Playback } from "./playback";
-import {
-  findActiveSegmentIndex,
-  findActiveSegmentIndices,
-  findActiveWordIndex,
-  playbackSpans,
-  type TranscriptSegment,
-} from "./transcript";
+import { findActiveSegmentIndex, findActiveSegmentIndices, findActiveWordIndex, type TranscriptSegment } from "./transcript";
 
 /**
  * What the playhead lights at `time` seconds into `part`: the sentences it is in, the word being said in each with how
@@ -21,9 +15,7 @@ export type PlayheadTargets = {
 
 export const NOTHING_LIT: PlayheadTargets = { segments: [], words: [], follow: -1 };
 
-/** Reads the spans as playback has them ({@link playbackSpans}): a spread word ends where the next word starts. */
-export function playheadTargets(transcript: readonly TranscriptSegment[], part: number, time: number): PlayheadTargets {
-  const segments = playbackSpans(transcript);
+export function playheadTargets(segments: readonly TranscriptSegment[], part: number, time: number): PlayheadTargets {
   const lit = findActiveSegmentIndices(segments, part, time);
   const words = lit.flatMap((segment) => {
     const all = segments[segment].words ?? [];
