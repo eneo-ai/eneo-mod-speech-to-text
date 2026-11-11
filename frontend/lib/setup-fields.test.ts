@@ -176,6 +176,8 @@ test("a choice of several gives the design system's group only what it takes: no
     }),
   );
   assert.ok(view.container.querySelector('[data-detail-field="omraden"]'), "the group is there");
+  // A count, not the element: a failing assertion on a DOM node prints the whole window.
+  assert.equal(view.container.querySelectorAll("[statusvariant]").length, 0, "no status variant on the page");
   assert.deepEqual(errors.filter((error) => /does not recognize/.test(error)), []);
 });
 
