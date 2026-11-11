@@ -182,6 +182,30 @@ test("Avbryt redigering with a change asks first: Fortsätt redigera gives the f
   await expect(page.getByRole("button", { name: "Redigera" }), "the control that took the edit's place").toBeFocused();
 });
 
+test("Ta bort din version asks first: Behåll keeps the text and the focus, Ta bort hands the focus to Redigera", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  await STATES.find((s) => s.name === "review-din-version")!.go(page, info);
+  const yours = page.getByText("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+  const drop = page.getByRole("button", { name: "Ta bort din version" });
+  const question = page.getByRole("alertdialog", { name: "Ta bort din version?" });
+  await drop.focus();
+  await page.keyboard.press("Enter");
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Behåll" }).press("Enter");
+  await expect(question).toBeHidden();
+  await expect(yours, "nothing thrown away").toBeVisible();
+  await expect(drop, "back where it was").toBeFocused();
+  await page.keyboard.press("Enter");
+  await question.getByRole("button", { name: "Ta bort", exact: true }).press("Enter");
+  await expect(question).toBeHidden();
+  await expect(yours).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Redigera" }), "the control left where the version was").toBeFocused();
+  // The tab's copy went with it: the page read again does not offer it.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Redigera" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Använd din version" })).toHaveCount(0);
+});
+
 // From a laptop's width the transcript scrolls in its own box. Firefox makes a box that scrolls a Tab stop of its own, but
 // gives it no focus: the next Tab after the link before the passages landed on nothing (2.4.7). Its passages' controls are
 // the way through it.
