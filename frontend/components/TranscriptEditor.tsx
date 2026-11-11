@@ -52,7 +52,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
   const pending = reviewPassages(shown, reviews);
   const allSuggestions = pendingSpeakerSuggestions(raw, shown, corrections);
   const selectedSuggestions = selection.length ? pendingSpeakerSuggestions(raw, shown, corrections, selection) : [];
-  const highlightedWords = useMemo(() => playbackWordHighlights(shown, currentFile, currentTime), [shown, currentFile, currentTime]);
+  const highlightedWords = useMemo(() => playbackWordHighlights(shown, currentFile, currentTime, raw), [shown, currentFile, currentTime, raw]);
   const selectedText = selectedTranscriptText(selection, raw, corrections);
   const wordCount = selectedText.match(/\S+/gu)?.length ?? 0;
   const selectedSources = selection.map((s) => raw[s.segmentIndex]);

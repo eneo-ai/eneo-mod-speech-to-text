@@ -8,6 +8,7 @@ import { TranscriptEditor } from "../components/TranscriptEditor";
 import { cleanup, installDom, mount } from "./test-dom";
 import { Playback, type MediaLike } from "./playback";
 import { computeTurns, locateWords, playbackWordHighlights, type TranscriptSegment } from "./transcript";
+import { applyCorrections } from "./transcript-corrections";
 import { NOTHING_LIT, PlayheadPainter, playheadTargets } from "./transcript-playhead";
 
 installDom();
@@ -120,6 +121,26 @@ test("speech that really overlaps lights both words, and the follow goes back to
   assert.deepEqual(at(1.2), { lit: [[0, 0], [1, 0]], follow: 0 });
   assert.deepEqual(at(3), { lit: [[0, 1]], follow: 0 });
   assert.deepEqual(editorLit(segments, 1.2), [[0, 0], [1, 0]]);
+});
+
+test("a corrected word keeps its audio: the spread word ends where it starts, and its sentence lasts through it", () => {
+  const raw: TranscriptSegment[] = [{
+    fileIndex: 0, start: 0, end: 10, speaker: "SPEAKER_00", text: "a b c",
+    words: locateWords("a b c", [
+      { word: "a", start: 0, end: 10, probability: 0 }, { word: "b", start: 1, end: 2, probability: 0.9 },
+      { word: "c", start: 2, end: 3, probability: 0.9 },
+    ], "forced"),
+  }];
+  const corrected = (at: number, original: string) => applyCorrections(raw, {
+    occurrences: [{ segment_index: 0, char_start: at, char_end: at + 1, original, corrected: original.toUpperCase() }],
+    speaker_edits: [], revision: 1,
+  }).segments;
+  // b corrected to B: at 1.5 s "a" is held, said in full, not lit on as if B were not being said.
+  const b = corrected(2, "b");
+  assert.deepEqual(playheadTargets(b, 0, 1.5, raw).words.map(({ word, said }) => [b[0].words![word].word, said]), [["a", 1]]);
+  assert.deepEqual([...playbackWordHighlights(b, 0, 1.5, raw)].map(([word, saying]) => [word.word, saying]), [["a", false]]);
+  // c corrected to C: at 2.5 s, while C is said, its sentence is lit.
+  assert.deepEqual(playheadTargets(corrected(4, "c"), 0, 2.5, raw).segments, [0]);
 });
 
 test("spans with no spread word are lit and followed as they come", () => {
@@ -253,7 +274,7 @@ test("while the audio plays the word lights as it is said, between the audio's t
   function View() {
     renders += 1;
     const root = useRef<HTMLOListElement>(null);
-    useTranscriptPlayhead(root, playback, segments.slice(0, 2), (index) => followed.push(index));
+    useTranscriptPlayhead(root, playback, segments.slice(0, 2), segments.slice(0, 2), (index) => followed.push(index));
     return createElement(
       "ol",
       { ref: root },

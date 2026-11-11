@@ -358,26 +358,38 @@ export function findActiveWordIndex(
 }
 
 const playbackViews = new WeakMap<readonly TranscriptSegment[], readonly TranscriptSegment[]>();
+/** A cut word's end in playback, by the word as it came. */
+const playedEnds = new WeakMap<TranscriptWord, number>();
 
 /**
  * The spans playback lights and follows. A word the forced alignment could not place (`uncertain`) comes spread over
  * the rest of its window, over the words said after it; here it ends where the next word of its recording starts, and a
- * sentence it made longer ends with its words. Indices match `segments`, and what is not cut stays the same object.
- * Built once per array.
+ * sentence it made longer ends with its words. The times come from `source`, the segments as they came before corrections,
+ * which drop a corrected word's time but not its audio. Indices match `segments`, and what is not cut stays the same
+ * object. Built once per array.
  */
-export function playbackSpans(segments: readonly TranscriptSegment[]): readonly TranscriptSegment[] {
+export function playbackSpans(segments: readonly TranscriptSegment[], source: readonly TranscriptSegment[] = segments): readonly TranscriptSegment[] {
   let view = playbackViews.get(segments);
   if (view) return view;
-  view = segments.map((s) => {
+  // ponytail: scans the recording's words per spread word; they come about once per 30 s window.
+  const clip = (w: TranscriptWord, fileIndex: number) => {
+    let end = w.end;
+    if (w.uncertain) for (const o of source) if (o.fileIndex === fileIndex) for (const n of o.words ?? []) if (n.start > w.start && n.start < end) end = n.start;
+    return end;
+  };
+  view = segments.map((s, i) => {
     if (!s.words?.some((w) => w.uncertain)) return s;
-    // ponytail: scans the recording's words per spread word; they come about once per 30 s window.
     const words = s.words.map((w) => {
-      if (!w.uncertain) return w;
-      let end = w.end;
-      for (const o of segments) if (o.fileIndex === s.fileIndex) for (const n of o.words ?? []) if (n.start > w.start && n.start < end) end = n.start;
-      return end < w.end ? { ...w, end } : w;
+      const end = clip(w, s.fileIndex);
+      if (!(end < w.end)) return w;
+      playedEnds.set(w, end);
+      return { ...w, end };
     });
-    return words.every((w, i) => w === s.words![i]) ? s : { ...s, words, end: Math.min(s.end, Math.max(...words.map((w) => w.end))) };
+    if (words.every((w, j) => w === s.words![j])) return s;
+    // The sentence ends with its source words, corrected ones included: a correction drops a word's time, not its audio.
+    const from = s.sourceCharStart ?? 0, to = s.sourceCharEnd ?? Infinity;
+    const said = (source[s.sourceSegmentIndex ?? i]?.words ?? []).filter((w) => w.charStart < to && w.charEnd > from);
+    return { ...s, words, end: Math.min(s.end, Math.max(...words.map((w) => w.end), ...said.map((w) => clip(w, s.fileIndex)))) };
   });
   playbackViews.set(segments, view);
   return view;
@@ -387,24 +399,29 @@ export function playbackSpans(segments: readonly TranscriptSegment[]): readonly 
  * The words the review editor lights, each with whether it is being said (true) or held in the silence after it
  * (false): words said at the same time all are; in a silence, the last completed word(s). Times are playback's.
  */
-export function playbackWordHighlights(segments: readonly TranscriptSegment[], fileIndex: number, time: number): Map<TranscriptWord, boolean> {
-  const view = playbackSpans(segments);
+export function playbackWordHighlights(
+  segments: readonly TranscriptSegment[],
+  fileIndex: number,
+  time: number,
+  source: readonly TranscriptSegment[] = segments,
+): Map<TranscriptWord, boolean> {
+  playbackSpans(segments, source);
   const active = new Map<TranscriptWord, boolean>();
   const previous = new Map<TranscriptWord, boolean>();
   let lastEnd = -Infinity;
-  segments.forEach((segment, i) => {
-    if (segment.fileIndex !== fileIndex) return;
-    (segment.words ?? []).forEach((word, j) => {
-      const { start, end } = view[i].words![j];
+  for (const segment of segments) {
+    if (segment.fileIndex !== fileIndex) continue;
+    for (const word of segment.words ?? []) {
+      const { start } = word, end = playedEnds.get(word) ?? word.end;
       if (word.charStart < 0 || word.charEnd <= word.charStart || !Number.isFinite(start) ||
-          !Number.isFinite(end) || end < start) return;
+          !Number.isFinite(end) || end < start) continue;
       if (start <= time && time < end) active.set(word, true);
       if (end <= time) {
         if (end > lastEnd) { previous.clear(); lastEnd = end; }
         if (end === lastEnd) previous.set(word, false);
       }
-    });
-  });
+    }
+  }
   return active.size ? active : previous;
 }
 

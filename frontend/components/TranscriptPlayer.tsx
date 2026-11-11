@@ -738,7 +738,7 @@ export function TranscriptPlayer(
     block.scrollIntoView({ block: "center", behavior: scrollBehaviorFor(box.top + box.height / 2 - (view.top + view.height / 2), view.height) });
   }, []);
   // The review editor lights its own words; the playhead only keeps its place in view there.
-  const playheadAt = useTranscriptPlayhead(listRef, playback, shown, keepInView, !reviewEnabled);
+  const playheadAt = useTranscriptPlayhead(listRef, playback, shown, segments, keepInView, !reviewEnabled);
   // Following again, or closing a line's editor, brings the playhead's sentence back.
   useEffect(() => {
     const at = playheadAt();
