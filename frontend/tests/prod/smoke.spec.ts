@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../e2e/auth";
 
@@ -38,10 +40,17 @@ test("a signed-in page of the built app loads with nothing blocked or broken", a
   // A layer opens: Astryx finds its position rules in the app's stylesheet (lib/layer-slide-rules.mts) and writes no <style>.
   await page.getByRole("button", { name: /^Öppna konto för/ }).click();
   await expect(page.getByRole("menuitem", { name: "Logga ut" })).toBeVisible();
-  // Chromium is the engine that reads @position-try.
+  // Chromium is the engine that reads @position-try: the page has every rule of the installed release, and no other.
   if (browserName === "chromium") {
-    const rules = await page.evaluate(() => [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]).filter((rule) => rule.constructor.name === "CSSPositionTryRule").length);
-    expect(rules, "the layers' position rules").toBeGreaterThan(0);
+    const release = (await import(pathToFileURL(resolve("node_modules/@astryxdesign/core/dist/Layer/layerSlideRules.js")).href)) as { slideRulesCss(): string };
+    const expected = [...new Set([...release.slideRulesCss().matchAll(/@position-try\s+(--[\w-]+)/g)].map(([, name]) => name))].sort();
+    const names = await page.evaluate(() => {
+      const all = (rules: CSSRuleList): CSSRule[] => [...rules].flatMap((rule) => [rule, ...("cssRules" in rule ? all((rule as CSSGroupingRule).cssRules) : [])]);
+      const tries = [...document.styleSheets].flatMap((sheet) => all(sheet.cssRules)).filter((rule) => rule.constructor.name === "CSSPositionTryRule");
+      return [...new Set(tries.map((rule) => (rule as CSSRule & { name: string }).name))].sort();
+    });
+    expect(expected.length, "the installed release's position rules").toBeGreaterThan(0);
+    expect(names, "the layers' position rules").toEqual(expected);
   }
   expect(problems).toEqual([]);
 });
