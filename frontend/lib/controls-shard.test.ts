@@ -29,12 +29,12 @@ function listed(grep?: string) {
 
 const shard = (which: string, env: NodeJS.ProcessEnv = CI) => spawnSync(process.execPath, [SCRIPT, which, ...PROJECTS], { cwd: FRONTEND, env, encoding: "utf8" });
 
-test("in CI's environment, every controls test lands in exactly one of the five shards", () => {
+test("in CI's environment, every controls test lands in exactly one of the eight shards", () => {
   const all = listed();
   assert.ok(all.length > 5, "controls.spec.ts has tests for the projects");
   const run: string[] = [];
-  for (let n = 1; n <= 5; n += 1) {
-    const result = shard(`${n}/5`);
+  for (let n = 1; n <= 8; n += 1) {
+    const result = shard(`${n}/8`);
     assert.equal(result.status, 0, result.stderr);
     run.push(...listed(result.stdout.trim()));
   }
