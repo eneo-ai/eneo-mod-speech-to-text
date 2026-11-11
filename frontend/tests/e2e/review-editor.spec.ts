@@ -35,6 +35,17 @@ test("confirming every suggestion from the keyboard hands the focus to Ångra", 
   await expect(tools(page).getByRole("button", { name: "Ångra", exact: true })).toBeFocused();
 });
 
+test("a tool disabled where it stands hands the focus to Ångra", async ({ page }) => {
+  await reviewEditor(page);
+  await tools(page).getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+  const actions = page.getByRole("toolbar", { name: "Åtgärder för markerade ord" });
+  await actions.getByRole("button", { name: "Bekräfta Agne", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  // The browser keeps the focus on a button disabled under it until the frame after.
+  await expect(actions.getByRole("button", { name: "Bekräftad: Agne", exact: true })).toBeDisabled();
+  await expect(tools(page).getByRole("button", { name: "Ångra", exact: true })).toBeFocused();
+});
+
 test("focus moved elsewhere before the next frame stays where it was moved", async ({ page }) => {
   await reviewEditor(page);
   await tools(page).getByRole("button", { name: /^Bekräfta alla förslag/ }).focus();
