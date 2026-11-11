@@ -12,6 +12,7 @@ import {
 import { Item } from "@astryxdesign/core/Item";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
+import { useAnnounce } from "@astryxdesign/core/hooks";
 
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { LeaveContext } from "@/components/flow/useLeaveQuestion";
@@ -25,6 +26,8 @@ export function AccountMenu() {
   const { mode, setMode } = useColorMode();
   const [loggingOut, setLoggingOut] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The row's label says it too, but a screen reader does not read again the name of the row that keeps the focus.
+  const announce = useAnnounce();
   const displayName = userDisplayName(user);
   // Signing out leaves the page: asked first where that would lose something.
   const { leaveFirst } = useContext(LeaveContext);
@@ -32,12 +35,14 @@ export function AccountMenu() {
   async function onLogout() {
     setFailed(false);
     setLoggingOut(true);
+    announce("Loggar ut…");
     try {
       await logout();
     } catch {
       // Still signed in, and the sign-in page would send the person straight on to the flows: stay, and say so.
       setLoggingOut(false);
       setFailed(true);
+      announce("Det gick inte att logga ut. Försök igen.", "assertive");
       return;
     }
     void navigate("/", { replace: true, state: { signedOut: true } });
