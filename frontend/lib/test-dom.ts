@@ -140,9 +140,10 @@ export function button(within: ParentNode, name: string): HTMLButtonElement | nu
   return [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;
 }
 
-/** Whether a control is off. The design system's controls say so with `aria-disabled` and keep their focus. */
+/** Whether a control is off: `disabled`, or `aria-disabled`, with which the design system's controls keep their focus. */
 export function isOff(control: Element | null | undefined): boolean {
-  return control?.getAttribute("aria-disabled") === "true";
+  if (!control) throw new Error("no such control");
+  return control.matches(':disabled, [aria-disabled="true"]');
 }
 
 /** `element` as a page behind AuthGate has it: with the signed-in person. */
