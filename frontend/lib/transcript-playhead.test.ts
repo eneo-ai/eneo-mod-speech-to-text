@@ -148,6 +148,27 @@ test("a corrected word keeps its audio: the spread word ends where it starts, an
   assert.deepEqual(playheadTargets(corrected(4, "c"), 0, 2.5, raw).segments, [0]);
 });
 
+const correctionOf = (raw: TranscriptSegment[], segment: number, at: number, original: string) => applyCorrections(raw, {
+  occurrences: [{ segment_index: segment, char_start: at, char_end: at + original.length, original, corrected: original.toUpperCase() }],
+  speaker_edits: [], revision: 1,
+}).segments;
+
+const editorActive = (raw: TranscriptSegment[], shown: TranscriptSegment[], time: number) =>
+  [...renderToStaticMarkup(createElement(TranscriptEditor, {
+    raw, shown, reviews: [], editable: false, textEditable: false, displayName: (label) => label ?? "",
+    speakerOptions: [], audioAvailable: true, currentFile: 0, currentTime: time, playing: true, onSeek: () => {},
+    onInteract: () => {}, confirmedWords: new Set<string>(),
+  })).matchAll(/<span (?:data-word-start="([\d.]+)" )?[^>]*data-active=""/g)].map((match) => match[1] ?? "no word");
+
+test("the review editor times a corrected transcript by the words as they came", () => {
+  const raw: TranscriptSegment[] = [{ fileIndex: 0, start: 0, end: 10, speaker: "SPEAKER_00", text: "a b c", words: locateWords("a b c", [
+    { word: "a", start: 0, end: 10, probability: 0 }, { word: "b", start: 1, end: 2, probability: 0.9 },
+    { word: "c", start: 2, end: 3, probability: 0.9 },
+  ], "forced") }];
+  // b corrected: at 1.5 s B is being said, so "a" is not tinted as being said.
+  assert.deepEqual(editorActive(raw, correctionOf(raw, 0, 2, "b"), 1.5), []);
+});
+
 test("spans with no spread word are lit and followed as they come", () => {
   const segments = apart(spread());
   // The rule before: the first span the time is in, else the last one started.
