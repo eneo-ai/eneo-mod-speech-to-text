@@ -1,13 +1,27 @@
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { brandingMarker } from "./lib/branding-marker.mts";
 
 const API = process.env.DEV_API_BASE ?? "http://127.0.0.1:8000";
 
+// `REACT_DEVTOOLS_MCP=1 npm run dev` hands React's component tree and profiler to Chrome DevTools MCP
+// (react-devtools-cdt-mcp). Opt-in and dev server only: it slows every commit, so neither a build nor the gate gets it.
+// It must load before react-dom, so it is a module script of its own ahead of main.tsx; "pre" lets Vite resolve its import.
+const reactDevtoolsMcp: Plugin = {
+  name: "react-devtools-mcp",
+  apply: (_, { command }) => command === "serve" && process.env.REACT_DEVTOOLS_MCP === "1",
+  transformIndexHtml: {
+    order: "pre",
+    handler: () => [
+      { tag: "script", attrs: { type: "module" }, children: 'import "react-devtools-cdt-mcp/register";', injectTo: "head" },
+    ],
+  },
+};
+
 export default defineConfig(({ mode }) => ({
   // The dev server fills the organisation's marker as the backend does in production (lib/branding-marker.mts).
-  plugins: [react(), brandingMarker(API)],
+  plugins: [react(), brandingMarker(API), reactDevtoolsMcp],
   // `@/x` is `<frontend>/x`, as tsconfig "paths" says; the regex consumes the slash, so no `//` is left in the path.
   resolve: { alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./", import.meta.url)) }] },
   // Build-time flags. Undefined in the unit tests, which is false there as process.env was.
