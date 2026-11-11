@@ -171,7 +171,7 @@ test("playback highlight holds through word and segment gaps, then advances at t
     { ...raw[0], text: "Vi ses", words: locateWords("Vi ses", [{ word: "Vi", start: 0, end: 0.5 }, { word: "ses", start: 1, end: 1.5 }], null) },
     { ...raw[1], text: "imorgon.", start: 2, end: 3, words: locateWords("imorgon.", [{ word: "imorgon.", start: 2, end: 3 }], null) },
   ];
-  const at = (time: number, file = 0) => [...playbackWordHighlights(source, file, time)].map((w) => w.word);
+  const at = (time: number, file = 0) => [...playbackWordHighlights(source, file, time).keys()].map((w) => w.word);
   assert.deepEqual(at(0.5), ["Vi"]);
   assert.deepEqual(at(0.9), ["Vi"]);
   assert.deepEqual(at(1), ["ses"]);
@@ -188,7 +188,7 @@ test("overlapping words remain visible and only the last-finishing word persists
   const source = [
     { ...raw[0], words: locateWords("Vi ses", [{ word: "Vi", start: 0, end: 3 }, { word: "ses", start: 1, end: 2 }], null) },
   ];
-  const at = (time: number) => [...playbackWordHighlights(source, 0, time)].map((w) => w.word);
+  const at = (time: number) => [...playbackWordHighlights(source, 0, time).keys()].map((w) => w.word);
   assert.deepEqual(at(1.5), ["Vi", "ses"]);
   assert.deepEqual(at(2.5), ["Vi"]);
   assert.deepEqual(at(3.5), ["Vi"]);
