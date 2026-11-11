@@ -6,7 +6,7 @@ web (responsive: phone, tablet, laptop, wide desktop)
 
 ## Stack
 
-React 19, Vite, react-router, Astryx 0.7.12 (pinned) with the module's theme `kit/theme/eneo.theme.ts`. CSS Modules with
+React 19, Vite, react-router, Astryx 0.7.13 (pinned) with the module's theme `kit/theme/eneo.theme.ts`. CSS Modules with
 Astryx tokens only for the bespoke surfaces (transcript text, level meter, docked player, the flow page's frame). No
 Tailwind, no StyleX authoring. Figtree (Eneo's face) is bundled from `@fontsource-variable/figtree`. Served by the
 module's FastAPI backend under a strict CSP: no fonts or scripts from other origins.

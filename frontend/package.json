@@ -26,7 +26,7 @@
     "verify:candidate": "node scripts/verify-candidate.mjs"
   },
   "dependencies": {
-    "@astryxdesign/core": "0.7.12",
+    "@astryxdesign/core": "0.7.13",
     "@fontsource-variable/figtree": "5.3.0",
     "@stylexjs/stylex": "0.19.1",
     "lucide-react": "1.49.0",
@@ -35,7 +35,7 @@
     "react-router": "8.4.0"
   },
   "devDependencies": {
-    "@astryxdesign/cli": "0.7.12",
+    "@astryxdesign/cli": "0.7.13",
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "@types/jsdom": "^30.0.0",
