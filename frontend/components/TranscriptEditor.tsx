@@ -123,9 +123,13 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     applyCorrections(raw, next);
     setUndo({ before: corrections, after: next }); onChange?.(next); setNotice(message); setError(null); setEditing(false);
     window.getSelection()?.removeAllRanges();
+    // A tool that goes or is disabled hands its focus to Ångra in the next frame, unless the focus has moved on by then:
+    // a browser leaves it on the body (a removed button) or on the button itself (a disabled one). A Button that stays
+    // focusable while disabled says so with aria-disabled.
     if (focused && toolbar.current?.contains(focused)) requestAnimationFrame(() => {
-      if (!focused.isConnected || focused.matches(":disabled")) {
-        (toolbar.current?.querySelector<HTMLElement>('[data-undo]:not(:disabled)') ?? body.current)?.focus({ preventScroll: true });
+      const now = document.activeElement;
+      if ((now === null || now === document.body || now === focused) && (!focused.isConnected || focused.matches(':disabled, [aria-disabled="true"]'))) {
+        (toolbar.current?.querySelector<HTMLElement>('[data-undo]:not(:disabled, [aria-disabled="true"])') ?? body.current)?.focus({ preventScroll: true });
       }
     });
   }
