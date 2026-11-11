@@ -123,11 +123,15 @@ for (const press of ["click", "tap"] as const) {
     await expect(field).toBeFocused();
     const cancel = tools(page).getByRole("button", { name: "Avbryt", exact: true });
     // Avbryt in the band at the window's bottom that the player covers once it is docked again.
-    await cancel.evaluate((button) => {
-      const dock = document.querySelector<HTMLElement>("[data-docked-player]")!;
-      const box = button.getBoundingClientRect();
-      window.scrollBy({ top: box.top + box.height / 2 - (innerHeight - dock.offsetHeight / 2), behavior: "instant" });
+    const at = await cancel.evaluate((button) => {
+      const dock = document.querySelector<HTMLElement>("[data-docked-player]")!.offsetHeight;
+      const before = button.getBoundingClientRect();
+      window.scrollBy({ top: before.top + before.height / 2 - (innerHeight - dock / 2), behavior: "instant" });
+      const { top, bottom } = button.getBoundingClientRect();
+      return { top, bottom, window: innerHeight, dock };
     });
+    expect(at.top, "Avbryt starts below the docked player's top edge").toBeGreaterThanOrEqual(at.window - at.dock);
+    expect(at.bottom, "and ends inside the window").toBeLessThanOrEqual(at.window);
     await cancel[press]();
     await expect(field).toBeHidden();
   });

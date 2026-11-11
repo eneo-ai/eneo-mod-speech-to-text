@@ -50,7 +50,8 @@ export const whileTyping = {
  * (`pressed`, until a key is pressed), and a region's typing ends only once the press is let go (`held`, from its mouse
  * button's down to its up; a finger's press sends them once lifted, and the browser looks again for what the up lands on
  * when the page changed under it): a dock stuck again between the two would stand over what was pressed, and the press
- * would land on the dock. A focus the keyboard moves ends the typing at once.
+ * would land on the dock. A focus the keyboard moves ends the typing at once. Both are the page's, not a dock's: a dock
+ * observed again during a press (a player moved between a tablet's top and its text) is pressed as the page is.
  */
 let pressed = false;
 let held = false;
@@ -69,6 +70,11 @@ function listen() {
   document.addEventListener("pointerdown", () => (pressed = true), true);
   document.addEventListener("mousedown", () => (held = true), true);
   document.addEventListener("mouseup", release, true);
+  // A press can end with no mouse up: the browser took it over (pointercancel), it became a drag (dragend), it opened a
+  // context menu, or the window lost the focus during it. Each lets it go too, or a field's later blur would keep the
+  // dock in the text. Not pointerup: a finger's press moves the focus after it.
+  for (const end of ["pointercancel", "dragend", "contextmenu"]) document.addEventListener(end, release, true);
+  window.addEventListener("blur", (event) => event.target === window && release());
   document.addEventListener("keydown", () => {
     pressed = false;
     release();
