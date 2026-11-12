@@ -10,9 +10,10 @@ Du behöver administratörsrätt i Eneo och en server med Docker Compose (Dokplo
 
 ## 2. Skapa servicenyckeln
 
-Gå till **Administration → API keys** och skapa en nyckel av typen `sk_` med ägaren `service` och behörigheten `write`.
+Gå till **Administration → API keys** och skapa en nyckel av typen `sk_` med ägaren `service`.
 
-- Ge den så snäv resursomfattning som möjligt, ofta ett eget space.
+- Ge den rättigheten **Flows: Write** (på svenska **Flöden: Skriv**) och inga andra. Allt modulen gör i Eneo, att lista, köra, ladda upp och granska, går genom flödena, och nyckeln får då behörigheten `write` som installationen kräver. Saknas rättigheten säger modulen att den saknar rättighet till flöden i Eneo.
+- Välj omfånget **Tenant** (Organisation) om modulen ska visa flöden från alla användares ytor; vad en person ser avgör ändå personens egna ytor. En nyckel för en enda yta (**Space**) begränsar modulen till den ytan.
 - Sätt utgångsdatum och rate limit.
 - Kopiera hemligheten direkt. Den visas en gång och blir `ENEO_API_KEY`.
 

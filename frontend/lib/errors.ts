@@ -28,6 +28,11 @@ const FILE_UNUSABLE = "Filen kunde inte användas. Ladda upp den igen.";
 export const ASK_ENEO_OWNER = "Kontakta den som ansvarar för Eneo i din verksamhet";
 const NO_ACCESS = `Du har inte behörighet till det här. ${ASK_ENEO_OWNER} om du behöver det.`;
 const MODULE_ACCESS = "Tal till text har inte behörighet till det här flödet. Kontakta den som ansvarar för Tal till text.";
+// Eneo refused the module's own key, not the person: only the one who runs Tal till text can change it, in Eneo.
+const KEY_FLOWS =
+  "Tal till text saknar rättighet till flöden i Eneo. Den som ansvarar för Tal till text behöver ge modulens nyckel rättigheten Flöden: Skriv.";
+const KEY_OTHER = "Tal till text saknar en rättighet i Eneo. Den som ansvarar för Tal till text behöver se över modulens nyckel.";
+const KEY_SCOPE = "Tal till text når inte det här flödet: nyckelns omfång i Eneo täcker det inte. Kontakta den som ansvarar för Tal till text.";
 const REVIEW_CHANGED = "Granskningen har ändrats. Ladda om sidan och försök igen.";
 /** What a refused request and a finished run say alike of a review and of a busy server. */
 export const REVIEW_REJECTED = "Resultatet avvisades i granskningen och körningen avslutades.";
@@ -98,8 +103,7 @@ const CODES: Record<string, string> = {
   flow_run_input_file_not_found: "Inspelningen eller filen för den här körningen kunde inte hittas.",
   flow_run_access_denied: "Du har inte tillgång till den här körningen.",
   // Access for Tal till text itself.
-  insufficient_scope: MODULE_ACCESS,
-  insufficient_resource_permission: MODULE_ACCESS,
+  insufficient_scope: KEY_SCOPE,
   invalid_api_key: "Tal till text kan inte ansluta till Eneo just nu. Kontakta den som ansvarar för Tal till text.",
   upstream_unreachable: "Eneo gick inte att nå just nu. Försök igen om en stund.",
   // The module's disk for uploads under way is full; it has room again once uploads before this one have gone on.
@@ -146,6 +150,16 @@ export function refusalReason(err: unknown): string | null {
   return typeof reason === "string" ? reason : null;
 }
 
+/**
+ * The right Eneo found missing on the module's key (`context.resource_type`). Every route the module reaches is a
+ * flow's, and its runs, uploads and reviews need write, so Flöden: Skriv is the fix also where Eneo names read (the
+ * list asks first) or sends no context (key data it could not read).
+ */
+function keyPermission(err: ApiError): string {
+  const resource = (err.body as { context?: { resource_type?: unknown } } | null)?.context?.resource_type;
+  return resource === undefined || resource === "flows" ? KEY_FLOWS : KEY_OTHER;
+}
+
 // Busy or briefly unreachable: the same request may go through a moment later.
 const RETRY_CODES = new Set([
   "flow_run_audio_measurement_busy",
@@ -190,6 +204,7 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     if (err.code && OWNER_CODES[err.code]) return advice(OWNER_CODES[err.code], false, true);
     const reason = refusalReason(err);
     if (reason && Object.hasOwn(REASONS, reason)) return advice(REASONS[reason]);
+    if (err.code === "insufficient_resource_permission") return advice(keyPermission(err));
     if (err.code && CODES[err.code]) return advice(CODES[err.code], RETRY_CODES.has(err.code));
     // Our own session (no code) has run out; Eneo's 401 always carries a code. The page asks for the new login in
     // place, so this is read after it.
