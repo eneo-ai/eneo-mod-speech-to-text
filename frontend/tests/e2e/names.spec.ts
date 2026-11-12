@@ -562,8 +562,9 @@ test("a correction's save is said from its first word: the live region waits in 
   await expect(page.getByRole("status").filter({ hasText: "Ändringar sparade" })).toBeAttached();
 });
 
-test("a logout is read out as it goes, and one that fails is read out where a screen reader already listens", async ({ page }, info) => {
+test("a logout is read out as it goes, and one that fails is read out where a screen reader already listens", async ({ page, sentinel }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  sentinel.expect({ console: /status of 500.*\/api\/auth\/logout/ });
   let answer!: () => void;
   const answered = new Promise<void>((resolve) => (answer = resolve));
   await page.route("**/api/auth/logout", async (route) => {
