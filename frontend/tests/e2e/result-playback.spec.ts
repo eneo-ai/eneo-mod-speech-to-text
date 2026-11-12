@@ -82,7 +82,11 @@ test("on a phone, the transcript's player keeps room at the page's end on its ow
   const document_ = await covered();
   expect(document_.bottom, "the initially hidden player covers nothing").toBe(0);
   await page.getByRole("tab", { name: "Transkribering" }).click();
-  await expect.poll(async () => (await covered()).bottom, "the player ends the transcript and covers its last rows").toBeGreaterThan(document_.bottom);
+  const player = page.getByRole("tabpanel", { name: "Transkribering" }).locator("[data-docked-player]");
+  await expect(player).toBeVisible();
+  const height = (await player.boundingBox())!.height;
+  expect(height, "the visible player has a measured height").toBeGreaterThan(0);
+  await expect.poll(async () => (await covered()).bottom, "focus keeps the entire player clear").toBeGreaterThanOrEqual(height);
   await page.getByRole("tab", { name: "Dokument" }).click();
   await expect.poll(covered, "the document's page has no room kept for the player out of sight").toEqual(document_);
 });
