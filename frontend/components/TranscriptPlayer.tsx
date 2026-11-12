@@ -390,14 +390,16 @@ const SMALL = "(max-width: 399.98px)";
 /** The narrowest phones: the review's download beside the transcript's heading is its icon alone. */
 const TINY = "(max-width: 359.98px)";
 
+/** What can be read of the transcript: the list where it scrolls, else the window. */
+function readable(list: HTMLElement): { top: number; height: number } {
+  return list.scrollHeight > list.clientHeight ? list.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+}
+
 /**
- * The passage is in the middle of what can be read (the list where it scrolls, else the window), away from the edges,
- * so following playback leaves it where it is: the text moves only when the playhead nears an edge, not at every new
- * sentence.
+ * The block is in the middle of what can be read, away from the edges, so following playback leaves it where it is: the
+ * text moves only when the playhead nears an edge, not at every new sentence.
  */
-function withinReadingZone(block: HTMLElement, list: HTMLElement): boolean {
-  const scrolls = list.scrollHeight > list.clientHeight;
-  const { top, height } = scrolls ? list.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+function withinReadingZone(block: HTMLElement, { top, height }: { top: number; height: number }): boolean {
   const box = block.getBoundingClientRect();
   return box.top >= top + height * 0.15 && box.bottom <= top + height * 0.85;
 }
@@ -723,18 +725,20 @@ export function TranscriptPlayer(
   const keepInView = useCallback((segmentIndex: number) => {
     if (!following.current.follow || following.current.editing || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
-    const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
+    const passage = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     // A passage the speaker filter hides is not on screen to keep in view.
-    if (!block || block.hidden || withinReadingZone(block, listRef.current)) return;
+    if (!el || !passage || passage.hidden) return;
+    const view = readable(listRef.current);
+    // A passage taller than the zone is followed by its sentence: centred whole, its last sentences were out of view.
+    const block = passage.getBoundingClientRect().height > view.height * 0.7 ? el : passage;
+    if (withinReadingZone(block, view)) return;
     programmaticScrollUntil.current = Date.now() + 800;
     // Far away it jumps: following the playhead back from the transcript's other end glided 1.5 s past the text.
-    const scrolls = listRef.current.scrollHeight > listRef.current.clientHeight;
-    const view = scrolls ? listRef.current.getBoundingClientRect() : { top: 0, height: window.innerHeight };
     const box = block.getBoundingClientRect();
     block.scrollIntoView({ block: "center", behavior: scrollBehaviorFor(box.top + box.height / 2 - (view.top + view.height / 2), view.height) });
   }, []);
   // The review editor lights its own words; the playhead only keeps its place in view there.
-  const playheadAt = useTranscriptPlayhead(listRef, playback, shown, keepInView, !reviewEnabled);
+  const playheadAt = useTranscriptPlayhead(listRef, playback, shown, segments, keepInView, !reviewEnabled);
   // Following again, or closing a line's editor, brings the playhead's sentence back.
   useEffect(() => {
     const at = playheadAt();

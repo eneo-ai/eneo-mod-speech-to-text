@@ -357,23 +357,87 @@ export function findActiveWordIndex(
   return lastStarted;
 }
 
-/** Actual simultaneous words stay active; silence holds the last completed word(s). */
-export function playbackWordHighlights(segments: readonly TranscriptSegment[], fileIndex: number, time: number): Set<TranscriptWord> {
-  const active = new Set<TranscriptWord>();
-  const previous = new Set<TranscriptWord>();
-  let lastEnd = -Infinity;
-  for (const segment of segments) {
-    if (segment.fileIndex !== fileIndex) continue;
-    for (const word of segment.words ?? []) {
-      if (word.charStart < 0 || word.charEnd <= word.charStart || !Number.isFinite(word.start) ||
-          !Number.isFinite(word.end) || word.end < word.start) continue;
-      if (word.start <= time && time < word.end) active.add(word);
-      if (word.end <= time) {
-        if (word.end > lastEnd) { previous.clear(); lastEnd = word.end; }
-        if (word.end === lastEnd) previous.add(word);
+const playbackViews = new WeakMap<
+  readonly TranscriptSegment[],
+  { source: readonly TranscriptSegment[]; view: readonly TranscriptSegment[] }
+>();
+
+/**
+ * The spans playback lights and follows. A word the forced alignment could not place (`uncertain`) comes spread over
+ * the rest of its window, over the words said after it; here it ends where the next word of its recording starts, and a
+ * sentence it made longer ends with its words. The times come from `source`, the segments as they came before
+ * corrections, which drop a corrected word's time but not its audio: a sentence ends with its source words, a spread
+ * one corrected away cut too. Indices match `segments`, and what is not cut stays the same object. Built once per array
+ * and source.
+ */
+export function playbackSpans(segments: readonly TranscriptSegment[], source: readonly TranscriptSegment[] = segments): readonly TranscriptSegment[] {
+  const known = playbackViews.get(segments);
+  if (known?.source === source) return known.view;
+  let starts: Map<number, number[]> | undefined;
+  // The next word's start in the recording, by a binary search of its starts, sorted once per call.
+  const clip = (w: TranscriptWord, fileIndex: number) => {
+    if (!w.uncertain) return w.end;
+    if (!starts) {
+      starts = new Map();
+      for (const o of source) {
+        const list = starts.get(o.fileIndex) ?? [];
+        starts.set(o.fileIndex, list);
+        for (const n of o.words ?? []) if (Number.isFinite(n.start)) list.push(n.start);
       }
+      for (const list of starts.values()) list.sort((a, b) => a - b);
     }
-  }
+    const list = starts.get(fileIndex) ?? [];
+    let low = 0;
+    for (let high = list.length; low < high; ) {
+      const mid = (low + high) >> 1;
+      if (list[mid] > w.start) high = mid; else low = mid + 1;
+    }
+    return Math.min(w.end, list[low] ?? Infinity);
+  };
+  const view = segments.map((s, i) => {
+    const all = source[s.sourceSegmentIndex ?? i]?.words;
+    if (!s.words?.some((w) => w.uncertain) && !all?.some((w) => w.uncertain)) return s;
+    const from = s.sourceCharStart ?? 0, to = s.sourceCharEnd ?? Infinity;
+    const said = (all ?? []).filter((w) => w.charStart < to && w.charEnd > from);
+    const ends = said.map((w) => clip(w, s.fileIndex));
+    const words = s.words?.map((w) => {
+      const end = clip(w, s.fileIndex);
+      return end < w.end ? { ...w, end } : w;
+    });
+    if (words?.every((w, j) => w === s.words![j]) !== false && ends.every((end, j) => end === said[j].end)) return s;
+    return { ...s, words, end: Math.min(s.end, Math.max(...(words ?? []).map((w) => w.end), ...ends)) };
+  });
+  playbackViews.set(segments, { source, view });
+  return view;
+}
+
+/**
+ * The words the review editor lights, each with whether it is being said (true) or held in the silence after it
+ * (false): words said at the same time all are; in a silence, the last completed word(s). Times are playback's.
+ */
+export function playbackWordHighlights(
+  segments: readonly TranscriptSegment[],
+  fileIndex: number,
+  time: number,
+  source: readonly TranscriptSegment[] = segments,
+): Map<TranscriptWord, boolean> {
+  const view = playbackSpans(segments, source);
+  const active = new Map<TranscriptWord, boolean>();
+  const previous = new Map<TranscriptWord, boolean>();
+  let lastEnd = -Infinity;
+  segments.forEach((segment, i) => {
+    if (segment.fileIndex !== fileIndex) return;
+    (segment.words ?? []).forEach((word, j) => {
+      const { start, end } = view[i].words![j];
+      if (word.charStart < 0 || word.charEnd <= word.charStart || !Number.isFinite(start) ||
+          !Number.isFinite(end) || end < start) return;
+      if (start <= time && time < end) active.set(word, true);
+      if (end <= time) {
+        if (end > lastEnd) { previous.clear(); lastEnd = end; }
+        if (end === lastEnd) previous.set(word, false);
+      }
+    });
+  });
   return active.size ? active : previous;
 }
 
