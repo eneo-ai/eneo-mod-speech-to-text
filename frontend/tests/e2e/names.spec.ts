@@ -5,7 +5,7 @@
  */
 import { type Route } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axNode } from "./checks";
+import { axNode, reflow } from "./checks";
 import { addParticipants, backLink, chooseMode, flows, isLaptop, pdfInDialog, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
@@ -584,6 +584,11 @@ test("a logout is read out as it goes, and one that fails is read out where a sc
   await expect(said).toBeAttached();
   expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element)), "a region that was there before").toBe(true);
   await expect(page).toHaveURL(/\/flows$/);
+  for (const width of info.project.name === "phone-390-light" ? [320, 390] : [1440]) {
+    await page.setViewportSize({ width, height: info.project.use.viewport!.height });
+    const layout = await reflow(page);
+    expect([...layout.clipped, ...layout.truncated].filter((element) => element.includes("Det gick inte att logga ut.")), `the full logout failure is readable at ${width} px`).toEqual([]);
+  }
 });
 
 test("a passage's actions say which part they are in, as its play button does, so no two are named alike", async ({ page }, info) => {
