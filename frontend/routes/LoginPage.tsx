@@ -14,6 +14,7 @@ import { authStatus } from "@/lib/api";
 import { useOwnOrganization } from "@/components/Brand";
 import { HeaderBrand } from "@/components/HeaderBrand";
 import styles from "./LoginPage.module.css";
+import { SessionWait } from "@/components/SessionWait";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { connectionLost } from "@/lib/online-status";
 import { useRouteReady } from "@/routes/RouteEffects";
@@ -38,6 +39,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
+  const [attempt, setAttempt] = useState(0);
   // False when the module could not be asked who is signed in: the way in is then a second try.
   const [reachable, setReachable] = useState(false);
   const signedOut = reachable && isRecord(location.state) && location.state.signedOut === true;
@@ -48,6 +50,7 @@ export default function LoginPage() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const params = new URLSearchParams(window.location.search);
     const failure = params.get("auth_error");
     // A login window whose sign-in failed after its state was gone (the backend no longer knew it was one) belongs on its
@@ -68,6 +71,7 @@ export default function LoginPage() {
     }
     authStatus()
       .then((s) => {
+        if (cancelled) return;
         if (s.authenticated) void navigate(next ?? "/flows", { replace: true });
         else {
           setReachable(true);
@@ -75,10 +79,14 @@ export default function LoginPage() {
         }
       })
       .catch(() => {
+        if (cancelled) return;
         setAuthError(connectionLost());
         setChecking(false);
       });
-  }, [navigate, next]);
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, next, attempt]);
 
   useRouteReady(!checking);
 
@@ -98,9 +106,10 @@ export default function LoginPage() {
   if (checking) {
     return (
       <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
-        <VStack hAlign="center" paddingBlock={10}>
+        <VStack hAlign="center" gap={4} paddingBlock={10}>
           <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
           <Spinner aria-label="Laddar" />
+          <SessionWait onRetry={() => setAttempt((count) => count + 1)} />
         </VStack>
       </ModuleShell>
     );

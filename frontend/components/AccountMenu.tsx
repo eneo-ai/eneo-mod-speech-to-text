@@ -12,6 +12,7 @@ import {
 import { Item } from "@astryxdesign/core/Item";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { Text } from "@astryxdesign/core/Text";
+import { useAnnounce } from "@astryxdesign/core/hooks";
 
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { LeaveContext } from "@/components/flow/useLeaveQuestion";
@@ -19,12 +20,16 @@ import { useColorMode, type ColorMode } from "@/kit/ColorModeProvider";
 import { logout } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
+const LOGOUT_FAILURE = "Det gick inte att logga ut. Försök igen.";
+
 export function AccountMenu() {
   const navigate = useNavigate();
   const user = useAuthenticatedUser();
   const { mode, setMode } = useColorMode();
   const [loggingOut, setLoggingOut] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The row's label says it too, but a screen reader does not read again the name of the row that keeps the focus.
+  const announce = useAnnounce();
   const displayName = userDisplayName(user);
   // Signing out leaves the page: asked first where that would lose something.
   const { leaveFirst } = useContext(LeaveContext);
@@ -32,12 +37,14 @@ export function AccountMenu() {
   async function onLogout() {
     setFailed(false);
     setLoggingOut(true);
+    announce("Loggar ut…");
     try {
       await logout();
     } catch {
       // Still signed in, and the sign-in page would send the person straight on to the flows: stay, and say so.
       setLoggingOut(false);
       setFailed(true);
+      announce(LOGOUT_FAILURE, "assertive");
       return;
     }
     void navigate("/", { replace: true, state: { signedOut: true } });
@@ -83,7 +90,8 @@ export function AccountMenu() {
       <DropdownMenuDivider />
       <DropdownMenuItem
         icon={loggingOut ? <Spinner size="sm" aria-hidden /> : LogOut}
-        label={loggingOut ? "Loggar ut…" : failed ? "Det gick inte att logga ut. Försök igen." : "Logga ut"}
+        // String labels are truncated; the recovery message must remain readable in full.
+        label={loggingOut ? "Loggar ut…" : failed ? <Text as="span">{LOGOUT_FAILURE}</Text> : "Logga ut"}
         isDisabled={loggingOut}
         // The menu stays open to say that it is signing out, and for the leave question to give back to.
         hasCloseOnSelect={false}

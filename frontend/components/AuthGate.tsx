@@ -208,7 +208,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       />
     );
   }
-  if (!user) return <LoadingShell />;
+  if (!user) return <LoadingShell onRetry={() => setAttempt((count) => count + 1)} />;
 
   return (
     <AuthenticatedUserContext.Provider value={user}>

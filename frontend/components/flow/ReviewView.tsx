@@ -197,6 +197,8 @@ export function ReviewView({
   const [reasonMissing, setReasonMissing] = useState<boolean>(false);
   // Avbryt redigering with a change: asked first, since the change is thrown away.
   const [askingDiscard, setAskingDiscard] = useState<boolean>(false);
+  // Ta bort din version: asked first, since the person's own text goes with it, from the tab too.
+  const [askingDrop, setAskingDrop] = useState<boolean>(false);
   const signedOut = useSignedOut();
   // The naming dialog, opened at one speaker by Byt namn på in a passage's Ändra talare.
   const namingDialog = useRef<SpeakerNamingHandle>(null);
@@ -873,11 +875,11 @@ export function ReviewView({
               {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
               {/* Approved, the version is kept to copy, never to continue with: the approved text is the decision. */}
               {decided ? (
-                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => setAskingDrop(true)} />
               ) : (
                 <>
                   <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
-                  <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+                  <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => setAskingDrop(true)} />
                 </>
               )}
             </HStack>
@@ -979,6 +981,21 @@ export function ReviewView({
         onAction={() => {
           setAskingDiscard(false);
           stopEditing();
+        }}
+      />
+      <AlertDialog
+        isOpen={askingDrop && !signedOut}
+        onOpenChange={setAskingDrop}
+        title="Ta bort din version?"
+        description="Texten du skrev tas bort, också från den här fliken. Det går inte att ångra."
+        cancelLabel="Behåll"
+        actionLabel="Ta bort"
+        onAction={() => {
+          setAskingDrop(false);
+          // The banner goes with the version, and the focus goes on to something that decides nothing: the text being edited
+          // or Redigera, the page's heading where there is neither, and Fortsätt once the review is approved.
+          handOff.current = decided ? approveButton : editable ? (editing ? textField : editButton) : heading;
+          draft.dropYours();
         }}
       />
     </VStack>

@@ -138,7 +138,7 @@ function FlowsListPage() {
                 <VisuallyHidden as="p" role="status">
                   Laddar flödena…
                 </VisuallyHidden>
-                <SlowWait flows={false} onRetry={retry} />
+                <SlowWait onRetry={retry} />
                 <FlowListSkeleton />
               </>
             ) : empty ? (

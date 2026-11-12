@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 
 import { button, cleanup, installDom, mount } from "./test-dom";
 import { withRouter } from "./test-router";
@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const SLOW = "Det tar längre tid än vanligt.";
 
-async function slowWait(props: { flows?: boolean } = {}) {
+async function slowWait(props: { back?: ReactNode } = {}) {
   const { SlowWait } = await import("../components/SlowWait");
   let retries = 0;
   const view = await mount(withRouter(createElement(SlowWait, { onRetry: () => (retries += 1), ...props })).tree);
@@ -20,9 +20,10 @@ async function slowWait(props: { flows?: boolean } = {}) {
 }
 
 test("a wait that goes on says so after 15 seconds, with a way on; before that it says nothing", async (t) => {
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { container, act, status } = await slowWait();
+  const { BackToFlows } = await import("../components/flow/BackToFlows");
+  const { container, act, status } = await slowWait({ back: createElement(BackToFlows, { size: "md" }) });
   assert.equal(container.textContent, "", "nothing before the wait is long");
   const region = container.querySelector('[role="status"]');
   assert.ok(region, "the status region is there before its words, so they are read out when they come");
@@ -38,16 +39,16 @@ test("a wait that goes on says so after 15 seconds, with a way on; before that i
 });
 
 test("a wait on the flow list offers no way back to the flow list", async (t) => {
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { container, act } = await slowWait({ flows: false });
+  const { container, act } = await slowWait();
   await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
   assert.ok(button(container, "Försök igen"));
   assert.equal(container.querySelector('a[href="/flows"]'), null);
 });
 
 test("Försök igen tries again, keeps focus where it was, says so, and the wait is judged again from there", async (t) => {
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { container, act, status, retries } = await slowWait();
   await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
@@ -74,7 +75,7 @@ const wordsInStatus = (container: HTMLElement) =>
 
 test("the flow page's skeleton says after 15 seconds that it takes longer than usual, and Försök igen loads the flow again", async (t) => {
   const { FlowSkeleton } = await import("../components/flow/FlowPageStates");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let retries = 0;
   const { container, act } = await mount(await onPage(createElement(FlowSkeleton, { onRetry: () => (retries += 1) })));
@@ -90,7 +91,7 @@ test("the flow page's skeleton says after 15 seconds that it takes longer than u
 
 test("an earlier run that is being opened says after 15 seconds that it takes longer than usual, and tries again on request", async (t) => {
   const { RunOpening } = await import("../components/flow/RunProgress");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let retries = 0;
   const { container, act } = await mount(await onPage(createElement(RunOpening, { onRetry: () => (retries += 1) })));
@@ -105,7 +106,7 @@ test("an earlier run that is being opened says after 15 seconds that it takes lo
 
 test("a run being opened that tries again by itself offers Försök nu after 15 seconds; a wait that only takes long, Försök igen", async (t) => {
   const { RunOpening } = await import("../components/flow/RunProgress");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const view = await mount(await onPage(createElement(RunOpening, { onRetry: () => undefined, retrying: true })));
   await view.act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
@@ -125,7 +126,7 @@ test("a run that cannot be read while it is opened says that it tries again, at 
 
 test("a run on screen whose status cannot be read says that it tries again, at once, and after 15 seconds offers the ways on", async (t) => {
   const { RunProgress } = await import("../components/flow/RunProgress");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const props = { flowName: "Nämndmöte", steps: [], stage: "Tar fram texten", onCancel: async () => undefined };
   let retries = 0;

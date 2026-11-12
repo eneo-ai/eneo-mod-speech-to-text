@@ -5,8 +5,8 @@
  */
 import { type Route } from "@playwright/test";
 import { expect, test } from "./gate";
-import { axNode } from "./checks";
-import { addParticipants, backLink, chooseMode, isLaptop, pdfInDialog, result, run, sending, setup, STATES } from "./screens";
+import { axNode, reflow } from "./checks";
+import { addParticipants, backLink, chooseMode, flows, isLaptop, pdfInDialog, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }, info) => {
@@ -560,6 +560,36 @@ test("a correction's save is said from its first word: the live region waits in 
   await expect(said).toBeAttached();
   expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element))).toBe(true);
   await expect(page.getByRole("status").filter({ hasText: "Ändringar sparade" })).toBeAttached();
+});
+
+test("a logout is read out as it goes, and one that fails is read out where a screen reader already listens", async ({ page, sentinel }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+  sentinel.expect({ console: /status of 500.*\/api\/auth\/logout/ });
+  let answer!: () => void;
+  const answered = new Promise<void>((resolve) => (answer = resolve));
+  await page.route("**/api/auth/logout", async (route) => {
+    await answered;
+    await route.fulfill({ status: 500, json: { code: "internal_error" } });
+  });
+  await flows(page);
+  await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+  await page.getByRole("menuitem", { name: "Logga ut" }).click();
+  const live = "[aria-live], [role=status], [role=alert]";
+  await expect(page.locator(live).filter({ hasText: "Loggar ut…" })).toBeAttached();
+  // A live region added together with its text is often not read; one already there is.
+  await page.evaluate((selector) => {
+    (window as unknown as { regions: Set<Element> }).regions = new Set(document.querySelectorAll(selector));
+  }, live);
+  answer();
+  const said = page.locator(live).filter({ hasText: "Det gick inte att logga ut. Försök igen." });
+  await expect(said).toBeAttached();
+  expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element)), "a region that was there before").toBe(true);
+  await expect(page).toHaveURL(/\/flows$/);
+  for (const width of info.project.name === "phone-390-light" ? [320, 390] : [1440]) {
+    await page.setViewportSize({ width, height: info.project.use.viewport!.height });
+    const layout = await reflow(page);
+    expect([...layout.clipped, ...layout.truncated].filter((element) => element.includes("Det gick inte att logga ut.")), `the full logout failure is readable at ${width} px`).toEqual([]);
+  }
 });
 
 test("a passage's actions say which part they are in, as its play button does, so no two are named alike", async ({ page }, info) => {
