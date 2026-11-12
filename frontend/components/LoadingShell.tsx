@@ -3,7 +3,7 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Brand } from "@/components/Brand";
-import { SlowWait } from "@/components/SlowWait";
+import { SessionWait } from "@/components/SessionWait";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { PRODUCT_NAME } from "@/lib/product";
 import styles from "@/components/LoadingShell.module.css";
@@ -22,7 +22,7 @@ export function LoadingShell({ onRetry }: { onRetry?: () => void } = {}) {
       <Center minHeight="60dvh" className={styles.wait}>
         <VStack hAlign="center" gap={4}>
           <Spinner size="lg" aria-label="Laddar" />
-          {onRetry && <SlowWait onRetry={onRetry} />}
+          {onRetry && <SessionWait onRetry={onRetry} />}
         </VStack>
       </Center>
     </ModuleShell>

@@ -14,7 +14,7 @@ import { authStatus } from "@/lib/api";
 import { useOwnOrganization } from "@/components/Brand";
 import { HeaderBrand } from "@/components/HeaderBrand";
 import styles from "./LoginPage.module.css";
-import { SlowWait } from "@/components/SlowWait";
+import { SessionWait } from "@/components/SessionWait";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { connectionLost } from "@/lib/online-status";
 import { useRouteReady } from "@/routes/RouteEffects";
@@ -39,7 +39,6 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
-  // Asked again with Försök igen, when the question who is signed in has no answer yet (SlowWait).
   const [attempt, setAttempt] = useState(0);
   // False when the module could not be asked who is signed in: the way in is then a second try.
   const [reachable, setReachable] = useState(false);
@@ -110,7 +109,7 @@ export default function LoginPage() {
         <VStack hAlign="center" gap={4} paddingBlock={10}>
           <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
           <Spinner aria-label="Laddar" />
-          <SlowWait onRetry={() => setAttempt((count) => count + 1)} />
+          <SessionWait onRetry={() => setAttempt((count) => count + 1)} />
         </VStack>
       </ModuleShell>
     );

@@ -20,7 +20,7 @@ async function slowWait(props: { back?: ReactNode } = {}) {
 }
 
 test("a wait that goes on says so after 15 seconds, with a way on; before that it says nothing", async (t) => {
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { BackToFlows } = await import("../components/flow/BackToFlows");
   const { container, act, status } = await slowWait({ back: createElement(BackToFlows, { size: "md" }) });
@@ -39,7 +39,7 @@ test("a wait that goes on says so after 15 seconds, with a way on; before that i
 });
 
 test("a wait on the flow list offers no way back to the flow list", async (t) => {
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { container, act } = await slowWait();
   await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
@@ -48,7 +48,7 @@ test("a wait on the flow list offers no way back to the flow list", async (t) =>
 });
 
 test("Försök igen tries again, keeps focus where it was, says so, and the wait is judged again from there", async (t) => {
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { container, act, status, retries } = await slowWait();
   await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
@@ -75,7 +75,7 @@ const wordsInStatus = (container: HTMLElement) =>
 
 test("the flow page's skeleton says after 15 seconds that it takes longer than usual, and Försök igen loads the flow again", async (t) => {
   const { FlowSkeleton } = await import("../components/flow/FlowPageStates");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let retries = 0;
   const { container, act } = await mount(await onPage(createElement(FlowSkeleton, { onRetry: () => (retries += 1) })));
@@ -91,7 +91,7 @@ test("the flow page's skeleton says after 15 seconds that it takes longer than u
 
 test("an earlier run that is being opened says after 15 seconds that it takes longer than usual, and tries again on request", async (t) => {
   const { RunOpening } = await import("../components/flow/RunProgress");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let retries = 0;
   const { container, act } = await mount(await onPage(createElement(RunOpening, { onRetry: () => (retries += 1) })));
@@ -106,7 +106,7 @@ test("an earlier run that is being opened says after 15 seconds that it takes lo
 
 test("a run being opened that tries again by itself offers Försök nu after 15 seconds; a wait that only takes long, Försök igen", async (t) => {
   const { RunOpening } = await import("../components/flow/RunProgress");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const view = await mount(await onPage(createElement(RunOpening, { onRetry: () => undefined, retrying: true })));
   await view.act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
@@ -126,7 +126,7 @@ test("a run that cannot be read while it is opened says that it tries again, at 
 
 test("a run on screen whose status cannot be read says that it tries again, at once, and after 15 seconds offers the ways on", async (t) => {
   const { RunProgress } = await import("../components/flow/RunProgress");
-  const { SLOW_WAIT_MS } = await import("../components/SlowWait");
+  const { SLOW_WAIT_MS } = await import("./slow-wait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const props = { flowName: "Nämndmöte", steps: [], stage: "Tar fram texten", onCancel: async () => undefined };
   let retries = 0;
