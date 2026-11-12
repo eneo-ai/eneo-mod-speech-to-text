@@ -495,9 +495,10 @@ export async function result(page: Page) {
  */
 export async function longTranscript(page: Page, info: TestInfo) {
   await run(page, ids.runs.long);
+  // The large fixture's readiness bound covers its load before heading and keyboard assertions begin.
+  await expect(page.locator("[data-turn-index]")).toHaveCount(2_000, { timeout: 30_000 });
   await heading(page, "Dokumentet är klart");
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-  await expect(page.locator("[data-turn-index]")).toHaveCount(2_000, { timeout: 30_000 });
 }
 
 /** Where the browser skips a long transcript's passages a group at a time, and finds, focuses and shows them its own way. */
