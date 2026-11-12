@@ -12,7 +12,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
 import { useOwnOrganization } from "@/components/Brand";
-import { HeaderBrand } from "@/components/HeaderBrand";
+import { HeaderBrand } from "@/components/Brand";
 import styles from "./LoginPage.module.css";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { connectionLost } from "@/lib/online-status";

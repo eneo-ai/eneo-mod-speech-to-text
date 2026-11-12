@@ -107,7 +107,7 @@ test("the stylesheet shows the logo of the colour mode", () => {
 });
 
 test("the brand's link is a router link to the flows: a navigation, which the page's blocker can stop", async () => {
-  const { HeaderBrand } = await import("../components/HeaderBrand");
+  const { HeaderBrand } = await import("../components/Brand");
   const { router, tree } = withRouter(createElement(HeaderBrand, { linked: true }), { path: "/start" });
   const { container, act } = await mount(tree);
   const link = container.querySelector("a")!;
@@ -117,7 +117,7 @@ test("the brand's link is a router link to the flows: a navigation, which the pa
 });
 
 test("the header brand of a page nobody has signed in to is not a link", async () => {
-  const { HeaderBrand } = await import("../components/HeaderBrand");
+  const { HeaderBrand } = await import("../components/Brand");
   const html = renderToStaticMarkup(createElement(HeaderBrand, { linked: false }));
   assert.doesNotMatch(html, /<a /);
   assert.match(html, />Tal till text</);

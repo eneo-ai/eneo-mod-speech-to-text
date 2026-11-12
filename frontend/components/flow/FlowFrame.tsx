@@ -3,7 +3,7 @@ import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { AccountMenu } from "@/components/AccountMenu";
 import { BackToFlows } from "@/components/flow/BackToFlows";
-import { HeaderBrand } from "@/components/HeaderBrand";
+import { HeaderBrand } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import styles from "./FlowFrame.module.css";
 import { useNarrowerThan } from "./useRoomInRow";

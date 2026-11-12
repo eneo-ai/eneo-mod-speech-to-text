@@ -59,6 +59,11 @@ interface BrandProps {
   href?: string;
 }
 
+/** The brand in the page's top bar; no link before sign-in or while leaving would abort an upload. */
+export function HeaderBrand({ linked = true }: { linked?: boolean }) {
+  return <Brand href={linked ? "/flows" : undefined} />;
+}
+
 /**
  * The organisation's mark: its logo (plain <img>, same-origin), or its name as text. Sizing and the colour mode's
  * choice of logo are the stylesheet's, by data-brand-logo (styles/globals.css): light and dark are a pair of logos (Eneo's
