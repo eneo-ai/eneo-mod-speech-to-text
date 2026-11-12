@@ -206,6 +206,49 @@ test("Ta bort din version asks first: Behåll keeps the text and the focus, Ta b
   await expect(page.getByRole("button", { name: "Använd din version" })).toHaveCount(0);
 });
 
+for (const state of ["approved", "editing", "read-only"] as const) {
+  test(`Ta bort din version after ${state} hands focus to the next available control or heading`, async ({ page }, info) => {
+    test.skip(!["phone-390-light", "laptop-1440-light"].includes(info.project.name), "a phone and a laptop");
+    await STATES.find((s) => s.name === "review-din-version")!.go(page, info);
+    if (state === "editing") {
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.getByRole("textbox", { name: "Innehåll för granskning" }).fill("Min nya redigering.");
+    } else {
+      await page.route("**/review-checkpoints/active**", async (route) => {
+        const checkpoint = await (await route.fetch()).json();
+        await route.fulfill({
+          json: {
+            ...checkpoint,
+            revision: checkpoint.revision + 1,
+            ...(state === "approved" ? { state: "approved", approved_at: "2026-12-20T08:05:00Z" } : { review_mode: "view" }),
+          },
+        });
+      });
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Redigera" })).toHaveCount(0);
+    }
+    const drop = page.getByRole("button", { name: "Ta bort din version" });
+    const question = page.getByRole("alertdialog", { name: "Ta bort din version?" });
+    await drop.focus();
+    await page.keyboard.press("Enter");
+    await expect(question).toBeVisible();
+    await question.getByRole("button", { name: "Behåll" }).press("Enter");
+    await expect(question).toBeHidden();
+    await expect(drop).toBeFocused();
+    await page.keyboard.press("Enter");
+    await question.getByRole("button", { name: "Ta bort", exact: true }).press("Enter");
+    await expect(question).toBeHidden();
+    await expect(drop).toHaveCount(0);
+    const next = state === "approved"
+      ? page.getByRole("button", { name: "Fortsätt", exact: true })
+      : state === "editing"
+        ? page.getByRole("textbox", { name: "Innehåll för granskning" })
+        : page.getByRole("heading", { name: "Sammanfattning", exact: true });
+    await expect(next).toBeFocused();
+    if (state === "editing") await expect(next).toHaveValue("Min nya redigering.");
+  });
+}
+
 // From a laptop's width the transcript scrolls in its own box. Firefox makes a box that scrolls a Tab stop of its own, but
 // gives it no focus: the next Tab after the link before the passages landed on nothing (2.4.7). Its passages' controls are
 // the way through it.
