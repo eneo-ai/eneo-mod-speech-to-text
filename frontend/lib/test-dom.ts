@@ -37,6 +37,8 @@ export function installDom(): JSDOM {
     pretendToBeVisual: true,
   });
   const win = dom.window as unknown as Record<string, unknown>;
+  // jsdom has CSSStyleSheet and its rules, but does not attach constructed sheets to documents.
+  Object.defineProperty(dom.window.document, "adoptedStyleSheets", { value: [], configurable: true, writable: true });
   // Every DOM interface Node lacks (HTMLFormElement and the rest), then the ones Node has its own of.
   const missing = Object.getOwnPropertyNames(dom.window).filter((key) => /^[A-Z]/.test(key) && !(key in globalThis));
   for (const key of [...missing, ...GLOBALS]) {
