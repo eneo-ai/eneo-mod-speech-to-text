@@ -54,7 +54,9 @@ export async function signIn(page: Page, query = "") {
 
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
+  const requested = page.waitForRequest("**/api/auth/status");
   await page.goto(path);
+  await requested;
   await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
 }
 
@@ -401,7 +403,7 @@ export async function hold(page: Page, url: string | RegExp) {
 
 /** The page's own clock, past the point where a wait that has no answer says so (components/SlowWait). */
 export const pastSlowWait = (page: Page) => page.clock.fastForward(15_000);
-const slowWaitSays = async (page: Page) => {
+export const slowWaitSays = async (page: Page) => {
   // Said by the status region that was there from the start, and shown beside it.
   await expect(page.getByRole("status").filter({ hasText: /^Det tar längre tid än vanligt\.$/ })).toBeAttached();
   await expect(page.locator("p[aria-hidden]").filter({ hasText: /^Det tar längre tid än vanligt\.$/ })).toBeVisible();
@@ -641,6 +643,14 @@ export const STATES: State[] = [
   // The sign-in page and a signed-in page while the session is still being asked for.
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },
+  ...(["signin", "page"] as const).map((kind) => ({
+    name: `${kind}-loading-slow`,
+    go: async (page: Page) => {
+      await page.clock.install();
+      await loading(page, kind === "signin" ? "/" : "/flows");
+      await pastSlowWait(page);
+    },
+  })),
   { name: "flow-list", go: flows },
   { name: "session-warning", go: sessionWarning },
   {
@@ -677,6 +687,17 @@ export const STATES: State[] = [
       await flows(page);
       await page.getByRole("button", { name: /^Öppna konto för/ }).click();
       await expect(page.getByRole("menu")).toBeVisible();
+    },
+  },
+  {
+    name: "account-menu-logout-failed",
+    expects: [{ console: /status of 500.*\/api\/auth\/logout/ }],
+    go: async (page) => {
+      await flows(page);
+      await page.route("**/api/auth/logout", (route) => route.fulfill({ status: 500, json: { code: "internal_error" } }));
+      await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+      await page.getByRole("menuitem", { name: "Logga ut", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "Det gick inte att logga ut. Försök igen." })).toBeVisible();
     },
   },
   {

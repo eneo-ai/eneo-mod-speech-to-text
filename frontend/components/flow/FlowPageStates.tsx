@@ -6,6 +6,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { FlowFrame } from "@/components/flow/FlowFrame";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import { SlowWait } from "@/components/SlowWait";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
@@ -27,7 +28,7 @@ export function FlowSkeleton({ onRetry }: { onRetry: () => void }) {
           <VisuallyHidden as="p" role="status">
             Laddar flödet…
           </VisuallyHidden>
-          <SlowWait onRetry={onRetry} />
+          <SlowWait onRetry={onRetry} back={<BackToFlows size="md" />} />
           <VStack gap={5} aria-busy="true">
             <Skeleton width="75%" height={28} />
             <VStack gap={2}>

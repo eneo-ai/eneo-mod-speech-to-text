@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 
 import { button, cleanup, installDom, mount } from "./test-dom";
 import { withRouter } from "./test-router";
@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const SLOW = "Det tar längre tid än vanligt.";
 
-async function slowWait(props: { flows?: boolean } = {}) {
+async function slowWait(props: { back?: ReactNode } = {}) {
   const { SlowWait } = await import("../components/SlowWait");
   let retries = 0;
   const view = await mount(withRouter(createElement(SlowWait, { onRetry: () => (retries += 1), ...props })).tree);
@@ -22,7 +22,8 @@ async function slowWait(props: { flows?: boolean } = {}) {
 test("a wait that goes on says so after 15 seconds, with a way on; before that it says nothing", async (t) => {
   const { SLOW_WAIT_MS } = await import("../components/SlowWait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { container, act, status } = await slowWait();
+  const { BackToFlows } = await import("../components/flow/BackToFlows");
+  const { container, act, status } = await slowWait({ back: createElement(BackToFlows, { size: "md" }) });
   assert.equal(container.textContent, "", "nothing before the wait is long");
   const region = container.querySelector('[role="status"]');
   assert.ok(region, "the status region is there before its words, so they are read out when they come");
@@ -40,7 +41,7 @@ test("a wait that goes on says so after 15 seconds, with a way on; before that i
 test("a wait on the flow list offers no way back to the flow list", async (t) => {
   const { SLOW_WAIT_MS } = await import("../components/SlowWait");
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { container, act } = await slowWait({ flows: false });
+  const { container, act } = await slowWait();
   await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
   assert.ok(button(container, "Försök igen"));
   assert.equal(container.querySelector('a[href="/flows"]'), null);

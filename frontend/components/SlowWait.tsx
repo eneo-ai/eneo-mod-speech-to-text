@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow } from "@/components/ActionRow";
-import { BackToFlows } from "@/components/flow/BackToFlows";
 
 /** How long a wait with no answer goes on before the page says so and offers a way on. */
 export const SLOW_WAIT_MS = 15_000;
@@ -16,12 +15,12 @@ export const SLOW_WAIT_MS = 15_000;
  */
 export function SlowWait({
   onRetry,
-  flows = true,
+  back,
   label = "Försök igen",
 }: {
   onRetry: () => void;
-  /** The page is not the flow list itself, so it can offer the way back to it. */
-  flows?: boolean;
+  /** The page's way back, when there is one. */
+  back?: ReactNode;
   /** "Försök nu" where the page already tries again by itself and says so: the button asks for it now. */
   label?: string;
 }) {
@@ -48,7 +47,7 @@ export function SlowWait({
             {said}
           </Text>
           <ActionRow>
-            {flows && <BackToFlows size="md" />}
+            {back}
             <Button
               label={label}
               variant="primary"
