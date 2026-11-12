@@ -119,10 +119,10 @@ type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
-// What a phone's keyboard reads, which Astryx's types leave out and its fields pass on: a search is no word to correct or
-// capitalise, and its key says Sök; a line's editor saves on Enter, so its key says Klar.
-const SEARCH_HINTS = { autoCorrect: "off", autoCapitalize: "none", spellCheck: "false", enterKeyHint: "search" } as Record<string, string>;
-const DONE_HINT = { enterKeyHint: "done" } as Record<string, string>;
+// What a phone's keyboard reads: a search is no word to correct or capitalise, and its key says Sök; a line's editor
+// saves on Enter, so its key says Klar.
+const SEARCH_HINTS = { hasAutoCorrect: false, autoCapitalize: "none", hasSpellCheck: false, enterKeyHint: "search" } as const;
+const DONE_HINT = { enterKeyHint: "done" } as const;
 
 /**
  * The transcript's keys: Space or K plays and pauses, the arrow keys move five
@@ -721,7 +721,8 @@ export function TranscriptPlayer(
   const following = useRef({ follow, editing: editingIndex >= 0 });
   following.current = { follow, editing: editingIndex >= 0 };
   const keepInView = useCallback((segmentIndex: number) => {
-    if (!following.current.follow || following.current.editing || !listRef.current) return;
+    // Under the tab not chosen the list is in the page but inert and out of sight: it moves nothing, and reads no layout.
+    if (!following.current.follow || following.current.editing || !listRef.current || listRef.current.closest("[inert]")) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-segment-index="${segmentIndex}"]`);
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     // A passage the speaker filter hides is not on screen to keep in view.
@@ -744,7 +745,7 @@ export function TranscriptPlayer(
   // The search's current hit is brought into view, and playback stops pulling the text away from it. At once, as a
   // browser's own find does: a glide restarted by every typed letter or step lags behind the hit it goes to.
   useEffect(() => {
-    if (currentHit < 0 || !listRef.current) return;
+    if (currentHit < 0 || !listRef.current || listRef.current.closest("[inert]")) return;
     const el = listRef.current.querySelector<HTMLElement>('[data-hit="current"]');
     if (!el) return;
     programmaticScrollUntil.current = Date.now() + 800;
@@ -1205,12 +1206,12 @@ export function TranscriptPlayer(
 
       {correctionProblem && (
         <div className={styles.notice}>
-          <Banner status="error" title={correctionProblem} collapsible={false} />
+          <Banner role="alert" status="error" title={correctionProblem} collapsible={false} />
         </div>
       )}
       {editError && (
         <div className={styles.notice}>
-          <Banner status="error" title={editError} collapsible={false} />
+          <Banner role="alert" status="error" title={editError} collapsible={false} />
         </div>
       )}
 
@@ -1713,7 +1714,7 @@ function SpeakerPicker({
                 )}
                 {problem && (
                   <div className={styles.pickerSection}>
-                    <Banner status="error" title={problem} collapsible={false} />
+                    <Banner role="alert" status="error" title={problem} collapsible={false} />
                   </div>
                 )}
               </LayoutContent>

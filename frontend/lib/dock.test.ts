@@ -4,7 +4,12 @@ import { installDom } from "./test-dom";
 
 installDom();
 
-const size = () => document.documentElement.style.getPropertyValue("--dock-block-size");
+const padding = () => document.adoptedStyleSheets.flatMap((sheet) => [...sheet.cssRules])
+  .find((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === "html")?.style;
+const size = () => {
+  const height = /^calc\((\d+)px/.exec(padding()?.scrollPaddingBottom || padding()?.scrollPaddingTop || "")?.[1];
+  return height && height !== "0" ? `${height}px` : "";
+};
 /** A key pressed: the page's press is over, so a test that presses leaves none behind for the next (lib/dock.ts keeps it page-wide). */
 const keyUp = () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Shift" }));
 
@@ -16,6 +21,31 @@ function dock(height: number, position = "sticky") {
   document.body.append(element);
   return element;
 }
+
+test("a dock in an inactive panel covers nothing, and returns when the panel is chosen without a resize", async (t) => {
+  const { observeDock } = await import("./dock");
+  const panel = document.createElement("section");
+  const player = dock(100);
+  const rootWrites: MutationRecord[] = [];
+  const observer = new MutationObserver((records) => rootWrites.push(...records));
+  observer.observe(document.documentElement, { attributes: true });
+  document.body.append(panel);
+  panel.append(player);
+  const stop = observeDock(player);
+  t.after(() => { stop(); panel.remove(); observer.disconnect(); });
+  assert.equal(size(), "100px");
+  panel.setAttribute("inert", "");
+  await Promise.resolve();
+  assert.equal(size(), "", "the inactive panel covers no part of the page");
+  panel.hidden = true;
+  panel.removeAttribute("inert");
+  await Promise.resolve();
+  assert.equal(size(), "", "a hidden panel still covers nothing when it is no longer inert");
+  panel.hidden = false;
+  await Promise.resolve();
+  assert.equal(size(), "100px", "the chosen panel's player covers the page again");
+  assert.deepEqual(rootWrites, [], "publishing the dock's changes never mutates the page root");
+});
 
 test("the page keeps the height of the tallest dock that covers it, and nothing once none does", async () => {
   const { observeDock } = await import("./dock");
@@ -30,6 +60,7 @@ test("the page keeps the height of the tallest dock that covers it, and nothing 
   assert.equal(size(), "96px", "the one that is left");
   stopPlayer();
   assert.equal(size(), "", "none left: no padding is promised");
+  assert.equal(document.adoptedStyleSheets.length, 0, "the last dock removes its sheet");
   action.remove();
   player.remove();
 });
@@ -59,7 +90,7 @@ test("a dock that stops being stuck when the window changes is measured again", 
 
 test("the page says at which edge a dock is shown, so its scroll padding is kept on that edge alone", async () => {
   const { observeDock } = await import("./dock");
-  const edges = () => document.documentElement.getAttribute("data-dock");
+  const edges = () => (["bottom", "top"] as const).filter((edge) => padding()?.getPropertyValue(`scroll-padding-${edge}`)).join(" ") || null;
   assert.equal(edges(), null);
   const action = dock(141);
   const stopAction = observeDock(action);
@@ -219,13 +250,13 @@ test("a dock that is stuck again after a field had the focus is measured again b
   t.mock.restoreAll();
 });
 
-test("a focus that changes nothing about a dock writes nothing to the page's root, which every element inherits", async (t) => {
+test("a focus that changes nothing about a dock writes no padding and reads no layout", async (t) => {
   const { observeDock } = await import("./dock");
   const bar = dock(100);
   const stop = observeDock(bar);
   const field = document.createElement("textarea");
   document.body.append(field);
-  const writes = t.mock.method(document.documentElement.style, "setProperty");
+  const writes = t.mock.method(padding()!, "setProperty");
   const read = t.mock.fn(() => 100);
   Object.defineProperty(bar, "offsetHeight", { configurable: true, get: read });
   field.focus();

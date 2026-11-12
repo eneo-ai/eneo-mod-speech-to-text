@@ -32,6 +32,22 @@ test("the providers render a page in the Swedish catalog and the Eneo theme", as
   assert.match(view.container.textContent ?? "", /Hoppa till innehåll/);
 });
 
+test("the design system's words the module can show are Swedish, also those its Swedish catalog lacks", async () => {
+  const { ModuleProviders } = await import("@/kit/ModuleProviders");
+  const { useTranslator } = await import("@astryxdesign/core/i18n");
+  const english = JSON.parse(readFileSync("node_modules/@astryxdesign/core/locales/en.json", "utf8")) as Record<string, { defaultMessage: string }>;
+  // A scrolling region's name, a search field's clear button, a failed copy of a code block, a typed 30 February.
+  const keys = ["@astryx.scrollRegion.label", "@astryx.inputClearButton.tooltip", "@astryx.codeBlock.copyFailed", "@astryx.dateInput.nonexistentDate"];
+  const said = new Map<string, string>();
+  function Probe() {
+    const translate = useTranslator();
+    for (const key of keys) said.set(key, translate(key, { calendar: "Gregorian Calendar" }));
+    return null;
+  }
+  await mount(createElement(ModuleProviders, { children: createElement(Probe) }));
+  for (const key of keys) assert.notEqual(said.get(key), english[key].defaultMessage.replace("{calendar}", "Gregorian Calendar"), key);
+});
+
 test("the shell gives a page its skip link, its navigation landmark and one main region", async () => {
   const { ModuleShell } = await import("@/kit/ModuleShell");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");

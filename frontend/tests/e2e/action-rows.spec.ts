@@ -167,10 +167,16 @@ test("an unsent recording on the setup: its send keeps one line on the narrowest
   await STATES.find((s) => s.name === "unsent-on-setup")!.go(page, info);
   const send = page.getByRole("button", { name: "Skapa dokument av inspelningen" });
   await expect(send).toHaveText(info.project.use.viewport!.width < 360 ? "Skapa dokument" : "Skapa dokument av inspelningen");
+  // The lines of its words: the boxes of the elements that hold them stand at their own tops.
   const lines = await send.evaluate((button) => {
-    const range = document.createRange();
-    range.selectNodeContents(button);
-    return new Set([...range.getClientRects()].filter((rect) => rect.width > 1).map((rect) => Math.round(rect.top))).size;
+    const tops = new Set<number>();
+    const text = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+    for (let node = text.nextNode(); node; node = text.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) if (rect.width > 1) tops.add(Math.round(rect.top));
+    }
+    return tops.size;
   });
   expect(lines, "its words on one line").toBe(1);
 });

@@ -17,7 +17,7 @@ out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).
 
 - Build UI from Astryx components. Run `npm run astryx -- build "<idea>"`, then `npm run astryx -- component <Name>`
   for every component, from `frontend/`. Never guess a prop.
-- Do not use Tailwind utilities in new code. The generated block mentions `tailwind-theme.css`; it is not installed here.
+- Do not use Tailwind utilities in new code.
 - Do not use the shadcn skill or the shadcn MCP server.
 - Bespoke surfaces that have no counterpart in the design system (transcript text with per-word spans, the level meter,
   the docked player) may use a CSS Module with Astryx tokens and semantic HTML. This is the one exception to "no <div>"

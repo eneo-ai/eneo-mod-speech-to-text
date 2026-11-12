@@ -130,7 +130,7 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
           <Button label={saving.label} variant="secondary" isLoading={saving.busy} isInterruptible onClick={() => void save()} />
         )}
       </HStack>
-      {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
+      {saveProblem && <Banner role="alert" status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
     </VStack>
   );
 }

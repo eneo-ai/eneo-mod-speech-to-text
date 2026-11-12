@@ -6,6 +6,7 @@ import "./styles/layers.css";
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
 import "@/kit/theme/built/eneo.css";
+import "virtual:astryx-layer-slide-rules.css";
 import "./styles/globals.css";
 import { router } from "./routes";
 import figtree from "@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2?url";

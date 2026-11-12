@@ -34,14 +34,14 @@
       - button "Nästa månad":
         - status
       - grid "september 2026":
-        - row "må ti on to fr lö sö":
-          - columnheader "må"
-          - columnheader "ti"
-          - columnheader "on"
-          - columnheader "to"
-          - columnheader "fr"
-          - columnheader "lö"
-          - columnheader "sö"
+        - row "mån tis ons tors fre lör sön":
+          - columnheader "mån"
+          - columnheader "tis"
+          - columnheader "ons"
+          - columnheader "tors"
+          - columnheader "fre"
+          - columnheader "lör"
+          - columnheader "sön"
         - row "måndag 31 augusti 2026 tisdag 1 september 2026 onsdag 2 september 2026 torsdag 3 september 2026 fredag 4 september 2026 lördag 5 september 2026 söndag 6 september 2026":
           - gridcell "måndag 31 augusti 2026":
             - button "måndag 31 augusti 2026" [disabled]: "31"

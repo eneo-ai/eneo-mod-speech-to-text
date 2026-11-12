@@ -129,7 +129,7 @@ export function RunFailure({
           <VStack gap={3}>
             {/* One alert for each sentence, however many ways of saying it there are. */}
             {[...new Set([refusal?.message, error].filter(Boolean))].map((message) => (
-              <Banner key={message} status="error" title={message} collapsible={false} />
+              <Banner key={message} role="alert" status="error" title={message} collapsible={false} />
             ))}
             {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the
                 card. At its own width from the card's start, as the progress has Avbryt körningen; across a phone. The

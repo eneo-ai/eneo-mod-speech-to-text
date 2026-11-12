@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 import type { ReactElement } from "react";
 
-import { asPerson, button, cleanup, installDom, mount } from "./test-dom";
+import { asPerson, button, cleanup, installDom, isOff, mount } from "./test-dom";
 import { unzippedText } from "./test-zip";
 import { withRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
@@ -386,7 +386,7 @@ test("a file the browser says it can share and then refuses (a Word file on Andr
   await alone.act(async () => dela.click());
   await read(alone);
   assert.equal(shared.length, 1, "the file was offered");
-  assert.deepEqual(alertsOf(alone.container), ["Webbläsaren kan inte dela Word-filen.Ladda ner den och dela den från enheten."]);
+  assert.deepEqual(alertsOf(alone.container), ["Webbläsaren kan inte dela Word-filen. Ladda ner den och dela den från enheten."]);
   assert.equal(button(alone.container, "Dela"), null, "no Dela that cannot work");
   assert.equal(document.activeElement, alone.container.querySelector("a[download]"), "the focus is on Ladda ner");
   await alone.unmount();
@@ -397,7 +397,7 @@ test("a file the browser says it can share and then refuses (a Word file on Andr
   await read(withText);
   await withText.act(async () => button(withText.container, "Dela")!.click());
   await read(withText);
-  assert.deepEqual(alertsOf(withText.container), ["Webbläsaren kan inte dela Word-filen.Tryck på Dela igen för att dela texten, eller ladda ner filen."]);
+  assert.deepEqual(alertsOf(withText.container), ["Webbläsaren kan inte dela Word-filen. Tryck på Dela igen för att dela texten, eller ladda ner filen."]);
   await withText.act(async () => button(withText.container, "Dela")!.click());
   assert.equal(shared.at(-1)?.text, text, "the text is shared");
   await withText.unmount();
@@ -579,10 +579,10 @@ test("a document that is only its file keeps its PDF preview open, with its view
 /** The browser's ResizeObserver as far as a test needs it: `resized()` calls every observer still observing, as a resize does. */
 function resizeObservers(t: TestContext) {
   const real = globalThis.ResizeObserver;
-  const live = new Set<() => void>();
+  const live = new Set<(entries: ResizeObserverEntry[]) => void>();
   class Observer {
-    callback: () => void;
-    constructor(callback: () => void) {
+    callback: (entries: ResizeObserverEntry[]) => void;
+    constructor(callback: (entries: ResizeObserverEntry[]) => void) {
       this.callback = callback;
     }
     observe() {
@@ -595,7 +595,8 @@ function resizeObservers(t: TestContext) {
   }
   Object.defineProperty(globalThis, "ResizeObserver", { value: Observer, configurable: true, writable: true });
   t.after(() => void Object.defineProperty(globalThis, "ResizeObserver", { value: real, configurable: true, writable: true }));
-  return () => live.forEach((callback) => callback());
+  // A real observer hands its callback a list of entries; here an empty one, the boxes being measured on demand.
+  return () => live.forEach((callback) => callback([]));
 }
 
 test("a document's file has its actions beside its name or under it by the row's room alone, whatever widths the window had before", async (t) => {
@@ -692,7 +693,7 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   // Each panel is named by its tab and its tab points at it; only the chosen one is shown.
   assert.deepEqual(panels.map((p) => tabLabel(document.getElementById(p.getAttribute("aria-labelledby")!)!)), ["Dokument", "Transkribering"]);
   assert.deepEqual(tabsIn(view.container).map((t) => t.getAttribute("aria-controls")), panels.map((p) => p.id));
-  assert.deepEqual(panels.map((p) => p.hidden), [false, true]);
+  assert.deepEqual(panels.map((p) => p.hasAttribute("inert")), [false, true]);
 
   const { computeAccessibleName } = await import("dom-accessibility-api");
   // The search is found by the name a screen reader gives it: the design system's input is named by its label.
@@ -702,7 +703,7 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   const { type } = await import("./test-dom");
   await view.act(async () => type(search, "punkten"));
   await view.act(async () => tab("Dokument").click());
-  assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hidden), [false, true], "the document is back");
+  assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hasAttribute("inert")), [false, true], "the document is back");
   await view.act(async () => tab("Transkribering").click());
   assert.equal(searchBox().value, "punkten", "the search is kept");
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
@@ -757,7 +758,7 @@ test("a failed later save keeps the note that the document is older, and says wh
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const note = () => view.container.querySelector('[role="note"]');
   assert.ok(note(), "saved corrections are newer than the document");
-  assert.equal(button(note()!, "Skapa dokumentet igen")!.disabled, false);
+  assert.equal(isOff(button(note()!, "Skapa dokumentet igen")), false);
   // The notice is in the Dokument panel. With that tab chosen the notice is in view and the tab carries nothing more;
   // while the person corrects on the other tab, the Dokument tab says so.
   const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
@@ -774,7 +775,7 @@ test("a failed later save keeps the note that the document is older, and says wh
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.ok(note(), "still said: the document is older than the saved corrections");
   const make = [...note()!.querySelectorAll("button")].find((b) => b.textContent?.includes("Skapa dokumentet igen"))!;
-  assert.equal(make.disabled, true, "a new document waits for the failed save");
+  assert.equal(isOff(make), true, "a new document waits for the failed save");
   assert.match(note()!.textContent ?? "", /inte sparad/);
 });
 
@@ -1290,7 +1291,7 @@ test("a part Eneo no longer has keeps none of the others from being saved, and i
   );
   await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
   assert.deepEqual((await savedZip(started)).map(([name]) => name), ["Möte-del-1.webm", "Möte-del-3.webm"], "the parts Eneo has");
-  assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\.Filen innehåller de andra delarna\./);
+  assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\. Filen innehåller de andra delarna\./);
   assert.equal(button(view.container, "Försök igen"), null, "a new try brings no part back");
 
   started.length = 0;
@@ -1519,7 +1520,7 @@ test("a PDF that Eneo no longer has is not opened: no raw answer in the viewer, 
   assert.equal(asked[0].range, null, "the availability check also supports older Eneo document routes");
   assert.equal(document.querySelector("dialog[open]"), null, "no dialog");
   assert.equal(document.querySelector("iframe"), null, "no viewer to show the module's answer in");
-  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo."]);
   assert.doesNotMatch(document.body.textContent ?? "", /File not found/, "Eneo's words are not shown");
 
   gone = false;
@@ -1544,11 +1545,11 @@ test("a download starts only once the file is known to be there; if it is not, t
   await view.act(async () => void press(link()));
   assert.equal(asked.length, 1);
   assert.deepEqual(started, [], "nothing is saved: it would be the module's answer under the file's name");
-  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo."]);
 
   answer = () => new Response("Service Unavailable", { status: 503 });
   await view.act(async () => button(view.container, "Försök igen")!.click());
-  assert.deepEqual(alertsOf(view.container), ["Servern kunde inte nås just nu. Försök igen om en stund.Försök igen"], "another failure, in its own words");
+  assert.deepEqual(alertsOf(view.container), ["Servern kunde inte nås just nu. Försök igen om en stund."], "another failure, in its own words");
 
   answer = present;
   await view.act(async () => button(view.container, "Försök igen")!.click());
@@ -1701,7 +1702,7 @@ test("narrower than a laptop the tab opens at the press and goes to the file onc
   await view.act(async () => void press(link()));
   assert.equal(opened.length, 1, "opened by the press itself, which no pop-up blocker stops");
   assert.equal(opened[0].closed, true, "closed again: there is no file to show in it");
-  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo."]);
 
   answer = present;
   await view.act(async () => button(view.container, "Försök igen")!.click());
@@ -1720,7 +1721,7 @@ test("the document's own download is checked the same way", async (t) => {
   const link = view.container.querySelector<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)!;
   await view.act(async () => void press(link));
   assert.deepEqual(started, []);
-  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo."]);
 });
 
 test("the result says what the run was started with, when the flow's version is the contract's own", async () => {
@@ -1889,7 +1890,7 @@ test("names given after the run go with the corrections, show at once in the tra
 
   const note = view.container.querySelector('[role="note"]')!;
   assert.match(note.textContent ?? "", /^Dokumentet skapades före dina ändringarNamnen syns redan i transkriberingen, och dokumentet får dem när du skapar det igen\./);
-  assert.equal(button(note, "Skapa dokumentet igen")!.disabled, false);
+  assert.equal(isOff(button(note, "Skapa dokumentet igen")), false);
 });
 
 test("a save of names that fails keeps the dialog open with the names, says why there, and the page offers to save again", async (t) => {
@@ -1969,7 +1970,7 @@ test("the notice over a document older than names says so from the first draw, a
   });
   assert.ok(button(view.container, "Anna Berg, ändra talare"), "the transcript is read");
   assert.deepEqual(redrawn, [], "the same words throughout: never the corrections' sentence, nor that they could not be read");
-  assert.equal(button(note, "Skapa dokumentet igen")!.disabled, false, "and now it acts");
+  assert.equal(isOff(button(note, "Skapa dokumentet igen")), false, "and now it acts");
 });
 
 test("on a flow that makes text, the naming tells the transcript's copy and download from the text made again", async (t) => {

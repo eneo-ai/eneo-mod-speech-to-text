@@ -92,12 +92,12 @@ test("a recording's send cut off by a reload goes on where the module has it, wi
   page.on("dialog", (dialog) => void dialog.accept());
   await page.reload();
 
-  // Every value the bar takes from here on.
+  // Every value the bar takes from here on. The step's spinner beside it is a progress bar too, with no value.
   await page.evaluate(() => {
     const values: number[] = [];
     (window as unknown as { barValues: number[] }).barValues = values;
     new MutationObserver(() => {
-      const value = document.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow");
+      const value = document.querySelector('[role="progressbar"][aria-valuenow]')?.getAttribute("aria-valuenow");
       if (value) values.push(Number(value));
     }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-valuenow"] });
   });

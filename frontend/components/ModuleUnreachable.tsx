@@ -46,7 +46,7 @@ export function ModuleUnreachable({ onRetry, retried = false }: { onRetry: () =>
         <LayoutContent isScrollable={false}>
           <VStack gap={4} paddingBlockStart={6}>
             <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-            <Banner status="error" title={lost} collapsible={false} />
+            <Banner role="alert" status="error" title={lost} collapsible={false} />
             <HStack>
               <Button ref={retry} label="Försök igen" onClick={onRetry} />
             </HStack>

@@ -1,5 +1,5 @@
 {
-  "source": "The measurements the image is held to: the Next, Node and uvicorn image `stt-before` at feat/one-process 246033e, measured on 2026-10-02 (macOS arm64, OrbStack, Docker 29.4.0, linux/arm64). checks.py reads this file for check 14 (and prints the upload baselines beside check 9); change it only by measuring again.",
+  "source": "The measurements the image is held to: the Next, Node and uvicorn image `stt-before` at feat/one-process 246033e, measured on 2026-10-02 (macOS arm64, OrbStack, Docker 29.4.0, linux/arm64). Except `pages.flows` `js_kb` and `css_kb`: the module's own image with Astryx 0.7.12 at fb511412, measured by check 14 in CI on 2026-11-10 (compressed bytes do not depend on the machine). Rechecked on 2026-11-12 with Astryx 0.7.13 at d51c966e: page-cost.cjs and auth-preload.cjs against the built app served by its BFF, median of three runs per profile, measured /flows at 423.9 KB JS and 47.1 KB CSS on desktop and phone. The reference values and check 14's 5 percent limit stay unchanged. checks.py reads this file for check 14 (and prints the upload baselines beside check 9); change it only by measuring again.",
   "image_bytes": 393607417,
   "start_seconds": {
     "first_health_200": [
@@ -36,8 +36,8 @@
   "pages": {
     "note": "deploy/acceptance/page-cost.cjs, signed in (auth-preload.cjs), median of three runs; KB are compressed bytes with headers. LCP and TBT move with the machine's load: compare them against a run of stt-before made in the same session, not against these. The sizes and request counts do not move. CLS was 0 on every page.",
     "flows": {
-      "js_kb": 318.7,
-      "css_kb": 43.3,
+      "js_kb": 422.8,
+      "css_kb": 47.2,
       "requests": 34,
       "desktop": {
         "lcp_ms": 144,

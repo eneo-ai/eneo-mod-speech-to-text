@@ -42,6 +42,7 @@ export function ProblemAlert({
   return (
     <Banner
       ref={ref}
+      role="alert"
       status="warning"
       title={problem.title}
       description={problem.detail}

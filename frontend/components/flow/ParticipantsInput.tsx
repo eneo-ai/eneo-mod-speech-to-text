@@ -16,10 +16,9 @@ const ADD_NAME = "Lägg till namn";
 // say the same words, which a live region would not announce again.
 const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 
-// Astryx's types leave out the attributes a phone's keyboard and the browser's suggestions read, but its field passes
-// them on to the input. A name is no word of the dictionary: the spelling check would underline most of them, and iOS's
-// autocorrect, which spellcheck="false" leaves on, would change them ("Maja" to "Mana").
-const NAME_HINTS = { autoCapitalize: "words", autoCorrect: "off", enterKeyHint: "enter", spellCheck: "false" } as Record<string, string>;
+// What a phone's keyboard reads. A name is no word of the dictionary: the spelling check would underline most of them,
+// and iOS's autocorrect, which spellcheck="false" leaves on, would change them ("Maja" to "Mana").
+const NAME_HINTS = { autoCapitalize: "words", hasAutoCorrect: false, enterKeyHint: "enter", hasSpellCheck: false } as const;
 
 // Each name added starts with a capital, as the first one typed does: iOS leaves its shift key off in the field the page
 // has emptied. Only the first letter; iOS capitalises each later word itself.

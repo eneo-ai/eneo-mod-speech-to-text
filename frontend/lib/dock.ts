@@ -3,11 +3,9 @@ import { useEffect, useState, type FocusEvent as ReactFocusEvent } from "react";
 /**
  * What is docked at the bottom of a phone's window (the setup's primary action, a player) covers the page's last rows,
  * so a control that takes focus must scroll to above it (WCAG 2.4.11). Its height is not a number to write down: its
- * words, a longer note and the text spacing a reader may set all change it. Each dock reports its own, and the page
- * keeps the tallest in `--dock-block-size` on <html>, which styles/globals.css reads as the scroll padding, and the
- * edges a dock is shown at in `data-dock` ("bottom", "top" or both), which says which edge that padding is for. An
- * attribute, never a `:has()` over the page: one makes the browser check every element of a long transcript again
- * whenever its passages change.
+ * words, a longer note and the text spacing a reader may set all change it. Each dock reports its own. A dedicated
+ * CSS rule keeps the page's scroll padding at the edges where a dock is shown. Updating that rule changes the root's
+ * non-inherited properties without mutating its attributes, which can restyle every passage of a long transcript.
  */
 type DockEdge = "bottom" | "top";
 const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null; yields: boolean }>();
@@ -15,6 +13,7 @@ const docks = new Map<HTMLElement, { size: number; edge: DockEdge | null; yields
 const yielding = new Set<() => void>();
 /** Every dock's measure, run again when a region puts its docks in the page's flow for a soft keyboard (whileTyping). */
 const measures = new Set<() => void>();
+let padding: { sheet: CSSStyleSheet; style: CSSStyleDeclaration } | undefined;
 
 let typingMeasure = 0;
 
@@ -87,14 +86,30 @@ function settle(region: HTMLElement, on: boolean) {
 }
 
 function publish() {
+  if (!docks.size) {
+    if (padding) {
+      const { sheet } = padding;
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((other) => other !== sheet);
+    }
+    padding = undefined;
+    return;
+  }
+  if (!padding) {
+    const sheet = new CSSStyleSheet();
+    sheet.insertRule("html {}");
+    padding = { sheet, style: (sheet.cssRules[0] as CSSStyleRule).style };
+    document.adoptedStyleSheets.push(sheet);
+  }
   const shown = [...docks.values()];
   const tallest = Math.max(0, ...shown.map(({ size }) => size));
-  const root = document.documentElement;
-  if (tallest > 0) root.style.setProperty("--dock-block-size", `${tallest}px`);
-  else root.style.removeProperty("--dock-block-size");
-  const edges = (["bottom", "top"] as const).filter((edge) => shown.some((dock) => dock.edge === edge));
-  if (edges.length) root.setAttribute("data-dock", edges.join(" "));
-  else root.removeAttribute("data-dock");
+  for (const edge of ["bottom", "top"] as const) {
+    // The margin keeps the whole focus ring clear, including a padded field's outer edge.
+    const value = shown.some((dock) => dock.edge === edge) ? `calc(${tallest}px + var(--spacing-6))` : "";
+    const property = `scroll-padding-${edge}`;
+    if (padding.style.getPropertyValue(property) === value) continue;
+    if (value) padding.style.setProperty(property, value);
+    else padding.style.removeProperty(property);
+  }
 }
 
 /**
@@ -104,8 +119,8 @@ function publish() {
 const MOST_OF_WINDOW = 1 / 3;
 
 /**
- * Keeps a dock's height in `--dock-block-size` while it is on the page and covers it (stuck to the window's edge), and
- * its edge in `data-dock` while it is shown at all: one in the page's flow (a laptop's card) still ends what is read.
+ * Keeps room for a dock while it is shown and covers the page (stuck to the window's edge). One in the page's flow
+ * (a laptop's card) still ends what is read, so its edge keeps the focus margin alone.
  * A dock that `yields` (the transcript's player) counts the docks that do not (a page's action) into its share of the
  * window: past it, the player stands in the text and the action stays in reach.
  */
@@ -114,16 +129,18 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   // layout, which on a long transcript would be laid out again for every focus that opens a passage's editor.
   let height = 0;
   const measure = (read = true) => {
-    if (read) height = dock.offsetHeight;
+    const inactive = dock.closest("[inert], [hidden]") !== null;
+    if (read && !inactive) height = dock.offsetHeight;
+    const visibleHeight = inactive ? 0 : height;
     const others = yields ? [...docks].reduce((sum, [other, { size, yields: alsoYields }]) => sum + (other === dock || alsoYields ? 0 : size), 0) : 0;
-    const tooTall = height + others > window.innerHeight * MOST_OF_WINDOW;
-    const covers = !tooTall && height > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
-    const size = covers ? height : 0;
-    const shown = height > 0 ? edge : null;
+    const tooTall = visibleHeight > 0 && visibleHeight + others > window.innerHeight * MOST_OF_WINDOW;
+    const wasTooTall = dock.hasAttribute("data-dock-too-tall");
+    if (wasTooTall !== tooTall) dock.toggleAttribute("data-dock-too-tall", tooTall);
+    const covers = !tooTall && visibleHeight > 0 && ["sticky", "fixed"].includes(getComputedStyle(dock).position);
+    const size = covers ? visibleHeight : 0;
+    const shown = visibleHeight > 0 ? edge : null;
     const before = docks.get(dock);
-    // Nothing that changed, nothing written: the page's root holds what every element inherits.
-    if (before && before.size === size && before.edge === shown && dock.hasAttribute("data-dock-too-tall") === tooTall) return;
-    dock.toggleAttribute("data-dock-too-tall", tooTall);
+    if (before && before.size === size && before.edge === shown && wasTooTall === tooTall) return;
     docks.set(dock, { size, edge: shown, yields });
     publish();
     if (!yields && before?.size !== size) yielding.forEach((again) => again());
@@ -159,6 +176,12 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   };
   const observer = new ResizeObserver(() => measure());
   observer.observe(dock);
+  // A panel that skips rendering can keep its children's last laid-out sizes. Its visibility changes independently
+  // of a resize; observe only ancestor attributes, never the transcript's subtree or its per-word changes.
+  const visibility = new MutationObserver(() => measure());
+  for (let ancestor: HTMLElement | null = dock; ancestor; ancestor = ancestor.parentElement) {
+    visibility.observe(ancestor, { attributes: true, attributeFilter: ["inert", "hidden"] });
+  }
   // A dock that is no longer stuck (a window made wider or lower) can keep its size: the window says so.
   const resized = () => measure();
   window.addEventListener("resize", resized);
@@ -166,6 +189,7 @@ export function observeDock(dock: HTMLElement, edge: DockEdge = "bottom", yields
   measure();
   return () => {
     observer.disconnect();
+    visibility.disconnect();
     window.removeEventListener("resize", resized);
     document.removeEventListener("focusin", uncover);
     yielding.delete(remeasure);

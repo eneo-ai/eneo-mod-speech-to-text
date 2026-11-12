@@ -227,7 +227,7 @@ export function ReviewView({
   useEffect(() => {
     const target = handOff.current?.current;
     // Not there yet, or still disabled while a request ends: a later render hands it on.
-    if (!target || (target as HTMLButtonElement).disabled) return;
+    if (!target || target.matches(':disabled, [aria-disabled="true"]')) return;
     handOff.current = null;
     if (target !== textField.current) {
       target.focus();
@@ -563,7 +563,7 @@ export function ReviewView({
     <VStack gap={3}>
       {/* The text review's decision is docked: what stops it is said there, where it was pressed, not after a long
           text. The speaker review says it in its decision (below). */}
-      {!isSpeakerMapping && runError && <Banner status="error" title={runError} collapsible={false} />}
+      {!isSpeakerMapping && runError && <Banner role="alert" status="error" title={runError} collapsible={false} />}
       {decidedNote}
       <ActionRow>
         {rejectAction}
@@ -575,7 +575,7 @@ export function ReviewView({
   // What stops the speaker review's decision, said with it; spaced by what holds it.
   const decisionProblems = (
     <>
-      {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
+      {(runError || localError) && <Banner role="alert" status="error" title={(runError ?? localError)!} collapsible={false} />}
       {hasDropped && <Button variant="secondary" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
       {saveState === "error" && (
         <HStack gap={2} wrap="wrap">
@@ -858,6 +858,7 @@ export function ReviewView({
       {/* An edit that was set aside is said before the text it is about, with the edit itself to read, copy or take. */}
       {draft.yours && (
         <Banner
+          role="alert"
           status="warning"
           title={decided ? "Din ändring sparades inte" : "Någon har ändrat texten medan du redigerade"}
           description={
@@ -935,7 +936,7 @@ export function ReviewView({
         {editable && editing ? (
           <TextArea
             ref={textField}
-            className={styles.reviewText}
+            controlClassName={styles.reviewText}
             label="Innehåll för granskning"
             isLabelHidden
             value={text}
@@ -959,7 +960,7 @@ export function ReviewView({
 
       {/* While the reason for a rejection is written, what stops it is said with it. */}
       <VStack gap={3} className={styles.notices}>
-        {rejecting && runError && <Banner status="error" title={runError} collapsible={false} />}
+        {rejecting && runError && <Banner role="alert" status="error" title={runError} collapsible={false} />}
         {rejectSection}
       </VStack>
       {/* The decision stays in reach at the window's bottom edge however long the text is. While the reason for a

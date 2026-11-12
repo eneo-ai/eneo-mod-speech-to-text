@@ -70,6 +70,27 @@ async function fillContrast(target: Locator) {
   });
 }
 
+test("on a phone, the transcript's player keeps room at the page's end on its own tab only", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "phone-390-webkit"].includes(info.project.name));
+  await result(page);
+  // Measure the room focus actually keeps clear, independently of how the dock publishes it.
+  const covered = () =>
+    page.evaluate(() => ({
+      bottom: Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom) || 0,
+      top: Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0,
+    }));
+  const document_ = await covered();
+  expect(document_.bottom, "the initially hidden player covers nothing").toBe(0);
+  await page.getByRole("tab", { name: "Transkribering" }).click();
+  const player = page.getByRole("tabpanel", { name: "Transkribering" }).locator("[data-docked-player]");
+  await expect(player).toBeVisible();
+  const height = (await player.boundingBox())!.height;
+  expect(height, "the visible player has a measured height").toBeGreaterThan(0);
+  await expect.poll(async () => (await covered()).bottom, "focus keeps the entire player clear").toBeGreaterThanOrEqual(height);
+  await page.getByRole("tab", { name: "Dokument" }).click();
+  await expect.poll(covered, "the document's page has no room kept for the player out of sight").toEqual(document_);
+});
+
 test("the position slider's track shows where the recording ends, at 3:1 on its card in both colour modes", async ({ page }, info) => {
   test.skip(!["phone-390-light", "phone-390-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name));
   await result(page);
@@ -260,6 +281,9 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await page.keyboard.press("Enter");
   await expect(back).toBeDisabled();
   await expect(position).toBeFocused();
+  // A disabled skip stays a Tab stop, said to be unavailable (the design system's aria-disabled), so it can be found.
+  await page.keyboard.press("Tab");
+  await expect(back).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(forward).toBeFocused();
   await position.focus();

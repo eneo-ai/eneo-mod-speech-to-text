@@ -6,7 +6,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { stepStateLabel, type StepState, type StepView } from "@/lib/run-progress";
 
 // The step under way has the design system's spinner instead: what shows that Eneo is working, and it stands still with
-// reduced motion (styles/globals.css).
+// reduced motion (styles/globals.css). Like the icons it only repeats the step's word, so it is not read out.
 const ICONS: Record<Exclude<StepState, "running">, [LucideIcon, "success" | "secondary" | "error"]> = {
   done: [CheckCircle2, "success"],
   waiting: [Circle, "secondary"],
@@ -28,7 +28,7 @@ export function StepList({ steps }: { steps: readonly StepView[] }) {
     <Stepper orientation="vertical" activeStep={current === -1 ? steps.length : current} label="Flödets steg" role="list">
       {steps.map((step, index) => {
         const indicator =
-          step.state === "running" ? <Spinner size="sm" /> : <Icon icon={ICONS[step.state][0]} size="sm" color={ICONS[step.state][1]} />;
+          step.state === "running" ? <Spinner size="sm" aria-hidden /> : <Icon icon={ICONS[step.state][0]} size="sm" color={ICONS[step.state][1]} />;
         return (
           <Step
             key={step.order}

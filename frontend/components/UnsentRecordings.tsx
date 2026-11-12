@@ -511,7 +511,7 @@ function UnsentRecordingRow({
           </Stack>
           {!buttons && actions}
           {question}
-          {problem && <Banner status="error" title={problem} collapsible={false} />}
+          {problem && <Banner role="alert" status="error" title={problem} collapsible={false} />}
         </VStack>
       </HStack>
     );
@@ -538,7 +538,7 @@ function UnsentRecordingRow({
           </HStack>
           {actions}
           {question}
-          {problem && <Banner status="error" title={problem} collapsible={false} />}
+          {problem && <Banner role="alert" status="error" title={problem} collapsible={false} />}
         </VStack>
       }
     />

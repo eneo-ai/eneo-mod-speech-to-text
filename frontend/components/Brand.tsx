@@ -59,6 +59,11 @@ interface BrandProps {
   href?: string;
 }
 
+/** The brand in the page's top bar; no link before sign-in or while leaving would abort an upload. */
+export function HeaderBrand({ linked = true }: { linked?: boolean }) {
+  return <Brand href={linked ? "/flows" : undefined} />;
+}
+
 /**
  * The organisation's mark: its logo (plain <img>, same-origin), or its name as text. Sizing and the colour mode's
  * choice of logo are the stylesheet's, by data-brand-logo (styles/globals.css): light and dark are a pair of logos (Eneo's
@@ -98,10 +103,11 @@ function OrganizationMark({ organization }: { organization: Organization }) {
 
 /**
  * Whether the organisation's mark has room in the bar: the bar's start, measured with the mark in it before the first
- * paint, against the room the account leaves it. Measured again whenever the bar or the lockup changes size (a phone
- * turned, the reader's text spacing); a mark left out by the width it took when it last stood in the bar. A font still
- * on its way when the mark was measured changes that width: once it has arrived the mark is put back and measured
- * again, before the next paint. `ref` goes on the lockup.
+ * paint, against the room the account leaves it. The design system's bar does not let its start overflow: a start
+ * wider than that room takes a line of its own, the account under it, and so is wider than the room. Measured again
+ * whenever the bar or the lockup changes size (a phone turned, the reader's text spacing); a mark left out by the width
+ * it took when it last stood in the bar. A font still on its way when the mark was measured changes that width: once it
+ * has arrived the mark is put back and measured again, before the next paint. `ref` goes on the lockup.
  */
 function useRoomForMark() {
   const [lockup, ref] = useState<HTMLElement | null>(null);
@@ -112,8 +118,12 @@ function useRoomForMark() {
     if (!lockup || !start) return;
     let live = true;
     const measure = () => {
-      if (fits) needs.current = start.scrollWidth;
-      setFits(needs.current <= start.clientWidth);
+      const { left, width } = start.getBoundingClientRect();
+      // The account stands at the line's end, on the start's line or under it: the room reaches its left edge.
+      const room = start.nextElementSibling ? start.nextElementSibling.getBoundingClientRect().left - left : Infinity;
+      if (fits) needs.current = width;
+      // Half a pixel for the rounding of a start that fills the room exactly.
+      setFits(needs.current <= room + 0.5);
     };
     measure();
     // Once a font that was on its way has arrived, the mark is measured as if it had never been left out.

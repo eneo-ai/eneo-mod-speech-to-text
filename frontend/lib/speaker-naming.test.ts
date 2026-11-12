@@ -4,7 +4,7 @@ import test, { afterEach } from "node:test";
 import { ApiError } from "./api";
 import { buildEditedMapping, namingRefusal, withSplitLabels, type SpeakerMappingRow } from "./speaker-mapping";
 import { computeAccessibleDescription, computeAccessibleName } from "dom-accessibility-api";
-import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
+import { button, cleanup, installDom, isOff, mount, type, visualViewport } from "./test-dom";
 
 installDom();
 afterEach(cleanup);
@@ -90,7 +90,7 @@ test("why a sample cannot be played is a line under the row, not only a hover ti
   const reason = "Det finns inget tilldelat exempel utan överlappande tal.";
   const { field } = await dialog({ listenUnavailableReason: (label: string) => (label === "SPEAKER_01" ? reason : null) });
   const rowOf = (label: string) => field(label).closest("li")!;
-  assert.equal(button(rowOf("Talare 2"), "Lyssna på exempel: Talare 2")?.disabled, true);
+  assert.equal(isOff(button(rowOf("Talare 2"), "Lyssna på exempel: Talare 2")), true);
   assert.match(rowOf("Talare 2").textContent ?? "", /Det finns inget tilldelat exempel utan överlappande tal\./);
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Det finns inget tilldelat exempel/);
 });
@@ -516,7 +516,7 @@ test("once the pause is approved the dialog shows the saved names read-only, and
   const content = document.querySelector("dialog[open]")!;
   assert.match(content.textContent ?? "", /Namnen är redan sparade\./);
   assert.equal(field("Talare 1").value, "Anna Berg");
-  assert.ok(field("Talare 1").disabled && field("Talare 2").disabled, "nothing to change any more");
+  assert.ok(isOff(field("Talare 1")) && isOff(field("Talare 2")), "nothing to change any more");
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
   assert.ok(!button(document.body, "Spara namnen") && !button(document.body, "Avbryt"), "nothing to save or cancel");
   assert.ok(!button(document.body, "Fortsätt"), "the page's Fortsätt goes on, not the dialog");

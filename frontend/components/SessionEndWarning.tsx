@@ -173,7 +173,7 @@ export function SessionEndWarning({
                   : "Allt på den här sidan finns kvar. En inspelning som pågår fortsätter."}
               </Text>
               {signedOut && <div ref={controlsRef} />}
-              {problem && <Banner status="error" title={problem} collapsible={false} />}
+              {problem && <Banner role="alert" status="error" title={problem} collapsible={false} />}
               <ActionRow>
                 <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
               </ActionRow>

@@ -10,7 +10,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { AccountMenu } from "@/components/AccountMenu";
-import { HeaderBrand } from "@/components/HeaderBrand";
+import { HeaderBrand } from "@/components/Brand";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";

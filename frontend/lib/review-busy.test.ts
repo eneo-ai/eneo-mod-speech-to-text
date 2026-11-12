@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import type { FlowRunPublic, FlowRunReviewCheckpointPublic, ReviewEditedValue } from "./api";
-import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { button, cleanup, installDom, isOff, mount, type } from "./test-dom";
 import { withRouter } from "./test-router";
 
 installDom();
@@ -159,7 +159,7 @@ test("while Spara och fortsätt is under way the text cannot change, so nothing 
   await view.act(async () => going);
   assert.deepEqual(server.calls, ["edit"], "the save is under way, its answer held");
   assert.equal(field().readOnly, true, "the text is locked while it is being sent");
-  assert.equal(button(view.container, "Avbryt redigering")?.disabled, true);
+  assert.equal(isOff(button(view.container, "Avbryt redigering")), true);
   await view.act(async () => type(field(), "Second edit typed while waiting."));
   assert.equal(field().value, "First edit", "no second edit slips in under the save");
 
@@ -202,7 +202,7 @@ test("a rejection cannot start while Spara och fortsätt is under way, nor end i
   });
   assert.deepEqual(server.calls, ["edit"], "the save is under way");
   const avvisa = button(view.container, "Avvisa körningen")!;
-  assert.equal(avvisa.disabled, true, "no second mutation while one is in flight");
+  assert.equal(isOff(avvisa), true, "no second mutation while one is in flight");
   await view.act(async () => {
     avvisa.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -337,7 +337,7 @@ test("Bekräfta avvisning with no reason says at the field what is missing and t
   const view = await review();
   await view.act(async () => button(view.container, "Avvisa körningen")!.click());
   const confirm = button(view.container, "Bekräfta avvisning")!;
-  assert.equal(confirm.disabled, false, "never a button that does nothing");
+  assert.equal(isOff(confirm), false, "never a button that does nothing");
   await view.act(async () => confirm.click());
   assert.deepEqual(rejected, [], "nothing is sent");
   assert.ok(document.activeElement === reasonField(view.container), "the focus is on the field");
@@ -421,7 +421,7 @@ test("while the transcript is being read, or cannot be read, the flow cannot go 
   globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) =>
     String(url).includes("review-checkpoints") ? eneoFetch(url, init) : new Promise<Response>(() => undefined)) as typeof fetch;
   const reading = await review(speakers);
-  assert.equal(button(reading.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the transcript is read");
+  assert.equal(isOff(button(reading.container, "Godkänn och fortsätt")), true, "blocked while the transcript is read");
   await reading.unmount();
 
   // They answer with a failure: the flow still waits (the player has no passages to show the reason under).
@@ -429,7 +429,7 @@ test("while the transcript is being read, or cannot be read, the flow cannot go 
     String(url).includes("review-checkpoints") ? eneoFetch(url, init) : Promise.resolve(new Response("{}", { status: 500, headers: { "content-type": "application/json" } }))) as typeof fetch;
   const failed = await review(speakers);
   await failed.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
-  assert.equal(button(failed.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the corrections cannot be read");
+  assert.equal(isOff(button(failed.container, "Godkänn och fortsätt")), true, "blocked while the corrections cannot be read");
 });
 
 test("a review edit kept through a reload is restored only in the shape the review reads: any other is dropped from the storage and the review opens as the pause is", async (t) => {

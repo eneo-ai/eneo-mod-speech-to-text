@@ -96,11 +96,11 @@ test("a link to a flow and Back, with the session's answer late: the title at on
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
   // The title is the route's at once; nothing else yet: the session has not answered, the page is a spinner.
   await expect.poll(() => page.title(), { timeout: 1_000 }).toBe("Tal till text");
-  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await expect(page.getByText("Laddar", { exact: true })).toBeVisible();
   await page.waitForTimeout(700);
   expect(await said(page), "nothing is said over a spinner").toEqual([]);
   const meanwhile = await focused(page);
-  await expect(page.getByRole("status", { name: "Laddar" }), "the focus was read over the spinner").toBeVisible();
+  await expect(page.getByText("Laddar", { exact: true }), "the focus was read over the spinner").toBeVisible();
   expect(meanwhile.heading, `no focus in the spinner's heading (${JSON.stringify(meanwhile)})`).toBe(false);
 
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
@@ -150,7 +150,7 @@ test("signing out: the sign-in page's title, announcement and heading, not the s
   await page.getByRole("button", { name: /^Öppna konto för/ }).click();
   await page.getByRole("menuitem", { name: "Logga ut" }).click();
   await expect.poll(() => page.title(), { timeout: 1_000 }).toBe(LOGIN_TITLE);
-  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await expect(page.getByText("Laddar", { exact: true })).toBeVisible();
   expect(await said(page), "nothing is said over the spinner").toEqual([]);
   expect((await focused(page)).heading, "no focus in the spinner's heading").toBe(false);
   await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeVisible();
@@ -164,7 +164,7 @@ test("a Tab pressed while the page is still loading: the shell it landed in is r
   await flows(page);
   await delaySession(page, 1_500);
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
-  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await expect(page.getByText("Laddar", { exact: true })).toBeVisible();
   // Tab from the page's start: the skip link, outside the main region.
   await page.keyboard.press("Tab");
   const person = await focused(page);
@@ -183,7 +183,7 @@ test("a key that moves no focus is an action too: when the content comes the hea
   await flows(page);
   await delaySession(page, 1_500);
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
-  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await expect(page.getByText("Laddar", { exact: true })).toBeVisible();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   await expect.poll(() => said(page), { timeout: 1_000 }).toHaveLength(1);

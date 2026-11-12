@@ -37,6 +37,8 @@ export function installDom(): JSDOM {
     pretendToBeVisual: true,
   });
   const win = dom.window as unknown as Record<string, unknown>;
+  // jsdom has CSSStyleSheet and its rules, but does not attach constructed sheets to documents.
+  Object.defineProperty(dom.window.document, "adoptedStyleSheets", { value: [], configurable: true, writable: true });
   // Every DOM interface Node lacks (HTMLFormElement and the rest), then the ones Node has its own of.
   const missing = Object.getOwnPropertyNames(dom.window).filter((key) => /^[A-Z]/.test(key) && !(key in globalThis));
   for (const key of [...missing, ...GLOBALS]) {
@@ -140,6 +142,12 @@ export function button(within: ParentNode, name: string): HTMLButtonElement | nu
   return [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;
 }
 
+/** Whether a control is off: `disabled`, or `aria-disabled`, with which the design system's controls keep their focus. */
+export function isOff(control: Element | null | undefined): boolean {
+  if (!control) throw new Error("no such control");
+  return control.matches(':disabled, [aria-disabled="true"]');
+}
+
 /** `element` as a page behind AuthGate has it: with the signed-in person. */
 export async function asPerson(element: import("react").ReactElement, user = { id: "user-1", email: "anna@example.se", username: "Anna Berg" }) {
   const { createElement } = await import("react");
@@ -152,8 +160,8 @@ export async function asPerson(element: import("react").ReactElement, user = { i
  * window whose layout is as tall as jsdom's window (jsdom lays nothing out, so its clientHeight is 0).
  */
 export function visualViewport(t: import("node:test").TestContext) {
-  const listeners = new Set<() => void>();
-  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+  const listeners = new Set<(event: Event) => void>();
+  const viewport = { height: window.innerHeight, offsetTop: 0, addEventListener: (_: string, listener: (event: Event) => void) => listeners.add(listener), removeEventListener: (_: string, listener: (event: Event) => void) => listeners.delete(listener) };
   Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
   Object.defineProperty(document.documentElement, "clientHeight", { value: window.innerHeight, configurable: true });
   t.after(() => {
@@ -162,7 +170,7 @@ export function visualViewport(t: import("node:test").TestContext) {
   });
   const move = (height: number, offsetTop: number) => {
     Object.assign(viewport, { height, offsetTop });
-    listeners.forEach((listener) => listener());
+    listeners.forEach((listener) => listener(new window.Event("resize")));
   };
   return move;
 }

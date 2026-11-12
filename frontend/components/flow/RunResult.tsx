@@ -337,19 +337,25 @@ export function RunResult({
     />
   );
   // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side
-  // they are plain columns, not tab panels. A panel is a plain element, not a stack: a stack's display would beat the
-  // hidden attribute that hides the panel of the tab not chosen.
-  const panel = (view_: View, isChosen: boolean, content: ReactNode, className?: string) => (
-    <section
-      id={PANELS[view_].panel}
-      role={tabs ? "tabpanel" : undefined}
-      aria-labelledby={tabs ? PANELS[view_].tab : undefined}
-      hidden={tabs && !isChosen}
-      className={className ? `${styles.panel} ${className}` : styles.panel}
-    >
-      {content}
-    </section>
-  );
+  // they are plain columns, not tab panels. The panel of the tab not chosen is inert (out of the tab order and the
+  // accessibility tree) and takes no room (styles.inactive), but keeps its layout: from `hidden` (display:none) a long
+  // transcript's two thousand passages were laid out anew at every switch, a fifth of a second on a phone.
+  const panel = (view_: View, isChosen: boolean, content: ReactNode, className?: string) => {
+    const inactive = tabs && !isChosen;
+    return (
+      <section
+        id={PANELS[view_].panel}
+        role={tabs ? "tabpanel" : undefined}
+        aria-labelledby={tabs ? PANELS[view_].tab : undefined}
+        inert={inactive}
+        // Said hidden too, which every accessibility tree and checker reads, inert or not (Playwright's WebKit).
+        aria-hidden={inactive || undefined}
+        className={[styles.panel, className, inactive && styles.inactive].filter(Boolean).join(" ")}
+      >
+        {content}
+      </section>
+    );
+  };
 
   return (
     // The frame gives the page its width and edges, and every result has the whole column; its text keeps a reading
@@ -366,7 +372,9 @@ export function RunResult({
               document stands 24 px under it. */}
           <VStack gap={tabs ? 3 : 6}>
             {head}
-            <VStack gap={4}>
+            {/* No gap: the panel after the tabs keeps its own distance (styles.afterTabs), and a panel not chosen keeps
+                none, as the transcript's does in its span. */}
+            <VStack>
               {tabs && (
                 <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)} className={styles.tabs}>
                   {/* The notice that the document can be made again is in this panel: while the other tab is chosen it is
@@ -394,8 +402,9 @@ export function RunResult({
                 view === "document",
                 <VStack gap={6}>
                   {documentColumn}
-                  {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
+                  {tabs && view === "document" && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
                 </VStack>,
+                tabs ? styles.afterTabs : undefined,
               )}
             </VStack>
           </VStack>

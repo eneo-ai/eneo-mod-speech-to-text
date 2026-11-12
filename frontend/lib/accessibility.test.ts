@@ -117,13 +117,15 @@ for (const [index, mode] of (["light", "dark"] as const).entries()) {
 
   test(`${mode}: a notice's fill keeps its status's hue, and its words and icon stay readable on it`, async () => {
     const { token, atLeast } = await palette();
-    for (const status of ["success", "warning", "error"]) {
+    for (const status of ["info", "success", "warning", "error"]) {
       const fill = token(`--color-${status}-muted`);
       const apart = Math.abs(hue(fill) - hue(token(`--color-${status}`)));
       assert.ok(Math.min(apart, 360 - apart) <= 30, `${mode} ${status} notice: its fill is ${apart.toFixed(0)}° from its status's hue`);
+      // A banner's title, its words and its icon are in its status's own text colour; what it holds is in the page's.
+      atLeast(4.5, token(`--color-on-${status}-muted`), fill, `the ${status} notice's own words`);
       atLeast(4.5, token("--color-text-primary"), fill, `text on the ${status} notice`);
       atLeast(4.5, token("--color-text-secondary"), fill, `secondary text on the ${status} notice`);
-      atLeast(3, token(`--color-${status}`), fill, `${status} icon on its notice`);
+      if (status !== "info") atLeast(3, token(`--color-${status}`), fill, `${status} icon on its notice`);
     }
   });
 

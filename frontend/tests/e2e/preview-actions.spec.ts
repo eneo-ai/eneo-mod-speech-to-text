@@ -109,7 +109,7 @@ test("the PDF dialog says the file is coming while the browser's viewer loads it
   await result(page);
   await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
   const dialog = page.getByRole("dialog");
-  const loading = dialog.getByRole("status", { name: "Laddar filen" }).or(dialog.getByLabel("Laddar filen"));
+  const loading = dialog.getByRole("progressbar", { name: "Laddar filen" }).or(dialog.getByLabel("Laddar filen"));
   await expect(loading).toBeVisible();
   release();
   await expect(loading).toHaveCount(0);

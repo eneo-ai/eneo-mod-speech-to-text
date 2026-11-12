@@ -8,9 +8,16 @@
   padding-block: var(--spacing-0-5);
 }
 
-/* The wrapping name gives way, not the button: it keeps its 16 px, and with them the 44 px its ::after reaches. */
+/* The wrapping name gives way, not the button: it keeps its 16 px, and with them what its ::after reaches. */
 .names :global(.astryx-token) > button {
   flex-shrink: 0;
+}
+
+/* The design system's ::after reaches 24 px around the 16 px button. A finger gets a control's height here, 44 px. */
+@media (pointer: coarse) {
+  .names :global(.astryx-token) > button::after {
+    inset: calc((16px - var(--size-element-md)) / 2);
+  }
 }
 
 /* Last time's names, where the chips will be: a ghost button's padding stands outside the column, so its words start on

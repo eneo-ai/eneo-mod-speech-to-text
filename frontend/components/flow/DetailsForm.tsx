@@ -23,8 +23,9 @@ const isoDate = (text: string) => (/^\d{4}-\d{2}-\d{2}$/.test(text) ? (text as I
 const NONE = "none";
 const optionKey = (index: number) => `opt:${index}`;
 
-// Astryx's types leave out the attributes of a phone's number keyboard, but its field passes them on to the input.
-const NUMERIC = { inputMode: "numeric", pattern: "[0-9]*" } as Record<string, string>;
+// A phone's number keyboard. `pattern` is no prop of the design system's field, which passes it on to the input: iOS
+// reads it as well.
+const NUMERIC = { inputMode: "numeric", pattern: "[0-9]*" } as const;
 
 type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "description" | "isOptional" | "isRequired" | "status" | "statusVariant"> & {
   "data-detail-field": string;
@@ -44,7 +45,7 @@ type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "descript
 function DateField({ name, text, onChange, className, ...common }: DateFieldProps) {
   const { value: DateInput, failed } = useLoaded(calendar);
   // A week starts on Monday here. A finger gets the platform's own picker, which keeps the device's.
-  if (DateInput) return <DateInput {...common} weekStartsOn="mon" className={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
+  if (DateInput) return <DateInput {...common} weekStartsOn="mon" controlClassName={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
   return (
     <>
       <TextInput {...common} htmlName={name} autoComplete="off" value={text} onChange={onChange} />
@@ -142,15 +143,16 @@ export function DetailsForm({
               ? `Skriv ett heltal från 1${field.required ? "" : ", eller lämna fältet tomt"}.`
               : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`
             : undefined;
-          const common = {
+          // A checkbox group has no status variant: the design system passes props it does not know on to the page.
+          const group = {
             label,
             description,
             isOptional: !field.required,
             isRequired: !!field.required,
             status: error ? ({ type: "error", message: error } as const) : undefined,
-            statusVariant: "detached",
             "data-detail-field": field.name,
           } as const;
+          const common = { ...group, statusVariant: "detached" } as const;
           const opts = options(field);
           if (field.type === "list") {
             return (
@@ -172,7 +174,7 @@ export function DetailsForm({
           }
           if (field.type === "multiselect") {
             return (
-              <CheckboxList key={field.name} {...common} className={styles.choices} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
+              <CheckboxList key={field.name} {...group} containerClassName={styles.choices} density="compact" value={Array.isArray(value) ? value : []} onChange={(next) => onChange(field.name, next)}>
                 {opts.map((option) => (
                   <CheckboxListItem key={option} value={option} label={option} />
                 ))}
@@ -231,7 +233,7 @@ export function DetailsForm({
               {...(isCount || field.type === "number" ? NUMERIC : {})}
               value={text}
               onChange={(next) => onChange(field.name, next)}
-              className={isCount ? styles.count : undefined}
+              controlClassName={isCount ? styles.count : undefined}
             />
           );
         })}
@@ -276,7 +278,7 @@ export function SpeakerCountField({
       status={invalid ? { type: "error", message: `Skriv ett heltal från 1 till ${MAX_SPEAKER_COUNT}, eller lämna fältet tomt.` } : undefined}
       statusVariant="detached"
       data-detail-field={SPEAKER_COUNT_ID}
-      className={styles.count}
+      controlClassName={styles.count}
     />
   );
 }

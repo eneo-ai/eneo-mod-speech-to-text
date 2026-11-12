@@ -412,7 +412,7 @@ export function SpeakerNamingDialog({
           footer={
             <LayoutFooter hasDivider>
               <VStack gap={3}>
-                {refusal && <Banner status="error" title={refusal} collapsible={false} />}
+                {refusal && <Banner role="alert" status="error" title={refusal} collapsible={false} />}
                 {decided && <Text as="p" color="secondary">Namnen är redan sparade.</Text>}
                 {/* On a phone's whole screen the title's × is the way out: the footer keeps to Spara namnen, and the
                     speakers have its room. */}
