@@ -693,7 +693,7 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   // Each panel is named by its tab and its tab points at it; only the chosen one is shown.
   assert.deepEqual(panels.map((p) => tabLabel(document.getElementById(p.getAttribute("aria-labelledby")!)!)), ["Dokument", "Transkribering"]);
   assert.deepEqual(tabsIn(view.container).map((t) => t.getAttribute("aria-controls")), panels.map((p) => p.id));
-  assert.deepEqual(panels.map((p) => p.hidden), [false, true]);
+  assert.deepEqual(panels.map((p) => p.hasAttribute("inert")), [false, true]);
 
   const { computeAccessibleName } = await import("dom-accessibility-api");
   // The search is found by the name a screen reader gives it: the design system's input is named by its label.
@@ -703,7 +703,7 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   const { type } = await import("./test-dom");
   await view.act(async () => type(search, "punkten"));
   await view.act(async () => tab("Dokument").click());
-  assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hidden), [false, true], "the document is back");
+  assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hasAttribute("inert")), [false, true], "the document is back");
   await view.act(async () => tab("Transkribering").click());
   assert.equal(searchBox().value, "punkten", "the search is kept");
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
