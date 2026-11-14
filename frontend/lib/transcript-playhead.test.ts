@@ -200,6 +200,27 @@ test("playback spans are read again for another source", () => {
   assert.equal(playbackSpans(shown, raw)[0].words![0].end, 1);
 });
 
+/** A sentence of the recording's first file, its words as [word, start, end, probability] (0 is a spread word). */
+const timed = (start: number, end: number, text: string, words: [string, number, number, number][]): TranscriptSegment => ({
+  fileIndex: 0, start, end, speaker: "SPEAKER_00", text,
+  words: locateWords(text, words.map(([word, from, to, probability]) => ({ word, start: from, end: to, probability })), "forced"),
+});
+
+test("in speech that overlaps, a spread word ends at the nearest later start, though the starts come out of order", () => {
+  // The words start at 0, 9, 2, 5 and 4 s in the order the sentences come: "s" ends at "u", not at "t".
+  const segments = [
+    timed(0, 10, "a b", [["a", 0, 1, 0.9], ["b", 9, 9.5, 0.9]]),
+    timed(2, 10, "s t", [["s", 2, 10, 0], ["t", 5, 6, 0.9]]),
+    timed(4, 5, "u", [["u", 4, 4.5, 0.9]]),
+  ];
+  assert.equal(playbackSpans(segments)[1].words![0].end, 4);
+});
+
+test("a spread word whose next word starts after its own end is left as it came", () => {
+  const segments = [timed(0, 8, "s", [["s", 0, 3, 0]]), timed(5, 6, "t", [["t", 5, 6, 0.9]])];
+  assert.equal(playbackSpans(segments)[0], segments[0]);
+});
+
 test("spans with no spread word are lit and followed as they come", () => {
   const segments = apart(spread());
   // The rule before: the first span the time is in, else the last one started.
