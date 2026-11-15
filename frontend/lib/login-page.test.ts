@@ -203,7 +203,9 @@ for (const [ending, earlier, later] of [
     assert.equal(router.state.location.pathname, "/", "the page goes nowhere");
     assert.equal(button(container, "Logga in med Eneo"), null, "offers no sign-in yet");
     assert.deepEqual(alerts(document.body).filter((text) => text.includes("svarar inte")), [], "and says nothing of the module not answering");
-    assert.ok(button(container, "Försök igen"), "the wait is still the one on screen");
+    // The wait's own words, which no error view has: still the new attempt's wait, said again once it is long.
+    await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+    assert.match(container.textContent ?? "", /Det tar längre tid än vanligt\./, "the wait is still the one on screen");
 
     await act(async () => held[1](later()));
     await act(async () => new Promise((resolve) => setImmediate(resolve)));

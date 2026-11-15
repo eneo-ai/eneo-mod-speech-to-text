@@ -343,7 +343,9 @@ for (const [ending, earlier] of [
     for (let i = 0; i < 5; i += 1) await act(settle);
     assert.ok(!container.textContent?.includes("Sidan"), "the page waits on");
     assert.doesNotMatch(container.textContent ?? "", /svarar inte/, "and says nothing of the module not answering");
-    assert.ok(button(container, "Försök igen"), "the wait is still the one on screen");
+    // The wait's own words, which no error view has: still the new attempt's wait, said again once it is long.
+    await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+    assert.match(container.textContent ?? "", /Det tar längre tid än vanligt\./, "the wait is still the one on screen");
     assert.deepEqual(visited, [], "nor does it go to the sign-in page");
     assert.ok(window.localStorage.getItem(bertils), "nobody's confirmed words are cleared on the earlier check's word");
 
