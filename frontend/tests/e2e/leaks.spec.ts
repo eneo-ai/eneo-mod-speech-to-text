@@ -6,7 +6,7 @@
  */
 import { type CDPSession, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { backLink, chooseMode, fileBackedText, limitAudio, record, result, reviewEditor, run, setup, stop } from "./screens";
+import { backLink, chooseMode, fileBackedText, limitAudio, record, result, reviewEditor, run, setup, STATES, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
@@ -252,6 +252,13 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => page.getByRole("button", { name: "Avbryt redigering" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Avbryta redigeringen?" }),
     hide: (page) => page.getByRole("button", { name: "Fortsätt redigera" }).click(),
+  },
+  // The retained version's own question: Ta bort din version asks first, since the person's own text goes with it.
+  "drop question": {
+    go: (page) => STATES.find((state) => state.name === "review-din-version")!.go(page, test.info()),
+    show: (page) => page.getByRole("button", { name: "Ta bort din version" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Ta bort din version?" }),
+    hide: (page) => page.getByRole("button", { name: "Behåll" }).click(),
   },
   // A page dialog on the page that owns it: the run's own view while it runs.
   "cancel question": {
