@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 import type { Playback } from "./playback";
-import { findActiveSegmentIndex, findActiveSegmentIndices, findActiveWordIndex, type TranscriptSegment } from "./transcript";
+import {
+  findActiveSegmentIndex,
+  findActiveSegmentIndices,
+  findActiveWordIndex,
+  playbackSpans,
+  type TranscriptSegment,
+} from "./transcript";
 
 /**
  * What the playhead lights at `time` seconds into `part`: the sentences it is in, the word being said in each with how
@@ -15,7 +21,14 @@ export type PlayheadTargets = {
 
 export const NOTHING_LIT: PlayheadTargets = { segments: [], words: [], follow: -1 };
 
-export function playheadTargets(segments: readonly TranscriptSegment[], part: number, time: number): PlayheadTargets {
+/** Reads the spans as playback has them ({@link playbackSpans}): a spread word ends where the next word starts. */
+export function playheadTargets(
+  transcript: readonly TranscriptSegment[],
+  part: number,
+  time: number,
+  source: readonly TranscriptSegment[] = transcript,
+): PlayheadTargets {
+  const segments = playbackSpans(transcript, source);
   const lit = findActiveSegmentIndices(segments, part, time);
   const words = lit.flatMap((segment) => {
     const all = segments[segment].words ?? [];
@@ -164,11 +177,13 @@ export function useTranscriptPlayhead(
   root: RefObject<HTMLElement | null>,
   playback: Playback,
   segments: readonly TranscriptSegment[],
+  source: readonly TranscriptSegment[],
   onFollow: (segmentIndex: number) => void,
   paint = true,
 ): () => number {
   const state = useRef({
     segments,
+    source,
     onFollow,
     paint,
     painted: "",
@@ -176,6 +191,7 @@ export function useTranscriptPlayhead(
     painter: null as { root: HTMLElement; painter: PlayheadPainter } | null,
   });
   state.current.segments = segments;
+  state.current.source = source;
   state.current.onFollow = onFollow;
   state.current.paint = paint;
 
@@ -184,7 +200,7 @@ export function useTranscriptPlayhead(
       const own = state.current;
       const snapshot = playback.getSnapshot();
       const found = snapshot.started
-        ? playheadTargets(own.segments, snapshot.part, playback.liveWithinMs() / 1_000)
+        ? playheadTargets(own.segments, snapshot.part, playback.liveWithinMs() / 1_000, own.source)
         : NOTHING_LIT;
       const targets = reducedMotion() ? { ...found, words: found.words.map((w) => ({ ...w, said: 1 })) } : found;
       const painted = key(targets);
