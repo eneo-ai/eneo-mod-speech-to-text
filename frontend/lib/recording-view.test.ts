@@ -122,8 +122,8 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   const full = {
     title: "Enheten är full.",
     detail:
-      "Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma Hämtade filer och " +
-      "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
+      "Stäng inte fliken. Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma " +
+      "Hämtade filer och papperskorgen, så sparas den på enheten igen.",
   };
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), { warnings: [full], cautions: [], notes: [] });
   assert.deepEqual(

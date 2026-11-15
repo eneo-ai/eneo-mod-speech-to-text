@@ -153,12 +153,13 @@ export function recordingNotices({
   }
   if (refused === "full") {
     // Nothing stops, and the store moves what only this tab has onto the device once it has room: freeing room is the way
-    // to keep it (a full disk would refuse Spara ljudfil too).
+    // to keep it (a full disk would refuse Spara ljudfil too). What would lose the recording comes first: on a short screen
+    // the warnings have the few lines the controls leave, and the last of them may be under the controls.
     warnings.push({
       title: "Enheten är full.",
       detail:
-        "Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma Hämtade filer och " +
-        "papperskorgen, så sparas den på enheten igen. Stäng inte fliken.",
+        "Stäng inte fliken. Inspelningen fortsätter i den här flikens minne. Frigör utrymme, till exempel genom att tömma " +
+        "Hämtade filer och papperskorgen, så sparas den på enheten igen.",
     });
   } else if (refused) {
     // Nothing stops, and Spara ljudfil after Stoppa keeps what only this tab has.

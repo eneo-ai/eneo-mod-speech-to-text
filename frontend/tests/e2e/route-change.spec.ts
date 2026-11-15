@@ -143,18 +143,20 @@ test("a page whose code cannot be fetched is a page too: its own title, said onc
 test("signing out: the sign-in page's title, announcement and heading, not the spinner's", async ({ page }) => {
   await page.addInitScript(listen);
   await flows(page);
+  const session = Promise.withResolvers<void>();
   await page.route("**/api/auth/status", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await session.promise;
     await route.fulfill({ json: { authenticated: false, user: null } }).catch(() => undefined);
   });
   await page.getByRole("button", { name: /^Öppna konto för/ }).click();
   await page.getByRole("menuitem", { name: "Logga ut" }).click();
   await expect.poll(() => page.title(), { timeout: 1_000 }).toBe(LOGIN_TITLE);
   await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
-  expect(await said(page), "nothing is said over the spinner").toEqual([]);
+  await expect.poll(() => said(page), { message: "only the logout progress is said while the session has not answered" }).toEqual(["Loggar ut…"]);
   expect((await focused(page)).heading, "no focus in the spinner's heading").toBe(false);
+  session.resolve();
   await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeVisible();
-  await expect.poll(() => said(page), { timeout: 1_000 }).toEqual([LOGIN_TITLE]);
+  await expect.poll(() => said(page), { timeout: 1_000 }).toEqual(["Loggar ut…", LOGIN_TITLE]);
   await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true, text: "Du är utloggad" });
   expect(blocking((await axe(page)).violations), "axe passes on the sign-in page").toEqual([]);
 });

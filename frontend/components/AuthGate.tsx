@@ -100,7 +100,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
 
   useEffect(() => {
+    // A new attempt (Försök igen) or leaving the page ends this one: its reads are let go, not left to the timeout, and an
+    // answer that still comes is ignored (`cancelled`, checked before any error is shown).
     let cancelled = false;
+    const ask = new AbortController();
     let stopKeepalive: (() => void) | undefined;
     let channel: BroadcastChannel | null = null;
 
@@ -121,7 +124,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     // later question than the last one used. A stopped keepalive's answers count the same way.
     const read = async (): Promise<AuthStatus | null> => {
       const question = loginState.ask();
-      const s = await authStatus();
+      const s = await authStatus(ask.signal);
       if (cancelled) return null;
       return observe(s, question) ? s : null;
     };
@@ -176,6 +179,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      ask.abort();
       endPage?.();
       stopKeepalive?.();
       channel?.close();
@@ -208,7 +212,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       />
     );
   }
-  if (!user) return <LoadingShell />;
+  if (!user) return <LoadingShell onRetry={() => setAttempt((count) => count + 1)} />;
 
   return (
     <AuthenticatedUserContext.Provider value={user}>

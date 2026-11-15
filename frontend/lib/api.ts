@@ -90,9 +90,10 @@ const requestTimedOut = () =>
 
 /**
  * fetch, ended when no answer has begun within REQUEST_TIMEOUT_MS (the module accepted the request and went quiet): a
- * wait that would never end is a timeout the page can say and try again. The page's own signal still aborts it.
+ * wait that would never end is a timeout the page can say and try again. The page's own signal still aborts it, its
+ * body included, until `unlink` (once the body is read): a signal one request keeps for many collects no listeners.
  */
-async function fetchWithin(path: string, init: RequestInit): Promise<Response> {
+async function fetchWithin(path: string, init: RequestInit): Promise<{ res: Response; unlink: () => void }> {
   const limit = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -100,15 +101,16 @@ async function fetchWithin(path: string, init: RequestInit): Promise<Response> {
     limit.abort();
   }, REQUEST_TIMEOUT_MS);
   const cancel = () => limit.abort();
+  const unlink = () => init.signal?.removeEventListener("abort", cancel);
   if (init.signal?.aborted) cancel();
   else init.signal?.addEventListener("abort", cancel, { once: true });
   try {
-    return await fetch(path, { ...init, signal: limit.signal });
+    return { res: await fetch(path, { ...init, signal: limit.signal }), unlink };
   } catch (error) {
+    unlink();
     throw timedOut ? requestTimedOut() : error;
   } finally {
     clearTimeout(timer);
-    init.signal?.removeEventListener("abort", cancel);
   }
 }
 
@@ -128,8 +130,9 @@ async function request<T>(
   const question = loginState.ask();
   const sent = onlineStatus.sending();
   let res: Response;
+  let unlink: () => void;
   try {
-    res = await fetchWithin(path, {
+    ({ res, unlink } = await fetchWithin(path, {
       ...init,
       credentials: "include",
       headers: {
@@ -140,7 +143,7 @@ async function request<T>(
         ...(path.startsWith("/api/eneo/") || path.startsWith("/api/uploads/") ? expectedUserHeader() : {}),
         ...init.headers,
       },
-    });
+    }));
   } catch (error) {
     // fetch rejects with a TypeError when the network is down (not on abort).
     if (error instanceof TypeError) onlineStatus.reportNetworkFailure();
@@ -148,26 +151,33 @@ async function request<T>(
   }
   onlineStatus.reportReachable(sent);
 
-  if (!res.ok) {
-    const error = await parseError(res);
-    // Only the backend's own mark says OUR login ended (X-Auth-Required: session); Eneo's 401 (a wrong API key,
-    // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
-    // is safe to send twice waits for it and goes again.
-    if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
-      loginState.ended(question);
-      if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
-        return request<T>(path, init, true, read);
-      }
-    } else if (isUserChanged(error)) {
-      // The session is another person's. Never sent again by this page, whoever signs in next: it fails as a
-      // session end, and the user decides.
-      loginState.userChanged(question);
-      throw sessionEnded();
-    }
-    throw error;
+  // The page's abort ends the body's read too, and is said as the abort it is, not as the answer's error (readResponse
+  // and parseError would make it one). Unlinked before anything waits, so a replay links afresh.
+  let error: ApiError;
+  try {
+    if (res.ok) return await read(res);
+    error = await parseError(res);
+  } catch (failure) {
+    throw init.signal?.aborted ? init.signal.reason : failure;
+  } finally {
+    unlink();
   }
-
-  return read(res);
+  if (init.signal?.aborted) throw init.signal.reason;
+  // Only the backend's own mark says OUR login ended (X-Auth-Required: session); Eneo's 401 (a wrong API key,
+  // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
+  // is safe to send twice waits for it and goes again.
+  if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
+    loginState.ended(question);
+    if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
+      return request<T>(path, init, true, read);
+    }
+  } else if (isUserChanged(error)) {
+    // The session is another person's. Never sent again by this page, whoever signs in next: it fails as a
+    // session end, and the user decides.
+    loginState.userChanged(question);
+    throw sessionEnded();
+  }
+  throw error;
 }
 
 async function readResponse<T>(res: Response): Promise<T> {
@@ -208,8 +218,9 @@ export async function logout() {
   return request<{ ok: true }>("/api/auth/logout", { method: "POST" });
 }
 
-export async function authStatus() {
-  return request<AuthStatus>("/api/auth/status");
+/** `signal`: the caller's own end for the question, when a newer one replaces it. */
+export async function authStatus(signal?: AbortSignal) {
+  return request<AuthStatus>("/api/auth/status", { signal });
 }
 
 // ---------- The build ----------

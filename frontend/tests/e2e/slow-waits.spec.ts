@@ -4,7 +4,8 @@
  * is shown. A run whose status cannot be read says that it tries again, from the first failed read.
  */
 import { expect, test } from "./gate";
-import { flowSlow, flowsSlow, pastSlowWait, runOpeningSlow, runReconnecting } from "./screens";
+import type { Route } from "@playwright/test";
+import { flowSlow, flowsSlow, hold, pastSlowWait, runOpeningSlow, runReconnecting, slowWaitSays } from "./screens";
 
 test.beforeEach(({}, info) =>
   test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "behaviour, at a laptop's and a phone's width"),
@@ -43,4 +44,83 @@ test("a run whose status cannot be read says it tries again, and Försök nu rea
   await expect(page.getByText("Försöker igen. Körningen fortsätter i Eneo.")).toHaveCount(0);
   await pastSlowWait(page);
   await expect(page.getByText("Det tar längre tid än vanligt.")).toHaveCount(0);
+});
+
+for (const path of ["/flows", "/"]) {
+  test(`the session that is slow to answer on ${path} says so, with no way back, and Försök igen asks again`, async ({ page }) => {
+    await page.clock.install();
+    const held = await hold(page, "**/api/auth/status");
+    const requested = page.waitForRequest("**/api/auth/status");
+    await page.goto(path);
+    await requested;
+    await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+    await pastSlowWait(page);
+    await slowWaitSays(page);
+    await expect(page.getByRole("link", { name: "Alla flöden" })).toHaveCount(0);
+    held.letThrough();
+    await page.getByRole("button", { name: "Försök igen" }).click();
+    await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
+    await expect(page.getByText("Det tar längre tid än vanligt.")).toHaveCount(0);
+  });
+}
+
+for (const path of ["/flows", "/"]) {
+  test(`each Försök igen on ${path} cancels the session check it replaces, and the cancelled one says nothing`, async ({ page }) => {
+    await page.clock.install();
+    const asked: Route[] = [];
+    let holding = true;
+    await page.route("**/api/auth/status", (route) => (holding ? void asked.push(route) : route.fallback()));
+    const cancelled = () => asked.filter((route) => route.request().failure()?.errorText.includes("ERR_ABORTED")).length;
+    await page.goto(path);
+    await expect.poll(() => asked.length).toBeGreaterThan(0);
+    await pastSlowWait(page);
+    await slowWaitSays(page);
+    // Pressed again and again while every check hangs: each press asks once more and lets the one before it go.
+    for (let press = 1; press <= 3; press += 1) {
+      const before = { asked: asked.length, cancelled: cancelled() };
+      await page.getByRole("button", { name: "Försök igen" }).click();
+      await expect.poll(() => asked.length).toBe(before.asked + 1);
+      await expect.poll(cancelled).toBe(before.cancelled + 1);
+    }
+    // Only the last question is still open (a dev server's StrictMode asks once more on arrival, and lets that one go too).
+    expect(cancelled()).toBe(asked.length - 1);
+    await page.clock.runFor(100);
+    // A check given up for the next one is no failure: the page still waits, and says nothing of the module not answering.
+    await expect(page.getByText("Tal till text svarar inte just nu.")).toHaveCount(0);
+    await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
+    holding = false;
+    await asked.at(-1)!.fallback();
+    await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
+  });
+}
+
+test("after retrying the sign-in check, the old check is cancelled and only the new one decides", async ({ page }) => {
+  await page.clock.install();
+  const old: Route[] = [];
+  const first = Promise.withResolvers<void>();
+  const current = Promise.withResolvers<Route>();
+  let retrying = false;
+  await page.route("**/api/auth/status", async (route) => {
+    if (retrying) current.resolve(route);
+    else {
+      old.push(route);
+      first.resolve();
+    }
+  });
+  await page.goto("/");
+  await first.promise;
+  await pastSlowWait(page);
+  await slowWaitSays(page);
+  retrying = true;
+  await page.getByRole("button", { name: "Försök igen" }).click();
+  const currentRequest = await current.promise;
+  // The old question is let go as the new one leaves: its answer can no longer come.
+  await expect.poll(() => old.every((route) => route.request().failure()?.errorText.includes("ERR_ABORTED"))).toBe(true);
+  await page.clock.runFor(100);
+  const login = page.getByRole("button", { name: "Logga in med Eneo" });
+  await expect(login).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
+  await currentRequest.fulfill({ json: { authenticated: false, user: null } });
+  await expect(login).toBeVisible();
 });

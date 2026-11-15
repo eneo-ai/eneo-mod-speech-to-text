@@ -11,7 +11,13 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const signedOut = () => json({ authenticated: false, user: null });
 
 /** The sign-in page under the providers every page has, with its server's answers and the router that says where it went. */
-async function openLoginPage(t: TestContext, answers: (url: string, init?: RequestInit) => Response | Promise<Response>, routeState?: unknown) {
+async function openLoginPage(
+  t: TestContext,
+  answers: (url: string, init?: RequestInit) => Response | Promise<Response>,
+  routeState?: unknown,
+  // The test's own clock (`t.mock.timers`), when it holds the page's: the first answer's moment goes by on it.
+  clock?: TestContext["mock"]["timers"],
+) {
   const { createElement } = await import("react");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { default: LoginPage } = await import("../routes/LoginPage");
@@ -32,7 +38,11 @@ async function openLoginPage(t: TestContext, answers: (url: string, init?: Reque
   });
   const view = await mount(tree);
   // The page asks who is signed in first; let that answer land.
-  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  await view.act(async () => {
+    const landed = new Promise((resolve) => setTimeout(resolve, 20));
+    clock?.tick(20);
+    return landed;
+  });
   return { ...view, requests, router };
 }
 
@@ -169,3 +179,39 @@ test("coming Back from Eneo, with the page restored from the browser's cache, th
   assert.ok(again, "the way in is back");
   assert.ok(!again.disabled && again.getAttribute("aria-disabled") !== "true", "and can be pressed");
 });
+
+// Försök igen while the check before it hangs: the earlier question is let go (tests/e2e/slow-waits.spec.ts), and an
+// answer to it that comes all the same, as one already on its way would, decides nothing. The stand-in fetch here answers
+// whatever its signal says. Each way the earlier check can end, against a new one that says the other thing.
+for (const [ending, earlier, later] of [
+  ["signed in", () => json({ authenticated: true, user: { id: "user-1", email: "anna@example.se" } }), signedOut],
+  ["signed out", signedOut, () => json({ authenticated: true, user: { id: "user-1", email: "anna@example.se" } })],
+  ["with an error", () => json({}, 503), signedOut],
+] as const) {
+  // A guard that fails can leave the page waiting for good: the test then fails on its own time, never hangs the suite.
+  test(`after Försök igen, the earlier session check answering ${ending} neither ends the new wait nor decides where the page goes`, { timeout: 10_000 }, async (t) => {
+    const { SLOW_WAIT_MS } = await import("./slow-wait");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const held: Array<(response: Response) => void> = [];
+    const { container, act, router } = await openLoginPage(t, () => new Promise<Response>((resolve) => held.push(resolve)), undefined, t.mock.timers);
+    assert.equal(held.length, 1, "the first check is out");
+    await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+    await act(async () => button(container, "Försök igen")!.click());
+    assert.equal(held.length, 2, "Försök igen asks again");
+
+    await act(async () => held[0](earlier()));
+    await act(async () => new Promise((resolve) => setImmediate(resolve)));
+    assert.equal(router.state.location.pathname, "/", "the page goes nowhere");
+    // A boolean, not the element: a failure then says so at once instead of printing jsdom's whole node.
+    assert.equal(button(container, "Logga in med Eneo") !== null, false, "offers no sign-in yet");
+    assert.deepEqual(alerts(document.body).filter((text) => text.includes("svarar inte")), [], "and says nothing of the module not answering");
+    // The wait's own words, which no error view has: still the new attempt's wait, said again once it is long.
+    await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+    assert.match(container.textContent ?? "", /Det tar längre tid än vanligt\./, "the wait is still the one on screen");
+
+    await act(async () => held[1](later()));
+    await act(async () => new Promise((resolve) => setImmediate(resolve)));
+    if (ending === "signed out") assert.equal(router.state.location.pathname, "/flows", "the new check decides: signed in, on to the flows");
+    else assert.ok(button(container, "Logga in med Eneo"), "the new check decides: signed out, the way in");
+  });
+}
