@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import logging
 import math
 import re
@@ -62,6 +63,9 @@ LOGIN_WINDOW_PATH = "/inloggad"
 # After Eneo fails to answer a token refresh, wait this long before asking
 # again; the current, still valid token stays in use meanwhile.
 REFRESH_RETRY_SECONDS = 10
+# How long the whole check of a refused token at Eneo's session route may take (ModuleAuth.login_refused), the answer
+# included; past it nothing is confirmed and the session stays.
+SESSION_CHECK_SECONDS = 10.0
 
 
 class ModuleUser(BaseModel):
@@ -185,6 +189,23 @@ class ModuleSessionStore:
             if session_id in self._sessions:
                 self._sessions[session_id] = session
 
+    def delete_if_token(self, session_id: str, access_token: str) -> bool:
+        """Delete the session if it still holds ``access_token``, in one step.
+
+        True when the session is gone now, ended here or before (by a call beside this one, a logout, a new login or
+        its expiry); False when it holds another token, renewed meanwhile, and it stays.
+        """
+        with self._lock:
+            self._delete_expired_locked(time.time())
+            session = self._sessions.get(session_id)
+            if session is None:
+                return True
+            if session.access_token != access_token:
+                return False
+            del self._sessions[session_id]
+            self._notify_locked(session_id)
+            return True
+
     def delete(self, session_id: str | None) -> None:
         if session_id is None:
             return
@@ -247,6 +268,32 @@ def eneo_is_unavailable(status_code: int) -> bool:
     return status_code in {408, 429} or status_code >= 500
 
 
+def refuses_the_login(answer: httpx.Response) -> bool:
+    """Eneo's answer says that the user's token is not valid any more: 401, and the code ``authentication_error`` at the
+    top of its JSON body, the string code Eneo documents for its clients to branch on.
+
+    It is a revoked token (a changed password, "log out everywhere"), an expired one, or one of another tenant's or
+    user's; but a route of Eneo's that takes no module tokens answers the same for a valid one. So it is not proof that
+    the login is over: ``ModuleAuth.login_refused`` asks Eneo's session route first. Nothing else is this: not
+    ``invalid_api_key`` (the module's key, not the user's), no 403, no other 401 code (a step-up asks for more of the
+    same login), and no body without the code at its top. The number ``eneo_error_code`` is not read: 9005 is
+    ``invalid_api_key``'s too.
+    """
+    if answer.status_code != 401:
+        return False
+    try:
+        body = json.loads(answer.content)
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("code") == "authentication_error"
+
+
+def session_ended() -> HTTPException:
+    """The module's own answer when the browser's session is gone: 401 and ``X-Auth-Required: session``, which the page
+    reads as its login's end and answers with a new login in place. No body of Eneo's goes with it."""
+    return HTTPException(status_code=401, detail="Not authenticated", headers={"X-Auth-Required": "session"})
+
+
 def _refusal(connection: HTTPConnection, error: HTTPException) -> Exception:
     """``error`` for an HTTP request; a WebSocket handshake is closed unaccepted."""
     if connection.scope["type"] == "websocket":
@@ -282,6 +329,11 @@ class ModuleAuth:
     @property
     def callback_url(self) -> str:
         return f"{self.settings.module_public_url}{CALLBACK_PATH}"
+
+    @property
+    def _session_url(self) -> str:
+        """Eneo's session route: who a token is, with the module's key beside it, as every resource call checks both."""
+        return f"{self.settings.eneo_backend_url}/api/v1/module-auth/{quote(self.settings.module_key, safe='')}/session/"
 
     async def login(
         self,
@@ -407,10 +459,7 @@ class ModuleAuth:
 
         try:
             validation = await self.http_client.get(
-                (
-                    f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
-                    f"{quote(self.settings.module_key, safe='')}/session/"
-                ),
+                self._session_url,
                 headers=self._eneo_headers(token.access_token),
                 timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
@@ -525,16 +574,55 @@ class ModuleAuth:
     ) -> EneoSsoSession:
         session = await self._live_session(session_id)
         if session is None:
-            raise _refusal(
-                connection,
-                HTTPException(
-                    status_code=401,
-                    detail="Not authenticated",
-                    headers={"X-Auth-Required": "session"},
-                ),
-            )
+            raise _refusal(connection, session_ended())
+        # What the request was admitted under: the token it sends to Eneo, and the session that a refusal of it may end.
         connection.state.module_session = session
+        connection.state.module_session_id = session_id
         return session
+
+    async def login_refused(self, connection: HTTPConnection, answer: httpx.Response) -> bool:
+        """Whether Eneo's ``answer`` to a call made with this request's token means its login is over, the session
+        then gone. True: the caller answers ``session_ended()`` (a socket closes with ``session_ended``), never Eneo's
+        answer, so the page asks for a new login in place. False: Eneo's answer goes on as it is.
+
+        The one rule for every call made with the user's token. A refusal that may end the login
+        (``refuses_the_login``) ends it only when the session still holds the token that was refused and Eneo's own
+        session route refuses that token too, asked once per refusal; anything else confirms nothing. A session that
+        is gone already gets the answer without a check, as ``require_session`` would; one renewed since the call went
+        out is not about this refusal, and the page counts a renewal as the same login, so Eneo's answer goes on. The
+        refresh keeps a rule of its own: it asks whether the session can go on, and ends it at any refusal.
+        """
+        if not refuses_the_login(answer):
+            return False
+        session_id = connection.state.module_session_id
+        sent = self.session_from_request(connection)
+        held = self.sessions.get(session_id)
+        if held is None:
+            return True
+        if held.access_token != sent.access_token:
+            return False
+        if not await self._eneo_confirms_the_end(sent):
+            logger.warning("Eneo refused a session's token, and its session route did not confirm it: the session stays")
+            return False
+        ended = self.sessions.delete_if_token(session_id, sent.access_token)
+        if ended:
+            logger.info("Eneo refused a session's token, and its session route confirmed it: the session has ended")
+        return ended
+
+    async def _eneo_confirms_the_end(self, session: EneoSsoSession) -> bool:
+        """Eneo's session route refuses ``session``'s token as the call was refused. Bounded in time and in size; an
+        answer of any other kind, none in time or none at all, confirms nothing."""
+        try:
+            async with asyncio.timeout(SESSION_CHECK_SECONDS):
+                answer = await self.http_client.get(
+                    self._session_url,
+                    headers=self._eneo_headers(session.access_token),
+                    timeout=SMALL_CALL_TIMEOUT,
+                    extensions=SMALL_ANSWER,
+                )
+        except (httpx.RequestError, TimeoutError):
+            return False
+        return refuses_the_login(answer)
 
     async def _live_session(self, session_id: str | None) -> EneoSsoSession | None:
         """The caller's session, with its module token refreshed once due."""
@@ -570,7 +658,9 @@ class ModuleAuth:
         """Renew the token; None when Eneo refuses, so the user signs in again.
 
         When Eneo cannot answer right now the session keeps its token, which
-        is still valid, and asks again after REFRESH_RETRY_SECONDS.
+        is still valid, and asks again after REFRESH_RETRY_SECONDS. A rule of
+        its own, not login_refused's: this asks whether the session can go on,
+        so any refusal (the key's and a 403 too) ends it.
         """
         try:
             upstream = await self.http_client.post(
