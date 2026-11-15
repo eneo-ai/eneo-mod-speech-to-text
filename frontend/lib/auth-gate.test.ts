@@ -306,12 +306,21 @@ for (const [ending, earlier] of [
   ["signed out", () => json({ authenticated: false, user: null })],
   ["with an error", () => new Response("{}", { status: 503, headers: { "content-type": "application/json" } })],
 ] as const) {
-  test(`after Försök igen, the earlier session check answering ${ending} neither ends the new wait nor decides the person`, async (t) => {
+  // A guard that fails can leave the page waiting for good: the test then fails on its own time, never hangs the suite.
+  test(`after Försök igen, the earlier session check answering ${ending} neither ends the new wait nor decides the person`, { timeout: 10_000 }, async (t) => {
     const { createElement } = await import("react");
     const { AuthGate, useAuthenticatedUser } = await import("../components/AuthGate");
     const { confirmedWordsStorageKey } = await import("./confirmed-words");
     const { SLOW_WAIT_MS } = await import("./slow-wait");
     t.mock.timers.enable({ apis: ["setTimeout"] });
+    // An earlier answer let through would open the page's session channel after its attempt was cleaned up, and Node's
+    // channel keeps the process alive, so the failure would never be reported. Without one the page goes on as it does
+    // in a browser that has none (AuthGate).
+    const browserChannel = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
+    Object.defineProperty(globalThis, "BroadcastChannel", { value: undefined, configurable: true, writable: true });
+    t.after(() => {
+      if (browserChannel) Object.defineProperty(globalThis, "BroadcastChannel", browserChannel);
+    });
     const bertil = { id: "user-2", email: "bertil@example.se", username: "Bertil Ek" };
     // Each person's confirmed words: the one the page settles on keeps theirs, and only theirs.
     const annas = confirmedWordsStorageKey(anna.id, "flow", "run", "step");
