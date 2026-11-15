@@ -65,6 +65,12 @@ interface LoginState {
    */
   userChanged(question?: Question): boolean;
   /**
+   * Something failed that may be the login's end but cannot say so: the audio element reads the module's 401 as an
+   * error like any other, with no header. The status is read again, which covers the page if the session is gone;
+   * this covers nothing itself. Nothing where no signed-in page is open.
+   */
+  recheck(): void;
+  /**
    * A login window of the module says it is done (AuthGate hears it on the session channel): a new login is announced, also when the page was never covered. Everything asked before is about the
    * old login from now on, whenever its answer comes, and so is the old session's end time; the status read asked
    * next decides (the page's own user uncovers it, someone else's covers it).
@@ -172,6 +178,9 @@ export function createLoginState(): LoginState {
       ended();
       if (pages > 0) reread?.();
       return true;
+    },
+    recheck() {
+      if (pages > 0) reread?.();
     },
     loginWindowDone() {
       // Early renewal replaces the session (the backend deletes the old one) with no cover to show for it, and the

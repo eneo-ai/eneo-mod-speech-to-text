@@ -3,8 +3,10 @@ import test, { afterEach } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { AudioPlayer } from "../components/flow/AudioPlayer";
+import { AudioPlayer, usePlayback } from "../components/flow/AudioPlayer";
 
+import type { AuthStatus } from "./api";
+import { loginState } from "./login-state";
 import { Playback, probeLength, type MediaLike, type PlayerSource } from "./playback";
 import { cleanup, installDom, mount } from "./test-dom";
 
@@ -544,6 +546,43 @@ test("every player says when its audio cannot be played, beside its controls, an
   await view.act(async () => again.click());
   assert.equal(playback.getSnapshot().unavailable, false, "the part is loaded again");
   assert.equal(view.container.querySelector('[role="alert"]'), null);
+});
+
+test("audio that fails asks for the login's status once: a session that is gone covers the page, one that holds only says the audio could not be played", async () => {
+  // The audio's address is the module's: a session that has ended answers it 401, which the element reads as an error
+  // like any other, with no header to tell. Nothing else on the page asks meanwhile (no poll, no socket).
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const gone: AuthStatus = { authenticated: false, user: null };
+  const holds: AuthStatus = { authenticated: true, user: anna, session_ends_in: 8 * 3600 };
+  for (const [status, covered] of [[gone, true], [holds, false]] as const) {
+    let reads = 0;
+    const end = loginState.begin(anna, () => {
+      reads += 1;
+      loginState.observe(status);
+    });
+    try {
+      let playback: Playback | undefined;
+      function Player() {
+        playback = usePlayback(PARTS);
+        return createElement(AudioPlayer, { playback, label: "Inspelning" });
+      }
+      const view = await mount(createElement(Player));
+      // The element's error, and the play it refused after it: one failure.
+      await view.act(async () => {
+        playback!.onError();
+        playback!.onError();
+      });
+      assert.equal(reads, 1, "one status read for one failure");
+      assert.equal(loginState.signedOut, covered, covered ? "the cover asks for a new login" : "an ordinary audio error signs nobody out");
+      assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /^Ljudet kunde inte spelas upp\./);
+      // Försök igen, and a second failure: asked again.
+      await view.act(async () => playback!.reload());
+      await view.act(async () => playback!.onError());
+      assert.equal(reads, 2);
+    } finally {
+      end();
+    }
+  }
 });
 
 test("in a tab out of view the player renders nothing as the audio plays on, and shows where it is when the tab is back", async () => {

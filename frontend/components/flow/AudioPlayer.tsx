@@ -9,11 +9,15 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { formatClock } from "@/lib/format";
-import { Playback, type PlaybackSnapshot, type PlayerSource } from "@/lib/playback";
+import { loginState } from "@/lib/login-state";
+import { Playback, probeLength, type PlaybackSnapshot, type PlayerSource } from "@/lib/playback";
 
-/** One playback of these parts for as long as the component lives; other parts start it over. */
+/**
+ * One playback of these parts for as long as the component lives; other parts start it over. Audio that fails has the
+ * login's status read again: the session's end is the cover's to say, an ordinary failure only the player's.
+ */
 export function usePlayback(sources: readonly PlayerSource[]): Playback {
-  const [playback] = useState(() => new Playback(sources));
+  const [playback] = useState(() => new Playback(sources, probeLength, loginState.recheck));
   useEffect(() => playback.setSources(sources), [playback, sources]);
   return playback;
 }

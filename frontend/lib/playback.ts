@@ -113,9 +113,14 @@ export class Playback {
   private listeners = new Set<() => void>();
   private snapshot: PlaybackSnapshot;
 
+  /**
+   * `failed` is told once for each failure of the audio (until reload()): an address of the module's that the session's
+   * end refused fails like any other, and the page's login owner reads the status again to tell them apart.
+   */
   constructor(
     sources: readonly PlayerSource[] = [],
     private readonly probe: (url: string, signal: AbortSignal) => Promise<number | null> = probeLength,
+    private readonly failed: () => void = () => undefined,
   ) {
     this.sources = sources;
     this.snapshot = this.read();
@@ -361,6 +366,8 @@ export class Playback {
   };
 
   onError = (): void => {
+    // The element's error and the play it refused after it are one failure.
+    if (!this.unavailable) this.failed();
     this.unavailable = true;
     this.playing = false;
     this.buffering = false;
