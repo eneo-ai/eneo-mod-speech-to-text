@@ -409,6 +409,78 @@ test("a cancelled probe lets go of its audio at once", async () => {
   }
 });
 
+test("a probe whose audio fails has the page read the login's status once a round, and the player stays playable", async () => {
+  // A probe asks for a signed address of the module's: one the session's end refused fails like any other.
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const calls: { url: string; fail: () => void; finish: (ms: number | null) => void }[] = [];
+  const probe = (url: string, _signal: AbortSignal, onFailed?: () => void) =>
+    new Promise<number | null>((resolve) => calls.push({ url, fail: () => onFailed?.(), finish: resolve }));
+  let reads = 0;
+  const parts = ["/a", "/b", "/c", "/d", "/e"].map((url) => ({ url, durationMs: null }));
+  const playback = new Playback(parts, probe, () => (reads += 1));
+  const media = new FakeMedia();
+  playback.attach(media);
+  assert.deepEqual(calls.map((call) => call.url), ["/b", "/c", "/d"]);
+
+  calls[0].finish(2_000);
+  calls[1].fail();
+  calls[1].finish(null);
+  await settle();
+  assert.equal(reads, 1, "one status read for the probe that failed");
+  calls[2].fail();
+  calls[2].finish(null);
+  await settle();
+  assert.equal(reads, 1, "one a round, however many fail");
+  assert.equal(playback.getSnapshot().unavailable, false, "the part that plays is not marked broken");
+  assert.equal(playback.getSnapshot().lengthsMs[1], 2_000);
+
+  assert.equal(calls[3].url, "/e");
+  playback.attach(null);
+  calls[3].fail();
+  await settle();
+  assert.equal(reads, 1, "a probe cut short says nothing");
+
+  playback.attach(media);
+  assert.equal(calls[4].url, "/e", "a new round");
+  calls[4].fail();
+  assert.equal(reads, 2);
+});
+
+test("a probe tells of its audio's error, and not of a cancel", async () => {
+  const made: { onerror: (() => void) | null; src: string }[] = [];
+  class FakeAudio {
+    src = "";
+    preload = "";
+    duration = Number.NaN;
+    onloadedmetadata: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() {
+      made.push(this);
+    }
+    removeAttribute(name: string) {
+      if (name === "src") this.src = "";
+    }
+    load() {}
+  }
+  const global = globalThis as { Audio?: unknown };
+  global.Audio = FakeAudio;
+  try {
+    let told = 0;
+    const failing = probeLength("/p1", undefined, () => (told += 1));
+    made[0].onerror?.();
+    assert.equal(await failing, null);
+    assert.equal(told, 1, "the error is told");
+
+    const cancel = new AbortController();
+    const cancelled = probeLength("/p2", cancel.signal, () => (told += 1));
+    cancel.abort();
+    assert.equal(await cancelled, null);
+    assert.equal(told, 1, "a cancel is not");
+  } finally {
+    delete global.Audio;
+  }
+});
+
 test("a part whose audio does not say its length grows as it plays and learns it at its end", () => {
   const { playback, media } = started([
     { url: "/a", durationMs: null },
