@@ -95,7 +95,7 @@ for (const path of ["/flows", "/"]) {
   });
 }
 
-test("after retrying the sign-in check, a late answer to the old question cannot end the new wait", async ({ page }) => {
+test("after retrying the sign-in check, the old check is cancelled and only the new one decides", async ({ page }) => {
   await page.clock.install();
   const old: Route[] = [];
   const first = Promise.withResolvers<void>();
