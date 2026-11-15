@@ -98,7 +98,7 @@ Eneo ger en kortlivad signerad URL per fil, och den är en bärartoken. Webbläs
 `/api/live/{flow_id}/{step_id}` vidarebefordrar live-text mellan webbläsaren och Eneo. Protokollet står i [Eneo-integration](eneo-integration.md#live-text-strömma). Det BFF:en själv avgör:
 
 - **Gränser:** 128 KiB per meddelande från webbläsaren. Går en av sidorna inte att skriva till på 15 sekunder avslutar BFF:en sessionen.
-- **Socketen följer sessionen:** den stängs med `1008` och skälet `session_ended` när sessionen tar slut, också när inget skickas (utloggning, utgång, en ny inloggning, en förnyelse som Eneo nekar).
+- **Socketen följer sessionen:** den stängs med `1008` och skälet `session_ended` när sessionen tar slut, också när inget skickas (utloggning, utgång, en ny inloggning, en förnyelse som Eneo nekar), och när Eneo nekar ticketen för en inloggning som Eneo har avslutat.
 - **Rätt användare:** sidans användare kontrolleras innan någon ticket begärs hos Eneo.
 - **Ticketen** är en engångsticket som färdas som WebSocket-subprotokoll, valideras och når aldrig webbläsaren; anslutningen till Eneo följer ingen omdirigering.
 
