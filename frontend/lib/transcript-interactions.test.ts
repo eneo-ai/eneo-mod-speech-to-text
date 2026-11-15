@@ -5,7 +5,7 @@ import { computeAccessibleName } from "dom-accessibility-api";
 import { wordKey } from "./confirmed-words";
 import { button, cleanup, installDom, mount, type, visualViewport } from "./test-dom";
 import type { CorrectionSet, SpeakerNames } from "./transcript-corrections";
-import type { TranscriptSegment } from "./transcript";
+import { locateWords, type TranscriptSegment } from "./transcript";
 
 installDom();
 afterEach(cleanup);
@@ -470,6 +470,53 @@ test("the clock on a passage plays from there, also while the recording is pause
     // The audio has loaded: where the press asked to go, and whether to play on.
     await view.act(async () => view.container.querySelector("audio")!.dispatchEvent(new window.Event("loadedmetadata")));
     assert.deepEqual(played, ["2"], "the passage's own words promise it plays");
+  } finally {
+    media.play = play;
+    media.pause = pause;
+    media.load = load;
+  }
+});
+
+test("the player times a corrected transcript by the words as they came", async () => {
+  const media = window.HTMLMediaElement.prototype;
+  const { play, pause, load } = media;
+  media.play = () => Promise.resolve();
+  media.pause = () => undefined;
+  media.load = () => undefined;
+  // "a" came spread over the window; a correction drops its word's time, not its audio.
+  const raw: TranscriptSegment[] = [{ fileIndex: 0, start: 0, end: 10, speaker: "SPEAKER_00", text: "a b c", words: locateWords("a b c", [
+    { word: "a", start: 0, end: 10, probability: 0 }, { word: "b", start: 1, end: 2, probability: 0.9 },
+    { word: "c", start: 2, end: 3, probability: 0.9 },
+  ], "forced") }];
+  /** The words lit, each with how far it is said, after the audio has played to `time` with `original` corrected. */
+  const litAt = async (at: number, original: string, time: number) => {
+    const corrections: CorrectionSet = {
+      occurrences: [{ segment_index: 0, char_start: at, char_end: at + 1, original, corrected: original.toUpperCase() }],
+      speaker_edits: [], revision: 1,
+    };
+    const view = await player(raw, { fileCount: 1, audioSrcFor: () => "/audio/0", corrections });
+    const audio = view.container.querySelector("audio")!;
+    const now = { time: 0, paused: true };
+    Object.defineProperty(audio, "currentTime", { get: () => now.time, set: (seconds: number) => void (now.time = seconds) });
+    Object.defineProperty(audio, "paused", { get: () => now.paused });
+    Object.defineProperty(audio, "duration", { get: () => 10 });
+    await view.act(async () => audio.dispatchEvent(new window.Event("loadedmetadata")));
+    now.time = time;
+    now.paused = false;
+    await view.act(async () => {
+      audio.dispatchEvent(new window.Event("play"));
+      audio.dispatchEvent(new window.Event("timeupdate"));
+    });
+    const words = [...view.container.querySelectorAll<HTMLElement>('[data-word-index][aria-current="true"]')];
+    const sentence = view.container.querySelector("[data-segment-index]")!.hasAttribute("data-active");
+    await view.unmount();
+    return { words: words.map((w) => [w.textContent, w.style.getPropertyValue("--said")]), sentence };
+  };
+  try {
+    // b corrected: at 1.5 s B is being said, so "a" is held, said in full, not filling on as if B were not there.
+    assert.deepEqual(await litAt(2, "b", 1.5), { words: [["a", "100%"]], sentence: true });
+    // c corrected: at 2.5 s, while C is said, its sentence stays lit and "b" is held.
+    assert.deepEqual(await litAt(4, "c", 2.5), { words: [["b", "100%"]], sentence: true });
   } finally {
     media.play = play;
     media.pause = pause;

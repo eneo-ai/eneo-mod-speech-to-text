@@ -84,23 +84,31 @@ const MIN_STEP_MS = 50;
  * and whenever it is paused, it is the snapshot's. Read every frame but rounded to a step the thumb can show (a pixel of
  * an 800 px track, 50 ms at least), so the player renders when the thumb moves and not on every frame: an hour's meeting
  * moves it a pixel every 4.5 s, and a frame's render cost a fifth of a phone's main thread.
+ *
+ * The time beside it is read the same way to its whole second, also with reduced motion: it turns with the audio, where
+ * the time updates left it up to a quarter of a second behind, and renders once a second.
  */
-function useLivePosition(playback: Playback, state: PlaybackSnapshot): number {
+function useLivePosition(playback: Playback, state: PlaybackSnapshot): { atMs: number; clockMs: number } {
   const [live, setLive] = useState<number | null>(null);
+  const [second, setSecond] = useState<number | null>(null);
   const step = Math.max(MIN_STEP_MS, state.totalMs / TRACK_PX);
   useEffect(() => {
-    if (!state.playing || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    if (!state.playing) return;
+    const glide = !globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     let frame = requestAnimationFrame(function draw() {
+      const at = playback.liveAtMs();
       // The same number again renders nothing.
-      setLive(Math.round(playback.liveAtMs() / step) * step);
+      if (glide) setLive(Math.round(at / step) * step);
+      setSecond(Math.floor(at / 1_000));
       frame = requestAnimationFrame(draw);
     });
     return () => {
       cancelAnimationFrame(frame);
       setLive(null);
+      setSecond(null);
     };
   }, [playback, state.playing, step]);
-  return live ?? state.atMs;
+  return { atMs: live ?? state.atMs, clockMs: second === null ? state.atMs : second * 1_000 };
 }
 
 /**
@@ -126,7 +134,7 @@ export function AudioPlayer({
   children?: ReactNode;
 }) {
   const state = usePlaybackState(playback);
-  const atMs = useLivePosition(playback, state);
+  const { atMs, clockMs } = useLivePosition(playback, state);
   const attach = useCallback((element: HTMLAudioElement | null) => playback.attach(element), [playback]);
   // A start that waits for the audio is paused by the same button, as toggle() does.
   const pauses = state.playing || state.starting;
@@ -196,7 +204,7 @@ export function AudioPlayer({
         />
       </StackItem>
       <Text type="supporting" hasTabularNumbers textWrap="nowrap">
-        {compact ? formatClock(state.atMs) : `${formatClock(state.atMs)} / ${formatClock(state.totalMs)}`}
+        {compact ? formatClock(clockMs) : `${formatClock(clockMs)} / ${formatClock(state.totalMs)}`}
       </Text>
       {children}
     </HStack>

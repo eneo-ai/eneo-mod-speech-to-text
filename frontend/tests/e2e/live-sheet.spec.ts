@@ -275,7 +275,15 @@ test("after Stoppa, the draft keeps its reading position and the focus when the 
       focused: document.activeElement === element,
     }));
   await draft.focus();
-  await draft.evaluate((element) => void (element.scrollTop = (element.scrollHeight - element.clientHeight) / 2));
+  // A reader's scroll reaches the draft as its own scroll event, a frame later and long before a phone is turned. Until it
+  // has, the window would cross the width in the same frame, and the draft would take the scroll for the browser's cut.
+  await draft.evaluate(
+    (element) =>
+      new Promise<void>((scrolled) => {
+        element.addEventListener("scroll", () => scrolled(), { once: true });
+        element.scrollTop = (element.scrollHeight - element.clientHeight) / 2;
+      }),
+  );
   const read = await reading();
   expect(read.share, "the draft scrolls, and is read in its middle").toBeGreaterThan(0.3);
 
