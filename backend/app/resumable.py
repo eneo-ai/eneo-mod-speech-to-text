@@ -108,6 +108,11 @@ class IncomingUpload:
             try:
                 self.file_id, self.failure = await forward()
                 self.state = "complete" if self.file_id else "failed"
+            except HTTPException as error:
+                # The module's own answer, as the route would have given it: its session's end above all, which the
+                # receipt keeps without Eneo's body or code, so the page asks for the file to be sent again.
+                self.failure = UploadFailure(status=error.status_code, detail=str(error.detail)[:2048])
+                self.state = "failed"
             except Exception as error:
                 # A failure cannot leave an unobserved task or a permanently forwarding receipt.
                 logger.error("Upload forwarding failed (%s)", type(error).__name__)

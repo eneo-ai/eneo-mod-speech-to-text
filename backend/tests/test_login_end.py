@@ -314,5 +314,123 @@ class LateAndConcurrentRefusalTests(LoginEndCase):
         await asyncio.wait_for(waiting, 1)
 
 
+class Eneo:
+    """Eneo for the module's own calls: every resource call is answered ``answer``; the session route is ``route``."""
+
+    def __init__(self, answer: httpx.Response, session_answer=SESSION_ROUTE_ACCEPTS) -> None:
+        self.answer = answer
+        self.route = SessionRoute(session_answer)
+        self.calls: list[dict[str, object]] = []
+
+    async def request(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.answer
+
+    async def post(self, url: str, **kwargs):
+        self.calls.append({"url": url, **kwargs})
+        return self.answer
+
+    async def get(self, url: str, **kwargs):
+        return await self.route.get(url, **kwargs)
+
+
+FLOW, STEP, RUN, FILE = (
+    "0b6f1c9e-3d2a-4c55-9a51-7f0e2b1d4c10",
+    "5e2d8a41-9c07-4b3f-8e6a-1d2c3b4a5f60",
+    "run-1",
+    "file-1",
+)
+ORIGIN = main.settings.module_origin
+SESSION_ANSWER = {"detail": "Not authenticated"}
+
+
+class CallSiteTests(unittest.IsolatedAsyncioTestCase):
+    """Each call the module makes to Eneo with the user's token, with Eneo refusing it."""
+
+    # A request of the browser's that reaches the site: method, path, and what it sends.
+    SITES = {
+        "the proxy": ("GET", "/api/eneo/flows/", {}),
+        "a write through the proxy": ("POST", f"/api/eneo/flows/{FLOW}/runs/", {"json": {}}),
+        "a whole file's upload": ("POST", f"/api/eneo/flows/{FLOW}/steps/{STEP}/runtime-files/", {"files": {"upload_file": ("möte.webm", b"audio", "audio/webm")}}),
+        "the address of a run's audio": ("GET", f"/api/eneo/flows/{FLOW}/runs/{RUN}/input-files/{FILE}/audio", {}),
+        "the address of a generated file": ("GET", f"/api/eneo/flows/{FLOW}/runs/{RUN}/artifacts/{FILE}/content", {}),
+        "the contract read before an upload in parts": (
+            "PUT",
+            f"/api/uploads/{FLOW}/{STEP}/2f1b6e0a-7c4d-4e8f-9a1b-3c5d7e9f0a2b",
+            {"json": {"filename": "möte.webm", "content_type": "audio/webm", "size": 5}},
+        ),
+    }
+
+    def setUp(self) -> None:
+        self.addCleanup(setattr, main, "http_client", main.http_client)
+        self.addCleanup(setattr, main.module_auth, "http_client", main.module_auth.http_client)
+        main.module_auth.sessions.clear()
+        self.session_id = main.module_auth.sessions.create(a_session())
+
+    def use_eneo(self, answer: httpx.Response, session_answer=SESSION_ROUTE_ACCEPTS) -> Eneo:
+        eneo = Eneo(answer, session_answer)
+        main.http_client = eneo
+        main.module_auth.http_client = eneo
+        return eneo
+
+    async def send(self, site: str) -> httpx.Response:
+        method, path, sent = self.SITES[site]
+        headers = {"Cookie": f"{module_auth.SESSION_COOKIE}={self.session_id}", "Origin": ORIGIN, "X-Expected-User": "user-id"}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app, raise_app_exceptions=False), base_url=ORIGIN) as browser:
+            return await browser.request(method, path, headers=headers, **sent)
+
+    def assert_session_answer(self, response: httpx.Response) -> None:
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(response.headers.get("x-auth-required"), "session")
+        self.assertEqual(response.json(), SESSION_ANSWER, "the module's own answer, never Eneo's")
+        self.assertNotIn("set-cookie", response.headers, "the browser's cookie is left as it is")
+
+    async def test_a_confirmed_end_of_the_login_is_the_session_answer_at_every_call(self) -> None:
+        for site in self.SITES:
+            with self.subTest(site):
+                self.session_id = main.module_auth.sessions.create(a_session())
+                eneo = self.use_eneo(httpx.Response(401, json=REVOKED), httpx.Response(401, json=REVOKED))
+
+                response = await self.send(site)
+
+                self.assert_session_answer(response)
+                self.assertIsNone(main.module_auth.sessions.get(self.session_id))
+                self.assertEqual(len(eneo.route.calls), 1)
+                self.assertEqual(eneo.route.calls[0]["headers"]["Authorization"], "Bearer module-user-token")
+
+    async def test_a_refusal_that_is_not_the_logins_end_is_answered_as_before_and_the_session_stays(self) -> None:
+        cases = {
+            "the module's key revoked": (httpx.Response(401, json=KEY_REVOKED), 0),
+            "the key not registered": (httpx.Response(403, json=NOT_REGISTERED), 0),
+            "the user inactive": (httpx.Response(403, json=INACTIVE), 0),
+            "a 401 the session route does not confirm": (httpx.Response(401, json=REVOKED), 1),
+        }
+        for site in self.SITES:
+            for case, (answer, checks) in cases.items():
+                with self.subTest(site=site, case=case):
+                    eneo = self.use_eneo(answer)
+
+                    response = await self.send(site)
+
+                    self.assertNotIn("x-auth-required", response.headers)
+                    if site.startswith("the contract read"):
+                        self.assertEqual((response.status_code, response.json()), (502, {"detail": "The run contract could not be read"}))
+                    elif site.startswith("the address"):
+                        self.assertEqual((response.status_code, response.json()), (answer.status_code, {"detail": answer.json()}))
+                    else:
+                        self.assertEqual((response.status_code, response.json()), (answer.status_code, answer.json()), "Eneo's answer, as it is")
+                    self.assertEqual(main.module_auth.sessions.get(self.session_id).access_token, "module-user-token")
+                    self.assertEqual(len(eneo.route.calls), checks)
+
+    async def test_the_contract_reads_refusal_leaves_no_upload_and_frees_its_slot(self) -> None:
+        self.use_eneo(httpx.Response(401, json=REVOKED), httpx.Response(401, json=REVOKED))
+        slots = main.app.state.upload_slots.borrowed_tokens
+
+        self.assert_session_answer(await self.send("the contract read before an upload in parts"))
+
+        self.assertEqual(main.app.state.upload_slots.borrowed_tokens, slots)
+        self.assertEqual(main.app.state.uploads._entries, {})
+
+
 if __name__ == "__main__":
     unittest.main()

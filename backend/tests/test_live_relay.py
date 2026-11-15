@@ -30,6 +30,7 @@ from websockets.exceptions import ConnectionClosed  # noqa: E402
 from app import main, serve as launcher  # noqa: E402
 from app.limits import WS_MAX_MESSAGE_BYTES  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
+from test_login_end import KEY_REVOKED, REVOKED  # noqa: E402
 from test_module_auth import token_payload  # noqa: E402
 
 FLOW_ID = "0b6f1c9e-3d2a-4c55-9a51-7f0e2b1d4c10"
@@ -71,6 +72,13 @@ class FakeEneoApi:
     def __init__(self) -> None:
         self.ticket = ticket_response()
         self.calls: list[dict[str, object]] = []
+        # Eneo's session route, which confirms a refused token's end; it accepts the token unless told otherwise.
+        self.session = httpx.Response(200, json={"module_key": "speech-to-text", "tenant_id": "tenant-id", "user": {"id": "user-id", "email": "u@x"}})
+        self.session_checks: list[dict[str, object]] = []
+
+    async def get(self, url: str, **kwargs):
+        self.session_checks.append({"url": url, **kwargs})
+        return self.session
 
     async def post(self, url: str, **kwargs):
         self.calls.append({"url": url, **kwargs})
@@ -412,6 +420,36 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
             )
             self.assert_closed(browser)
         self.assertEqual(self.eneo_socket.handshakes, [])
+
+    def test_a_ticket_refused_for_a_login_eneo_has_ended_closes_the_socket_as_the_sessions_end(self) -> None:
+        self.eneo_api.ticket = httpx.Response(401, json=REVOKED)
+        self.eneo_api.session = httpx.Response(401, json=REVOKED)
+        session_id = self.client.cookies.get(SESSION_COOKIE)
+
+        with self.connect() as browser:
+            # No error event: the close says it, as for a session that ends under an open socket, and the page asks
+            # for a new login while its recording goes on.
+            with self.assertRaises(WebSocketDisconnect) as ended:
+                browser.receive_json()
+        self.assertEqual((ended.exception.code, ended.exception.reason), (1008, "session_ended"))
+        self.assertIsNone(main.module_auth.sessions.get(session_id))
+        self.assertEqual(len(self.eneo_api.session_checks), 1)
+        self.assertEqual(self.eneo_socket.handshakes, [])
+
+    def test_a_ticket_refused_for_a_login_eneo_has_not_ended_is_one_error_event_as_before(self) -> None:
+        for refusal, checks in ((REVOKED, 1), (KEY_REVOKED, 0)):
+            with self.subTest(refusal["code"]):
+                self.eneo_api.ticket = httpx.Response(401, json=refusal)
+                self.eneo_api.session_checks = []
+
+                with self.connect() as browser:
+                    self.assertEqual(
+                        browser.receive_json(),
+                        {"type": "error", "code": refusal["code"], "message": refusal["message"], "retryable": False},
+                    )
+                    self.assert_closed(browser)
+                self.assertIsNotNone(main.module_auth.sessions.get(self.client.cookies.get(SESSION_COOKIE)))
+                self.assertEqual(len(self.eneo_api.session_checks), checks)
 
     def test_unreachable_eneo_arrives_as_one_retryable_error_event(self) -> None:
         failures = {

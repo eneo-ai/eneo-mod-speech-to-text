@@ -580,6 +580,11 @@ class ModuleAuth:
         connection.state.module_session_id = session_id
         return session
 
+    def require_unended(self, connection: HTTPConnection) -> None:
+        """``session_ended()`` if the session this request was admitted under has ended since (``require_session``)."""
+        if self.sessions.get(connection.state.module_session_id) is None:
+            raise _refusal(connection, session_ended())
+
     async def login_refused(self, connection: HTTPConnection, answer: httpx.Response) -> bool:
         """Whether Eneo's ``answer`` to a call made with this request's token means its login is over, the session
         then gone. True: the caller answers ``session_ended()`` (a socket closes with ``session_ended``), never Eneo's

@@ -9,7 +9,8 @@ from uuid import uuid4
 import anyio
 import httpx
 
-from test_body_limits import Case, ORIGIN
+from test_body_limits import Case, ORIGIN, a_session
+from test_login_end import REVOKED, SessionRoute
 from app import main
 from app import resumable
 
@@ -378,3 +379,135 @@ class ResumableTests(Case):
         self.assertEqual(status["failure"]["status"], 504)
         self.assertEqual((await self.client.post(self.path + "/complete")).json(), status)
         self.assertEqual(len(self.forwarded), 1)
+
+    def refused_by_eneo(self, *, confirmed: bool) -> SessionRoute:
+        """Eneo refuses the forwarded file with a token it no longer takes, once the test releases it; its session
+        route refuses the token too (``confirmed``: the login has ended) or accepts it."""
+        async def refused(url, **kwargs):
+            self.forwarded.append(url)
+            self.forward_started.set()
+            await self.release_forward.wait()
+            return httpx.Response(401, json=REVOKED)
+
+        self.eneo.post = refused
+        route = SessionRoute(httpx.Response(401, json=REVOKED) if confirmed else httpx.Response(200, json={}))
+        self.addCleanup(setattr, main.module_auth, "http_client", main.module_auth.http_client)
+        main.module_auth.http_client = route
+        return route
+
+    async def completed(self):
+        """The whole file sent and its completion asked: the receipt, forwarding."""
+        await self.create()
+        await self.part(self.data, 0)
+        self.assertEqual((await self.client.post(self.path + "/complete")).json()["state"], "forwarding")
+        await asyncio.wait_for(self.forward_started.wait(), 1)
+        (entry,) = main.app.state.uploads._entries.values()
+        return entry
+
+    def signed_in_again(self) -> dict[str, str]:
+        """The same user's new login: another session, whose cookie the browser sends from now on."""
+        return {"Cookie": f"{main.SESSION_COOKIE}={a_session()}"}
+
+    def assert_session_answer(self, response):
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(response.headers.get("x-auth-required"), "session")
+        self.assertEqual(response.json(), {"detail": "Not authenticated"})
+
+    async def test_a_login_eneo_ends_during_the_forward_fails_the_receipt_with_the_session_answer(self):
+        route = self.refused_by_eneo(confirmed=True)
+        heavy, uploads = main.app.state.heavy_io_slots.borrowed_tokens, main.app.state.upload_slots.borrowed_tokens
+        entry = await self.completed()
+        self.release_forward.set()
+        await asyncio.wait_for(asyncio.shield(entry.task), 1)
+
+        # The session is gone: the next status read asks for a new login, and the page keeps its file.
+        self.assert_session_answer(await self.client.get(self.path))
+        self.assertIsNone(main.module_auth.sessions.get(self.session_id))
+        self.assertEqual(len(route.calls), 1)
+        # The spool and the capacity it held are let go, as after any failure.
+        self.assertTrue(entry.file.file.closed)
+        self.assertEqual(main.app.state.heavy_io_slots.borrowed_tokens, heavy)
+        self.assertEqual(main.app.state.upload_slots.borrowed_tokens, uploads)
+        # After the new login the read finds the receipt: failed with the module's own answer, never Eneo's, so the
+        # page says the file was not sent and lets the person send it again.
+        again = await self.client.get(self.path, headers=self.signed_in_again())
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertNotIn("x-auth-required", again.headers)
+        self.assertEqual(again.json()["state"], "failed")
+        self.assertEqual(again.json()["failure"], {"status": 401, "detail": "Not authenticated", "code": None})
+        self.assertEqual(len(self.forwarded), 1, "nothing is forwarded again by itself")
+
+    async def test_a_refusal_eneo_does_not_confirm_during_the_forward_keeps_the_session_and_eneos_failure(self):
+        route = self.refused_by_eneo(confirmed=False)
+        entry = await self.completed()
+        self.release_forward.set()
+        await asyncio.wait_for(asyncio.shield(entry.task), 1)
+
+        status = await self.client.get(self.path)
+
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(status.json()["failure"]["code"], "authentication_error", "Eneo's failure, as before")
+        self.assertIsNotNone(main.module_auth.sessions.get(self.session_id))
+        self.assertEqual(len(route.calls), 1)
+
+    async def test_a_status_read_admitted_before_the_end_gets_the_session_answer_once_it_has_come(self):
+        # The read is let in, then waits in the store's cleanup while the forward's refusal ends the session; it must
+        # not hand the receipt over as if the login held, or the page would stop asking without a new login.
+        self.refused_by_eneo(confirmed=True)
+        entry = await self.completed()
+        store = main.app.state.uploads
+        expire, cleaning, go_on = store.expire, asyncio.Event(), asyncio.Event()
+
+        async def held():
+            cleaning.set()
+            await go_on.wait()
+            await expire()
+
+        with patch.object(store, "expire", held):
+            reading = asyncio.create_task(self.client.get(self.path))
+            await asyncio.wait_for(cleaning.wait(), 1)
+            self.release_forward.set()
+            await asyncio.wait_for(asyncio.shield(entry.task), 1)
+            self.assertEqual(entry.state, "failed", "the session ended inside the forward, before the receipt failed")
+            self.assertIsNone(main.module_auth.sessions.get(self.session_id))
+            go_on.set()
+            response = await asyncio.wait_for(reading, 1)
+
+        self.assert_session_answer(response)
+
+    async def test_a_receipt_that_completes_while_the_session_ends_gives_its_file_after_the_new_login(self):
+        entry = await self.completed()
+        main.module_auth.sessions.delete(self.session_id)  # another call's refusal ended the login meanwhile
+        self.release_forward.set()
+        await asyncio.wait_for(asyncio.shield(entry.task), 1)
+
+        self.assert_session_answer(await self.client.get(self.path))
+        again = await self.client.get(self.path, headers=self.signed_in_again())
+        self.assertEqual((again.status_code, again.json()["state"], again.json()["file_id"]), (200, "complete", "eneo-file"))
+
+    async def test_a_login_eneo_ends_at_the_contract_read_keeps_the_whole_file_for_the_send_after_the_new_login(self):
+        await self.create()
+        await self.part(self.data, 0)
+        contract = self.eneo.request
+
+        async def refused(**kwargs):
+            return httpx.Response(401, json=REVOKED)
+
+        self.eneo.request, forward = refused, self.eneo.post
+        route = self.refused_by_eneo(confirmed=True)
+        self.eneo.post = forward
+
+        self.assert_session_answer(await self.client.post(self.path + "/complete"))
+        self.assertEqual(self.forwarded, [])
+        self.assertEqual(len(route.calls), 1)
+
+        self.eneo.request = contract
+        new_login = self.signed_in_again()
+        self.assertEqual((await self.client.get(self.path, headers=new_login)).json()["offset"], len(self.data), "the file is all there")
+        self.release_forward.set()
+        self.assertEqual((await self.client.post(self.path + "/complete", headers=new_login)).status_code, 200)
+        (entry,) = main.app.state.uploads._entries.values()
+        await asyncio.wait_for(asyncio.shield(entry.task), 1)
+        status = (await self.client.get(self.path, headers=new_login)).json()
+        self.assertEqual((status["state"], status["file_id"]), ("complete", "eneo-file"))
+        self.assertEqual(len(self.forwarded), 1, "stored once")
