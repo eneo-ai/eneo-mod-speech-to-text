@@ -409,8 +409,9 @@ test("a cancelled probe lets go of its audio at once", async () => {
   }
 });
 
-test("a probe whose audio fails has the page read the login's status once a round, and the player stays playable", async () => {
-  // A probe asks for a signed address of the module's: one the session's end refused fails like any other.
+test("each probe whose audio fails has the page read the login's status, a probe cut short does not, and the player stays playable", async () => {
+  // A probe asks for a signed address of the module's: one the session's end refused fails like any other, and the
+  // session may end between two probes.
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   const calls: { url: string; fail: () => void; finish: (ms: number | null) => void }[] = [];
   const probe = (url: string, _signal: AbortSignal, onFailed?: () => void) =>
@@ -426,11 +427,11 @@ test("a probe whose audio fails has the page read the login's status once a roun
   calls[1].fail();
   calls[1].finish(null);
   await settle();
-  assert.equal(reads, 1, "one status read for the probe that failed");
+  assert.equal(reads, 1, "a status read for the probe that failed");
   calls[2].fail();
   calls[2].finish(null);
   await settle();
-  assert.equal(reads, 1, "one a round, however many fail");
+  assert.equal(reads, 2, "and one for the next in the same round");
   assert.equal(playback.getSnapshot().unavailable, false, "the part that plays is not marked broken");
   assert.equal(playback.getSnapshot().lengthsMs[1], 2_000);
 
@@ -438,12 +439,7 @@ test("a probe whose audio fails has the page read the login's status once a roun
   playback.attach(null);
   calls[3].fail();
   await settle();
-  assert.equal(reads, 1, "a probe cut short says nothing");
-
-  playback.attach(media);
-  assert.equal(calls[4].url, "/e", "a new round");
-  calls[4].fail();
-  assert.equal(reads, 2);
+  assert.equal(reads, 2, "a probe cut short says nothing");
 });
 
 test("a probe tells of its audio's error, and not of a cancel", async () => {
@@ -654,6 +650,51 @@ test("audio that fails asks for the login's status once: a session that is gone 
     } finally {
       end();
     }
+  }
+});
+
+test("a probe whose audio fails after the session has ended covers the page, though an earlier probe's failure found the login holding", async () => {
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  let status: AuthStatus = { authenticated: true, user: anna, session_ends_in: 8 * 3600 };
+  let reads = 0;
+  const made: { onerror: (() => void) | null }[] = [];
+  class FakeAudio {
+    src = "";
+    preload = "";
+    duration = Number.NaN;
+    onloadedmetadata: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() {
+      made.push(this);
+    }
+    removeAttribute() {}
+    load() {}
+  }
+  const global = globalThis as { Audio?: unknown };
+  global.Audio = FakeAudio;
+  const end = loginState.begin(anna, () => {
+    reads += 1;
+    loginState.observe(status);
+  });
+  try {
+    const parts = ["/a", "/b", "/c"].map((url) => ({ url, durationMs: null }));
+    let playback: Playback | undefined;
+    function Player() {
+      playback = usePlayback(parts);
+      return createElement(AudioPlayer, { playback, label: "Inspelning" });
+    }
+    const view = await mount(createElement(Player));
+    assert.equal(made.length, 2, "the parts after the loading one are probed");
+
+    await view.act(async () => made[0].onerror?.());
+    assert.deepEqual([reads, loginState.signedOut], [1, false], "the login held");
+    status = { authenticated: false, user: null };
+    await view.act(async () => made[1].onerror?.());
+    assert.deepEqual([reads, loginState.signedOut], [2, true], "the cover asks for a new login");
+    assert.equal(playback!.getSnapshot().unavailable, false, "the player stays playable");
+  } finally {
+    end();
+    delete global.Audio;
   }
 });
 

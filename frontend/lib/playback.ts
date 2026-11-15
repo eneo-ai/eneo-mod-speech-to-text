@@ -120,9 +120,9 @@ export class Playback {
   private snapshot: PlaybackSnapshot;
 
   /**
-   * `failed` is told once for each failure of the audio (until reload()), and once for a round of length probes in which
-   * one fails: an address of the module's that the session's end refused fails like any other, and the page's login
-   * owner reads the status again to tell them apart.
+   * `failed` is told once for each failure of the audio (until reload()), and once for each length probe whose audio
+   * fails: an address of the module's that the session's end refused fails like any other, and the page's login owner
+   * reads the status again to tell them apart.
    */
   constructor(
     sources: readonly PlayerSource[] = [],
@@ -428,13 +428,10 @@ export class Playback {
     const queue = sources.flatMap((source, i) =>
       source.durationMs == null && this.learned[i] == null && !this.probed.has(i) && i !== this.part ? [i] : [],
     );
-    // A probe's audio that fails may be the session's end: `failed` is told once a round, and the part is not marked
-    // unavailable, since the one that plays may be fine.
-    let told = false;
+    // A probe's audio that fails may be the session's end, which can come between two probes: `failed` is told for each,
+    // and the part is not marked unavailable, since the one that plays may be fine.
     const failed = (): void => {
-      if (told || run.signal.aborted) return;
-      told = true;
-      this.failed();
+      if (!run.signal.aborted) this.failed();
     };
     const next = (): void => {
       const i = queue.shift();
