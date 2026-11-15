@@ -48,7 +48,7 @@ from websockets.exceptions import (
 from app.accent import etag, theme_css
 from app.config import load_settings
 from app.limits import UPLOAD_ENVELOPE_BYTES, BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, capacity_slot, declared_length, too_large
-from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
+from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable, session_ended
 from app.resumable import CHUNK_BYTES, IncomingUpload, UploadFailure, UploadMetadata, UploadStatus, UploadStore
 from app.upstream import CONNECT_TIMEOUT_SECONDS, SMALL_ANSWER, SMALL_ANSWER_BYTES, SMALL_CALL_TIMEOUT, STREAMED, UnboundedAnswer, make_client
 from app.web import add_security_headers, compress_json, etag_matches, serve_web
@@ -519,6 +519,8 @@ async def _proxy_multipart_upload(
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error("Upload was answered with a redirect: url=%s status=%s", upstream_url, upstream.status_code)
         return _upstream_redirect()
+    if await module_auth.login_refused(request, upstream):
+        raise session_ended()
 
     return Response(
         content=upstream.content,
@@ -555,6 +557,8 @@ async def _check_upload_contract(request: Request, flow_id: UUID, step_id: UUID,
     except (httpx.RequestError, TimeoutError):
         raise HTTPException(502, "The run contract could not be read") from None
     if response.status_code != 200:
+        if await module_auth.login_refused(request, response):
+            raise session_ended()
         raise HTTPException(502, "The run contract could not be read")
     try:
         contract = response.json()
@@ -596,7 +600,11 @@ async def create_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, metadata:
 
 @app.get("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
 async def upload_status(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> UploadStatus:
-    return (await _incoming(request, flow_id, step_id, upload_id)).status()
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    # The forward ends the session inside it, before its receipt fails, when Eneo has ended the login; a read let in
+    # before that, which waited above, says so too instead of handing over the receipt as if the login held.
+    module_auth.require_unended(request)
+    return entry.status()
 
 
 @app.patch("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
@@ -849,6 +857,8 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
         logger.exception("Signed URL request failed: path=%s", mint_path)
         raise _MintUnreachable from None
     if upstream.status_code >= 400:
+        if await module_auth.login_refused(request, upstream):
+            raise session_ended()
         try:
             detail = upstream.json()
         except ValueError:
@@ -1136,6 +1146,8 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             upstream.status_code,
         )
         return _upstream_redirect()
+    if await module_auth.login_refused(request, upstream):
+        raise session_ended()
 
     resp_headers = {
         k: v
@@ -1221,6 +1233,10 @@ class _LiveRefused(Exception):
         }
 
 
+class _LiveSessionEnded(Exception):
+    """Eneo refused the ticket for a login it has ended: the socket closes as at the session's end, with no event."""
+
+
 def _eneo_unreachable() -> _LiveRefused:
     return _LiveRefused(
         "upstream_unreachable", "Eneo could not be reached.", retryable=True
@@ -1247,6 +1263,8 @@ async def _open_live_session(
         logger.warning("Live transcription ticket: Eneo unreachable", exc_info=True)
         raise _eneo_unreachable() from None
     if response.status_code >= 400:
+        if await module_auth.login_refused(websocket, response):
+            raise _LiveSessionEnded
         try:
             error = _EneoError.model_validate(response.json())
         except ValueError:
@@ -1411,6 +1429,10 @@ async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID)
             eneo = await _open_live_session(websocket, flow_id, step_id)
         except _LiveRefused as refused:
             await _close_browser_socket(websocket, event=refused.event)
+            return
+        except _LiveSessionEnded:
+            code, reason = _LIVE_SESSION_ENDED
+            await _close_browser_socket(websocket, code=code, reason=reason)
             return
         try:
             code, reason = await _relay_live_session(websocket, eneo)

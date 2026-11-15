@@ -3,8 +3,10 @@ import test, { afterEach } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { AudioPlayer } from "../components/flow/AudioPlayer";
+import { AudioPlayer, usePlayback } from "../components/flow/AudioPlayer";
 
+import type { AuthStatus } from "./api";
+import { loginState } from "./login-state";
 import { Playback, probeLength, type MediaLike, type PlayerSource } from "./playback";
 import { cleanup, installDom, mount } from "./test-dom";
 
@@ -407,6 +409,74 @@ test("a cancelled probe lets go of its audio at once", async () => {
   }
 });
 
+test("each probe whose audio fails has the page read the login's status, a probe cut short does not, and the player stays playable", async () => {
+  // A probe asks for a signed address of the module's: one the session's end refused fails like any other, and the
+  // session may end between two probes.
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const calls: { url: string; fail: () => void; finish: (ms: number | null) => void }[] = [];
+  const probe = (url: string, _signal: AbortSignal, onFailed?: () => void) =>
+    new Promise<number | null>((resolve) => calls.push({ url, fail: () => onFailed?.(), finish: resolve }));
+  let reads = 0;
+  const parts = ["/a", "/b", "/c", "/d", "/e"].map((url) => ({ url, durationMs: null }));
+  const playback = new Playback(parts, probe, () => (reads += 1));
+  const media = new FakeMedia();
+  playback.attach(media);
+  assert.deepEqual(calls.map((call) => call.url), ["/b", "/c", "/d"]);
+
+  calls[0].finish(2_000);
+  calls[1].fail();
+  calls[1].finish(null);
+  await settle();
+  assert.equal(reads, 1, "a status read for the probe that failed");
+  calls[2].fail();
+  calls[2].finish(null);
+  await settle();
+  assert.equal(reads, 2, "and one for the next in the same round");
+  assert.equal(playback.getSnapshot().unavailable, false, "the part that plays is not marked broken");
+  assert.equal(playback.getSnapshot().lengthsMs[1], 2_000);
+
+  assert.equal(calls[3].url, "/e");
+  playback.attach(null);
+  calls[3].fail();
+  await settle();
+  assert.equal(reads, 2, "a probe cut short says nothing");
+});
+
+test("a probe tells of its audio's error, and not of a cancel", async () => {
+  const made: { onerror: (() => void) | null; src: string }[] = [];
+  class FakeAudio {
+    src = "";
+    preload = "";
+    duration = Number.NaN;
+    onloadedmetadata: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() {
+      made.push(this);
+    }
+    removeAttribute(name: string) {
+      if (name === "src") this.src = "";
+    }
+    load() {}
+  }
+  const global = globalThis as { Audio?: unknown };
+  global.Audio = FakeAudio;
+  try {
+    let told = 0;
+    const failing = probeLength("/p1", undefined, () => (told += 1));
+    made[0].onerror?.();
+    assert.equal(await failing, null);
+    assert.equal(told, 1, "the error is told");
+
+    const cancel = new AbortController();
+    const cancelled = probeLength("/p2", cancel.signal, () => (told += 1));
+    cancel.abort();
+    assert.equal(await cancelled, null);
+    assert.equal(told, 1, "a cancel is not");
+  } finally {
+    delete global.Audio;
+  }
+});
+
 test("a part whose audio does not say its length grows as it plays and learns it at its end", () => {
   const { playback, media } = started([
     { url: "/a", durationMs: null },
@@ -544,6 +614,88 @@ test("every player says when its audio cannot be played, beside its controls, an
   await view.act(async () => again.click());
   assert.equal(playback.getSnapshot().unavailable, false, "the part is loaded again");
   assert.equal(view.container.querySelector('[role="alert"]'), null);
+});
+
+test("audio that fails asks for the login's status once: a session that is gone covers the page, one that holds only says the audio could not be played", async () => {
+  // The audio's address is the module's: a session that has ended answers it 401, which the element reads as an error
+  // like any other, with no header to tell. Nothing else on the page asks meanwhile (no poll, no socket).
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const gone: AuthStatus = { authenticated: false, user: null };
+  const holds: AuthStatus = { authenticated: true, user: anna, session_ends_in: 8 * 3600 };
+  for (const [status, covered] of [[gone, true], [holds, false]] as const) {
+    let reads = 0;
+    const end = loginState.begin(anna, () => {
+      reads += 1;
+      loginState.observe(status);
+    });
+    try {
+      let playback: Playback | undefined;
+      function Player() {
+        playback = usePlayback(PARTS);
+        return createElement(AudioPlayer, { playback, label: "Inspelning" });
+      }
+      const view = await mount(createElement(Player));
+      // The element's error, and the play it refused after it: one failure.
+      await view.act(async () => {
+        playback!.onError();
+        playback!.onError();
+      });
+      assert.equal(reads, 1, "one status read for one failure");
+      assert.equal(loginState.signedOut, covered, covered ? "the cover asks for a new login" : "an ordinary audio error signs nobody out");
+      assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /^Ljudet kunde inte spelas upp\./);
+      // Försök igen, and a second failure: asked again.
+      await view.act(async () => playback!.reload());
+      await view.act(async () => playback!.onError());
+      assert.equal(reads, 2);
+    } finally {
+      end();
+    }
+  }
+});
+
+test("a probe whose audio fails after the session has ended covers the page, though an earlier probe's failure found the login holding", async () => {
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  let status: AuthStatus = { authenticated: true, user: anna, session_ends_in: 8 * 3600 };
+  let reads = 0;
+  const made: { onerror: (() => void) | null }[] = [];
+  class FakeAudio {
+    src = "";
+    preload = "";
+    duration = Number.NaN;
+    onloadedmetadata: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() {
+      made.push(this);
+    }
+    removeAttribute() {}
+    load() {}
+  }
+  const global = globalThis as { Audio?: unknown };
+  global.Audio = FakeAudio;
+  const end = loginState.begin(anna, () => {
+    reads += 1;
+    loginState.observe(status);
+  });
+  try {
+    const parts = ["/a", "/b", "/c"].map((url) => ({ url, durationMs: null }));
+    let playback: Playback | undefined;
+    function Player() {
+      playback = usePlayback(parts);
+      return createElement(AudioPlayer, { playback, label: "Inspelning" });
+    }
+    const view = await mount(createElement(Player));
+    assert.equal(made.length, 2, "the parts after the loading one are probed");
+
+    await view.act(async () => made[0].onerror?.());
+    assert.deepEqual([reads, loginState.signedOut], [1, false], "the login held");
+    status = { authenticated: false, user: null };
+    await view.act(async () => made[1].onerror?.());
+    assert.deepEqual([reads, loginState.signedOut], [2, true], "the cover asks for a new login");
+    assert.equal(playback!.getSnapshot().unavailable, false, "the player stays playable");
+  } finally {
+    end();
+    delete global.Audio;
+  }
 });
 
 test("in a tab out of view the player renders nothing as the audio plays on, and shows where it is when the tab is back", async () => {

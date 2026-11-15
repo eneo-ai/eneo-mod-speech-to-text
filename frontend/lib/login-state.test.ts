@@ -339,6 +339,23 @@ test("a user change with no way to read the status again still covers the page",
   assert.equal(loginState.signedOut, true);
 });
 
+test("a failure that cannot say why (the audio element reads no header) reads the status again and covers nothing itself", (t) => {
+  let reread = 0;
+  t.after(loginState.begin(anna, () => (reread += 1)));
+  loginState.recheck();
+  assert.equal(reread, 1);
+  assert.equal(loginState.signedOut, false, "the status read decides");
+  loginState.observe(signedOut); // what it said: the session is gone
+  assert.equal(loginState.signedOut, true);
+});
+
+test("with no signed-in page there is no status to read again", () => {
+  let reread = 0;
+  loginState.begin(anna, () => (reread += 1))();
+  loginState.recheck();
+  assert.equal(reread, 0);
+});
+
 test("an upload for another user's session covers the page and is not sent again, whoever signs in next", async (t) => {
   signedInPage(t, []);
   const sent = answeringXhr(t, 409, { detail: "user_changed" });

@@ -469,7 +469,8 @@ def refusals(op: Op) -> dict[str, Any]:
     responses: dict[str, Any] = {}
     if op.session:
         responses["401"] = reply(
-            "Ingen giltig session. Sidan går till inloggningen.",
+            "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan "
+            "ber om en ny inloggning.",
             json_of(ERROR),
             {"X-Auth-Required": {"description": "Alltid `session`.", "schema": {"type": "string"}}},
         )
@@ -590,7 +591,9 @@ COMPONENTS: dict[str, Any] = {
     "responses": {
         "EneoAnswer": reply(
             "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett "
-            "längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
+            "längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det. "
+            "Undantag: en 401 `authentication_error` som Eneos sessionsrutt bekräftar avslutar sessionen och blir "
+            "modulens 401 med `X-Auth-Required: session`.",
             {"*/*": {"schema": {"$ref": "#/components/schemas/EneoPayload"}}},
         ),
         "EneoRefusal": reply(

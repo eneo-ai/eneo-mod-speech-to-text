@@ -115,7 +115,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -242,7 +242,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -374,7 +374,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -544,7 +544,7 @@
             "description": "Temporärfilen är stängd och platsen är ledig."
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -676,7 +676,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -1225,7 +1225,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -1497,7 +1497,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -1681,7 +1681,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -1792,7 +1792,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -1888,7 +1888,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -1984,7 +1984,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2080,7 +2080,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2176,7 +2176,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2283,7 +2283,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2422,7 +2422,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2527,7 +2527,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2632,7 +2632,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2746,7 +2746,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2851,7 +2851,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -2974,7 +2974,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3101,7 +3101,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3253,7 +3253,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3405,7 +3405,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3566,7 +3566,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3705,7 +3705,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3832,7 +3832,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -3993,7 +3993,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -4154,7 +4154,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -4315,7 +4315,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen giltig session, också när Eneo har avslutat inloggningen (till exempel efter ett lösenordsbyte). Sidan ber om en ny inloggning. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -4454,7 +4454,7 @@
     },
     "responses": {
       "EneoAnswer": {
-        "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst MAX_RESPONSE_BYTES; ett längre svar blir 502 upstream_too_large). Modulen lägger inget till och beskriver inget av det.",
+        "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst MAX_RESPONSE_BYTES; ett längre svar blir 502 upstream_too_large). Modulen lägger inget till och beskriver inget av det. Undantag: en 401 authentication_error som Eneos sessionsrutt bekräftar avslutar sessionen och blir modulens 401 med X-Auth-Required: session.",
         "content": {
           "*/*": {
             "schema": {

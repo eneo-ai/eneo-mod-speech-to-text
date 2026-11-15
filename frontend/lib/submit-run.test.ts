@@ -12,6 +12,7 @@ import {
   type Json,
   type RunContract,
 } from "./api";
+import { errorAdvice } from "./errors";
 import { fakeWebLocks } from "./fake-web-locks";
 import { loginState } from "./login-state";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
@@ -436,6 +437,50 @@ test("a lost completion receipt never silently starts another upload", async (t)
   await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), TypeError);
   await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), { code: "upload_forward_failed" });
   assert.deepEqual(methods, ["PUT", "POST", "GET"]);
+});
+
+test("a forward that ended the session asks for the login, and its receipt, read after the new login, asks for the file again", async (t) => {
+  // The module ends the session when Eneo confirms that the login is over while the file is forwarded: its receipt keeps
+  // the failure as its own (401, no code), and the status read that meets the ended session is answered for the session.
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const user = { id: "upload-user", email: "upload@example.test" };
+  t.after(loginState.begin(user));
+  const partSize = 4 * 1024 * 1024;
+  const file = new Blob([new Uint8Array(partSize + 16)], { type: "audio/webm" });
+  const status = { offset: 0, chunk_size: partSize, state: "receiving", file_id: null, failure: null as unknown };
+  const asked: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    asked.push(`${init.method ?? "GET"} ${url.endsWith("/complete") ? "complete" : "upload"}`);
+    if (init.method === "POST") status.state = "forwarding";
+    else if (!init.method && asked.filter((call) => call === "GET upload").length === 1) {
+      status.state = "failed";
+      status.failure = { status: 401, detail: "Not authenticated", code: null };
+      return Response.json({ detail: "Not authenticated" }, { status: 401, headers: { "X-Auth-Required": "session" } });
+    }
+    return Response.json(status);
+  });
+  const kept: unknown[] = [];
+  const sending = uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm", { onHandle: async (handle) => void kept.push(handle) });
+  await until(() => FakeXhr.made.length === 1);
+  status.offset = partSize;
+  FakeXhr.made[0].answer(200, status);
+  await until(() => FakeXhr.made.length === 2);
+  status.offset = file.size;
+  FakeXhr.made[1].answer(200, status);
+  // The receipt is read again a second after the completion.
+  for (let i = 0; i < 60 && !loginState.signedOut; i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(loginState.signedOut, true, "the page is covered");
+  assert.deepEqual(asked, ["PUT upload", "POST complete", "GET upload"], "the read met the ended session");
+  loginState.observe({ authenticated: true, user, session_ends_in: 3600 }); // the same person signed in again
+  const refusal = await sending.catch((error: unknown) => error);
+  assert.deepEqual(asked.slice(3), ["GET upload"], "the read went again, once, and nothing was sent again");
+  assert.ok(refusal instanceof ApiError);
+  assert.deepEqual([refusal.status, refusal.code], [401, undefined]);
+  assert.equal(errorAdvice(refusal).message, "Inloggningen hade gått ut och det här skickades inte. Försök igen.");
+  assert.equal(kept.at(-1), null, "the next send makes a new upload");
 });
 
 test("an upload cancelled while the completion's answer is read is a cancel, and the next send reads the receipt instead of uploading again", async (t) => {

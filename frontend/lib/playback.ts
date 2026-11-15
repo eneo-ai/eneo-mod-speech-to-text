@@ -48,8 +48,11 @@ export interface PlaybackSnapshot {
   lengthsMs: readonly number[];
 }
 
-/** A part's length from its header, or null when the audio cannot tell or the probe is cancelled. */
-export function probeLength(url: string, signal?: AbortSignal): Promise<number | null> {
+/**
+ * A part's length from its header, or null when the audio cannot tell or the probe is cancelled. `onFailed` is told of
+ * the audio's error only, never of a cancel or the time limit.
+ */
+export function probeLength(url: string, signal?: AbortSignal, onFailed?: () => void): Promise<number | null> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve(null);
     const audio = new Audio();
@@ -67,7 +70,10 @@ export function probeLength(url: string, signal?: AbortSignal): Promise<number |
     signal?.addEventListener("abort", cancel);
     audio.preload = "metadata";
     audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000) : null);
-    audio.onerror = cancel;
+    audio.onerror = () => {
+      onFailed?.();
+      cancel();
+    };
     audio.src = url;
   });
 }
@@ -113,9 +119,15 @@ export class Playback {
   private listeners = new Set<() => void>();
   private snapshot: PlaybackSnapshot;
 
+  /**
+   * `failed` is told once for each failure of the audio (until reload()), and once for each length probe whose audio
+   * fails: an address of the module's that the session's end refused fails like any other, and the page's login owner
+   * reads the status again to tell them apart.
+   */
   constructor(
     sources: readonly PlayerSource[] = [],
-    private readonly probe: (url: string, signal: AbortSignal) => Promise<number | null> = probeLength,
+    private readonly probe: (url: string, signal: AbortSignal, onFailed?: () => void) => Promise<number | null> = probeLength,
+    private readonly failed: () => void = () => undefined,
   ) {
     this.sources = sources;
     this.snapshot = this.read();
@@ -361,6 +373,8 @@ export class Playback {
   };
 
   onError = (): void => {
+    // The element's error and the play it refused after it are one failure.
+    if (!this.unavailable) this.failed();
     this.unavailable = true;
     this.playing = false;
     this.buffering = false;
@@ -414,11 +428,16 @@ export class Playback {
     const queue = sources.flatMap((source, i) =>
       source.durationMs == null && this.learned[i] == null && !this.probed.has(i) && i !== this.part ? [i] : [],
     );
+    // A probe's audio that fails may be the session's end, which can come between two probes: `failed` is told for each,
+    // and the part is not marked unavailable, since the one that plays may be fine.
+    const failed = (): void => {
+      if (!run.signal.aborted) this.failed();
+    };
     const next = (): void => {
       const i = queue.shift();
       if (i === undefined || run.signal.aborted) return;
       if (this.learned[i] != null) return next();
-      void this.probe(sources[i].url, run.signal)
+      void this.probe(sources[i].url, run.signal, failed)
         .catch(() => null)
         .then((ms) => {
           if (run.signal.aborted) return;
