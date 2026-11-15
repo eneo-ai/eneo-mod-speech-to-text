@@ -208,8 +208,9 @@ export async function logout() {
   return request<{ ok: true }>("/api/auth/logout", { method: "POST" });
 }
 
-export async function authStatus() {
-  return request<AuthStatus>("/api/auth/status");
+/** `signal`: the caller's own end for the question, when a newer one replaces it. */
+export async function authStatus(signal?: AbortSignal) {
+  return request<AuthStatus>("/api/auth/status", { signal });
 }
 
 // ---------- The build ----------

@@ -50,7 +50,9 @@ export default function LoginPage() {
   );
 
   useEffect(() => {
+    // Försök igen asks afresh and lets the earlier question go; its end is no failure to show (`cancelled`).
     let cancelled = false;
+    const ask = new AbortController();
     const params = new URLSearchParams(window.location.search);
     const failure = params.get("auth_error");
     // A login window whose sign-in failed after its state was gone (the backend no longer knew it was one) belongs on its
@@ -69,7 +71,7 @@ export default function LoginPage() {
       // The address is cleaned, and where the sign-in was going stays in the entry's state: a reload (Försök igen) keeps it.
       void navigate("/", { replace: true, state: next ? { next } : null });
     }
-    authStatus()
+    authStatus(ask.signal)
       .then((s) => {
         if (cancelled) return;
         if (s.authenticated) void navigate(next ?? "/flows", { replace: true });
@@ -85,6 +87,7 @@ export default function LoginPage() {
       });
     return () => {
       cancelled = true;
+      ask.abort();
     };
   }, [navigate, next, attempt]);
 
