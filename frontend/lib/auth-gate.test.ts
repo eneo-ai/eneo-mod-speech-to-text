@@ -297,3 +297,61 @@ test("a person signing in clears the confirmed words that another person left in
   assert.equal(window.localStorage.getItem(theirs), null, "the one before's confirmations are gone");
   assert.ok(window.localStorage.getItem(mine), "her own stay");
 });
+
+// Försök igen while the check before it hangs: the earlier question is let go (tests/e2e/slow-waits.spec.ts), and an
+// answer to it that comes all the same, as one already on its way would, decides nothing. The stand-in fetch here answers
+// whatever its signal says. Each way the earlier check can end: signed in as another person, signed out, an error.
+for (const [ending, earlier] of [
+  ["signed in as someone else", () => json({ authenticated: true, user: anna, session_ends_in: 8 * 3600 })],
+  ["signed out", () => json({ authenticated: false, user: null })],
+  ["with an error", () => new Response("{}", { status: 503, headers: { "content-type": "application/json" } })],
+] as const) {
+  test(`after Försök igen, the earlier session check answering ${ending} neither ends the new wait nor decides the person`, async (t) => {
+    const { createElement } = await import("react");
+    const { AuthGate, useAuthenticatedUser } = await import("../components/AuthGate");
+    const { confirmedWordsStorageKey } = await import("./confirmed-words");
+    const { SLOW_WAIT_MS } = await import("./slow-wait");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const bertil = { id: "user-2", email: "bertil@example.se", username: "Bertil Ek" };
+    // Each person's confirmed words: the one the page settles on keeps theirs, and only theirs.
+    const annas = confirmedWordsStorageKey(anna.id, "flow", "run", "step");
+    const bertils = confirmedWordsStorageKey(bertil.id, "flow", "run", "step");
+    window.localStorage.setItem(annas, JSON.stringify(["0:0:Hej"]));
+    window.localStorage.setItem(bertils, JSON.stringify(["1:1:du"]));
+    const held: Array<(response: Response) => void> = [];
+    const browserFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) =>
+      String(url).startsWith("/api/auth/status") ? new Promise<Response>((resolve) => held.push(resolve)) : json({})) as typeof fetch;
+    t.after(() => {
+      globalThis.fetch = browserFetch;
+      window.localStorage.clear();
+    });
+    t.mock.method(console, "error", () => undefined);
+    function Person() {
+      return createElement("p", null, `Sidan för ${useAuthenticatedUser().id}`);
+    }
+    const { router, visited, tree } = withRouter(createElement(AuthGate, null, createElement(Person)), { path: "/flows/:id", entries: ["/flows/a"] });
+    const { container, act } = await mount(tree);
+    await act(settle);
+    assert.equal(held.length, 1, "the first check is out");
+    await act(async () => t.mock.timers.tick(SLOW_WAIT_MS));
+    await act(async () => button(container, "Försök igen")!.click());
+    for (let i = 0; i < 5 && held.length < 2; i += 1) await act(settle);
+    assert.equal(held.length, 2, "Försök igen asks again");
+
+    await act(async () => held[0](earlier()));
+    for (let i = 0; i < 5; i += 1) await act(settle);
+    assert.ok(!container.textContent?.includes("Sidan"), "the page waits on");
+    assert.doesNotMatch(container.textContent ?? "", /svarar inte/, "and says nothing of the module not answering");
+    assert.ok(button(container, "Försök igen"), "the wait is still the one on screen");
+    assert.deepEqual(visited, [], "nor does it go to the sign-in page");
+    assert.ok(window.localStorage.getItem(bertils), "nobody's confirmed words are cleared on the earlier check's word");
+
+    await act(async () => held[1](json({ authenticated: true, user: bertil, session_ends_in: 8 * 3600 })));
+    for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
+    assert.match(container.textContent ?? "", /Sidan för user-2/, "the new check ends the wait, as the person it names");
+    assert.equal(router.state.location.pathname, "/flows/a");
+    assert.equal(window.localStorage.getItem(annas), null, "and only someone else's confirmed words go");
+    assert.ok(window.localStorage.getItem(bertils));
+  });
+}
