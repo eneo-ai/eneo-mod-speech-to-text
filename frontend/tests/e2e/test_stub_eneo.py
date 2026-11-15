@@ -18,7 +18,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 
 import websockets.asyncio.client as websocket_client
 from websockets.exceptions import ConnectionClosed, InvalidStatus
@@ -133,14 +133,16 @@ class SignedIn(Stack):
 
     def setUp(self) -> None:
         super().setUp()
-        self.cookie = self.sign_in()
+        self.cookie, self.login = self.sign_in()
 
-    def sign_in(self) -> str:
-        """The module's SSO handshake as a browser makes it, each redirect followed by hand. Returns the session cookie."""
+    def sign_in(self) -> tuple[str, str]:
+        """The module's SSO handshake as a browser makes it, each redirect followed by hand. Returns the session cookie,
+        and the login at the stub (the state the module sent the browser to Eneo with), which the stub can end."""
         status, headers, _, cookies = call(self.backend, "GET", f"/api/auth/login?next={quote('/flows')}")
         self.assertEqual(status, 303, headers)
         pending = "; ".join(cookie.split(";")[0] for cookie in cookies)
         self.assertTrue(headers["location"].startswith(f"http://127.0.0.1:{self.stub}/module-login?"), headers["location"])
+        login = parse_qs(urlparse(headers["location"]).query)["state"][0]
         status, headers, _, _ = call(self.stub, "GET", headers["location"].removeprefix(f"http://127.0.0.1:{self.stub}"))
         self.assertEqual(status, 303, headers)
         self.assertTrue(headers["location"].startswith(f"{self.origin}/api/auth/callback?ticket="), headers["location"])
@@ -148,7 +150,7 @@ class SignedIn(Stack):
         self.assertEqual((status, headers["location"]), (303, "/flows"))
         session = [cookie.split(";")[0] for cookie in cookies if cookie.startswith("eneo_module_session=")]
         self.assertTrue(session, cookies)
-        return session[0]
+        return session[0], login
 
     def api(self, method: str, path: str, *, user: str | None = USER, headers: dict[str, str] | None = None, body: bytes | None = None):
         """A request of the page: its cookie, its origin and (when it has one) the user it was opened for."""
@@ -168,7 +170,7 @@ class HandshakeTests(SignedIn):
         self.assertEqual(json.loads(body)["max_upload_bytes"], 1024**3, "the page is told what the module takes, so it never sends more")
 
     def test_two_sign_ins_are_two_sessions_and_ending_one_leaves_the_other(self) -> None:
-        other = self.sign_in()
+        other, _ = self.sign_in()
         self.assertNotEqual(other, self.cookie)
 
         self.api("POST", "/api/auth/logout")
@@ -183,8 +185,10 @@ class HandshakeTests(SignedIn):
         key = {"X-API-Key": SERVICE_KEY}
         self.assertEqual(call(self.stub, "POST", token, headers=key, body=b'{"ticket": "unknown"}')[0], 400)
         self.assertEqual(call(self.stub, "GET", "/module-login?module_key=other&redirect_uri=http://x/&state=s")[0], 400)
-        self.assertEqual(call(self.stub, "GET", "/api/v1/flows/")[0], 401, "no service key")
-        self.assertEqual(call(self.stub, "GET", "/api/v1/flows/", headers={**key, "Authorization": "Bearer not-a-token"})[0], 401)
+        status, _, body, _ = call(self.stub, "GET", "/api/v1/flows/")
+        self.assertEqual((status, json.loads(body)["code"]), (401, "invalid_api_key"), "no service key: the key's refusal, as Eneo's")
+        status, _, body, _ = call(self.stub, "GET", "/api/v1/flows/", headers={**key, "Authorization": "Bearer not-a-token"})
+        self.assertEqual((status, json.loads(body)["code"]), (401, "authentication_error"), "a token Eneo did not give: the token's")
         self.assertEqual(call(self.stub, "GET", "/api/v1/flows/", headers=key)[0], 200, "the service key alone is enough for Eneo, as it is for the real one")
 
     def test_a_ticket_is_good_once(self) -> None:
@@ -213,6 +217,55 @@ class HandshakeTests(SignedIn):
 
         self.assertEqual(call(self.stub, "POST", refresh, headers=both)[0], 401)
         self.assertEqual(call(self.stub, "GET", f"/api/v1/module-auth/{MODULE_KEY}/session/", headers=both)[0], 401)
+
+
+class PasswordChangeTests(SignedIn):
+    """The user's password changed at Eneo while the page was open: Eneo ends that login, and every token of it."""
+
+    def end(self, login: str, **how: str) -> None:
+        self.assertEqual(call(self.stub, "POST", "/__stub/end-session", body=json.dumps({"login": login, **how}).encode())[0], 200)
+
+    def signed_in(self, cookie: str) -> bool:
+        return json.loads(call(self.backend, "GET", "/api/auth/status", headers={"Cookie": cookie})[2])["authenticated"]
+
+    def test_the_next_call_through_the_module_asks_for_a_new_login_and_one_works(self) -> None:
+        self.end(self.login)
+
+        status, headers, body, cookies = self.api("GET", "/api/eneo/flows/")
+        self.assertEqual((status, headers.get("x-auth-required"), json.loads(body)), (401, "session", {"detail": "Not authenticated"}))
+        self.assertEqual(cookies, [], "the cookie is the page's own to drop")
+        self.assertFalse(self.signed_in(self.cookie), "the module's session is gone")
+        self.cookie, self.login = self.sign_in()
+        self.assertEqual(self.api("GET", "/api/eneo/flows/")[0], 200, "the new login works")
+
+    def test_a_refresh_keeps_the_login_and_the_end_of_one_login_leaves_the_others(self) -> None:
+        other, _ = self.sign_in()
+        status, headers, _, _ = call(self.stub, "GET", f"/module-login?module_key={MODULE_KEY}&redirect_uri=http://x/cb&state=refreshed")
+        ticket = headers["location"].split("ticket=")[1].split("&")[0]
+        key = {"X-API-Key": SERVICE_KEY}
+        token = json.loads(call(self.stub, "POST", "/api/v1/module-auth/token/", headers=key, body=json.dumps({"ticket": ticket}).encode())[2])["access_token"]
+        refresh = f"/api/v1/module-auth/{MODULE_KEY}/token/refresh/"
+        renewed = json.loads(call(self.stub, "POST", refresh, headers={**key, "Authorization": f"Bearer {token}"})[2])["access_token"]
+
+        self.end("refreshed")
+
+        self.assertEqual(call(self.stub, "GET", "/api/v1/flows/", headers={**key, "Authorization": f"Bearer {renewed}"})[0], 401, "a refresh's token too")
+        self.assertEqual(call(self.backend, "GET", "/api/eneo/flows/", headers={"Cookie": other, "X-Expected-User": USER})[0], 200)
+        self.assertEqual(self.api("GET", "/api/eneo/flows/")[0], 200)
+
+    def test_a_refusal_that_eneos_session_route_does_not_confirm_is_eneos_answer_and_the_session_stays(self) -> None:
+        self.end(self.login, session_route="accepts")
+
+        status, headers, body, _ = self.api("GET", "/api/eneo/flows/")
+        self.assertEqual((status, json.loads(body)["code"]), (401, "authentication_error"))
+        self.assertNotIn("x-auth-required", headers)
+        self.assertTrue(self.signed_in(self.cookie))
+
+    def test_a_service_key_eneo_refuses_is_eneos_answer_and_the_session_stays(self) -> None:
+        # The stub knows one key, the backend's: a wrong one is sent by hand, as the backend would send a revoked one.
+        status, _, body, _ = call(self.stub, "GET", f"/api/v1/module-auth/{MODULE_KEY}/session/", headers={"X-API-Key": "revoked"})
+        self.assertEqual((status, json.loads(body)["code"]), (401, "invalid_api_key"))
+        self.assertTrue(self.signed_in(self.cookie))
 
 
 class ProxyTests(SignedIn):

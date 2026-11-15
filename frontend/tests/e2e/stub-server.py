@@ -22,9 +22,17 @@ The Eneo role (MODULE_KEY and ENEO_API_KEY, the backend's own variables, say whi
   GET  /api/v1/live-transcription                         the eneo-live.v1 socket, for a ticket the stub gave
   POST .../runtime-files/                                  an upload: drained in 64 KB reads, one record each
 
-For tests (unauthenticated, never shipped): GET /__stub/stats, POST /__stub/reset, POST /__stub/end-session (every token
-is refused from now on, as when Eneo ends the login) and, in upstream.py's format of deploy/acceptance/upload/ (so that
-measure.py runs unchanged): GET /__log, GET /__reset. UPSTREAM_DELAY_MS pauses after each 64 KB read of an upload.
+A refused credential gets Eneo's own body: 401 invalid_api_key for the service key, 401 authentication_error for the token.
+
+For tests (unauthenticated, never shipped): GET /__stub/stats, POST /__stub/reset, POST /__stub/end-session and, in
+upstream.py's format of deploy/acceptance/upload/ (so that measure.py runs unchanged): GET /__log, GET /__reset.
+UPSTREAM_DELAY_MS pauses after each 64 KB read of an upload.
+
+POST /__stub/end-session ends logins as Eneo does when the user's password changes: every token of the login is refused
+from now on, also the ones a refresh gives. With no body, every login. With {"login": <state>}, only the login started
+with that state at /module-login (the state is in the address the module sends the browser to), so tests side by side
+keep theirs. With "session_route": "accepts" as well, Eneo's own session and refresh routes still take the login's
+tokens and only its other routes refuse them: a refusal that is not the login's end.
 
 Identifiers (flows, steps, runs, files) are the UUIDs of tests/fixtures/ids.json, named there as below.
 Runs the page can open with ?run=<id> (runs.<name>):
@@ -90,6 +98,13 @@ TOKEN_SECONDS = int(os.environ.get("STUB_TOKEN_SECONDS", "900"))
 SESSION_SECONDS = 8 * 60 * 60
 LIVE_SUBPROTOCOL = "eneo-live.v1"
 LIVE_PATH = "/api/v1/live-transcription"
+# Eneo's answers to a credential it does not take, field for field (less the request id).
+TOKEN_REFUSED = {"message": "Unauthenticated", "eneo_error_code": 9005, "code": "authentication_error"}
+
+
+def key_refused(message):
+    detail = {"code": "invalid_api_key", "message": message, "context": {"auth_layer": "identity"}}
+    return {**detail, "eneo_error_code": 9005, "detail": detail}
 
 # STUB_BRANDING is a deployment with an organisation of its own, for the gate's branding states
 # (`npm run test:a11y:branding`): a long name and a green accent, with a wide logo for each colour mode ("custom") or
@@ -525,8 +540,9 @@ class State:
     def __init__(self):
         self.lock = threading.Lock()
         self.reset()
-        self.login_tickets = {}  # ticket -> its deadline, until the token is asked for
-        self.tokens = set()
+        self.login_tickets = {}  # ticket -> its deadline and its login (the state it was asked with), until the token is asked for
+        self.tokens = {}  # token -> its login; a refresh's token is its predecessor's login's
+        self.ended = {}  # login -> what Eneo's session route says of its tokens since the login ended: "refuses" or "accepts"
         self.signatures = set()
         self.live_tickets = {}  # ticket -> the recording the page named when it asked, until the socket is opened
 
@@ -541,9 +557,10 @@ class State:
         with self.lock:
             self.stats[name] += by
 
-    def new_token(self):
+    def new_token(self, login):
         token = secrets.token_urlsafe(24)
-        self.tokens.add(token)
+        with self.lock:
+            self.tokens[token] = login
         ceiling = datetime.now(timezone.utc) + timedelta(seconds=SESSION_SECONDS)
         return {"access_token": token, "token_type": "bearer", "expires_in": TOKEN_SECONDS, "session_expires_at": ceiling.isoformat(),
                 "module_key": MODULE_KEY, "tenant_id": TENANT, "user": USER}
@@ -728,20 +745,31 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- the Eneo role ----
 
-    def refuse(self, why):
+    def refuse(self, body):
         if self.raw is None and self.command in ("POST", "PUT", "PATCH"):
             self.drain()  # an upload nobody took: its body must not be left for the next request on this connection
-        self.send(401, {"detail": why})
+        self.send(401, body)
 
-    def credentialed(self, bearer_required=False):
-        """The service key; and a bearer token this stub gave when one is sent (always, with bearer_required). Answers 401 if not."""
-        if not secrets.compare_digest(self.headers.get(KEY_HEADER, ""), SERVICE_KEY):
-            self.refuse("the service key is required")
-            return False
+    def bearer(self):
         header = self.headers.get("Authorization", "")
-        token = header[7:] if header.startswith("Bearer ") else None
-        if (token is None and bearer_required) or (token is not None and token not in STATE.tokens):
-            self.refuse("a module-user token that this stub gave is required")
+        return header[7:] if header.startswith("Bearer ") else None
+
+    def credentialed(self, bearer_required=False, session_route=False):
+        """The service key; and a bearer token this stub gave when one is sent (always, with bearer_required), of a login
+        that has not ended (on Eneo's session and refresh routes, `session_route`, one whose end said they accept it).
+        Answers 401 with Eneo's body if not."""
+        key = self.headers.get(KEY_HEADER, "")
+        if not secrets.compare_digest(key, SERVICE_KEY):
+            self.refuse(key_refused("API key is invalid." if key else "API key missing."))
+            return False
+        token = self.bearer()
+        with STATE.lock:
+            known = token in STATE.tokens
+            ended = STATE.ended.get(STATE.tokens.get(token))
+        if token is None and not bearer_required:
+            return True
+        if not known or (ended is not None and not (session_route and ended == "accepts")):
+            self.refuse(TOKEN_REFUSED)
             return False
         return True
 
@@ -777,7 +805,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, dict(STATE.stats))
             return True
         if path == "/__stub/end-session" and method == "POST":
-            STATE.tokens.clear()
+            body = self.json_body()
+            login, session_route = body.get("login"), body.get("session_route", "refuses")
+            if session_route not in ("refuses", "accepts") or (login is None and "session_route" in body):
+                self.send(400, {"detail": 'session_route is "refuses" or "accepts", and goes with a login'})
+                return True
+            with STATE.lock:
+                if login is None:
+                    STATE.tokens.clear()
+                else:
+                    STATE.ended[login] = session_route
             self.send(200, {"ok": True})
             return True
         if path == "/module-login" and method == "GET":
@@ -786,7 +823,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(400, {"detail": "module_key, redirect_uri and state are required, and the module key must be this module's"})
                 return True
             ticket = secrets.token_urlsafe(24)
-            STATE.login_tickets[ticket] = time.time() + 60
+            STATE.login_tickets[ticket] = (time.time() + 60, query["state"])
             self.send_response(303)
             self.send_header("Location", f"{query['redirect_uri']}?{urlencode({'ticket': ticket, 'state': query['state']})}")
             self.send_header("Content-Length", "0")
@@ -811,18 +848,21 @@ class Handler(BaseHTTPRequestHandler):
             if not self.credentialed():
                 return True
             ticket = self.json_body().get("ticket")
-            if STATE.login_tickets.pop(ticket, 0) < time.time() if isinstance(ticket, str) else True:
+            deadline, login = STATE.login_tickets.pop(ticket, (0, None)) if isinstance(ticket, str) else (0, None)
+            if deadline < time.time():
                 self.send(400, {"detail": "The ticket is unknown, used or expired."})
             else:
-                self.send(200, STATE.new_token())
+                self.send(200, STATE.new_token(login))
             return True
         if method == "GET" and parts == ["module-auth", MODULE_KEY, "session"]:
-            if self.credentialed(bearer_required=True):
+            if self.credentialed(bearer_required=True, session_route=True):
                 self.send(200, {"module_key": MODULE_KEY, "tenant_id": TENANT, "user": USER})
             return True
         if method == "POST" and parts == ["module-auth", MODULE_KEY, "token", "refresh"]:
-            if self.credentialed(bearer_required=True):
-                self.send(200, STATE.new_token())
+            if self.credentialed(bearer_required=True, session_route=True):
+                with STATE.lock:
+                    login = STATE.tokens.get(self.bearer())
+                self.send(200, STATE.new_token(login))
             return True
         if not self.credentialed():
             return True
