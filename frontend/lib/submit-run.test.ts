@@ -438,6 +438,45 @@ test("a lost completion receipt never silently starts another upload", async (t)
   assert.deepEqual(methods, ["PUT", "POST", "GET"]);
 });
 
+test("an upload cancelled while the completion's answer is read is a cancel, and the next send reads the receipt instead of uploading again", async (t) => {
+  const file = new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });
+  const methods: string[] = [];
+  let state = "receiving";
+  let answering: AbortSignal | undefined;
+  const status = () => ({ offset: file.size, chunk_size: 4 * 1024 * 1024, state, file_id: state === "complete" ? "file-stored" : null, failure: null });
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    const method = init.method ?? "GET";
+    methods.push(method);
+    // The module's own rule (backend/app/main.py, cancel_upload): a forward that has begun keeps its receipt.
+    if (method === "DELETE") return Response.json({ detail: "Forwarding has already started" }, { status: 409 });
+    if (method !== "POST") return Response.json(status());
+    // Eneo is given the file, and the answer's headers come; its body is still on its way when the person cancels.
+    state = "forwarding";
+    const signal = (answering = init.signal as AbortSignal);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"offset":'));
+        signal.addEventListener("abort", () => controller.error(signal.reason));
+      },
+    });
+    return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+  });
+  const cancel = new AbortController();
+  const sending = uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm", { signal: cancel.signal });
+  const outcome = sending.then(() => "uploaded", (error: unknown) => error);
+  await until(() => answering !== undefined);
+  cancel.abort();
+  await settle();
+  assert.equal(answering!.aborted, true, "the completion's read ends with the cancel");
+  const error = await outcome;
+  assert.ok(!(error instanceof ApiError), `a cancel, not an error to show: ${String(error)}`);
+  await until(() => methods.includes("DELETE"));
+
+  state = "complete";
+  assert.deepEqual(await uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), { id: "file-stored" });
+  assert.deepEqual(methods, ["PUT", "POST", "DELETE", "GET"], "the receipt names the file: nothing is uploaded or completed again");
+});
+
 test("a definitive completion rejection releases the handle for a fresh contract check", async (t) => {
   for (const status of [413, 422]) {
     const file = new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import test from "node:test";
 
-import { ApiError, getRunStatus, REQUEST_TIMEOUT_MS, startRun } from "./api";
+import { ApiError, authStatus, getRunStatus, REQUEST_TIMEOUT_MS, startRun } from "./api";
+import { loginState } from "./login-state";
 import { errorAdvice } from "./errors";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -62,4 +64,75 @@ test("a request that is answered leaves no timer behind", async (t) => {
   assert.equal((await getRunStatus("flow-1", "run-1")).status, "running");
   t.mock.timers.tick(REQUEST_TIMEOUT_MS);
   assert.equal(signals[0].aborted, false, "the answered request is not aborted afterwards");
+});
+
+/**
+ * A module that sends its headers and the start of its body, then goes quiet. The body ends when the request's signal
+ * does, as a browser's fetch ends it.
+ */
+function stalledBody(t: import("node:test").TestContext, status: number) {
+  const signals: AbortSignal[] = [];
+  t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+    const signal = init?.signal as AbortSignal;
+    signals.push(signal);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"authenticated":'));
+        signal.addEventListener("abort", () => controller.error(signal.reason));
+      },
+    });
+    return new Response(body, { status, headers: { "content-type": "application/json" } });
+  });
+  return signals;
+}
+
+for (const status of [200, 500]) {
+  test(`a request the page lets go after a ${status} answer began ends its body's read too, as an abort`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const signals = stalledBody(t, status);
+    const own = new AbortController();
+    const asked = authStatus(own.signal);
+    const outcome = asked.then(
+      () => "answered",
+      (error: unknown) => error,
+    );
+    await settle();
+    assert.equal(signals.length, 1);
+    // The headers have come: the time limit is over (it is for an answer that never begins), and nothing else ends it.
+    t.mock.timers.tick(2 * REQUEST_TIMEOUT_MS);
+    await settle();
+    assert.equal(signals[0].aborted, false, "a body on its way is not a timeout");
+    own.abort();
+    await settle();
+    assert.equal(signals[0].aborted, true, "the page's abort reaches the body's read");
+    const error = await outcome;
+    assert.ok(!(error instanceof ApiError), `an abort, not the answer's error: ${String(error)}`);
+    assert.equal((error as Error).name, "AbortError");
+  });
+}
+
+test("requests on one long-lived signal leave none of their listeners on it, also while one waits for a new login", async (t) => {
+  const own = new AbortController();
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ authenticated: true, user: null }), { status: 200, headers: { "content-type": "application/json" } }),
+  );
+  for (let i = 0; i < 3; i += 1) await authStatus(own.signal);
+  assert.equal(getEventListeners(own.signal, "abort").length, 0, "answered requests keep no listener");
+
+  // A replayable request our login's end refused waits for the new login, with only that wait's own listener.
+  t.after(loginState.begin({ id: "user-1", email: "anna@example.se" }, () => undefined));
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ detail: "Session expired" }), {
+      status: 401,
+      headers: { "content-type": "application/json", "X-Auth-Required": "session" },
+    }),
+  );
+  const waiting = startRun("flow-1", {}, "key-1", own.signal);
+  void waiting.catch(() => undefined);
+  for (let i = 0; i < 5 && !loginState.signedOut; i += 1) await settle();
+  assert.equal(loginState.signedOut, true);
+  await settle();
+  assert.equal(getEventListeners(own.signal, "abort").length, 1, "the request's own listener is gone before the wait");
+  own.abort();
+  await assert.rejects(waiting);
 });
