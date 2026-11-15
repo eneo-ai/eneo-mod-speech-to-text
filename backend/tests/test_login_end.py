@@ -198,7 +198,7 @@ class ConfirmationTests(LoginEndCase):
                 request = await self.admitted()
 
                 with patch.object(module_auth, "SESSION_CHECK_SECONDS", 0.05):
-                    ended = await self.auth.login_refused(request, httpx.Response(401, json=REVOKED))
+                    ended = await asyncio.wait_for(self.auth.login_refused(request, httpx.Response(401, json=REVOKED)), 1)
 
                 self.assertFalse(ended)
                 self.assertEqual(self.held_token(), "module-user-token")
@@ -294,6 +294,42 @@ class LateAndConcurrentRefusalTests(LoginEndCase):
         self.assertIsNone(self.auth.sessions.get(self.session_id))
         self.assertEqual(ends, [self.session_id], "the session ended once")
         self.assertEqual(len(self.route.calls), 2, "at most one check per refusal")
+
+    async def test_a_refusal_whose_own_check_confirms_nothing_after_another_ended_the_session_gets_the_answer(self) -> None:
+        # Two refusals of the same token at once: the first check confirms and ends the session; the second check's
+        # own answer confirms nothing, but the session it was about is gone all the same.
+        for case in ("Eneo failing", "no answer before the deadline"):
+            with self.subTest(case):
+                self.session_id, self.route.calls = self.auth.sessions.create(a_session()), []
+                both_asked, first_ended = asyncio.Event(), asyncio.Event()
+
+                async def answers():
+                    if len(self.route.calls) == 1:
+                        await both_asked.wait()
+                        return httpx.Response(401, json=REVOKED)
+                    both_asked.set()
+                    await first_ended.wait()
+                    if case == "Eneo failing":
+                        return httpx.Response(503)
+                    await asyncio.Event().wait()
+
+                self.route.answer = answers
+                first, second = await self.admitted(), await self.admitted()
+                ends = []
+                notify = self.auth.sessions._notify_locked
+                with (
+                    patch.object(self.auth.sessions, "_notify_locked", lambda session_id: (ends.append(session_id), notify(session_id))),
+                    patch.object(module_auth, "SESSION_CHECK_SECONDS", 0.2),
+                ):
+                    one = asyncio.create_task(self.auth.login_refused(first, httpx.Response(401, json=REVOKED)))
+                    two = asyncio.create_task(self.auth.login_refused(second, httpx.Response(401, json=REVOKED)))
+                    self.assertTrue(await asyncio.wait_for(one, 1))
+                    first_ended.set()
+                    self.assertTrue(await asyncio.wait_for(two, 1), "the second gets the session answer too")
+
+                self.assertIsNone(self.auth.sessions.get(self.session_id))
+                self.assertEqual(ends, [self.session_id], "the session ended once")
+                self.assertEqual(len(self.route.calls), 2, "at most one check per refusal")
 
     async def test_a_refusal_after_the_session_ended_gets_the_answer_without_a_check(self) -> None:
         self.route.answer = httpx.Response(401, json=REVOKED)

@@ -607,6 +607,9 @@ class ModuleAuth:
         if held.access_token != sent.access_token:
             return False
         if not await self._eneo_confirms_the_end(sent):
+            # A refusal of the same token at the same time may have ended the session while this check waited.
+            if self.sessions.get(session_id) is None:
+                return True
             logger.warning("Eneo refused a session's token, and its session route did not confirm it: the session stays")
             return False
         ended = self.sessions.delete_if_token(session_id, sent.access_token)

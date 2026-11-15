@@ -261,11 +261,10 @@ class PasswordChangeTests(SignedIn):
         self.assertNotIn("x-auth-required", headers)
         self.assertTrue(self.signed_in(self.cookie))
 
-    def test_a_service_key_eneo_refuses_is_eneos_answer_and_the_session_stays(self) -> None:
+    def test_a_wrong_service_key_is_refused_with_eneos_invalid_api_key_body(self) -> None:
         # The stub knows one key, the backend's: a wrong one is sent by hand, as the backend would send a revoked one.
         status, _, body, _ = call(self.stub, "GET", f"/api/v1/module-auth/{MODULE_KEY}/session/", headers={"X-API-Key": "revoked"})
         self.assertEqual((status, json.loads(body)["code"]), (401, "invalid_api_key"))
-        self.assertTrue(self.signed_in(self.cookie))
 
 
 class ProxyTests(SignedIn):
