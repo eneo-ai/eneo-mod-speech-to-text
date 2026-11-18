@@ -297,6 +297,38 @@ test("an upload an earlier send began is shown, without a position, as soon as i
   }
 });
 
+test("a wait after an upload has shown its position keeps the position", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  for (const refusal of [busy(2_000), uploadNetworkError()]) {
+    const file = new Blob([new Uint8Array(2_000)], { type: "audio/webm" });
+    const positions: (number | null)[] = [];
+    let wait: RetryWait | null = null;
+    let calls = 0;
+    const sending = submitRun(
+      params({
+        contract: roomFor(file.size),
+        files: [{ blob: file, filename: "a.webm" }],
+        onProgress: (progress) => void positions.push(progress.loaded),
+        onWait: (next) => void (wait = next),
+      }),
+      {
+        upload: (async (_flowId, _stepId, blob, _filename, opts = {}) => {
+          calls += 1;
+          opts.onProgress?.({ loaded: blob.size / 2, total: blob.size, percent: 50 });
+          if (calls === 1) throw refusal;
+          opts.onProgress?.({ loaded: blob.size, total: blob.size, percent: 100 });
+          return { id: "file-a" };
+        }) as SubmitDeps["upload"],
+        startRun: async () => queuedRun,
+      },
+    );
+    await until(() => wait !== null);
+    t.mock.timers.tick(wait!.retryAt! - Date.now());
+    assert.equal((await sending).id, "run-1");
+    assert.deepEqual(positions, [0, 1_000, 1_000, 2_000], `${refusal.code}: once shown, the position stays through the wait`);
+  }
+});
+
 test("a cancel while a short recording waits for a place sends nothing more, and the recording stays on the device", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const store = await openRecordingStore({});

@@ -2446,10 +2446,14 @@ test("the ready session follows late-only audio and clears the stop warning when
 /** A flow whose file is optional, sent as a form alone from Ladda upp. */
 const formOnly = () => audioContract({ steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", required: false }] });
 
-async function formSession(drafts: DraftStorage | null, submit: (request: SubmitRequest) => Promise<void>) {
-  const { session } = await setup({ drafts: drafts ?? undefined });
+async function formSession(
+  drafts: DraftStorage | null,
+  submit: (request: SubmitRequest) => Promise<void>,
+  options: { storage?: KeyValueStorage; contract?: RunContract } = {},
+) {
+  const { session } = await setup({ drafts: drafts ?? undefined, storage: options.storage });
   session.setHandlers({ submit });
-  session.setContract(formOnly());
+  session.setContract(options.contract ?? formOnly());
   session.selectMode("ladda-upp");
   return session;
 }
@@ -2495,27 +2499,37 @@ test("a send whose answer was lost goes again after a reload as the same request
   const runs = new Map<string, string>();
   const calls: { body: Json; key: string }[] = [];
   let loseAnswer = false;
-  const send = async ({ payload, speakerLabels, submissionId }: SubmitRequest) => {
-    const body: Json = { expected_flow_version: 3, input_payload_json: payload as Json, speaker_labels: speakerLabels ?? null };
+  const send = async ({ payload, speakerLabels, maxSpeakers, submissionId }: SubmitRequest) => {
+    const body: Json = {
+      expected_flow_version: 3,
+      input_payload_json: payload as Json,
+      speaker_labels: speakerLabels ?? null,
+      max_speakers: maxSpeakers ?? null,
+    };
     const key = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body, submissionId });
     calls.push({ body, key });
     if (!runs.has(key)) runs.set(key, `run-${runs.size + 1}`);
     if (loseAnswer) throw new Error("Nätverket svarade inte.");
   };
+  // A reload keeps the tab's storage and its drafts: the two sessions share both, as the page before and after does.
   const drafts = memoryDrafts();
-  const before = await formSession(drafts, send);
+  const storage = memoryStorage();
+  // A form with nothing to upload, whose run labels speakers and asks Antal talare: a count lives only in the drafts.
+  const contract = { ...countContract(), steps_requiring_input: formOnly().steps_requiring_input };
+  const before = await formSession(drafts, send, { storage, contract });
   before.setDetail("motesnamn", "Byggnadsnämnden");
-  before.setSpeakerLabels(false);
+  before.setSpeakerCount("4");
   assert.equal(await before.createDocument(), true, "the first send is confirmed");
+  assert.equal((calls[0].body as { max_speakers: unknown }).max_speakers, 4, "the count is in the request");
   loseAnswer = true;
   assert.equal(await before.createDocument(), false, "the same form again: Eneo takes it, the answer is lost");
   before.dispose(); // the page reloaded with the answer still out
 
   loseAnswer = false;
-  const after = await formSession(drafts, send);
+  const after = await formSession(drafts, send, { storage, contract });
   assert.equal(await after.createDocument(), true);
   assert.equal(runs.size, 2, "two sends, two runs: the press after the reload is the send whose answer was lost");
-  assert.deepEqual(calls[2], calls[1], "the same details, speaker choice and key");
+  assert.deepEqual(calls[2], calls[1], "the same details, speaker count and key");
   const { unstoredDrafts } = await import("./drafts");
   assert.equal(unstoredDrafts.any(), false, "stored drafts ask nothing on leaving");
   for (const name of ["", ":talare", ":sandning"]) {
