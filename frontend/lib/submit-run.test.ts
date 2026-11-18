@@ -157,11 +157,16 @@ test("a file that goes in parts asks for its place without end, after 5, 15 and 
     return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
   });
   const waits: number[] = [];
+  const since: (number | undefined)[] = [];
   const run = submitRun(
     params({
       contract: roomFor(file.size),
       files: [{ blob: file, filename: "a.webm" }],
-      onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())),
+      onWait: (wait) => {
+        if (!wait) return;
+        waits.push(wait.retryAt! - Date.now());
+        since.push(wait.busySince);
+      },
     }),
     { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
   );
@@ -172,6 +177,8 @@ test("a file that goes in parts asks for its place without end, after 5, 15 and 
   assert.equal((await run).id, "run-1");
   assert.deepEqual(waits, [5_000, 15_000, 30_000, 30_000, 30_000, 30_000], "past four answers: the ask carries no byte of the file");
   assert.deepEqual(methods, ["PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "POST"]);
+  assert.ok(since[0] !== undefined, "a wait for a place");
+  assert.deepEqual(since, since.map(() => since[0]), "the time waited counts from the first answer that the module is full");
 });
 
 test("a wait for a place is never sooner than the module asks nor longer than half a minute, and is spread by about a fifth", async (t) => {
@@ -243,17 +250,22 @@ test("a cancel while a file in parts waits for its place asks nothing more, and 
   const controller = new AbortController();
   const kept: unknown[] = [];
   let waiting = false;
+  let forPlace = false;
   const sending = submitRun(
     params({
       contract: roomFor(file.size),
       files: [{ blob: file, filename: "a.webm" }],
       signal: controller.signal,
-      onWait: (wait) => void (waiting = wait !== null),
+      onWait: (wait) => {
+        waiting = wait !== null;
+        if (wait) forPlace = wait.busySince !== undefined;
+      },
       onUploadHandle: async (_index, handle) => void kept.push(handle),
     }),
     { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
   );
   await until(() => waiting);
+  assert.equal(forPlace, true, "the wait is one for a place, not for the network");
   controller.abort();
   await assert.rejects(sending, { code: "upload_aborted" });
   t.mock.timers.tick(60_000);
@@ -283,6 +295,37 @@ test("an upload an earlier send began is shown, without a position, as soon as i
     await assert.rejects(sending, { code: "upload_aborted" });
     assert.deepEqual(events.slice(0, 2), ["progress null null null", "wait"], `${refusal.code}: the page is told before the wait`);
   }
+});
+
+test("a cancel while a short recording waits for a place sends nothing more, and the recording stays on the device", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const controller = new AbortController();
+  let uploads = 0;
+  let forPlace = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ signal: controller.signal, onWait: (wait) => void (forPlace ||= wait?.busySince !== undefined) }),
+    {
+      upload: async () => {
+        uploads += 1;
+        throw busy(2_000);
+      },
+      startRun: async () => queuedRun,
+    },
+  );
+  await until(() => forPlace);
+  controller.abort();
+  await assert.rejects(sending, { code: "upload_aborted" });
+  t.mock.timers.tick(60_000);
+  await settle();
+  assert.equal(uploads, 1, "one send, and nothing after the cancel");
+  const kept = await store.get(recording.id);
+  assert.ok(kept, "the recording is still on the device");
+  assert.deepEqual(kept.parts.map((part) => part.fileId), [null]);
+  assert.equal((await store.listUnsent("user-1")).length, 1, "and among those not yet sent");
 });
 
 test("a small file is sent four times at most while the module is full, after 5, 15 and 30 s, and then the page says so", async (t) => {
