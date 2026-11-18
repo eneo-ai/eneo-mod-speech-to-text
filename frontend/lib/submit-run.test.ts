@@ -276,7 +276,8 @@ test("a small file is sent four times at most while the module is full, after 5,
     }),
     { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
   );
-  const failed = sending.catch((error: unknown) => error);
+  let settled = false;
+  const failed = sending.catch((error: unknown) => error).finally(() => (settled = true));
   for (let i = 0; i < 4; i += 1) {
     await until(() => FakeXhr.made.length === i + 1);
     FakeXhr.made[i].responseHeaders = { "retry-after": "2" };
@@ -286,11 +287,32 @@ test("a small file is sent four times at most while the module is full, after 5,
       t.mock.timers.tick(waits[i]);
     }
   }
+  await until(() => settled); // a send that went on waiting would fail here, not hang
   const error = await failed;
   assert.equal(FakeXhr.made.length, 4, "each try carries the file: no more sends than for any server error");
   assert.deepEqual(waits, [5_000, 15_000, 30_000]);
   assert.ok(error instanceof ApiError && error.code === "uploads_busy");
   assert.deepEqual(errorAdvice(error), { message: "Många skickar just nu. Försök igen om en stund.", retry: true, ownerMustFix: false });
+});
+
+test("a server error between answers that the module is full keeps its own four tries where a try sends no file", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let calls = 0;
+  const waits: number[] = [];
+  const result = withRetry(
+    async () => {
+      calls += 1;
+      throw calls % 2 ? busy(2_000) : apiError(503);
+    },
+    { online: params().online, maxServerErrorTries: 4, onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())) },
+  );
+  const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 503 && error.code === undefined);
+  for (let i = 0; i < 7; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  await failed;
+  assert.equal(calls, 8, "four answers that the module is full, and the fourth server error ends it");
 });
 
 test("a server error between answers that the module is full shares the four tries of a try that carries the file", async (t) => {
