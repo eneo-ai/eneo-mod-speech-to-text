@@ -251,7 +251,7 @@ Modulen tar emot en uppladdning hel innan den skickar den vidare. Containern är
 - En övergiven fil städas efter `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` utan anrop, eller när totaltiden går ut. Ett anrop förlänger uppehållstiden men aldrig totaltiden.
 - En färdig uppladdning lämnar bara en liten kvittens, i högst 30 minuter. Högst 256 finns samtidigt; den äldsta färdiga tas bort när plats behövs, aldrig en aktiv fil.
 - Startar processen om försvinner positionerna och kvittenserna. Saknas svaret från Eneo kan Eneo redan ha filen. Appen startar då inget flöde utan kräver ett uttryckligt nytt försök, och en ny uppladdning kan lämna den tidigare filen utan körning.
-- Är taket nått svarar modulen 503 med `Retry-After: 2` innan något lagras. Filhämtningar och livetext delar taket; livetexten får ett fel som går att försöka igen, och inspelningen fortsätter lokalt.
+- Är taket nått svarar modulen 503 `uploads_busy` med `Retry-After: 2` innan något lagras, på båda uppladdningsvägarna. Filhämtningar och livetext delar taket; livetexten får ett fel som går att försöka igen, och inspelningen fortsätter lokalt.
 
 Koden: `backend/app/resumable.py`, `backend/app/limits.py` och `backend/app/main.py`.
 

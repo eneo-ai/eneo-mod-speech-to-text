@@ -229,6 +229,13 @@ class ResumableTests(Case):
         self.assertEqual((await self.client.put(other, json=self.metadata)).status_code, 413)
         self.assertFalse(self.forwarded)
 
+    async def test_a_taken_upload_place_is_answered_as_the_multipart_route_answers_it(self):
+        await self.create()
+        busy = await self.client.put(f"/api/uploads/{FLOW}/{STEP}/{uuid4()}", json=self.metadata)
+        self.assertEqual(busy.status_code, 503)
+        self.assertEqual(busy.json()["error"], "uploads_busy", "the client tells a full module from a failing one by the code")
+        self.assertEqual(busy.headers["retry-after"], "2")
+
     async def test_expired_upload_releases_its_spool_and_slot(self):
         with patch.object(main.settings, "upload_receive_timeout_seconds", .01):
             await self.create()
