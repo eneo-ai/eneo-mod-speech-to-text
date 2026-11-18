@@ -133,6 +133,191 @@ test("with a try limit, a server answering with errors gets that many tries and 
   assert.equal(calls, 4);
 });
 
+const busy = (retryAfterMs?: number) =>
+  Object.assign(new ApiError(503, "Too many heavy operations are running.", { error: "uploads_busy" }, "uploads_busy"), { retryAfterMs });
+
+// A file larger than one part: it goes in parts, and asks the module for its place before any byte.
+const inParts = () => new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });
+const roomFor = (bytes: number): RunContract => ({
+  ...contract,
+  steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", max_files: 10, max_file_size_bytes: bytes }],
+});
+const busyAnswer = () =>
+  Response.json({ error: "uploads_busy", detail: "Too many heavy operations are running." }, { status: 503, headers: { "Retry-After": "2" } });
+
+test("a file that goes in parts asks for its place without end, after 5, 15 and then 30 s, and goes once it has one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 0.5); // no spread here; the next test has it
+  const file = inParts();
+  const methods: string[] = [];
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    methods.push(init.method ?? "GET");
+    if (init.method === "PUT" && methods.length <= 6) return busyAnswer();
+    if (init.method === "POST") return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "complete", file_id: "file-a", failure: null });
+    return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
+  });
+  const waits: number[] = [];
+  const run = submitRun(
+    params({
+      contract: roomFor(file.size),
+      files: [{ blob: file, filename: "a.webm" }],
+      onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())),
+    }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+  for (let i = 0; i < 6; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  assert.equal((await run).id, "run-1");
+  assert.deepEqual(waits, [5_000, 15_000, 30_000, 30_000, 30_000, 30_000], "past four answers: the ask carries no byte of the file");
+  assert.deepEqual(methods, ["PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "POST"]);
+});
+
+test("a wait for a place is never sooner than the module asks, and is spread by about a fifth", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const firstWait = async (error: ApiError, random: number) => {
+    const draw = t.mock.method(Math, "random", () => random);
+    const controller = new AbortController();
+    let waited = 0;
+    await assert.rejects(
+      withRetry(async () => { throw error; }, {
+        ...params(),
+        signal: controller.signal,
+        onWait: (wait) => {
+          if (!wait) return;
+          waited = wait.retryAt! - Date.now();
+          controller.abort();
+        },
+      }),
+    );
+    draw.mock.restore();
+    return waited;
+  };
+  assert.equal(await firstWait(busy(2_000), 0.5), 5_000, "the first wait is five seconds");
+  assert.equal(await firstWait(busy(), 0.5), 5_000, "no time given: the same");
+  assert.equal(await firstWait(busy(2_000), 0), 4_000);
+  assert.equal(await firstWait(busy(2_000), 1), 6_000);
+  assert.equal(await firstWait(busy(60_000), 0.5), 60_000, "the module's longer time");
+  assert.equal(await firstWait(busy(60_000), 0), 60_000, "spread, but never sooner than the module asks");
+});
+
+test("a wait for a place is not ended by the network coming back or by a press, and a cancel ends it at once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const browser = fakeBrowser(true);
+  const controller = new AbortController();
+  const notice: { wait: RetryWait | null } = { wait: null };
+  let calls = 0;
+  const waiting = withRetry(
+    async () => {
+      calls += 1;
+      throw busy(2_000);
+    },
+    { online: createOnlineStatus(browser.target), signal: controller.signal, onWait: (wait) => void (notice.wait = wait) },
+  );
+  await until(() => notice.wait !== null);
+  assert.equal(notice.wait!.busySince, Date.now(), "the page shows how long it has waited");
+  assert.equal(notice.wait!.retryNow, undefined, "nothing to press: the cause is not the network");
+  browser.go(false);
+  browser.go(true);
+  await settle();
+  assert.equal(calls, 1, "the network coming back sends nothing");
+  controller.abort();
+  await assert.rejects(waiting, (error) => error instanceof ApiError && error.code === "upload_aborted");
+  assert.equal(notice.wait, null);
+  t.mock.timers.tick(60_000);
+  await settle();
+  assert.equal(calls, 1, "nothing more after the cancel");
+});
+
+test("a cancel while a file in parts waits for its place asks nothing more, and leaves the module no upload to remove", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const file = inParts();
+  const methods: string[] = [];
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    methods.push(init.method ?? "GET");
+    return busyAnswer();
+  });
+  const controller = new AbortController();
+  const kept: unknown[] = [];
+  let waiting = false;
+  const sending = submitRun(
+    params({
+      contract: roomFor(file.size),
+      files: [{ blob: file, filename: "a.webm" }],
+      signal: controller.signal,
+      onWait: (wait) => void (waiting = wait !== null),
+      onUploadHandle: async (_index, handle) => void kept.push(handle),
+    }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+  await until(() => waiting);
+  controller.abort();
+  await assert.rejects(sending, { code: "upload_aborted" });
+  t.mock.timers.tick(60_000);
+  await settle();
+  // The module answers a full place before it makes the upload (backend/app/main.py, create_upload): there is none.
+  assert.deepEqual(methods, ["PUT"], "no try more, and nothing to delete");
+  assert.deepEqual(kept, [], "no upload kept for a later send");
+});
+
+test("a small file is sent four times at most while the module is full, after 5, 15 and 30 s, and then the page says so", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 0.5);
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const waits: number[] = [];
+  const sending = submitRun(
+    params({
+      files: [{ blob: new Blob(["a"]), filename: "a.webm" }],
+      onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())),
+    }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+  const failed = sending.catch((error: unknown) => error);
+  for (let i = 0; i < 4; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    FakeXhr.made[i].responseHeaders = { "retry-after": "2" };
+    FakeXhr.made[i].answer(503, { error: "uploads_busy", detail: "Too many heavy operations are running." });
+    if (i < 3) {
+      await until(() => waits.length === i + 1);
+      t.mock.timers.tick(waits[i]);
+    }
+  }
+  const error = await failed;
+  assert.equal(FakeXhr.made.length, 4, "each try carries the file: no more sends than for any server error");
+  assert.deepEqual(waits, [5_000, 15_000, 30_000]);
+  assert.ok(error instanceof ApiError && error.code === "uploads_busy");
+  assert.deepEqual(errorAdvice(error), { message: "Många skickar just nu. Försök igen om en stund.", retry: true, ownerMustFix: false });
+});
+
+test("a server error between answers that the module is full shares the four tries of a try that carries the file", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let calls = 0;
+  const waits: number[] = [];
+  const result = withRetry(
+    async () => {
+      calls += 1;
+      throw calls % 2 ? busy(2_000) : apiError(503);
+    },
+    {
+      online: params().online,
+      maxServerErrorTries: 4,
+      fileInEachTry: true,
+      onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())),
+    },
+  );
+  const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 503 && error.code === undefined);
+  for (let i = 0; i < 3; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  await failed;
+  assert.equal(calls, 4);
+});
+
 test("any other 4xx stops at once with its typed error, and so does a cancelled upload", async () => {
   const failures = [
     apiError(400, "flow_run_file_not_accessible"),
@@ -199,7 +384,7 @@ test("'Försök nu' retries at once, and cancelling ends the wait", async (t) =>
     { ...params(), onWait },
   );
   await until(() => notice.wait !== null);
-  notice.wait?.retryNow();
+  notice.wait!.retryNow!();
   assert.equal(await result, "file-1");
   assert.equal(calls, 2);
   assert.equal(notice.wait, null, "the retry notice goes away when the wait ends");
@@ -301,7 +486,7 @@ test("a run request Eneo keeps refusing is retried by itself ten times, then wai
   assert.equal(keys.length, 10, "an hour later it has not tried again");
 
   accepting = true;
-  waits.at(-1)!.retryNow();
+  waits.at(-1)!.retryNow!();
   assert.equal((await run).id, "run-1");
   assert.equal(keys.length, 11);
   assert.equal(new Set(keys).size, 1, "the person's try is the same request, under the same key");
@@ -365,8 +550,9 @@ class FakeXhr {
     this.headers[name] = value;
   }
   send(body: FormData | Blob) { this.body = body; }
+  responseHeaders: Record<string, string> = {};
   getResponseHeader(name: string) {
-    return name.toLowerCase() === "content-type" ? "application/json" : null;
+    return name.toLowerCase() === "content-type" ? "application/json" : (this.responseHeaders[name.toLowerCase()] ?? null);
   }
   abort() {
     this.onabort?.();
@@ -377,6 +563,26 @@ class FakeXhr {
     this.onload?.();
   }
 }
+
+test("the time the module asks to wait comes with its error, from a request and from an upload alike", async (t) => {
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const end = loginState.begin({ id: "upload-user", email: "upload@example.test" });
+  t.after(end);
+  const full = JSON.stringify({ error: "uploads_busy", detail: "Too many heavy operations are running." });
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(full, { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "7" } }));
+  await assert.rejects(startRun("flow-1", {}, "key"), (error) =>
+    error instanceof ApiError && error.code === "uploads_busy" && error.retryAfterMs === 7_000);
+
+  const upload = uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm");
+  await until(() => FakeXhr.made.length === 1);
+  FakeXhr.made[0].responseHeaders = { "retry-after": "5" };
+  FakeXhr.made[0].answer(503, JSON.parse(full));
+  await assert.rejects(upload, (error) => error instanceof ApiError && error.code === "uploads_busy" && error.retryAfterMs === 5_000);
+});
 
 test("large uploads resume after lost part and completion acknowledgements without sending bytes twice", async (t) => {
   const originalXhr = globalThis.XMLHttpRequest;

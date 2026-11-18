@@ -69,6 +69,7 @@ Innan en del når flödets största filstorlek startar nästa del på samma mikr
 | Läge | Vad appen gör |
 |---|---|
 | Nätavbrott | Väntar tills anslutningen är tillbaka eller du väljer **Avbryt**. |
+| Modulen är full (503 `uploads_busy`) | Visar "Många skickar just nu. Vi försöker igen." och hur länge den har väntat. Försöker igen efter 5 s, 15 s och sedan var 30:e s, aldrig tidigare än modulen ber om, spridd med ungefär en femtedel. En fil över 4 MiB frågar efter sin plats innan den skickar något och väntar tills en plats blir ledig eller du väljer **Avbryt**. En mindre fil skickas hel varje gång, så den skickas högst fyra gånger. Sedan visas "Många skickar just nu" med inspelningen eller filen kvar, och du kan skicka igen. |
 | 408, 429 eller 5xx | Försöker igen. Efter fyra försök med 408 eller 5xx visas ett fel och **Försök igen**. |
 | Annat 4xx | Stoppar med Eneos felmeddelande. |
 | Fil över 4 MiB | Skickas i delar och fortsätter från den senast bekräftade delen. En inspelning fortsätter också efter en omladdning eller krasch; en vald fil bara medan sidan finns kvar. [Tidsgränserna](operations.md#uppladdningens-tillfälliga-lagring). |

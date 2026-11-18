@@ -22,6 +22,8 @@ export class ApiError extends Error {
   status: number;
   code?: string;
   body: unknown;
+  /** How long the answer asked to wait before trying again (its Retry-After, in seconds), when it said. */
+  retryAfterMs?: number;
 
   constructor(status: number, message: string, body: unknown, code?: string) {
     super(message);
@@ -35,7 +37,7 @@ export class ApiError extends Error {
  * The error an answer stands for. Eneo answers `{ code, detail }`; the module's own proxy answers
  * `{ error: "upstream_unreachable", detail }`. Both name their `code`.
  */
-function apiErrorFrom(status: number, text: string): ApiError {
+function apiErrorFrom(status: number, text: string, retryAfter: string | null): ApiError {
   let body: unknown = text || null;
   let code: string | undefined;
   let detail: string | undefined;
@@ -56,11 +58,14 @@ function apiErrorFrom(status: number, text: string): ApiError {
   } catch {
     // Not JSON: the body stays its text.
   }
-  return new ApiError(status, detail || code || `HTTP ${status}`, body, code);
+  const error = new ApiError(status, detail || code || `HTTP ${status}`, body, code);
+  // The module says seconds; a date (which it never sends) is left out, and the caller's own pace applies.
+  if (retryAfter && /^\d{1,6}$/.test(retryAfter.trim())) error.retryAfterMs = Number(retryAfter.trim()) * 1_000;
+  return error;
 }
 
 async function parseError(res: Response): Promise<ApiError> {
-  return apiErrorFrom(res.status, await res.text().catch(() => ""));
+  return apiErrorFrom(res.status, await res.text().catch(() => ""), res.headers.get("Retry-After"));
 }
 
 /** Safe to send twice: a read, or a request Eneo answers once per Idempotency-Key. */
@@ -658,7 +663,7 @@ function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   }
 }
 
-const parseXhrError = (xhr: XMLHttpRequest) => apiErrorFrom(xhr.status, xhr.responseText);
+const parseXhrError = (xhr: XMLHttpRequest) => apiErrorFrom(xhr.status, xhr.responseText, xhr.getResponseHeader("Retry-After"));
 
 function requestUploadWithProgress<T>(
   path: string,
@@ -1145,6 +1150,9 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
   }
 }
 
+/** A file larger than one part goes in parts, asking the module for its place before any byte; a smaller one in one request. */
+export const sendsInParts = (file: Blob) => file.size > UPLOAD_PART_BYTES;
+
 export async function uploadStepRuntimeFile(
   flowId: string,
   stepId: string,
@@ -1152,7 +1160,7 @@ export async function uploadStepRuntimeFile(
   filename: string,
   opts: FileUploadOptions = {},
 ) {
-  if (file.size > UPLOAD_PART_BYTES) return uploadInParts(flowId, stepId, file, filename, opts);
+  if (sendsInParts(file)) return uploadInParts(flowId, stepId, file, filename, opts);
   const fd = new FormData();
   fd.append("upload_file", file, filename);
   return requestUploadWithProgress<FilePublic>(

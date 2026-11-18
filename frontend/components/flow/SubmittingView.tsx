@@ -11,6 +11,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { formatBytes, formatPercent } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
 import { creatingHeading } from "@/lib/flow-output";
+import { keptNote } from "@/lib/flow-session";
 import { StateCard, StateHead } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
@@ -170,7 +171,7 @@ function UploadProgress({
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}
       </VisuallyHidden>
-      <RetryNotice wait={submission.wait} />
+      <RetryNotice wait={submission.wait} kept={keptNote(submission.recording ? "recording" : "file")} />
       {/* The card's last row, as the run's Avbryt körningen is: what it stops, said whole. */}
       <HStack paddingBlockStart={2}>
         <Button label="Avbryt uppladdningen" variant="secondary" onClick={onCancel} />

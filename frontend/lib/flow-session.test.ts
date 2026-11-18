@@ -1489,6 +1489,29 @@ test("a send that fails keeps the recording and the details, and says why", asyn
   assert.ok(await store.get(recording.id), "the audio is still on the device");
 });
 
+test("a send the module had no place for says that many are sending, with the recording kept to send again", async () => {
+  const { session, recorders, store } = await setup();
+  session.setHandlers({
+    submit: async () => {
+      throw new ApiError(503, "Too many heavy operations are running.", { error: "uploads_busy" }, "uploads_busy");
+    },
+  });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const recording = session.getSnapshot().recording!;
+
+  assert.equal(await session.createDocument(), false);
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Många skickar just nu. Försök igen om en stund.",
+    detail: "Inspelningen finns kvar på enheten. Välj Skapa dokument när du vill försöka igen.",
+  });
+  assert.ok(await store.get(recording.id), "the audio is still on the device");
+});
+
 test("a recording Eneo refuses for its size or format is kept, and the page does not ask to send the same again", async () => {
   for (const [what, error, title] of [
     ["too large", new ApiError(400, "Too large", null, "flow_run_step_input_file_too_large"), "Inspelningen är större än flödet tar emot (högst 50\u00a0MB)."],

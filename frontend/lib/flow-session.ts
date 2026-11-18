@@ -219,8 +219,12 @@ function submitProblem(
   // What the person has is still here, and, where trying again can help, the button that sends it again.
   const { message, retry } = errorAdvice(error);
   const again = retry ? `Välj ${createLabel} när du vill försöka igen.` : "";
-  const kept = inputKind === "recording" ? "Inspelningen finns kvar på enheten." : inputKind === "file" ? "Filen finns kvar." : "";
-  return { title: message, detail: [kept, again].filter(Boolean).join(" ") || undefined };
+  return { title: message, detail: [keptNote(inputKind), again].filter(Boolean).join(" ") || undefined };
+}
+
+/** That what is being sent is still here: after a send that failed, and while one waits for a free place. */
+export function keptNote(inputKind: "recording" | "file" | null): string {
+  return inputKind === "recording" ? "Inspelningen finns kvar på enheten." : inputKind === "file" ? "Filen finns kvar." : "";
 }
 
 interface SessionSnapshot {
