@@ -88,11 +88,16 @@ const serverError = (error: unknown) =>
  */
 const uploadsBusy = (error: unknown): error is ApiError => error instanceof ApiError && error.code === "uploads_busy";
 const BUSY_PACE_MS = [5_000, 15_000, 30_000];
+const BUSY_CAP_MS = 30_000;
 
-/** The wait before the next try for a place: 5 s, 15 s, then 30 s on, spread, and never sooner than the module asks. */
+/**
+ * The wait before the next try for a place: 5 s, 15 s, then 30 s on, spread, never sooner than the module asks, and
+ * never past half a minute, whatever the module asks or the spread adds.
+ */
 const busyDelay = (waited: number, error: ApiError) => {
   const asked = error.retryAfterMs ?? 0;
-  return Math.max(asked, spread(Math.max(asked, BUSY_PACE_MS[Math.min(waited, BUSY_PACE_MS.length - 1)])));
+  const wait = Math.max(asked, spread(Math.max(asked, BUSY_PACE_MS[Math.min(waited, BUSY_PACE_MS.length - 1)])));
+  return Math.min(BUSY_CAP_MS, wait);
 };
 
 /** Spread by about a fifth either way, so many who wait do not all ask again at the same moment. */

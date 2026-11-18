@@ -174,7 +174,7 @@ test("a file that goes in parts asks for its place without end, after 5, 15 and 
   assert.deepEqual(methods, ["PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "POST"]);
 });
 
-test("a wait for a place is never sooner than the module asks, and is spread by about a fifth", async (t) => {
+test("a wait for a place is never sooner than the module asks nor longer than half a minute, and is spread by about a fifth", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const firstWait = async (error: ApiError, random: number) => {
     const draw = t.mock.method(Math, "random", () => random);
@@ -198,8 +198,10 @@ test("a wait for a place is never sooner than the module asks, and is spread by 
   assert.equal(await firstWait(busy(), 0.5), 5_000, "no time given: the same");
   assert.equal(await firstWait(busy(2_000), 0), 4_000);
   assert.equal(await firstWait(busy(2_000), 1), 6_000);
-  assert.equal(await firstWait(busy(60_000), 0.5), 60_000, "the module's longer time");
-  assert.equal(await firstWait(busy(60_000), 0), 60_000, "spread, but never sooner than the module asks");
+  assert.equal(await firstWait(busy(20_000), 0.5), 20_000, "the module's longer time");
+  assert.equal(await firstWait(busy(20_000), 0), 20_000, "spread, but never sooner than the module asks");
+  assert.equal(await firstWait(busy(3_600_000), 0.5), 30_000, "a time past half a minute is held to it");
+  assert.equal(await firstWait(busy(30_000), 1), 30_000, "the spread never takes a wait past half a minute");
 });
 
 test("a wait for a place is not ended by the network coming back or by a press, and a cancel ends it at once", async (t) => {
