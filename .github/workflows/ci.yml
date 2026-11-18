@@ -80,26 +80,31 @@ jobs:
   frontend-browser:
     name: frontend-browser (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     runs-on: ubuntu-24.04
-    # About 20 minutes for the longest shard; a hang ends here with its report rather than at GitHub's six hours.
+    # About 13 minutes for the longest shard; a hang ends here with its report rather than at GitHub's six hours.
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { suite: controls, shard: 1, total: 5 }
-          - { suite: controls, shard: 2, total: 5 }
-          - { suite: controls, shard: 3, total: 5 }
-          - { suite: controls, shard: 4, total: 5 }
-          - { suite: controls, shard: 5, total: 5 }
+          - { suite: controls, shard: 1, total: 8 }
+          - { suite: controls, shard: 2, total: 8 }
+          - { suite: controls, shard: 3, total: 8 }
+          - { suite: controls, shard: 4, total: 8 }
+          - { suite: controls, shard: 5, total: 8 }
+          - { suite: controls, shard: 6, total: 8 }
+          - { suite: controls, shard: 7, total: 8 }
+          - { suite: controls, shard: 8, total: 8 }
           - { suite: accessibility, shard: 1, total: 4 }
           - { suite: accessibility, shard: 2, total: 4 }
           - { suite: accessibility, shard: 3, total: 4 }
           - { suite: accessibility, shard: 4, total: 4 }
-          - { suite: devices, shard: 1, total: 1 }
+          - { suite: devices, shard: 1, total: 2 }
+          - { suite: devices, shard: 2, total: 2 }
           - { suite: webkit, shard: 1, total: 1 }
           - { suite: firefox, shard: 1, total: 1 }
           - { suite: production, shard: 1, total: 1 }
-          - { suite: real-backend, shard: 1, total: 1 }
+          - { suite: real-backend, shard: 1, total: 2 }
+          - { suite: real-backend, shard: 2, total: 2 }
           - { suite: branding, shard: 1, total: 1 }
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
@@ -173,7 +178,7 @@ jobs:
       # wrapping, targets); a finger's tablet, upright and on its side, is walked with the keyboard.
       - name: A phone on its side, the smallest phone, and the keyboard on both tablets
         if: matrix.suite == 'devices'
-        run: npx playwright test --project=landscape-844 --project=phone-320-light --project=tablet-portrait --project=tablet-landscape --grep='(landscape-844|phone-320-light) .*a11y\.spec\.ts|(landscape-844|tablet-portrait|tablet-landscape) .*keyboard\.spec\.ts' --workers=2 --add-reporter=json
+        run: npx playwright test --project=landscape-844 --project=phone-320-light --project=tablet-portrait --project=tablet-landscape --grep='(landscape-844|phone-320-light) .*a11y\.spec\.ts|(landscape-844|tablet-portrait|tablet-landscape) .*keyboard\.spec\.ts' --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
       # The other engines run what an engine can change: the scan, the keyboard walks and the screen-reader snapshots, and the
       # checks' own tests, which are each engine's laptop project's. Their press on every control is not a pull request's: it
       # is the gate's longest part, and Chromium's runs above. Playwright's WebKit for Linux cannot record, so the states
@@ -186,7 +191,7 @@ jobs:
         run: npx playwright test --project=laptop-1440-firefox --grep-invert='controls\.spec\.ts' --workers=2 --add-reporter=json
       - name: Accessibility gate through the real backend under the strict policy, one phone and one laptop
         if: matrix.suite == 'real-backend'
-        run: npm run build:check && GATE_TARGET=real npx playwright test --project=phone-390-light --project=laptop-1440-dark --workers=2 --add-reporter=json
+        run: npm run build:check && GATE_TARGET=real npx playwright test --project=phone-390-light --project=laptop-1440-dark --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
       - name: Branding gate, a deployment with its own organisation and accent
         if: matrix.suite == 'branding'
         run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark --workers=2 --add-reporter=json
