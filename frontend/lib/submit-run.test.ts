@@ -61,6 +61,7 @@ const contract: RunContract = {
 
 const queuedRun: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "queued" };
 
+// A send of its own unless a test names a recording's key instead.
 const params = (overrides: Partial<SubmitParams> = {}): SubmitParams => ({
   flowId: "flow-1",
   contract,
@@ -68,8 +69,9 @@ const params = (overrides: Partial<SubmitParams> = {}): SubmitParams => ({
   files: [],
   inputPayload: {},
   online: createOnlineStatus(fakeBrowser(true).target),
+  submissionId: "send-1",
   ...overrides,
-});
+}) as SubmitParams;
 
 test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 60 s", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
@@ -338,7 +340,7 @@ test("run creation retries network failures with the same idempotency key", asyn
     step_inputs: { "step-audio": { file_ids: ["file-1"] } },
     input_payload_json: { motesnamn: "KS" },
   });
-  assert.equal(keys[0], await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: bodies[0] }));
+  assert.equal(keys[0], await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: bodies[0], submissionId: "send-1" }));
 });
 
 /** The browser's XMLHttpRequest where it matters here: abort() fires "abort" before it returns. */
@@ -1248,6 +1250,44 @@ function fakeEneo() {
   return { runs, startRun };
 }
 
+test("the same form sent twice is two runs, and a press again after a lost answer is the same run", async () => {
+  const eneo = fakeEneo();
+  const deps: SubmitDeps = { upload: async () => ({ id: "file-a" }), startRun: eneo.startRun };
+  const form = { stepId: null, inputPayload: { motesnamn: "KS" } };
+  await submitRun(params({ ...form, submissionId: "send-1" }), deps);
+  await submitRun(params({ ...form, submissionId: "send-2" }), deps);
+  assert.equal(eneo.runs.size, 2, "a second send of the same form is a run of its own");
+
+  let lose = true;
+  const leave = new AbortController();
+  const lostAnswer: SubmitDeps = {
+    ...deps,
+    startRun: async (...args) => {
+      const run = await eneo.startRun(...args);
+      if (!lose) return run;
+      leave.abort(); // Eneo made the run; its answer never came, and the person left the wait
+      throw fetchFailed();
+    },
+  };
+  await assert.rejects(submitRun(params({ ...form, submissionId: "send-3", signal: leave.signal }), lostAnswer));
+  lose = false;
+  const again = await submitRun(params({ ...form, submissionId: "send-3" }), lostAnswer);
+  assert.equal(eneo.runs.size, 3, "the press again gets the run Eneo made");
+  assert.equal(again.id, "run-3");
+
+  // Changed details after a failed send are a new request, not a conflict at Eneo.
+  await submitRun(params({ ...form, inputPayload: { motesnamn: "Nämnden" }, submissionId: "send-3" }), deps);
+  assert.equal(eneo.runs.size, 4);
+});
+
+test("a recording's own key is the run's key, with no send of its own", async () => {
+  const keys: string[] = [];
+  const deps: SubmitDeps = { upload: async () => ({ id: "file-a" }), startRun: async (_f, _b, key) => (keys.push(key), queuedRun) };
+  const file = { blob: new Blob(["a"]), filename: "a.webm" };
+  await submitRun(params({ files: [file], idempotencyKey: "flow-run:recording:r1", submissionId: undefined }), deps);
+  assert.deepEqual(keys, ["flow-run:recording:r1"]);
+});
+
 test("a send that died after Eneo made the run gets that run back, not a second one", async () => {
   const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
   const tabThatDies = await openRecordingStore(device);
@@ -1751,7 +1791,7 @@ test("a new run with the failed run's audio and details has a key of its own, ap
     input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
   });
   // The failed run was keyed on this same body, so its key would replay it; Eneo's retry has its own.
-  const replay = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: request!.body });
+  const replay = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: request!.body, submissionId: "send-1" });
   assert.equal(request!.idempotencyKey, "flow-run-again:run-1");
   assert.notEqual(request!.idempotencyKey, replay);
   // Without the recording there is nothing to start again with.

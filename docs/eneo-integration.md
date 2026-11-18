@@ -21,7 +21,7 @@ Appen bygger körningen från Eneos publicerade flödeskontrakt:
 }
 ```
 
-Uppladdning och start går genom `frontend/lib/submit-run.ts`, som provar om vid tillfälliga fel och startar körningen med samma idempotensnyckel vid varje försök: [Inspelaren](recording.md#uppladdning-och-nya-försök).
+Uppladdning och start går genom `frontend/lib/submit-run.ts`, som provar om vid tillfälliga fel och startar körningen med samma idempotensnyckel vid varje försök: [Inspelaren](recording.md#uppladdning-och-nya-försök). En inspelning har en egen nyckel. För ett formulär eller en vald fil räknas nyckeln fram ur begäran och en identitet för sändningen (`frontend/lib/flow-session.ts`). Identiteten sparas i flikens utkast innan något skickas och byts när Eneo har bekräftat körningen. Ett nytt tryck efter ett fel eller ett uteblivet svar ger därför samma körning, också efter en omladdning av fliken, så länge uppgifterna och flödets publicerade version är desamma. En ny sändning av samma formulär ger en ny körning.
 
 Formulärets värden skickas som `input_payload_json`. Ett formulärfält kan i Eneos flödesbyggare få rollen `run_label` (ett textfält, "Namnge körningen efter fältet") eller `run_date` (ett datumfält). Eneo sätter då körningens `run_label` och `run_date` från fälten när körningen skapas, och dokumenten den skapar heter efter dem: `Styrelsemöte 2026-09-22.docx` i stället för flödets namn och startdagen. Listan över tidigare körningar (`GET …/runs/?mine=true`) har båda, och appen visar körningen med namn och datum utan att läsa varje körnings detaljer. Appen skickar själv ingen `run_label`.
 

@@ -124,7 +124,7 @@ export interface SubmitDeps {
   startRun: typeof startRun;
 }
 
-export interface SubmitParams extends RetryOptions {
+interface SubmitBase extends RetryOptions {
   flowId: string;
   contract: RunContract;
   stepId: string | null;
@@ -134,8 +134,6 @@ export interface SubmitParams extends RetryOptions {
   onUploaded?: (index: number, fileId: string) => void | Promise<void>;
   /** The file's upload in parts was made or asked to complete (its handle to keep), or is gone (null). */
   onUploadHandle?: (index: number, handle: UploadHandle | null) => Promise<void>;
-  /** Replaces the key derived from the request, as for a recording. */
-  idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
   speakerLabels?: boolean;
   /** An upper bound on the speakers, as max_speakers; left out, Eneo uses the flow's own count field or decides. */
@@ -152,6 +150,14 @@ export interface SubmitParams extends RetryOptions {
   /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
   onStarting?: (request: RunRequest) => void | Promise<void>;
 }
+
+/**
+ * The run's key: a recording's own (`idempotencyKey`), or one derived from the request and which send this is
+ * (`submissionId`, FlowSession's), so a new send of the same form is a new run.
+ */
+type RunKey = { idempotencyKey: string; submissionId?: never } | { submissionId: string; idempotencyKey?: never };
+
+export type SubmitParams = SubmitBase & RunKey;
 
 export async function submitRun(
   params: SubmitParams,
@@ -224,12 +230,14 @@ export async function submitRun(
   if (params.speakerLabels !== undefined) body.speaker_labels = params.speakerLabels;
   if (params.maxSpeakers !== undefined) body.max_speakers = params.maxSpeakers;
   const key =
-    params.idempotencyKey ??
-    (await deriveRunIdempotencyKey({
-      flowId,
-      expectedFlowVersion: contract.published_flow_version,
-      body,
-    }));
+    params.submissionId === undefined
+      ? params.idempotencyKey
+      : await deriveRunIdempotencyKey({
+          flowId,
+          expectedFlowVersion: contract.published_flow_version,
+          body,
+          submissionId: params.submissionId,
+        });
   await params.onStarting?.({ body, idempotencyKey: key });
   return askRun(() => deps.startRun(flowId, body, key, params.signal), params);
 }
@@ -260,10 +268,13 @@ function soundless(files: readonly { blob: Blob }[], parts: readonly { durationM
   return minutes >= 1 && files.reduce((sum, file) => sum + file.blob.size, 0) < 1024 * minutes;
 }
 
+/** A recording is its own send: the run's key names the recording. */
+type RecordingParams = Omit<SubmitBase, "files" | "onUploaded" | "onUploadHandle">;
+
 export async function submitRecording(
   store: RecordingStore,
   id: string,
-  params: Omit<SubmitParams, "files" | "onUploaded" | "onUploadHandle">,
+  params: RecordingParams,
   deps?: SubmitDeps,
 ): Promise<FlowRunPublic> {
   if (!(await store.lease(id))) throw new Error(IN_USE_ELSEWHERE);
@@ -288,7 +299,7 @@ const refusedByEneo = (error: unknown) =>
 async function sendLeased(
   store: RecordingStore,
   id: string,
-  params: Omit<SubmitParams, "files" | "onUploaded" | "onUploadHandle">,
+  params: RecordingParams,
   deps?: SubmitDeps,
   uploadedAgain = false,
 ): Promise<FlowRunPublic> {

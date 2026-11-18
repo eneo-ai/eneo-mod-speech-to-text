@@ -897,15 +897,21 @@ export async function startRun(
   });
 }
 
+/**
+ * A run start's key: the same send (`submissionId`, FlowSession's) of the same request gets Eneo's run back, while a new
+ * send of the same form, or changed details after a failed one, is a run of its own.
+ */
 export async function deriveRunIdempotencyKey(params: {
   flowId: string;
   expectedFlowVersion: number;
   body: Json;
+  submissionId: string;
 }): Promise<string> {
   const normalized = stableSortJson({
     flow_id: params.flowId,
     expected_flow_version: params.expectedFlowVersion,
     body: params.body,
+    submission_id: params.submissionId,
   });
   return `flow-run:${await sha256Hex(JSON.stringify(normalized))}`;
 }

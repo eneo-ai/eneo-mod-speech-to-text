@@ -2419,3 +2419,67 @@ test("the ready session follows late-only audio and clears the stop warning when
   await until(() => session.getSnapshot().recording?.parts[0]?.endConfirmed === true);
   assert.equal(session.getSnapshot().problem, null);
 });
+
+/** A flow whose file is optional, sent as a form alone from Ladda upp. */
+const formOnly = () => audioContract({ steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", required: false }] });
+
+async function formSession(drafts: DraftStorage | null, submit: (request: SubmitRequest) => Promise<void>) {
+  const { session } = await setup({ drafts: drafts ?? undefined });
+  session.setHandlers({ submit });
+  session.setContract(formOnly());
+  session.selectMode("ladda-upp");
+  return session;
+}
+
+test("each confirmed send of the same form is a send of its own; a press again after one that failed is the same send", async () => {
+  const sent: string[] = [];
+  let fail = false;
+  const session = await formSession(memoryDrafts(), async (request) => {
+    sent.push(request.submissionId);
+    if (fail) throw new Error("Nätverket svarade inte.");
+  });
+  assert.equal(await session.createDocument(), true);
+  assert.equal(await session.createDocument(), true);
+  assert.notEqual(sent[0], sent[1], "a second confirmed send of the same form is a new one");
+  fail = true;
+  assert.equal(await session.createDocument(), false);
+  fail = false;
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[2], sent[3], "the press after a failed or unanswered send is that same send");
+  assert.notEqual(sent[2], sent[1]);
+});
+
+test("the send survives a reload before it was confirmed, and an earlier draft without one is still read", async () => {
+  const drafts = memoryDrafts();
+  drafts.setItem("tal-till-text:draft:user-1:flow:flow-1", JSON.stringify({ motesnamn: "Nämnden" }));
+  const sent: string[] = [];
+  const before = await formSession(drafts, async (request) => {
+    sent.push(request.submissionId);
+    throw new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
+  });
+  assert.equal(before.getSnapshot().details.motesnamn, "Nämnden", "the details of a draft written before sends were kept");
+  assert.equal(await before.createDocument(), false);
+  before.dispose(); // the page reloaded with the answer still out
+
+  const after = await formSession(drafts, async (request) => void sent.push(request.submissionId));
+  assert.equal(await after.createDocument(), true);
+  assert.equal(sent[1], sent[0], "the same send after the reload");
+  assert.equal(drafts.getItem("tal-till-text:draft:user-1:flow:flow-1:sandning"), null, "confirmed, it is gone with the draft");
+});
+
+test("a send the tab cannot store is kept on the page, which says it holds unsaved work", async () => {
+  const { unstoredDrafts } = await import("./drafts");
+  const refusing = { ...memoryDrafts(), setItem: () => { throw new DOMException("full", "QuotaExceededError"); } };
+  const sent: string[] = [];
+  let fail = true;
+  const session = await formSession(refusing, async (request) => {
+    sent.push(request.submissionId);
+    if (fail) throw new Error("Nätverket svarade inte.");
+  });
+  assert.equal(await session.createDocument(), false);
+  assert.equal(unstoredDrafts.any(), true, "leaving the page asks first");
+  fail = false;
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[1], sent[0], "the same send, held in memory");
+  assert.equal(unstoredDrafts.any(), false);
+});
