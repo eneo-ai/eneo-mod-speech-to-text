@@ -182,12 +182,10 @@ interface SubmitFile {
   upload?: UploadHandle | null;
 }
 
-export interface SubmitProgress {
-  filename: string;
-  loaded: number;
-  total: number;
-  percent: number;
-}
+/** How far the send's files have gone; all null while an upload an earlier send began waits before the module has said. */
+export type SubmitProgress =
+  | { filename: string; loaded: number; total: number; percent: number }
+  | { filename: string; loaded: null; total: null; percent: null };
 
 export interface SubmitDeps {
   upload: typeof uploadStepRuntimeFile;
@@ -253,9 +251,12 @@ export async function submitRun(
 
   const total = files.reduce((sum, file) => sum + (file.fileId ? 0 : file.blob.size), 0);
   let sent = 0;
+  // Whether the page has been told the send is uploading: it shows a wait, and Avbryt, only once it has.
+  let reported = false;
   // The browser counts the request's own bytes (the form around a file) with the file's: never more than the files.
   const report = (filename: string, sentBytes: number) => {
     const loaded = Math.min(sentBytes, total);
+    reported = true;
     params.onProgress?.({ filename, loaded, total, percent: total > 0 ? Math.round((loaded / total) * 100) : 100 });
   };
 
@@ -267,6 +268,15 @@ export async function submitRun(
     }
     // An upload an earlier send began shows its progress from where the module has it, once it has said.
     if (!file.upload) report(file.filename, sent);
+    // A wait before the module has said (no place for it, or no connection) is still the upload's, shown with Avbryt:
+    // without a position, never a made-up one.
+    const onWait = (wait: RetryWait | null) => {
+      if (wait && !reported) {
+        reported = true;
+        params.onProgress?.({ filename: file.filename, loaded: null, total: null, percent: null });
+      }
+      params.onWait?.(wait);
+    };
     const uploaded = await withRetry(
       () =>
         deps.upload(flowId, stepId!, file.blob, file.filename, {
@@ -277,7 +287,7 @@ export async function submitRun(
           onHandle: async (handle) => params.onUploadHandle?.(index, handle),
         }),
       // A lost connection is still waited out; the file stays on the device either way.
-      { ...params, maxServerErrorTries: UPLOAD_SERVER_ERROR_TRIES, fileInEachTry: !sendsInParts(file.blob) },
+      { ...params, onWait, maxServerErrorTries: UPLOAD_SERVER_ERROR_TRIES, fileInEachTry: !sendsInParts(file.blob) },
     );
     sent += file.blob.size;
     fileIds.push(uploaded.id);

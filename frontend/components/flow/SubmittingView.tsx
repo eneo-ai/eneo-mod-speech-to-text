@@ -22,7 +22,8 @@ export type SubmissionState =
   | {
       kind: "uploading";
       filename: string;
-      loaded: number;
+      /** Null until the module has said where an upload an earlier send began stands. */
+      loaded: number | null;
       total: number | null;
       percent: number | null;
       /** A recording, not a chosen file: the page says which is on its way. */
@@ -102,7 +103,11 @@ function stage(submission: SubmissionState): string {
   if (submission.kind !== "uploading") return "Skickar…";
   const what = submission.recording ? "inspelningen" : "filen";
   const sent =
-    submission.wait?.busySince === undefined && submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
+    submission.wait?.busySince === undefined &&
+    submission.loaded != null &&
+    submission.total != null &&
+    submission.total > 0 &&
+    submission.loaded >= submission.total;
   return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
 
@@ -163,8 +168,8 @@ function UploadProgress({
       {/* Tabular figures: the counting digits keep their width, so the words do not shift as they count. */}
       <HStack justify="between" gap={2}>
         <Text type="supporting" hasTabularNumbers>
-          {formatBytes(submission.loaded)}
-          {submission.total ? ` av ${formatBytes(submission.total)}` : ""}
+          {submission.loaded != null && formatBytes(submission.loaded)}
+          {submission.loaded != null && submission.total ? ` av ${formatBytes(submission.total)}` : ""}
         </Text>
         <Text type="supporting" hasTabularNumbers>
           {submission.percent != null ? formatPercent(percent) : "Pågår"}

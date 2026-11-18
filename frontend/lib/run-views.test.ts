@@ -202,6 +202,16 @@ test("an upload of unknown size moves without a value and says Pågår, never a 
   assert.doesNotMatch(words, / av |%/);
 });
 
+test("an upload whose place the module has not yet said shows no bytes and no percent, only Pågår, with its wait and Avbryt", () => {
+  const html = uploading({ percent: null, total: null, loaded: null, recording: true, wait: { busySince: Date.now(), retryAt: Date.now() + 5_000 } });
+  assert.doesNotMatch(html, /aria-valuenow/);
+  const words = text(html);
+  assert.match(words, /Pågår/);
+  assert.doesNotMatch(words, / B |%/, "no position, not even nought");
+  assert.match(words, /Många skickar just nu\. Vi försöker igen\./);
+  assert.match(words, /Avbryt uppladdningen$/);
+});
+
 test("a percent outside 0 to 100 is held to it, in the bar and in the words beside it", () => {
   for (const [percent, shown] of [[140, 100], [-5, 0]] as const) {
     const html = uploading({ percent });

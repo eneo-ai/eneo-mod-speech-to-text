@@ -263,6 +263,28 @@ test("a cancel while a file in parts waits for its place asks nothing more, and 
   assert.deepEqual(kept, [], "no upload kept for a later send");
 });
 
+test("an upload an earlier send began is shown, without a position, as soon as its first ask has to wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  for (const refusal of [busy(2_000), uploadNetworkError()]) {
+    const events: string[] = [];
+    const controller = new AbortController();
+    const sending = submitRun(
+      params({
+        files: [{ blob: inParts(), filename: "del-1.webm", upload: { key: "k", id: "u", size: 1, completionRequested: false } }],
+        contract: roomFor(5 * 1024 * 1024),
+        signal: controller.signal,
+        onProgress: (progress) => void events.push(`progress ${progress.loaded} ${progress.total} ${progress.percent}`),
+        onWait: (wait) => void events.push(wait ? "wait" : "waited"),
+      }),
+      { upload: async () => { throw refusal; }, startRun: async () => queuedRun },
+    );
+    await until(() => events.includes("wait"));
+    controller.abort();
+    await assert.rejects(sending, { code: "upload_aborted" });
+    assert.deepEqual(events.slice(0, 2), ["progress null null null", "wait"], `${refusal.code}: the page is told before the wait`);
+  }
+});
+
 test("a small file is sent four times at most while the module is full, after 5, 15 and 30 s, and then the page says so", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.method(Math, "random", () => 0.5);
@@ -975,7 +997,7 @@ test("files are uploaded one at a time as the ordered files of one run, skipping
 });
 
 test("the progress shown never goes past the file: the request's own bytes (the form around it) are not the file's", async () => {
-  const shown: Array<[number, number, number]> = [];
+  const shown: Array<[number | null, number | null, number | null]> = [];
   const deps: SubmitDeps = {
     upload: async (_flowId, _stepId, _blob, _filename, options) => {
       // The browser counts the form's boundary and headers with the file: 100 bytes of file, 160 sent.
@@ -1641,7 +1663,7 @@ test("a part's upload in parts is kept from the moment the module made it, and g
   tab.release(recording.id); // the tab is reloaded with the second part on its way; the browser ends its lock
 
   const afterReload = await openRecordingStore(device);
-  const shown: number[] = [];
+  const shown: (number | null)[] = [];
   let atStart: unknown;
   const run = submitRecording(afterReload, recording.id, params({ contract: roomy, onProgress: ({ loaded }) => void shown.push(loaded) }), {
     upload: uploadStepRuntimeFile,
@@ -1696,7 +1718,7 @@ test("a part the module no longer has goes up anew from its first byte; once its
   module.resources.clear(); // the module restarted, or the upload expired
 
   const afterReload = await openRecordingStore(device);
-  const shown: number[] = [];
+  const shown: (number | null)[] = [];
   const run = submitRecording(afterReload, recording.id, params({ contract: roomy, onProgress: ({ loaded }) => void shown.push(loaded) }), {
     upload: uploadStepRuntimeFile,
     startRun: async () => queuedRun,
