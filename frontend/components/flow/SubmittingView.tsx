@@ -94,13 +94,15 @@ export function SubmittingView({
 
 /**
  * What is under way, in words. Once every byte has left, the module hands the file on to Eneo, which can take a while
- * for a long meeting: the page says so rather than stand at "Laddar upp" with a full bar.
+ * for a long meeting: the page says so rather than stand at "Laddar upp" with a full bar. Not while the module has no
+ * free place: it refused the bytes, and the upload is to be made again.
  */
 function stage(submission: SubmissionState): string {
   if (submission.kind === "starting") return "Startar flödet…";
   if (submission.kind !== "uploading") return "Skickar…";
   const what = submission.recording ? "inspelningen" : "filen";
-  const sent = submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
+  const sent =
+    submission.wait?.busySince === undefined && submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
   return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
 
