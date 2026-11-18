@@ -106,6 +106,8 @@ const CODES: Record<string, string> = {
   insufficient_scope: KEY_SCOPE,
   invalid_api_key: "Tal till text kan inte ansluta till Eneo just nu. Kontakta den som ansvarar för Tal till text.",
   upstream_unreachable: "Eneo gick inte att nå just nu. Försök igen om en stund.",
+  // Every upload place of the module is taken; one frees as an upload before this one has gone on to Eneo.
+  uploads_busy: "Många skickar just nu. Försök igen om en stund.",
   // The module's disk for uploads under way is full; it has room again once uploads before this one have gone on.
   module_storage_full: "Servern har inte plats för filen just nu. Försök igen om en stund.",
   invalid_json_response: "Servern svarade med något som inte gick att läsa. Försök igen om en stund.",
@@ -168,6 +170,7 @@ const RETRY_CODES = new Set([
   "upstream_unreachable",
   "invalid_json_response",
   "module_storage_full",
+  "uploads_busy",
 ]);
 
 // Errors this app's own upload client makes; their words are already Swedish.

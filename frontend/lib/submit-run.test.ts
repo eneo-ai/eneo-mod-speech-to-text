@@ -61,6 +61,7 @@ const contract: RunContract = {
 
 const queuedRun: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "queued" };
 
+// A send of its own unless a test names a recording's key instead.
 const params = (overrides: Partial<SubmitParams> = {}): SubmitParams => ({
   flowId: "flow-1",
   contract,
@@ -68,8 +69,9 @@ const params = (overrides: Partial<SubmitParams> = {}): SubmitParams => ({
   files: [],
   inputPayload: {},
   online: createOnlineStatus(fakeBrowser(true).target),
+  submissionId: "send-1",
   ...overrides,
-});
+}) as SubmitParams;
 
 test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 60 s", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
@@ -123,6 +125,312 @@ test("with a try limit, a server answering with errors gets that many tries and 
   );
   // The fourth try (a 408) is the error the page shows.
   const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 408);
+  for (let i = 0; i < 3; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  await failed;
+  assert.equal(calls, 4);
+});
+
+const busy = (retryAfterMs?: number) =>
+  Object.assign(new ApiError(503, "Too many heavy operations are running.", { error: "uploads_busy" }, "uploads_busy"), { retryAfterMs });
+
+// A file larger than one part: it goes in parts, and asks the module for its place before any byte.
+const inParts = () => new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });
+const roomFor = (bytes: number): RunContract => ({
+  ...contract,
+  steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", max_files: 10, max_file_size_bytes: bytes }],
+});
+const busyAnswer = () =>
+  Response.json({ error: "uploads_busy", detail: "Too many heavy operations are running." }, { status: 503, headers: { "Retry-After": "2" } });
+
+test("a file that goes in parts asks for its place without end, after 5, 15 and then 30 s, and goes once it has one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 0.5); // no spread here; the next test has it
+  const file = inParts();
+  const methods: string[] = [];
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    methods.push(init.method ?? "GET");
+    if (init.method === "PUT" && methods.length <= 6) return busyAnswer();
+    if (init.method === "POST") return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "complete", file_id: "file-a", failure: null });
+    return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
+  });
+  const waits: number[] = [];
+  const since: (number | undefined)[] = [];
+  const run = submitRun(
+    params({
+      contract: roomFor(file.size),
+      files: [{ blob: file, filename: "a.webm" }],
+      onWait: (wait) => {
+        if (!wait) return;
+        waits.push(wait.retryAt! - Date.now());
+        since.push(wait.busySince);
+      },
+    }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+  for (let i = 0; i < 6; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  assert.equal((await run).id, "run-1");
+  assert.deepEqual(waits, [5_000, 15_000, 30_000, 30_000, 30_000, 30_000], "past four answers: the ask carries no byte of the file");
+  assert.deepEqual(methods, ["PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "PUT", "POST"]);
+  assert.ok(since[0] !== undefined, "a wait for a place");
+  assert.deepEqual(since, since.map(() => since[0]), "the time waited counts from the first answer that the module is full");
+});
+
+test("a wait for a place is never sooner than the module asks nor longer than half a minute, and is spread by about a fifth", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const firstWait = async (error: ApiError, random: number) => {
+    const draw = t.mock.method(Math, "random", () => random);
+    const controller = new AbortController();
+    let waited = 0;
+    await assert.rejects(
+      withRetry(async () => { throw error; }, {
+        ...params(),
+        signal: controller.signal,
+        onWait: (wait) => {
+          if (!wait) return;
+          waited = wait.retryAt! - Date.now();
+          controller.abort();
+        },
+      }),
+    );
+    draw.mock.restore();
+    return waited;
+  };
+  assert.equal(await firstWait(busy(2_000), 0.5), 5_000, "the first wait is five seconds");
+  assert.equal(await firstWait(busy(), 0.5), 5_000, "no time given: the same");
+  assert.equal(await firstWait(busy(2_000), 0), 4_000);
+  assert.equal(await firstWait(busy(2_000), 1), 6_000);
+  assert.equal(await firstWait(busy(20_000), 0.5), 20_000, "the module's longer time");
+  assert.equal(await firstWait(busy(20_000), 0), 20_000, "spread, but never sooner than the module asks");
+  assert.equal(await firstWait(busy(3_600_000), 0.5), 30_000, "a time past half a minute is held to it");
+  assert.equal(await firstWait(busy(30_000), 1), 30_000, "the spread never takes a wait past half a minute");
+});
+
+test("a wait for a place is not ended by the network coming back or by a press, and a cancel ends it at once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const browser = fakeBrowser(true);
+  const controller = new AbortController();
+  const notice: { wait: RetryWait | null } = { wait: null };
+  let calls = 0;
+  const waiting = withRetry(
+    async () => {
+      calls += 1;
+      throw busy(2_000);
+    },
+    { online: createOnlineStatus(browser.target), signal: controller.signal, onWait: (wait) => void (notice.wait = wait) },
+  );
+  await until(() => notice.wait !== null);
+  assert.equal(notice.wait!.busySince, Date.now(), "the page shows how long it has waited");
+  assert.equal(notice.wait!.retryNow, undefined, "nothing to press: the cause is not the network");
+  browser.go(false);
+  browser.go(true);
+  await settle();
+  assert.equal(calls, 1, "the network coming back sends nothing");
+  controller.abort();
+  await assert.rejects(waiting, (error) => error instanceof ApiError && error.code === "upload_aborted");
+  assert.equal(notice.wait, null);
+  t.mock.timers.tick(60_000);
+  await settle();
+  assert.equal(calls, 1, "nothing more after the cancel");
+});
+
+test("a cancel while a file in parts waits for its place asks nothing more, and leaves the module no upload to remove", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const file = inParts();
+  const methods: string[] = [];
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    methods.push(init.method ?? "GET");
+    return busyAnswer();
+  });
+  const controller = new AbortController();
+  const kept: unknown[] = [];
+  let waiting = false;
+  let forPlace = false;
+  const sending = submitRun(
+    params({
+      contract: roomFor(file.size),
+      files: [{ blob: file, filename: "a.webm" }],
+      signal: controller.signal,
+      onWait: (wait) => {
+        waiting = wait !== null;
+        if (wait) forPlace = wait.busySince !== undefined;
+      },
+      onUploadHandle: async (_index, handle) => void kept.push(handle),
+    }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+  await until(() => waiting);
+  assert.equal(forPlace, true, "the wait is one for a place, not for the network");
+  controller.abort();
+  await assert.rejects(sending, { code: "upload_aborted" });
+  t.mock.timers.tick(60_000);
+  await settle();
+  // The module answers a full place before it makes the upload (backend/app/main.py, create_upload): there is none.
+  assert.deepEqual(methods, ["PUT"], "no try more, and nothing to delete");
+  assert.deepEqual(kept, [], "no upload kept for a later send");
+});
+
+test("an upload an earlier send began is shown, without a position, as soon as its first ask has to wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  for (const refusal of [busy(2_000), uploadNetworkError()]) {
+    const events: string[] = [];
+    const controller = new AbortController();
+    const sending = submitRun(
+      params({
+        files: [{ blob: inParts(), filename: "del-1.webm", upload: { key: "k", id: "u", size: 1, completionRequested: false } }],
+        contract: roomFor(5 * 1024 * 1024),
+        signal: controller.signal,
+        onProgress: (progress) => void events.push(`progress ${progress.loaded} ${progress.total} ${progress.percent}`),
+        onWait: (wait) => void events.push(wait ? "wait" : "waited"),
+      }),
+      { upload: async () => { throw refusal; }, startRun: async () => queuedRun },
+    );
+    await until(() => events.includes("wait"));
+    controller.abort();
+    await assert.rejects(sending, { code: "upload_aborted" });
+    assert.deepEqual(events.slice(0, 2), ["progress null null null", "wait"], `${refusal.code}: the page is told before the wait`);
+  }
+});
+
+test("a wait after an upload has shown its position keeps the position", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  for (const refusal of [busy(2_000), uploadNetworkError()]) {
+    const file = new Blob([new Uint8Array(2_000)], { type: "audio/webm" });
+    const positions: (number | null)[] = [];
+    let wait: RetryWait | null = null;
+    let calls = 0;
+    const sending = submitRun(
+      params({
+        contract: roomFor(file.size),
+        files: [{ blob: file, filename: "a.webm" }],
+        onProgress: (progress) => void positions.push(progress.loaded),
+        onWait: (next) => void (wait = next),
+      }),
+      {
+        upload: (async (_flowId, _stepId, blob, _filename, opts = {}) => {
+          calls += 1;
+          opts.onProgress?.({ loaded: blob.size / 2, total: blob.size, percent: 50 });
+          if (calls === 1) throw refusal;
+          opts.onProgress?.({ loaded: blob.size, total: blob.size, percent: 100 });
+          return { id: "file-a" };
+        }) as SubmitDeps["upload"],
+        startRun: async () => queuedRun,
+      },
+    );
+    await until(() => wait !== null);
+    t.mock.timers.tick(wait!.retryAt! - Date.now());
+    assert.equal((await sending).id, "run-1");
+    assert.deepEqual(positions, [0, 1_000, 1_000, 2_000], `${refusal.code}: once shown, the position stays through the wait`);
+  }
+});
+
+test("a cancel while a short recording waits for a place sends nothing more, and the recording stays on the device", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const controller = new AbortController();
+  let uploads = 0;
+  let forPlace = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ signal: controller.signal, onWait: (wait) => void (forPlace ||= wait?.busySince !== undefined) }),
+    {
+      upload: async () => {
+        uploads += 1;
+        throw busy(2_000);
+      },
+      startRun: async () => queuedRun,
+    },
+  );
+  await until(() => forPlace);
+  controller.abort();
+  await assert.rejects(sending, { code: "upload_aborted" });
+  t.mock.timers.tick(60_000);
+  await settle();
+  assert.equal(uploads, 1, "one send, and nothing after the cancel");
+  const kept = await store.get(recording.id);
+  assert.ok(kept, "the recording is still on the device");
+  assert.deepEqual(kept.parts.map((part) => part.fileId), [null]);
+  assert.equal((await store.listUnsent("user-1")).length, 1, "and among those not yet sent");
+});
+
+test("a small file is sent four times at most while the module is full, after 5, 15 and 30 s, and then the page says so", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 0.5);
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const waits: number[] = [];
+  const sending = submitRun(
+    params({
+      files: [{ blob: new Blob(["a"]), filename: "a.webm" }],
+      onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())),
+    }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+  let settled = false;
+  const failed = sending.catch((error: unknown) => error).finally(() => (settled = true));
+  for (let i = 0; i < 4; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    FakeXhr.made[i].responseHeaders = { "retry-after": "2" };
+    FakeXhr.made[i].answer(503, { error: "uploads_busy", detail: "Too many heavy operations are running." });
+    if (i < 3) {
+      await until(() => waits.length === i + 1);
+      t.mock.timers.tick(waits[i]);
+    }
+  }
+  await until(() => settled); // a send that went on waiting would fail here, not hang
+  const error = await failed;
+  assert.equal(FakeXhr.made.length, 4, "each try carries the file: no more sends than for any server error");
+  assert.deepEqual(waits, [5_000, 15_000, 30_000]);
+  assert.ok(error instanceof ApiError && error.code === "uploads_busy");
+  assert.deepEqual(errorAdvice(error), { message: "Många skickar just nu. Försök igen om en stund.", retry: true, ownerMustFix: false });
+});
+
+test("a server error between answers that the module is full keeps its own four tries where a try sends no file", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let calls = 0;
+  const waits: number[] = [];
+  const result = withRetry(
+    async () => {
+      calls += 1;
+      throw calls % 2 ? busy(2_000) : apiError(503);
+    },
+    { online: params().online, maxServerErrorTries: 4, onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())) },
+  );
+  const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 503 && error.code === undefined);
+  for (let i = 0; i < 7; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  await failed;
+  assert.equal(calls, 8, "four answers that the module is full, and the fourth server error ends it");
+});
+
+test("a server error between answers that the module is full shares the four tries of a try that carries the file", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let calls = 0;
+  const waits: number[] = [];
+  const result = withRetry(
+    async () => {
+      calls += 1;
+      throw calls % 2 ? busy(2_000) : apiError(503);
+    },
+    {
+      online: params().online,
+      maxServerErrorTries: 4,
+      fileInEachTry: true,
+      onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())),
+    },
+  );
+  const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 503 && error.code === undefined);
   for (let i = 0; i < 3; i += 1) {
     await until(() => waits.length === i + 1);
     t.mock.timers.tick(waits[i]);
@@ -197,7 +505,7 @@ test("'Försök nu' retries at once, and cancelling ends the wait", async (t) =>
     { ...params(), onWait },
   );
   await until(() => notice.wait !== null);
-  notice.wait?.retryNow();
+  notice.wait!.retryNow!();
   assert.equal(await result, "file-1");
   assert.equal(calls, 2);
   assert.equal(notice.wait, null, "the retry notice goes away when the wait ends");
@@ -299,7 +607,7 @@ test("a run request Eneo keeps refusing is retried by itself ten times, then wai
   assert.equal(keys.length, 10, "an hour later it has not tried again");
 
   accepting = true;
-  waits.at(-1)!.retryNow();
+  waits.at(-1)!.retryNow!();
   assert.equal((await run).id, "run-1");
   assert.equal(keys.length, 11);
   assert.equal(new Set(keys).size, 1, "the person's try is the same request, under the same key");
@@ -338,7 +646,7 @@ test("run creation retries network failures with the same idempotency key", asyn
     step_inputs: { "step-audio": { file_ids: ["file-1"] } },
     input_payload_json: { motesnamn: "KS" },
   });
-  assert.equal(keys[0], await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: bodies[0] }));
+  assert.equal(keys[0], await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: bodies[0], submissionId: "send-1" }));
 });
 
 /** The browser's XMLHttpRequest where it matters here: abort() fires "abort" before it returns. */
@@ -363,8 +671,9 @@ class FakeXhr {
     this.headers[name] = value;
   }
   send(body: FormData | Blob) { this.body = body; }
+  responseHeaders: Record<string, string> = {};
   getResponseHeader(name: string) {
-    return name.toLowerCase() === "content-type" ? "application/json" : null;
+    return name.toLowerCase() === "content-type" ? "application/json" : (this.responseHeaders[name.toLowerCase()] ?? null);
   }
   abort() {
     this.onabort?.();
@@ -375,6 +684,26 @@ class FakeXhr {
     this.onload?.();
   }
 }
+
+test("the time the module asks to wait comes with its error, from a request and from an upload alike", async (t) => {
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const end = loginState.begin({ id: "upload-user", email: "upload@example.test" });
+  t.after(end);
+  const full = JSON.stringify({ error: "uploads_busy", detail: "Too many heavy operations are running." });
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(full, { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "7" } }));
+  await assert.rejects(startRun("flow-1", {}, "key"), (error) =>
+    error instanceof ApiError && error.code === "uploads_busy" && error.retryAfterMs === 7_000);
+
+  const upload = uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm");
+  await until(() => FakeXhr.made.length === 1);
+  FakeXhr.made[0].responseHeaders = { "retry-after": "5" };
+  FakeXhr.made[0].answer(503, JSON.parse(full));
+  await assert.rejects(upload, (error) => error instanceof ApiError && error.code === "uploads_busy" && error.retryAfterMs === 5_000);
+});
 
 test("large uploads resume after lost part and completion acknowledgements without sending bytes twice", async (t) => {
   const originalXhr = globalThis.XMLHttpRequest;
@@ -743,7 +1072,7 @@ test("files are uploaded one at a time as the ordered files of one run, skipping
 });
 
 test("the progress shown never goes past the file: the request's own bytes (the form around it) are not the file's", async () => {
-  const shown: Array<[number, number, number]> = [];
+  const shown: Array<[number | null, number | null, number | null]> = [];
   const deps: SubmitDeps = {
     upload: async (_flowId, _stepId, _blob, _filename, options) => {
       // The browser counts the form's boundary and headers with the file: 100 bytes of file, 160 sent.
@@ -1248,6 +1577,44 @@ function fakeEneo() {
   return { runs, startRun };
 }
 
+test("the same form sent twice is two runs, and a press again after a lost answer is the same run", async () => {
+  const eneo = fakeEneo();
+  const deps: SubmitDeps = { upload: async () => ({ id: "file-a" }), startRun: eneo.startRun };
+  const form = { stepId: null, inputPayload: { motesnamn: "KS" } };
+  await submitRun(params({ ...form, submissionId: "send-1" }), deps);
+  await submitRun(params({ ...form, submissionId: "send-2" }), deps);
+  assert.equal(eneo.runs.size, 2, "a second send of the same form is a run of its own");
+
+  let lose = true;
+  const leave = new AbortController();
+  const lostAnswer: SubmitDeps = {
+    ...deps,
+    startRun: async (...args) => {
+      const run = await eneo.startRun(...args);
+      if (!lose) return run;
+      leave.abort(); // Eneo made the run; its answer never came, and the person left the wait
+      throw fetchFailed();
+    },
+  };
+  await assert.rejects(submitRun(params({ ...form, submissionId: "send-3", signal: leave.signal }), lostAnswer));
+  lose = false;
+  const again = await submitRun(params({ ...form, submissionId: "send-3" }), lostAnswer);
+  assert.equal(eneo.runs.size, 3, "the press again gets the run Eneo made");
+  assert.equal(again.id, "run-3");
+
+  // Changed details after a failed send are a new request, not a conflict at Eneo.
+  await submitRun(params({ ...form, inputPayload: { motesnamn: "Nämnden" }, submissionId: "send-3" }), deps);
+  assert.equal(eneo.runs.size, 4);
+});
+
+test("a recording's own key is the run's key, with no send of its own", async () => {
+  const keys: string[] = [];
+  const deps: SubmitDeps = { upload: async () => ({ id: "file-a" }), startRun: async (_f, _b, key) => (keys.push(key), queuedRun) };
+  const file = { blob: new Blob(["a"]), filename: "a.webm" };
+  await submitRun(params({ files: [file], idempotencyKey: "flow-run:recording:r1", submissionId: undefined }), deps);
+  assert.deepEqual(keys, ["flow-run:recording:r1"]);
+});
+
 test("a send that died after Eneo made the run gets that run back, not a second one", async () => {
   const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
   const tabThatDies = await openRecordingStore(device);
@@ -1371,7 +1738,7 @@ test("a part's upload in parts is kept from the moment the module made it, and g
   tab.release(recording.id); // the tab is reloaded with the second part on its way; the browser ends its lock
 
   const afterReload = await openRecordingStore(device);
-  const shown: number[] = [];
+  const shown: (number | null)[] = [];
   let atStart: unknown;
   const run = submitRecording(afterReload, recording.id, params({ contract: roomy, onProgress: ({ loaded }) => void shown.push(loaded) }), {
     upload: uploadStepRuntimeFile,
@@ -1426,7 +1793,7 @@ test("a part the module no longer has goes up anew from its first byte; once its
   module.resources.clear(); // the module restarted, or the upload expired
 
   const afterReload = await openRecordingStore(device);
-  const shown: number[] = [];
+  const shown: (number | null)[] = [];
   const run = submitRecording(afterReload, recording.id, params({ contract: roomy, onProgress: ({ loaded }) => void shown.push(loaded) }), {
     upload: uploadStepRuntimeFile,
     startRun: async () => queuedRun,
@@ -1751,7 +2118,7 @@ test("a new run with the failed run's audio and details has a key of its own, ap
     input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
   });
   // The failed run was keyed on this same body, so its key would replay it; Eneo's retry has its own.
-  const replay = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: request!.body });
+  const replay = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: request!.body, submissionId: "send-1" });
   assert.equal(request!.idempotencyKey, "flow-run-again:run-1");
   assert.notEqual(request!.idempotencyKey, replay);
   // Without the recording there is nothing to start again with.

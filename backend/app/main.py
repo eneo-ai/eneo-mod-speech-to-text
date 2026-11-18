@@ -272,6 +272,16 @@ def _spool_full() -> JSONResponse:
     )
 
 
+def _uploads_busy() -> JSONResponse:
+    """Every place for an upload is taken, before anything of it is kept: the same answer on the multipart route and the
+    resumable one, so the browser waits for a place instead of failing (frontend/lib/submit-run.ts)."""
+    return JSONResponse(
+        status_code=503,
+        content={"error": "uploads_busy", "detail": "Too many heavy operations are running. Try again shortly."},
+        headers={"Retry-After": "2"},
+    )
+
+
 def _upstream_unreachable() -> JSONResponse:
     return JSONResponse(
         status_code=502,
@@ -435,11 +445,7 @@ async def _forward_upload(request: Request, path: str) -> Response:
         raise too_large(settings, upload=True)
     with contextlib.ExitStack() as slots:
         if not slots.enter_context(capacity_slot(app.state.upload_slots)) or not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
-            return JSONResponse(
-                status_code=503,
-                content={"error": "uploads_busy", "detail": "Too many heavy operations are running. Try again shortly."},
-                headers={"Retry-After": "2"},
-            )
+            return _uploads_busy()
         try:
             return await _receive_upload(request, upstream_url)
         except HTTPException as error:
@@ -583,7 +589,7 @@ async def create_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, metadata:
         return entry.status()
     with contextlib.ExitStack() as slots:
         if not slots.enter_context(capacity_slot(app.state.upload_slots)):
-            raise HTTPException(503, "Upload capacity reached", headers={"Retry-After": "2"})
+            return _uploads_busy()
         await _check_upload_contract(request, flow_id, step_id, metadata)
         if await request.is_disconnected():
             raise HTTPException(400, "The client disconnected before allocation")

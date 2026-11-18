@@ -2,9 +2,11 @@
  * The one path from input to an Eneo run: upload each file to the flow's input
  * step, then start the run with the files in order. Network failures, 408,
  * 429 and 5xx are retried with backoff (1 s doubling to 60 s), sooner when the
- * connection comes back; any other 4xx stops with Eneo's typed error. Run
- * creation keeps one idempotency key across retries, so a lost response never
- * starts a second run.
+ * connection comes back; any other 4xx stops with Eneo's typed error. A module
+ * whose upload places are all taken (uploads_busy) is waited for at its own pace:
+ * without an end where the try sends no file (an upload in parts asks for its
+ * place first), within the four tries where it sends the file again. Run creation
+ * keeps one idempotency key across retries, so a lost response never starts a second run.
  */
 
 import {
@@ -12,6 +14,7 @@ import {
   deriveRunIdempotencyKey,
   getRunContract,
   retryFlowRunFromFailedStep,
+  sendsInParts,
   startRun,
   uploadAborted,
   uploadStepRuntimeFile,
@@ -31,19 +34,32 @@ import { selectRuntimeInputStep } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
 
-export interface RetryWait {
-  /** When the next try is made by itself; null when it waits for the person (`retryNow`). */
-  retryAt: number | null;
-  retryNow: () => void;
-}
+export type RetryWait =
+  | {
+      /** When the next try is made by itself; null when it waits for the person (`retryNow`). */
+      retryAt: number | null;
+      retryNow: () => void;
+      busySince?: undefined;
+    }
+  | {
+      /**
+       * The module's upload places are all taken (uploads_busy), since then: the next try is made by itself, and only a
+       * cancel ends the wait. Nothing to press: the network is not the cause, and a try sooner finds no place either.
+       */
+      busySince: number;
+      retryAt: number;
+      retryNow?: undefined;
+    };
 
 interface RetryOptions {
   online: OnlineStatus;
   signal?: AbortSignal;
   /** A wait before the next attempt began (or ended, with null). */
   onWait?: (wait: RetryWait | null) => void;
-  /** Tries a server answering with errors gets; unlimited unless given. */
+  /** Tries a server answering with errors gets; unlimited unless given. An answer that the module is full is one only with `fileInEachTry`. */
   maxServerErrorTries?: number;
+  /** Each try sends the whole file again, so waiting for a place without end would send it without end. */
+  fileInEachTry?: boolean;
   /** Tries made by themselves; after them the wait is the person's (`retryNow`), with nothing given up. Unlimited unless given. */
   maxAutoTries?: number;
 }
@@ -65,23 +81,62 @@ const UPLOAD_SERVER_ERROR_TRIES = 4;
 const serverError = (error: unknown) =>
   error instanceof ApiError && (error.status === 408 || error.status >= 500);
 
+/**
+ * The module has no free upload place: it works, and is full. A place can rightly stay taken for up to an hour (the
+ * receipt and the forward to Eneo, 1800 s each), so no end of a wait that sends no file can be derived; the person sees
+ * how long it has waited, and cancels when they choose.
+ */
+const uploadsBusy = (error: unknown): error is ApiError => error instanceof ApiError && error.code === "uploads_busy";
+const BUSY_PACE_MS = [5_000, 15_000, 30_000];
+const BUSY_CAP_MS = 30_000;
+
+/**
+ * The wait before the next try for a place: 5 s, 15 s, then 30 s on, spread, never sooner than the module asks, and
+ * never past half a minute, whatever the module asks or the spread adds.
+ */
+const busyDelay = (waited: number, error: ApiError) => {
+  const asked = error.retryAfterMs ?? 0;
+  const wait = Math.max(asked, spread(Math.max(asked, BUSY_PACE_MS[Math.min(waited, BUSY_PACE_MS.length - 1)])));
+  return Math.min(BUSY_CAP_MS, wait);
+};
+
+/** Spread by about a fifth either way, so many who wait do not all ask again at the same moment. */
+const spread = (delayMs: number) => Math.round(delayMs * (0.8 + 0.4 * Math.random()));
+
 export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Promise<T> {
   let serverErrors = 0;
-  for (let attempt = 0; ; attempt += 1) {
+  let attempt = 0;
+  let busyWaits = 0;
+  let busySince: number | null = null;
+  for (;;) {
     // A cancel between attempts, or before the first, sends nothing more.
     if (opts.signal?.aborted) throw uploadAborted();
     try {
       return await op();
     } catch (error) {
       if (opts.signal?.aborted || !isRetryable(error)) throw error;
-      if (serverError(error) && ++serverErrors >= (opts.maxServerErrorTries ?? Infinity)) throw error;
+      const full = uploadsBusy(error);
+      const counted = serverError(error) && (!full || opts.fileInEachTry);
+      if (counted && ++serverErrors >= (opts.maxServerErrorTries ?? Infinity)) throw error;
+      if (full) {
+        busySince ??= Date.now();
+        await waitForPlace(busyDelay(busyWaits++, error), busySince, opts);
+        continue;
+      }
       const byItself = attempt + 1 < (opts.maxAutoTries ?? Infinity);
       await waitToRetry(byItself ? Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** attempt) : null, opts);
+      attempt += 1;
     }
   }
 }
 
-function waitToRetry(delayMs: number | null, { online, signal, onWait }: RetryOptions): Promise<void> {
+/** A wait that a timer ends, a cancel ends at once with uploadAborted, and `listen` may end sooner. */
+function wait(
+  delayMs: number | null,
+  shown: (end: () => void) => RetryWait,
+  { signal, onWait }: RetryOptions,
+  listen: (end: () => void) => () => void = () => () => undefined,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (error?: ApiError) => {
@@ -94,13 +149,28 @@ function waitToRetry(delayMs: number | null, { online, signal, onWait }: RetryOp
       if (error) reject(error);
       else resolve();
     };
-    const retryNow = () => finish();
+    const end = () => finish();
     const cancel = () => finish(uploadAborted());
-    const timer = delayMs === null ? undefined : setTimeout(retryNow, delayMs);
-    const stopListening = online.subscribe((isOnline) => isOnline && retryNow());
+    const timer = delayMs === null ? undefined : setTimeout(end, delayMs);
+    const stopListening = listen(end);
     signal?.addEventListener("abort", cancel, { once: true });
-    onWait?.({ retryAt: delayMs === null ? null : Date.now() + delayMs, retryNow });
+    onWait?.(shown(end));
   });
+}
+
+function waitToRetry(delayMs: number | null, opts: RetryOptions): Promise<void> {
+  return wait(
+    delayMs,
+    (retryNow) => ({ retryAt: delayMs === null ? null : Date.now() + delayMs, retryNow }),
+    opts,
+    // The connection back ends the wait: a network failure was its cause.
+    (end) => opts.online.subscribe((isOnline) => isOnline && end()),
+  );
+}
+
+/** Neither the connection coming back nor a press ends it: the module is full, not unreachable. */
+function waitForPlace(delayMs: number, busySince: number, opts: RetryOptions): Promise<void> {
+  return wait(delayMs, () => ({ busySince, retryAt: Date.now() + delayMs }), opts);
 }
 
 interface SubmitFile {
@@ -112,19 +182,17 @@ interface SubmitFile {
   upload?: UploadHandle | null;
 }
 
-export interface SubmitProgress {
-  filename: string;
-  loaded: number;
-  total: number;
-  percent: number;
-}
+/** How far the send's files have gone; all null while an upload an earlier send began waits before the module has said. */
+export type SubmitProgress =
+  | { filename: string; loaded: number; total: number; percent: number }
+  | { filename: string; loaded: null; total: null; percent: null };
 
 export interface SubmitDeps {
   upload: typeof uploadStepRuntimeFile;
   startRun: typeof startRun;
 }
 
-export interface SubmitParams extends RetryOptions {
+interface SubmitBase extends RetryOptions {
   flowId: string;
   contract: RunContract;
   stepId: string | null;
@@ -134,8 +202,6 @@ export interface SubmitParams extends RetryOptions {
   onUploaded?: (index: number, fileId: string) => void | Promise<void>;
   /** The file's upload in parts was made or asked to complete (its handle to keep), or is gone (null). */
   onUploadHandle?: (index: number, handle: UploadHandle | null) => Promise<void>;
-  /** Replaces the key derived from the request, as for a recording. */
-  idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
   speakerLabels?: boolean;
   /** An upper bound on the speakers, as max_speakers; left out, Eneo uses the flow's own count field or decides. */
@@ -152,6 +218,14 @@ export interface SubmitParams extends RetryOptions {
   /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
   onStarting?: (request: RunRequest) => void | Promise<void>;
 }
+
+/**
+ * The run's key: a recording's own (`idempotencyKey`), or one derived from the request and which send this is
+ * (`submissionId`, FlowSession's), so a new send of the same form is a new run.
+ */
+type RunKey = { idempotencyKey: string; submissionId?: never } | { submissionId: string; idempotencyKey?: never };
+
+export type SubmitParams = SubmitBase & RunKey;
 
 export async function submitRun(
   params: SubmitParams,
@@ -177,9 +251,12 @@ export async function submitRun(
 
   const total = files.reduce((sum, file) => sum + (file.fileId ? 0 : file.blob.size), 0);
   let sent = 0;
+  // Whether the page has been told the send is uploading: it shows a wait, and Avbryt, only once it has.
+  let reported = false;
   // The browser counts the request's own bytes (the form around a file) with the file's: never more than the files.
   const report = (filename: string, sentBytes: number) => {
     const loaded = Math.min(sentBytes, total);
+    reported = true;
     params.onProgress?.({ filename, loaded, total, percent: total > 0 ? Math.round((loaded / total) * 100) : 100 });
   };
 
@@ -191,6 +268,15 @@ export async function submitRun(
     }
     // An upload an earlier send began shows its progress from where the module has it, once it has said.
     if (!file.upload) report(file.filename, sent);
+    // A wait before the module has said (no place for it, or no connection) is still the upload's, shown with Avbryt:
+    // without a position, never a made-up one.
+    const onWait = (wait: RetryWait | null) => {
+      if (wait && !reported) {
+        reported = true;
+        params.onProgress?.({ filename: file.filename, loaded: null, total: null, percent: null });
+      }
+      params.onWait?.(wait);
+    };
     const uploaded = await withRetry(
       () =>
         deps.upload(flowId, stepId!, file.blob, file.filename, {
@@ -201,7 +287,7 @@ export async function submitRun(
           onHandle: async (handle) => params.onUploadHandle?.(index, handle),
         }),
       // A lost connection is still waited out; the file stays on the device either way.
-      { ...params, maxServerErrorTries: UPLOAD_SERVER_ERROR_TRIES },
+      { ...params, onWait, maxServerErrorTries: UPLOAD_SERVER_ERROR_TRIES, fileInEachTry: !sendsInParts(file.blob) },
     );
     sent += file.blob.size;
     fileIds.push(uploaded.id);
@@ -223,13 +309,16 @@ export async function submitRun(
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
   if (params.speakerLabels !== undefined) body.speaker_labels = params.speakerLabels;
   if (params.maxSpeakers !== undefined) body.max_speakers = params.maxSpeakers;
+  // A recording's own key wins: the page hands a recording's send the same params as any other.
   const key =
-    params.idempotencyKey ??
-    (await deriveRunIdempotencyKey({
-      flowId,
-      expectedFlowVersion: contract.published_flow_version,
-      body,
-    }));
+    params.idempotencyKey !== undefined
+      ? params.idempotencyKey
+      : await deriveRunIdempotencyKey({
+          flowId,
+          expectedFlowVersion: contract.published_flow_version,
+          body,
+          submissionId: params.submissionId,
+        });
   await params.onStarting?.({ body, idempotencyKey: key });
   return askRun(() => deps.startRun(flowId, body, key, params.signal), params);
 }
@@ -260,10 +349,13 @@ function soundless(files: readonly { blob: Blob }[], parts: readonly { durationM
   return minutes >= 1 && files.reduce((sum, file) => sum + file.blob.size, 0) < 1024 * minutes;
 }
 
+/** A recording is its own send: the run's key names the recording. */
+type RecordingParams = Omit<SubmitBase, "files" | "onUploaded" | "onUploadHandle">;
+
 export async function submitRecording(
   store: RecordingStore,
   id: string,
-  params: Omit<SubmitParams, "files" | "onUploaded" | "onUploadHandle">,
+  params: RecordingParams,
   deps?: SubmitDeps,
 ): Promise<FlowRunPublic> {
   if (!(await store.lease(id))) throw new Error(IN_USE_ELSEWHERE);
@@ -288,7 +380,7 @@ const refusedByEneo = (error: unknown) =>
 async function sendLeased(
   store: RecordingStore,
   id: string,
-  params: Omit<SubmitParams, "files" | "onUploaded" | "onUploadHandle">,
+  params: RecordingParams,
   deps?: SubmitDeps,
   uploadedAgain = false,
 ): Promise<FlowRunPublic> {

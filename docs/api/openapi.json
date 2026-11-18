@@ -173,11 +173,25 @@
             }
           },
           "503": {
-            "description": "Ingen uppladdningsplats eller kvittensplats är ledig. Försök igen efter två sekunder.",
+            "description": "Ingen uppladdningsplats är ledig (error är uploads_busy, som på multipart-rutten), eller ingen kvittensplats (bara detail). Försök igen efter två sekunder.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "const": "2"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
                 }
               }
             }

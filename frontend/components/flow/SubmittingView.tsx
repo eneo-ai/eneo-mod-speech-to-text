@@ -11,6 +11,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { formatBytes, formatPercent } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
 import { creatingHeading } from "@/lib/flow-output";
+import { keptNote } from "@/lib/flow-session";
 import { StateCard, StateHead } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
@@ -21,7 +22,8 @@ export type SubmissionState =
   | {
       kind: "uploading";
       filename: string;
-      loaded: number;
+      /** Null until the module has said where an upload an earlier send began stands. */
+      loaded: number | null;
       total: number | null;
       percent: number | null;
       /** A recording, not a chosen file: the page says which is on its way. */
@@ -93,13 +95,19 @@ export function SubmittingView({
 
 /**
  * What is under way, in words. Once every byte has left, the module hands the file on to Eneo, which can take a while
- * for a long meeting: the page says so rather than stand at "Laddar upp" with a full bar.
+ * for a long meeting: the page says so rather than stand at "Laddar upp" with a full bar. Not while the module has no
+ * free place: it refused the bytes, and the upload is to be made again.
  */
 function stage(submission: SubmissionState): string {
   if (submission.kind === "starting") return "Startar flödet…";
   if (submission.kind !== "uploading") return "Skickar…";
   const what = submission.recording ? "inspelningen" : "filen";
-  const sent = submission.total != null && submission.total > 0 && submission.loaded >= submission.total;
+  const sent =
+    submission.wait?.busySince === undefined &&
+    submission.loaded != null &&
+    submission.total != null &&
+    submission.total > 0 &&
+    submission.loaded >= submission.total;
   return sent ? `Eneo tar emot ${what}…` : `Laddar upp ${what}…`;
 }
 
@@ -160,8 +168,8 @@ function UploadProgress({
       {/* Tabular figures: the counting digits keep their width, so the words do not shift as they count. */}
       <HStack justify="between" gap={2}>
         <Text type="supporting" hasTabularNumbers>
-          {formatBytes(submission.loaded)}
-          {submission.total ? ` av ${formatBytes(submission.total)}` : ""}
+          {submission.loaded != null && formatBytes(submission.loaded)}
+          {submission.loaded != null && submission.total ? ` av ${formatBytes(submission.total)}` : ""}
         </Text>
         <Text type="supporting" hasTabularNumbers>
           {submission.percent != null ? formatPercent(percent) : "Pågår"}
@@ -170,7 +178,7 @@ function UploadProgress({
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}
       </VisuallyHidden>
-      <RetryNotice wait={submission.wait} />
+      <RetryNotice wait={submission.wait} kept={keptNote(submission.recording ? "recording" : "file")} />
       {/* The card's last row, as the run's Avbryt körningen is: what it stops, said whole. */}
       <HStack paddingBlockStart={2}>
         <Button label="Avbryt uppladdningen" variant="secondary" onClick={onCancel} />

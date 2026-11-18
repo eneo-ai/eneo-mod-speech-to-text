@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { ApiError, type FormField, type RunContract } from "./api";
+import { ApiError, deriveRunIdempotencyKey, type FormField, type Json, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
@@ -1489,6 +1489,29 @@ test("a send that fails keeps the recording and the details, and says why", asyn
   assert.ok(await store.get(recording.id), "the audio is still on the device");
 });
 
+test("a send the module had no place for says that many are sending, with the recording kept to send again", async () => {
+  const { session, recorders, store } = await setup();
+  session.setHandlers({
+    submit: async () => {
+      throw new ApiError(503, "Too many heavy operations are running.", { error: "uploads_busy" }, "uploads_busy");
+    },
+  });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const recording = session.getSnapshot().recording!;
+
+  assert.equal(await session.createDocument(), false);
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Många skickar just nu. Försök igen om en stund.",
+    detail: "Inspelningen finns kvar på enheten. Välj Skapa dokument när du vill försöka igen.",
+  });
+  assert.ok(await store.get(recording.id), "the audio is still on the device");
+});
+
 test("a recording Eneo refuses for its size or format is kept, and the page does not ask to send the same again", async () => {
   for (const [what, error, title] of [
     ["too large", new ApiError(400, "Too large", null, "flow_run_step_input_file_too_large"), "Inspelningen är större än flödet tar emot (högst 50\u00a0MB)."],
@@ -2418,4 +2441,115 @@ test("the ready session follows late-only audio and clears the stop warning when
   recorders[0].dispatchEvent(new Event("stop"));
   await until(() => session.getSnapshot().recording?.parts[0]?.endConfirmed === true);
   assert.equal(session.getSnapshot().problem, null);
+});
+
+/** A flow whose file is optional, sent as a form alone from Ladda upp. */
+const formOnly = () => audioContract({ steps_requiring_input: [{ step_id: "step-audio", input_format: "audio", required: false }] });
+
+async function formSession(
+  drafts: DraftStorage | null,
+  submit: (request: SubmitRequest) => Promise<void>,
+  options: { storage?: KeyValueStorage; contract?: RunContract } = {},
+) {
+  const { session } = await setup({ drafts: drafts ?? undefined, storage: options.storage });
+  session.setHandlers({ submit });
+  session.setContract(options.contract ?? formOnly());
+  session.selectMode("ladda-upp");
+  return session;
+}
+
+test("each confirmed send of the same form is a send of its own; a press again after one that failed is the same send", async () => {
+  const sent: string[] = [];
+  let fail = false;
+  const session = await formSession(memoryDrafts(), async (request) => {
+    sent.push(request.submissionId);
+    if (fail) throw new Error("Nätverket svarade inte.");
+  });
+  assert.equal(await session.createDocument(), true);
+  assert.equal(await session.createDocument(), true);
+  assert.notEqual(sent[0], sent[1], "a second confirmed send of the same form is a new one");
+  fail = true;
+  assert.equal(await session.createDocument(), false);
+  fail = false;
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[2], sent[3], "the press after a failed or unanswered send is that same send");
+  assert.notEqual(sent[2], sent[1]);
+});
+
+test("the send survives a reload before it was confirmed, and an earlier draft without one is still read", async () => {
+  const drafts = memoryDrafts();
+  drafts.setItem("tal-till-text:draft:user-1:flow:flow-1", JSON.stringify({ motesnamn: "Nämnden" }));
+  const sent: string[] = [];
+  const before = await formSession(drafts, async (request) => {
+    sent.push(request.submissionId);
+    throw new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
+  });
+  assert.equal(before.getSnapshot().details.motesnamn, "Nämnden", "the details of a draft written before sends were kept");
+  assert.equal(await before.createDocument(), false);
+  before.dispose(); // the page reloaded with the answer still out
+
+  const after = await formSession(drafts, async (request) => void sent.push(request.submissionId));
+  assert.equal(await after.createDocument(), true);
+  assert.equal(sent[1], sent[0], "the same send after the reload");
+  assert.equal(drafts.getItem("tal-till-text:draft:user-1:flow:flow-1:sandning"), null, "confirmed, it is gone with the draft");
+});
+
+test("a send whose answer was lost goes again after a reload as the same request, also after an earlier send was confirmed", async () => {
+  // Eneo as it keeps keys: one run per key, the same run back for a key it has.
+  const runs = new Map<string, string>();
+  const calls: { body: Json; key: string }[] = [];
+  let loseAnswer = false;
+  const send = async ({ payload, speakerLabels, maxSpeakers, submissionId }: SubmitRequest) => {
+    const body: Json = {
+      expected_flow_version: 3,
+      input_payload_json: payload as Json,
+      speaker_labels: speakerLabels ?? null,
+      max_speakers: maxSpeakers ?? null,
+    };
+    const key = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body, submissionId });
+    calls.push({ body, key });
+    if (!runs.has(key)) runs.set(key, `run-${runs.size + 1}`);
+    if (loseAnswer) throw new Error("Nätverket svarade inte.");
+  };
+  // A reload keeps the tab's storage and its drafts: the two sessions share both, as the page before and after does.
+  const drafts = memoryDrafts();
+  const storage = memoryStorage();
+  // A form with nothing to upload, whose run labels speakers and asks Antal talare: a count lives only in the drafts.
+  const contract = { ...countContract(), steps_requiring_input: formOnly().steps_requiring_input };
+  const before = await formSession(drafts, send, { storage, contract });
+  before.setDetail("motesnamn", "Byggnadsnämnden");
+  before.setSpeakerCount("4");
+  assert.equal(await before.createDocument(), true, "the first send is confirmed");
+  assert.equal((calls[0].body as { max_speakers: unknown }).max_speakers, 4, "the count is in the request");
+  loseAnswer = true;
+  assert.equal(await before.createDocument(), false, "the same form again: Eneo takes it, the answer is lost");
+  before.dispose(); // the page reloaded with the answer still out
+
+  loseAnswer = false;
+  const after = await formSession(drafts, send, { storage, contract });
+  assert.equal(await after.createDocument(), true);
+  assert.equal(runs.size, 2, "two sends, two runs: the press after the reload is the send whose answer was lost");
+  assert.deepEqual(calls[2], calls[1], "the same details, speaker count and key");
+  const { unstoredDrafts } = await import("./drafts");
+  assert.equal(unstoredDrafts.any(), false, "stored drafts ask nothing on leaving");
+  for (const name of ["", ":talare", ":sandning"]) {
+    assert.equal(drafts.getItem(`tal-till-text:draft:user-1:flow:flow-1${name}`), null, `confirmed: the draft${name} is gone`);
+  }
+});
+
+test("a send the tab cannot store is kept on the page, which says it holds unsaved work", async () => {
+  const { unstoredDrafts } = await import("./drafts");
+  const refusing = { ...memoryDrafts(), setItem: () => { throw new DOMException("full", "QuotaExceededError"); } };
+  const sent: string[] = [];
+  let fail = true;
+  const session = await formSession(refusing, async (request) => {
+    sent.push(request.submissionId);
+    if (fail) throw new Error("Nätverket svarade inte.");
+  });
+  assert.equal(await session.createDocument(), false);
+  assert.equal(unstoredDrafts.any(), true, "leaving the page asks first");
+  fail = false;
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[1], sent[0], "the same send, held in memory");
+  assert.equal(unstoredDrafts.any(), false);
 });

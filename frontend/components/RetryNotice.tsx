@@ -4,6 +4,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { formatDuration } from "@/lib/format";
 import { onlineStatus, type OnlineStatus } from "@/lib/online-status";
 import type { RetryWait } from "@/lib/submit-run";
 import { moveFocusToHeading } from "@/routes/RouteEffects";
@@ -12,9 +13,20 @@ import { moveFocusToHeading } from "@/routes/RouteEffects";
  * Shown while a send waits to try again. The countdown stays outside the live
  * region, so a screen reader hears one sentence rather than every second. While
  * the page's offline notice (OfflineBanner) says why nothing goes, this one says
- * only when it tries again: the failure is said once.
+ * only when it tries again: the failure is said once. A wait for a free place
+ * in the module (`busySince`) says that many are sending and how long it has
+ * waited, with what is kept, and offers nothing to press: only Avbryt ends it.
  */
-export function RetryNotice({ wait, status = onlineStatus }: { wait: RetryWait | null; status?: OnlineStatus }) {
+export function RetryNotice({
+  wait,
+  status = onlineStatus,
+  kept,
+}: {
+  wait: RetryWait | null;
+  status?: OnlineStatus;
+  /** What the person still has while the send waits for a free place (keptNote). */
+  kept?: string;
+}) {
   const said = useSyncExternalStore(status.subscribe, () => status.connection !== "online", () => false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -30,6 +42,20 @@ export function RetryNotice({ wait, status = onlineStatus }: { wait: RetryWait |
     if (!wait && pressed.current) moveFocusToHeading();
     pressed.current = false;
   }, [wait]);
+
+  if (wait?.busySince !== undefined) {
+    return (
+      <VStack gap={3}>
+        <VisuallyHidden as="p" role="status">
+          {BUSY}
+        </VisuallyHidden>
+        <Text as="p" hasTabularNumbers>
+          {`${BUSY} Har väntat ${formatDuration(now - wait.busySince)}.`}
+          {kept ? ` ${kept}` : ""}
+        </Text>
+      </VStack>
+    );
+  }
 
   return (
     <VStack gap={3}>
@@ -57,3 +83,5 @@ export function RetryNotice({ wait, status = onlineStatus }: { wait: RetryWait |
     </VStack>
   );
 }
+
+const BUSY = "Många skickar just nu. Vi försöker igen.";

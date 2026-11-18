@@ -1,8 +1,9 @@
 /**
  * What someone has typed but not yet sent, kept per person in this tab
  * (sessionStorage), so a reload after a lost login, or a tab the browser put
- * to sleep, gives it back: the flow's details before a document is made, and
- * a review's edits before they are saved. Only to the same person: someone
+ * to sleep, gives it back: the flow's details before a document is made, with
+ * the id of a send Eneo has not yet confirmed (FlowSession's), and a review's
+ * edits before they are saved. Only to the same person: someone
  * else signing in here clears the others' drafts. Sent or saved, it goes.
  * What the storage refused is said to be unkept (`unstoredDrafts`), so leaving
  * the page asks first.

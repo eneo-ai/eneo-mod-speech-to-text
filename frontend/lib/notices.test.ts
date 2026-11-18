@@ -5,6 +5,7 @@ import { createElement, useEffect, useRef } from "react";
 import { OfflineBanner, type OfflineWaiting } from "../components/OfflineBanner";
 import { RetryNotice } from "../components/RetryNotice";
 import { ProblemAlert } from "../components/flow/ProblemAlert";
+import { formatDuration } from "./format";
 import { createOnlineStatus, onlineStatus, type OnlineTarget } from "./online-status";
 import type { Problem } from "./flow-session";
 import { button, cleanup, installDom, mount } from "./test-dom";
@@ -215,6 +216,20 @@ test("the countdown's timer is stopped when the notice goes", async (t) => {
   assert.equal(live.size, 1, "one timer while it waits");
   await unmount();
   assert.equal(live.size, 0, "none after");
+});
+
+test("a wait for a free place says that many are sending, how long it has waited and what is kept, with nothing to press", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000_000 });
+  const busy = { busySince: 1_000_000 - 79_000, retryAt: 1_000_000 + 4_000 };
+  const { container, act } = await mount(createElement(RetryNotice, { wait: busy, kept: "Inspelningen finns kvar på enheten." }));
+  const spoken = () => container.querySelector('[role="status"]')?.textContent;
+  const shown = () => container.querySelector("p:not([role])")?.textContent;
+  assert.equal(spoken(), "Många skickar just nu. Vi försöker igen.", "said once, not every second");
+  assert.equal(shown(), `Många skickar just nu. Vi försöker igen. Har väntat ${formatDuration(79_000)}. Inspelningen finns kvar på enheten.`);
+  assert.equal(container.querySelectorAll("button").length, 0, "nothing to press: Avbryt beside it is the way out");
+  await act(async () => t.mock.timers.tick(1_000));
+  assert.ok(shown()?.includes(`Har väntat ${formatDuration(80_000)}.`), "it counts on");
+  assert.equal(spoken(), "Många skickar just nu. Vi försöker igen.");
 });
 
 /** A browser window whose network the test switches, and the status that listens to it. */

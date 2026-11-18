@@ -173,6 +173,13 @@ test("once every byte has left, the stage says Eneo is taking the file, and a re
   assert.equal(statuses(uploading({ percent: null, total: null, loaded: 4096 }))[0], "Laddar upp filen…", "an unknown size never ends early");
 });
 
+test("while the module has no free place for an upload whose bytes have all gone, the stage still says it is being uploaded", () => {
+  const wait = { busySince: Date.now(), retryAt: Date.now() + 5_000 };
+  // The module refused the whole file: Eneo is not taking it, the upload is to be made again.
+  assert.equal(statuses(uploading({ recording: true, loaded: 2048, total: 2048, percent: 100, wait }))[0], "Laddar upp inspelningen…");
+  assert.equal(statuses(uploading({ loaded: 2048, total: 2048, percent: 100, wait }))[0], "Laddar upp filen…");
+});
+
 test("the counting bytes and percent hold still: tabular figures, and the percent sign kept with its number", () => {
   // What the design system draws for supporting text with tabular figures, so a digit that changes keeps its width.
   const drawn = (html: string) => /class="([^"]*)"/.exec(html)?.[1];
@@ -193,6 +200,16 @@ test("an upload of unknown size moves without a value and says Pågår, never a 
   const words = text(html);
   assert.match(words, /Pågår/);
   assert.doesNotMatch(words, / av |%/);
+});
+
+test("an upload whose place the module has not yet said shows no bytes and no percent, only Pågår, with its wait and Avbryt", () => {
+  const html = uploading({ percent: null, total: null, loaded: null, recording: true, wait: { busySince: Date.now(), retryAt: Date.now() + 5_000 } });
+  assert.doesNotMatch(html, /aria-valuenow/);
+  const words = text(html);
+  assert.match(words, /Pågår/);
+  assert.doesNotMatch(words, / B |%/, "no position, not even nought");
+  assert.match(words, /Många skickar just nu\. Vi försöker igen\./);
+  assert.match(words, /Avbryt uppladdningen$/);
 });
 
 test("a percent outside 0 to 100 is held to it, in the bar and in the words beside it", () => {

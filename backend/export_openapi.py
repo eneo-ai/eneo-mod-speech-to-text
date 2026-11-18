@@ -216,7 +216,10 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         success={"200": reply("Uppladdningens bekräftade position.", json_of({"$ref": "#/components/schemas/UploadStatus"})),
                  "404": reply("Id finns för en annan ägare eller ett annat steg.", json_of(ERROR)),
                  "409": reply("Metadata för samma id skiljer sig.", json_of(ERROR)),
-                 "503": reply("Ingen uppladdningsplats eller kvittensplats är ledig. Försök igen efter två sekunder.", json_of(ERROR))}),
+                 "503": reply("Ingen uppladdningsplats är ledig (`error` är `uploads_busy`, som på multipart-rutten), eller ingen "
+                              "kvittensplats (bara `detail`). Försök igen efter två sekunder.",
+                              json_of({"anyOf": [{"$ref": "#/components/schemas/BffError"}, ERROR]}),
+                              {"Retry-After": {"schema": {"const": "2"}}})}),
     ("GET", "/api/uploads/{flow_id}/{step_id}/{upload_id}"): Op(
         "Uppladdning", "Läs uppladdningens position eller resultat", session=True, user="optional",
         success={"200": reply("Tillstånd och bekräftade byte. En färdig fil har file_id; ett misslyckande har failure. "

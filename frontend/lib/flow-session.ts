@@ -58,6 +58,11 @@ export interface SubmitRequest {
   speakerLabels: boolean | undefined;
   /** The run's upper bound on the speakers, as max_speakers; only when the setup asks for it and one is given. */
   maxSpeakers: number | undefined;
+  /**
+   * Which send this is, for the run's key: the same until a send is confirmed, across a failure, a lost answer and a
+   * reload of this tab; a new one after. A new send of the same form is then a new run.
+   */
+  submissionId: string;
 }
 
 interface SessionHandlers {
@@ -214,8 +219,12 @@ function submitProblem(
   // What the person has is still here, and, where trying again can help, the button that sends it again.
   const { message, retry } = errorAdvice(error);
   const again = retry ? `Välj ${createLabel} när du vill försöka igen.` : "";
-  const kept = inputKind === "recording" ? "Inspelningen finns kvar på enheten." : inputKind === "file" ? "Filen finns kvar." : "";
-  return { title: message, detail: [kept, again].filter(Boolean).join(" ") || undefined };
+  return { title: message, detail: [keptNote(inputKind), again].filter(Boolean).join(" ") || undefined };
+}
+
+/** That what is being sent is still here: after a send that failed, and while one waits for a free place. */
+export function keptNote(inputKind: "recording" | "file" | null): string {
+  return inputKind === "recording" ? "Inspelningen finns kvar på enheten." : inputKind === "file" ? "Filen finns kvar." : "";
 }
 
 interface SessionSnapshot {
@@ -536,6 +545,7 @@ const isSpeakerChoices = (value: unknown): value is Partial<SpeakerChoices> =>
   (value.labels === undefined || value.labels === null || typeof value.labels === "boolean") &&
   (value.count === undefined || typeof value.count === "string") &&
   (value.edited === undefined || typeof value.edited === "boolean");
+const isSubmissionId = (value: unknown): value is string => typeof value === "string" && value.length > 0;
 
 interface FlowSessionOptions {
   flowId: string;
@@ -595,6 +605,8 @@ export class FlowSession {
   // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
   private keepTranscript: (() => void) | null = null;
   private creating = false;
+  // The send not yet confirmed (SubmitRequest.submissionId), kept in the drafts beside the details; null until one begins.
+  private submissionId: string | null = null;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -614,6 +626,8 @@ export class FlowSession {
     }
     if (typeof choices?.count === "string") this.speakerCountText = choices.count;
     if (choices?.edited === true) this.countFollowsNames = false;
+    // A send that began before the reload and was never confirmed: a press again is that send.
+    this.submissionId = readDraft(options.drafts, options.ownerId, this.submissionDraftName(), isSubmissionId);
     this.capture = new RecordingCapture(options.openStore, {
       ...options.captureDeps,
       getStream: async (constraints) => {
@@ -890,12 +904,20 @@ export class FlowSession {
     this.emit();
     if (this.invalid.length > 0 || !this.handlers) return false;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
+    // Kept before anything is sent, with the details and speaker choices it goes with, so a reload while the answer is
+    // out presses again as the same send of the same request (a confirmed send cleared them). A tab that cannot store
+    // them holds them here, and writeDraft says the page has unsaved work.
+    const submissionId = (this.submissionId ??= crypto.randomUUID());
+    writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
+    this.keepChoices();
+    writeDraft(this.options.drafts, this.options.ownerId, this.submissionDraftName(), submissionId);
     try {
       await this.handlers.submit({
         input,
         payload: detailsPayload(fields, this.details),
         speakerLabels: this.snapshot.speakerLabels ?? undefined,
         maxSpeakers,
+        submissionId,
       });
     } catch (error) {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
@@ -925,6 +947,9 @@ export class FlowSession {
     }
     clearDraft(this.options.drafts, this.options.ownerId, this.draftName());
     clearDraft(this.options.drafts, this.options.ownerId, this.choicesDraftName());
+    // Confirmed: the next send is a new one.
+    this.submissionId = null;
+    clearDraft(this.options.drafts, this.options.ownerId, this.submissionDraftName());
     this.emit();
     return true;
   }
@@ -1049,6 +1074,11 @@ export class FlowSession {
   /** Beside the details' draft, in the same store and key family. */
   private choicesDraftName() {
     return `${this.draftName()}:talare`;
+  }
+
+  /** The unconfirmed send's id, beside the details' draft: a draft from before it existed reads as it did. */
+  private submissionDraftName() {
+    return `${this.draftName()}:sandning`;
   }
 
   private keepChoices() {

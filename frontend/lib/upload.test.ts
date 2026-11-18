@@ -148,6 +148,7 @@ test("run idempotency key is deterministic across object key order", async () =>
   const first = await deriveRunIdempotencyKey({
     flowId: "flow",
     expectedFlowVersion: 1,
+    submissionId: "send-1",
     body: {
       expected_flow_version: 1,
       step_inputs: { step: { file_ids: ["file"] } },
@@ -157,6 +158,7 @@ test("run idempotency key is deterministic across object key order", async () =>
   const second = await deriveRunIdempotencyKey({
     flowId: "flow",
     expectedFlowVersion: 1,
+    submissionId: "send-1",
     body: {
       input_payload_json: { a: "1", b: "2" },
       step_inputs: { step: { file_ids: ["file"] } },
@@ -166,6 +168,7 @@ test("run idempotency key is deterministic across object key order", async () =>
   const changed = await deriveRunIdempotencyKey({
     flowId: "flow",
     expectedFlowVersion: 1,
+    submissionId: "send-1",
     body: {
       expected_flow_version: 1,
       step_inputs: { step: { file_ids: ["other"] } },

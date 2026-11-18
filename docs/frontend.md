@@ -69,7 +69,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Flödessidans inmatning (läge, uppgifter, talarval, fas) | `lib/flow-session.ts`, bunden till React av `components/flow/useFlowSession.ts`; fasen läses ur inspelaren, kopieras aldrig |
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` ([Inspelaren](recording.md)) |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) |
-| Det man skrivit men inte skickat | `lib/drafts.ts` (`sessionStorage`, per person) |
+| Det man skrivit men inte skickat, och vilken sändning som ännu inte är bekräftad | `lib/drafts.ts` (`sessionStorage`, per person) |
 | Talarnas namn: ett namngivningsstegs, med de namn som ges efter körningen ovanpå | Eneos rättningsset; regeln är `effectiveSpeakerNames` i `lib/transcript-corrections.ts` |
 | Var uppspelningen av en körning stannade | `lib/playback-position.ts` (`localStorage`, de 50 senast lyssnade körningarna) |
 | Resultatets valda flik (Dokument eller Transkribering) under en dators bredd | `components/flow/RunResult.tsx` (`sessionStorage`, per körning) |
