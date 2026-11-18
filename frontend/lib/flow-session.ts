@@ -904,9 +904,12 @@ export class FlowSession {
     this.emit();
     if (this.invalid.length > 0 || !this.handlers) return false;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
-    // Kept before anything is sent, so a reload while the answer is out presses again as the same send. A tab that
-    // cannot store it holds it here, and writeDraft says the page has unsaved work.
+    // Kept before anything is sent, with the details and speaker choices it goes with, so a reload while the answer is
+    // out presses again as the same send of the same request (a confirmed send cleared them). A tab that cannot store
+    // them holds them here, and writeDraft says the page has unsaved work.
     const submissionId = (this.submissionId ??= crypto.randomUUID());
+    writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
+    this.keepChoices();
     writeDraft(this.options.drafts, this.options.ownerId, this.submissionDraftName(), submissionId);
     try {
       await this.handlers.submit({

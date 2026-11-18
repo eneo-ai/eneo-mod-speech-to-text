@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { ApiError, type FormField, type RunContract } from "./api";
+import { ApiError, deriveRunIdempotencyKey, type FormField, type Json, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
@@ -2488,6 +2488,39 @@ test("the send survives a reload before it was confirmed, and an earlier draft w
   assert.equal(await after.createDocument(), true);
   assert.equal(sent[1], sent[0], "the same send after the reload");
   assert.equal(drafts.getItem("tal-till-text:draft:user-1:flow:flow-1:sandning"), null, "confirmed, it is gone with the draft");
+});
+
+test("a send whose answer was lost goes again after a reload as the same request, also after an earlier send was confirmed", async () => {
+  // Eneo as it keeps keys: one run per key, the same run back for a key it has.
+  const runs = new Map<string, string>();
+  const calls: { body: Json; key: string }[] = [];
+  let loseAnswer = false;
+  const send = async ({ payload, speakerLabels, submissionId }: SubmitRequest) => {
+    const body: Json = { expected_flow_version: 3, input_payload_json: payload as Json, speaker_labels: speakerLabels ?? null };
+    const key = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body, submissionId });
+    calls.push({ body, key });
+    if (!runs.has(key)) runs.set(key, `run-${runs.size + 1}`);
+    if (loseAnswer) throw new Error("Nätverket svarade inte.");
+  };
+  const drafts = memoryDrafts();
+  const before = await formSession(drafts, send);
+  before.setDetail("motesnamn", "Byggnadsnämnden");
+  before.setSpeakerLabels(false);
+  assert.equal(await before.createDocument(), true, "the first send is confirmed");
+  loseAnswer = true;
+  assert.equal(await before.createDocument(), false, "the same form again: Eneo takes it, the answer is lost");
+  before.dispose(); // the page reloaded with the answer still out
+
+  loseAnswer = false;
+  const after = await formSession(drafts, send);
+  assert.equal(await after.createDocument(), true);
+  assert.equal(runs.size, 2, "two sends, two runs: the press after the reload is the send whose answer was lost");
+  assert.deepEqual(calls[2], calls[1], "the same details, speaker choice and key");
+  const { unstoredDrafts } = await import("./drafts");
+  assert.equal(unstoredDrafts.any(), false, "stored drafts ask nothing on leaving");
+  for (const name of ["", ":talare", ":sandning"]) {
+    assert.equal(drafts.getItem(`tal-till-text:draft:user-1:flow:flow-1${name}`), null, `confirmed: the draft${name} is gone`);
+  }
 });
 
 test("a send the tab cannot store is kept on the page, which says it holds unsaved work", async () => {
