@@ -252,7 +252,7 @@ Modulen tar emot en uppladdning hel innan den skickar den vidare. Containern är
 - En färdig uppladdning lämnar bara en liten kvittens, i högst 30 minuter. Högst 256 finns samtidigt; den äldsta färdiga tas bort när plats behövs, aldrig en aktiv fil.
 - Startar processen om försvinner positionerna och kvittenserna. Saknas svaret från Eneo kan Eneo redan ha filen. Appen startar då inget flöde utan kräver ett uttryckligt nytt försök, och en ny uppladdning kan lämna den tidigare filen utan körning.
 - En uppladdning som börjar när platserna är tagna får 503 `uploads_busy` med `Retry-After: 2` innan något lagras. Multipart-rutten svarar så när `MAX_CONCURRENT_UPLOADS` eller `MAX_CONCURRENT_HEAVY_IO` är nått, den återupptagbara rutten (PUT) när `MAX_CONCURRENT_UPLOADS` är nått. PUT bär ingen del av filen, så appen frågar igen tills en plats blir ledig eller personen avbryter. På multipart-rutten bär varje försök hela filen, så appen försöker högst fyra gånger, som vid andra serverfel.
-- En del eller ett slutförande som når `MAX_CONCURRENT_HEAVY_IO` får 503 utan kod. Anropet bär en del, så appen försöker fyra gånger och väntar inte utan slut.
+- En del (PATCH) eller ett slutförande som når `MAX_CONCURRENT_HEAVY_IO` får 503 utan kod. Bara PATCH bär en del; för båda försöker appen fyra gånger och väntar inte utan slut. En plats för uppladdning är inte en plats för tung I/O, så en uppladdning som har fått sin plats kan ändå mötas av det felet.
 - Filhämtningar och livetext delar `MAX_CONCURRENT_HEAVY_IO`. Livetexten får ett fel som går att försöka igen, och inspelningen fortsätter lokalt.
 
 Koden: `backend/app/resumable.py`, `backend/app/limits.py` och `backend/app/main.py`.
