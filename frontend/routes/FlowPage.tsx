@@ -538,17 +538,21 @@ function FlowDetail({ flowId }: { flowId: string }) {
         return;
       }
       if (signal.aborted) return;
+      // The detail is read after the status, from the same sending: an end it says (delivered, given up) is the newer
+      // word, so the status's state under way is dropped and the detail's word is shown (deliveryView falls back to it).
+      const result = finished.run.result;
+      const ended = result?.kind === "outbound_http" && (result.delivery_status === "delivered" || result.delivery_status === "dead_lettered");
       setRun({
         kind: "done",
         run: finished.run,
         steps: finished.steps,
         graph: last.graph,
         corrections: finished.corrections,
-        delivery: last.run.result_delivery ?? null,
+        delivery: ended ? null : (last.run.result_delivery ?? null),
       });
-      // Only a result that went to the receiver is followed: a cancelled run can leave a sending's row under way in
+      // Only a result on its way to the receiver is followed: a cancelled run can leave a sending's row under way in
       // Eneo, with no result of its own and a view that says nothing of it.
-      if (finished.run.result?.kind !== "outbound_http") return;
+      if (result?.kind !== "outbound_http" || ended) return;
       await followDelivery(flowId, runId, last.run, {
         signal,
         onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),

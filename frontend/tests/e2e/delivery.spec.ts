@@ -182,6 +182,22 @@ test("a status read that fails for good keeps the result and a name not yet save
   await expect(start).toHaveCount(0);
 });
 
+test("a sending that ended between the status read and the detail read is shown ended, and is not followed", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  // The status is read first and still says a retry; the detail, read after it, already says delivered.
+  const eneo = await sentRun(page, finished("retry_scheduled", new Date(Date.now() + 10 * 60_000).toISOString()), {
+    result: { kind: "outbound_http", delivery_status: "delivered" },
+  });
+  await run(page, RUN);
+  await expect(h1(page)).toHaveText("Resultatet är skickat");
+  await expect(note(page)).toHaveText("Resultatet skickades till mottagaren.");
+  const read = eneo.statusReads();
+  // Past the sending's first pause of 2 s, and the next.
+  await page.waitForTimeout(5_000);
+  expect(eneo.statusReads(), "an ended sending is not followed").toBe(read);
+  await expect(h1(page)).toHaveText("Resultatet är skickat");
+});
+
 test("a cancelled run whose sending Eneo has not yet given up reads no status after its detail, and stays the cancelled run", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   // Eneo leaves the sending's row of a run cancelled while its result went out; the run has no result of its own.
