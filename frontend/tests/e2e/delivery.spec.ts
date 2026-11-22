@@ -199,6 +199,17 @@ test("a sending that ended between the status read and the detail read is shown 
   await expect(h1(page)).toHaveText("Resultatet är skickat");
 });
 
+test("a state the page does not know stays neutral, though the detail says delivered, and is not followed", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  const eneo = await sentRun(page, finished("queued_elsewhere"), { result: { kind: "outbound_http", delivery_status: "delivered" } });
+  await run(page, RUN);
+  await expect(h1(page)).toHaveText("Körningen är klar");
+  const read = eneo.statusReads();
+  await page.waitForTimeout(5_000);
+  expect(eneo.statusReads(), "an unknown state is not followed").toBe(read);
+  await expect(h1(page)).toHaveText("Körningen är klar");
+});
+
 test("a cancelled run whose sending Eneo has not yet given up reads no status after its detail, and stays the cancelled run", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
   // Eneo leaves the sending's row of a run cancelled while its result went out; the run has no result of its own.

@@ -61,7 +61,7 @@ import {
   runSteps,
   runLabelsSpeakers,
 } from "@/lib/run-progress";
-import { goingLiveFallbackNotice, runErrorView } from "@/lib/run-result";
+import { deliveryUnderWay, goingLiveFallbackNotice, runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
   startAgain,
@@ -539,9 +539,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
       }
       if (signal.aborted) return;
       // The detail is read after the status, from the same sending: an end it says (delivered, given up) is the newer
-      // word, so the status's state under way is dropped and the detail's word is shown (deliveryView falls back to it).
+      // word than a known state under way in the status, which is dropped so the detail's word is shown (deliveryView
+      // falls back to it). A state the page does not know stays the status's, neutral.
       const result = finished.run.result;
-      const ended = result?.kind === "outbound_http" && (result.delivery_status === "delivered" || result.delivery_status === "dead_lettered");
+      const ended =
+        result?.kind === "outbound_http" &&
+        deliveryUnderWay(last.run.result_delivery) &&
+        (result.delivery_status === "delivered" || result.delivery_status === "dead_lettered");
       setRun({
         kind: "done",
         run: finished.run,
