@@ -44,8 +44,13 @@ export function runResultView(
 
 type DeliveryState = ResultDelivery["state"];
 
-/** The detail's own word, read only where the status has no state: an older Eneo, or a status row without one. */
-const FROM_DETAIL: Record<string, DeliveryState> = { pending: "sending", delivered: "delivered", dead_lettered: "dead_lettered" };
+type DetailStatus = Extract<FlowRunResult, { kind: "outbound_http" }>["delivery_status"];
+
+/**
+ * The detail's own word, read only where the status has no state: an older Eneo, or a status row without one. A word
+ * from a newer Eneo is outside the type and finds nothing here, so it stays neutral.
+ */
+const FROM_DETAIL: Record<DetailStatus, DeliveryState> = { pending: "sending", delivered: "delivered", dead_lettered: "dead_lettered" };
 
 /**
  * Where a result sent to the flow's receiver stands, as the page says it: the heading and Eneo's own sentence (its
