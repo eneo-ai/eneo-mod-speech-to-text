@@ -68,8 +68,8 @@ test("a run that finishes while the page is open shows its result at once, then 
   await run(page, RUN);
   await expect(page.getByRole("heading", { name: "Dokumentet skapas" })).toBeVisible();
 
-  // Eneo's own order: the sending carries a time from the start, a retry its own, and the sending after it the retry's
-  // time, passed by then; a sending says no time.
+  // Eneo's own order: the sending carries a time from the start, a retry its own, and the sending after it a time already
+  // passed (in Eneo the retry's; here a second ago, which needs no wait of ten minutes); a sending says no time.
   eneo.set(finished("sending", new Date().toISOString()));
   await expect(h1(page)).toHaveText("Skickas");
   await expect(note(page)).toHaveText("Körningen är klar och resultatet är på väg till mottagaren.");
@@ -187,13 +187,37 @@ test("Back from a run whose result is on its way, and the choice of another run,
   sentinel.expect(NO_CONFIRMED_WORDS);
   const eneo = await sentRun(page, finished("sending"));
   await openFromList(page);
-  await expect.poll(eneo.statusReads, { message: "the sending is followed" }).toBeGreaterThanOrEqual(1);
+  // A read after the result shows is the sending's follow, not the run's own last read.
+  const shown = eneo.statusReads();
+  await expect.poll(eneo.statusReads, { message: "the sending is followed" }).toBeGreaterThan(shown);
 
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   const left = eneo.statusReads();
   await page.getByRole("region", { name: "Senaste körningar" }).getByRole("listitem").filter({ hasText: "Misslyckades" }).getByRole("button").click();
   await expect(page.getByRole("heading", { level: 1 })).not.toHaveText("Skickas");
+  await page.waitForTimeout(5_000);
+  expect(eneo.statusReads(), "no read for the run left").toBe(left);
+});
+
+/** A navigation of the router to an address, as a link of its own would make it, without a load of the page. */
+const clientNavigate = (page: Page, url: string) =>
+  page.evaluate((to) => {
+    history.pushState(null, "", to);
+    dispatchEvent(new PopStateEvent("popstate"));
+  }, url);
+
+test("a change straight to another run while the sending is followed reads nothing more for the first", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  const eneo = await sentRun(page, finished("sending"));
+  await run(page, RUN);
+  await expect(h1(page)).toHaveText("Skickas");
+  const shown = eneo.statusReads();
+  await expect.poll(eneo.statusReads, { message: "the sending is followed" }).toBeGreaterThan(shown);
+
+  await clientNavigate(page, `/flows/${FLOW}?run=${ids.runs.failed}`);
+  await expect(h1(page)).not.toHaveText("Skickas");
+  const left = eneo.statusReads();
   await page.waitForTimeout(5_000);
   expect(eneo.statusReads(), "no read for the run left").toBe(left);
 });
