@@ -2065,6 +2065,37 @@ test("on a narrow page with the transcript's tab chosen, a change of the sending
   assert.equal(Boolean(region?.closest("[hidden]")), false, "outside the panel the chosen tab hides");
 });
 
+test("on a narrow page with the transcript's tab chosen, a sending whose state cannot be read shows it in sight, says it once, and stops when it can", async (t) => {
+  const { cloneElement } = await import("react");
+  const { page } = await namingRun(t, async () => Response.json({}), { receiver: "sending", narrow: true });
+  const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const draw = async (stale: boolean) => asPerson(cloneElement(page, { delivery: { state: "sending" }, deliveryStale: stale } as never), person);
+  const view = await mount(await draw(false));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
+  await view.act(async () => tab("Transkribering").click());
+  const focused = document.activeElement;
+  const STALE = "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv.";
+  // The page's own region, in the head with the heading; the transcript has regions of its own.
+  const region = () => [...view.container.querySelectorAll('p[role="status"]')].find((p) => p.parentElement?.querySelector("h1"));
+  const lines = () => [...view.container.querySelectorAll("p")].filter((p) => p.getAttribute("role") !== "status" && p.textContent === STALE);
+  assert.equal(region()?.textContent, "", "nothing said while the state is read");
+
+  await view.act(async () => view.rerender(await draw(true)));
+  assert.equal(lines().length, 1, "the line is there");
+  assert.equal(lines().some((line) => line.closest("[hidden]")), false, "in sight, outside the panel the chosen tab hides");
+  assert.equal(region()?.textContent, STALE, "said");
+  const changes: MutationRecord[] = [];
+  new window.MutationObserver((records) => changes.push(...records)).observe(region()!, { subtree: true, childList: true, characterData: true });
+  await view.act(async () => view.rerender(await draw(true)));
+  assert.equal(changes.length, 0, "a second failed read says nothing more");
+
+  await view.act(async () => view.rerender(await draw(false)));
+  assert.equal(lines().length, 0, "gone once the state is read");
+  assert.equal(region()?.textContent, "", "and the same state is not said again");
+  assert.equal(document.activeElement === focused, true, "the focus stays where it was");
+});
+
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {
   const { type } = await import("./test-dom");
   const { open } = await namingRun(t, () => new Promise<Response>(() => undefined), { narrow: true });

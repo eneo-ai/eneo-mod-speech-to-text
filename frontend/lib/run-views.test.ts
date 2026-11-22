@@ -445,7 +445,8 @@ test("a plain result keeps its check and says nothing of a sending, also with a 
 test("a sending whose state could not be read again keeps its last state, and says it could not be updated", () => {
   const html = sentOn("pending", { state: "sending" }, { deliveryStale: true });
   assert.match(html, /<h1[^>]*>Skickas<\/h1>/);
-  assert.match(text(html), /Körningen är klar och resultatet är på väg till mottagaren\. Läget kunde inte uppdateras just nu\. Sidan försöker igen av sig själv\./);
+  // In the head with the heading, which no tab hides, before the sending's note.
+  assert.match(text(html), /Läget kunde inte uppdateras just nu\. Sidan försöker igen av sig själv\..*Körningen är klar och resultatet är på väg till mottagaren\./);
   assert.doesNotMatch(text(html), /kunde inte skickas/i, "a failed read is not a failed sending");
   assert.doesNotMatch(sentOn("pending", { state: "sending" }), /kunde inte uppdateras/);
 });

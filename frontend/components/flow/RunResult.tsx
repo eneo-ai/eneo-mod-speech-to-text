@@ -44,6 +44,8 @@ import { LeaveContext } from "./useLeaveQuestion";
 
 type View = "document" | "transcript";
 
+/** A sending whose state could not be read just now: the follow tries again by itself. */
+const STALE = "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv.";
 /** The banner's colour for each state of a sending: on its way, waiting for a retry, confirmed, given up. */
 const SENDING_STATUS = { sending: "info", retry_scheduled: "warning", delivered: "success", dead_lettered: "error" } as const;
 const PANELS: Record<View, { tab: string; panel: string }> = {
@@ -123,11 +125,14 @@ export function RunResult({
   // the sending is said instead, and only a confirmed sending has the check that says the result is there.
   const sent = deliveryView(run.result, delivery);
   const toReceiver = sent !== null;
-  // Said once to a screen reader when the sending's state changes, never for the state the page opened with (the heading
-  // has the focus and says it) and never again for a read that changed nothing.
-  const [openedWith] = useState(sent?.note);
-  const [sendingMoved, setSendingMoved] = useState(false);
-  if (!sendingMoved && sent && sent.note !== openedWith) setSendingMoved(true);
+  // What the head's region says, once each: a change of the sending's state, never the state the page opened with (the
+  // heading has the focus and says it) and never again for a read that changed nothing; and a state that cannot be read
+  // just now, once for each time, with nothing said when it can again and the state is the same.
+  const stale = Boolean(sent && deliveryStale);
+  const [said, setSaid] = useState({ note: sent?.note, stale, text: "" });
+  if (sent && (sent.note !== said.note || stale !== said.stale)) {
+    setSaid({ note: sent.note, stale, text: stale ? STALE : sent.note !== said.note ? sent.note : "" });
+  }
   const words = outputWords(runOutput(run, contract));
   const { text: shown, note } = runResultView(run.result);
   // Blank text is no text, and a run with no file either has nothing to show: the page says that, not that it is ready.
@@ -299,10 +304,16 @@ export function RunResult({
           {detailsLine}
         </Text>
       )}
-      {/* A change of the sending's state is said here, in the head, which no tab hides. */}
+      {/* In the head, which no tab hides: that the sending's state cannot be read just now, in sight while it lasts, and
+          the region that says each change, there from the start and empty until then. */}
+      {stale && (
+        <Text as="p" color="secondary">
+          {STALE}
+        </Text>
+      )}
       {sent && (
         <VisuallyHidden as="p" role="status">
-          {sendingMoved ? sent.note : ""}
+          {said.text}
         </VisuallyHidden>
       )}
     </VStack>
@@ -313,14 +324,8 @@ export function RunResult({
       {sent && (
         <>
           {/* There when the page opens, so it is a note and not announced (the design system would make a warning or an
-              error an alert); a change is said by the head's region, there from the start and empty until then. */}
-          <Banner
-            status={sent.state ? SENDING_STATUS[sent.state] : "info"}
-            role="note"
-            collapsible={false}
-            title={sent.note}
-            description={deliveryStale ? "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv." : undefined}
-          />
+              error an alert); a change is said by the head's region. */}
+          <Banner status={sent.state ? SENDING_STATUS[sent.state] : "info"} role="note" collapsible={false} title={sent.note} />
         </>
       )}
       {empty && (
