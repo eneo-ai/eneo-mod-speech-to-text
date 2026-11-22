@@ -136,7 +136,7 @@ test("a status read that fails keeps the result and its state, says it could not
   // The line in sight, not the status region that says it.
   const stale = page.locator('p:not([role="status"])', { hasText: "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv." });
   await expect(stale).toBeVisible();
-  await expect(said(page), "said once").toHaveText("Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv.");
+  await expect(said(page), "said").toHaveText("Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv.");
   await expect(h1(page), "the last state stands, never 'kunde inte skickas'").toHaveText("Skickas");
   await expect(page.getByRole("heading", { name: "Transkribering" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }), "never back to the start").toHaveCount(0);

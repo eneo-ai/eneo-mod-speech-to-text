@@ -564,14 +564,17 @@ test("a finished run whose result is not on its way is not followed", async (t) 
   for (const first of [sending("delivered"), sending("dead_lettered"), sending(null), run("completed")]) {
     const { reads, deps } = deliveryReads(["sending"]);
     const controller = new AbortController();
-    let ended = false;
+    // Ended, not failed: a follow that fails sends the person to the start (FlowPage's catch).
+    let outcome = "pending";
     void followDelivery("flow-1", "run-1", first, { signal: controller.signal, onStatus: () => undefined, page: fakePage(false), online: createOnlineStatus(), deps })
-      .catch(() => undefined)
-      .then(() => void (ended = true));
-    await pass(t, 10_000);
-    controller.abort();
-    assert.equal(ended, true, `${JSON.stringify(first)}: ended at once`);
-    assert.equal(reads.length, 0, JSON.stringify(first));
+      .then(() => void (outcome = "resolved"), () => void (outcome = "rejected"));
+    try {
+      await pass(t, 10_000);
+      assert.equal(outcome, "resolved", `${JSON.stringify(first)}: ended at once`);
+      assert.equal(reads.length, 0, JSON.stringify(first));
+    } finally {
+      controller.abort();
+    }
   }
 });
 
