@@ -299,6 +299,12 @@ export function RunResult({
           {detailsLine}
         </Text>
       )}
+      {/* A change of the sending's state is said here, in the head, which no tab hides. */}
+      {sent && (
+        <VisuallyHidden as="p" role="status">
+          {sendingMoved ? sent.note : ""}
+        </VisuallyHidden>
+      )}
     </VStack>
   );
   const documentColumn = (
@@ -307,7 +313,7 @@ export function RunResult({
       {sent && (
         <>
           {/* There when the page opens, so it is a note and not announced (the design system would make a warning or an
-              error an alert); a change is said by the region below, there from the start and empty until then. */}
+              error an alert); a change is said by the head's region, there from the start and empty until then. */}
           <Banner
             status={sent.state ? SENDING_STATUS[sent.state] : "info"}
             role="note"
@@ -315,9 +321,6 @@ export function RunResult({
             title={sent.note}
             description={deliveryStale ? "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv." : undefined}
           />
-          <VisuallyHidden as="p" role="status">
-            {sendingMoved ? sent.note : ""}
-          </VisuallyHidden>
         </>
       )}
       {empty && (

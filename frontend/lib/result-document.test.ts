@@ -1849,7 +1849,7 @@ async function namingRun(
     await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     return view;
   };
-  return { open, sent, hash };
+  return { open, sent, hash, page };
 }
 
 /** The name field of a speaker in the open naming dialog, as a screen reader names it. */
@@ -2045,6 +2045,23 @@ test("a change of the sending's state is said once in the page's status region, 
   await view.act(async () => view.rerender(await asPerson(page("delivered"))));
   assert.equal(status(), "Resultatet skickades till mottagaren.");
   assert.equal(heading.textContent, "Resultatet är skickat");
+});
+
+test("on a narrow page with the transcript's tab chosen, a change of the sending's state is still said", async (t) => {
+  const { cloneElement } = await import("react");
+  const { page } = await namingRun(t, async () => Response.json({}), { receiver: "sending", narrow: true });
+  // One signed-in person throughout, as the page keeps them.
+  const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const view = await mount(await asPerson(page, person));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
+  await view.act(async () => tab("Transkribering").click());
+  assert.equal(tab("Transkribering").getAttribute("aria-selected"), "true");
+  await view.act(async () => view.rerender(await asPerson(cloneElement(page, { delivery: { state: "delivered" } } as never), person)));
+  // Only words and yes or no are compared: a failing comparison of a node would print the whole document.
+  const region = view.container.querySelector('p[role="status"]:not(:empty)');
+  assert.equal(region?.textContent, "Resultatet skickades till mottagaren.");
+  assert.equal(Boolean(region?.closest("[hidden]")), false, "outside the panel the chosen tab hides");
 });
 
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {

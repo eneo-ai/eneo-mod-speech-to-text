@@ -16,6 +16,8 @@ const RUN = ids.runs.done;
 const FLOW = ids.flows.flow1;
 const STATUS = `/api/eneo/flows/${FLOW}/runs/${RUN}/status/`;
 const DETAIL = `/api/eneo/flows/${FLOW}/runs/${RUN}/`;
+/** The reads a finished run is drawn from once: its detail (audit-logged), its steps and its run-pinned graph. */
+const DRAWN_FROM = new Set([DETAIL, `${DETAIL}steps/`, `/api/eneo/flows/${FLOW}/graph/`]);
 
 type Answer = { status: string; delivery?: Record<string, unknown> | null } | { fail: number; headers?: Record<string, string> };
 
@@ -46,8 +48,8 @@ async function sentRun(page: Page, first: Answer) {
   return {
     set: (answer: Answer) => void (state.answer = answer),
     statusReads: () => count(STATUS),
-    /** The reads that are not the status: the detail, the steps, the graph, the corrections. */
-    otherReads: () => reads.filter((read) => read !== STATUS).length,
+    /** The reads of the detail, the steps and the graph; the recording's sound and words may come late and are not counted. */
+    otherReads: () => reads.filter((read) => DRAWN_FROM.has(read)).length,
   };
 }
 
@@ -55,8 +57,8 @@ const finished = (state: string, next_delivery_at: string | null = null): Answer
 const h1 = (page: Page) => page.getByRole("heading", { level: 1 });
 /** The note on the sending, as it stands. */
 const note = (page: Page) => page.getByRole("note").filter({ hasText: /mottagaren/i });
-/** What the page's own status region says: a change of the sending's state, once. */
-const said = (page: Page) => note(page).locator('xpath=following-sibling::p[@role="status"][1]');
+/** What the page's own status region says, in the head with the heading: a change of the sending's state, once. */
+const said = (page: Page) => h1(page).locator('xpath=ancestor::*[p[@role="status"]][1]/p[@role="status"]');
 /** How the browser writes a moment's time of day, in its own time zone. */
 const clock = (page: Page, iso: string) => page.evaluate((at) => new Date(at).toTimeString().slice(0, 5), iso);
 
@@ -66,7 +68,9 @@ test("a run that finishes while the page is open shows its result at once, then 
   await run(page, RUN);
   await expect(page.getByRole("heading", { name: "Dokumentet skapas" })).toBeVisible();
 
-  eneo.set(finished("sending"));
+  // Eneo's own order: the sending carries a time from the start, a retry its own, and the sending after it the retry's
+  // time, passed by then; a sending says no time.
+  eneo.set(finished("sending", new Date().toISOString()));
   await expect(h1(page)).toHaveText("Skickas");
   await expect(note(page)).toHaveText("Körningen är klar och resultatet är på väg till mottagaren.");
   await expect(said(page), "the state it opened with is read with the heading").toHaveText("");
@@ -83,6 +87,14 @@ test("a run that finishes while the page is open shows its result at once, then 
   await expect(note(page)).toHaveText(`Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök kl. ${time}.`);
   await expect(said(page)).toHaveText(`Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök kl. ${time}.`);
   expect((await axe(page)).violations).toEqual([]);
+
+  const passed = new Date(Date.now() - 1_000).toISOString();
+  eneo.set(finished("sending", passed));
+  await expect(h1(page)).toHaveText("Skickas");
+  await expect(said(page)).toHaveText("Körningen är klar och resultatet är på väg till mottagaren.");
+  const sending = eneo.statusReads();
+  await page.waitForTimeout(3_000);
+  expect(eneo.statusReads() - sending, "a time passed is no reason to read without waiting").toBeLessThanOrEqual(2);
 
   eneo.set(finished("delivered"));
   await expect(h1(page)).toHaveText("Resultatet är skickat");
@@ -154,8 +166,8 @@ async function openFromList(page: Page) {
 }
 
 test("Back from a run whose result is on its way, and the choice of another run, read nothing more for it", async ({ page, sentinel }) => {
-  // A read under way when the person leaves is called off.
-  sentinel.expect(NO_CONFIRMED_WORDS, { requestFailed: /GET .*\/status\/: net::ERR_ABORTED/, optional: true });
+  // A read under way when the person leaves is called off; the sentinel counts no cancelled request as failed.
+  sentinel.expect(NO_CONFIRMED_WORDS);
   const eneo = await sentRun(page, finished("sending"));
   await openFromList(page);
   await expect.poll(eneo.statusReads, { message: "the sending is followed" }).toBeGreaterThanOrEqual(1);

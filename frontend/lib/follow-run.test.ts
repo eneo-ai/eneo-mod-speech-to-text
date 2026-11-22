@@ -4,6 +4,7 @@ import test from "node:test";
 import { ApiError, type FlowGraph, type FlowRunSummary } from "./api";
 import { CORRECTIONS_WAIT_MS, HIDDEN_POLL_MS, VISIBLE_POLL_MS, followDelivery, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
 import { createOnlineStatus } from "./online-status";
+import { deliveryView } from "./run-result";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 async function until(condition: () => boolean) {
@@ -447,6 +448,36 @@ test("a retry time that has passed is no reason to read at once: the next read i
   assert.equal(reads.length, 2, "one read per 2 s, not a loop");
   controller.abort();
   await done;
+});
+
+test("Eneo's own order, a sending with a time, a retry, the sending again with the retry's time passed, then delivered, is followed at its pace and the sending says no time", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const at = (ms: number) => new Date(ms).toISOString();
+  // A sending carries a time from the start; at 8 s a retry is planned for 38 s; from 40 s it is sending again with that
+  // time, passed, for 26 s; at 66 s it is delivered.
+  const eneoAt = (now: number) =>
+    now < 8_000 ? sending("sending", at(0)) : now < 40_000 ? sending("retry_scheduled", at(38_000)) : now < 66_000 ? sending("sending", at(38_000)) : sending("delivered");
+  const reads: number[] = [];
+  const heard: (string | undefined)[] = [];
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", sending("sending", at(0)), {
+    signal: controller.signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: { getStatus: async () => (reads.push(Date.now()), eneoAt(Date.now())) },
+  });
+  await pass(t, 70_000);
+  await done;
+  assert.deepEqual(heard, ["retry_scheduled", "sending", "delivered"]);
+  const every = (from: number, to: number) => Array.from({ length: (to - from) / 2_000 + 1 }, (_, i) => from + i * 2_000);
+  // The retry stood half a minute (8 to 38 s), so the next read waited 5 s; each change starts the 2 s pace again.
+  assert.deepEqual(reads, [...every(2_000, 38_000), 43_000, ...every(45_000, 67_000)], "at its pace, and never at once for a time passed");
+  await pass(t, 60_000);
+  assert.equal(reads.length, 32, "nothing is read once it is delivered");
+  const shown = deliveryView({ kind: "outbound_http", delivery_status: "pending" }, { state: "sending", next_delivery_at: at(38_000) });
+  assert.equal(shown?.heading, "Skickas");
+  assert.equal(shown?.note, "Körningen är klar och resultatet är på väg till mottagaren.", "a sending says no time");
 });
 
 test("a hidden page reads the sending rarely and catches up as soon as it is shown", async (t) => {
