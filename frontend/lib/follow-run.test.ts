@@ -522,6 +522,22 @@ test("a status that is a whole document of broken JSON is the answer's own error
   assert.equal(code, "invalid_json_response");
 });
 
+test("a status answer that parses but is no status is a server error, tried again, and a real status goes through", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  for (const body of ["null", "{}", '"klart"', "[]"]) {
+    globalThis.fetch = (async () => new Response(body, { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    const got = await getRunStatus("flow-1", "run-1").then(
+      () => "read",
+      (error: { status?: number; code?: string }) => `${error?.status} ${error?.code}`,
+    );
+    assert.equal(got, "502 invalid_json_response", body);
+  }
+  globalThis.fetch = (async () => new Response(JSON.stringify(sending("delivered")), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  const status = await getRunStatus("flow-1", "run-1");
+  assert.equal(status.result_delivery?.state, "delivered");
+});
+
 test("a hidden page reads the sending rarely and catches up as soon as it is shown", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   const page = fakePage(true);

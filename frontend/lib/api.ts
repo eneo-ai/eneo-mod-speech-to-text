@@ -960,12 +960,16 @@ export interface ResultDelivery {
   next_delivery_at?: string | null;
 }
 
-/** `signal` calls off the read, also one that waits for a new login to be sent again. */
-export async function getRunStatus(flowId: string, runId: string, signal?: AbortSignal) {
-  return request<FlowRunSummary>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/status/`,
-    { signal },
-  );
+/**
+ * `signal` calls off the read, also one that waits for a new login to be sent again. An answer that is no status (no
+ * object with a `status`: `null`, `{}`, a string, a 204) is the server's error, which the follows try again.
+ */
+export async function getRunStatus(flowId: string, runId: string, signal?: AbortSignal): Promise<FlowRunSummary> {
+  const status = await request<unknown>(`/api/eneo/flows/${flowId}/runs/${runId}/status/`, { signal });
+  if (!status || typeof status !== "object" || Array.isArray(status) || typeof (status as { status?: unknown }).status !== "string") {
+    throw new ApiError(502, "Servern svarade med en ogiltig körningsstatus.", null, "invalid_json_response");
+  }
+  return status as FlowRunSummary;
 }
 
 export async function getRun(flowId: string, runId: string) {
