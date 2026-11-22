@@ -23,9 +23,10 @@ type Answer = { status: string; delivery?: Record<string, unknown> | null } | { 
 
 /**
  * Eneo for the finished `done` run, its result sent to a receiver: the status answers what `answer` holds when it is
- * asked, and the detail is the stub's with an `outbound_http` result. Every read the page makes of the run is counted.
+ * asked, and the detail is the stub's with an `outbound_http` result, or with `detail` over it. Every read the page makes
+ * of the run is counted.
  */
-async function sentRun(page: Page, first: Answer) {
+async function sentRun(page: Page, first: Answer, detail: Record<string, unknown> = { result: { kind: "outbound_http", delivery_status: "pending" } }) {
   const state = { answer: first };
   const reads: string[] = [];
   page.on("request", (request: Request) => {
@@ -41,8 +42,7 @@ async function sentRun(page: Page, first: Answer) {
   });
   await page.route((url) => url.pathname === DETAIL, async (route) => {
     const response = await route.fetch();
-    const detail = await response.json();
-    await route.fulfill({ response, json: { ...detail, result: { kind: "outbound_http", delivery_status: "pending" }, result_files: [] } });
+    await route.fulfill({ response, json: { ...(await response.json()), ...detail, result_files: [] } });
   });
   const count = (path: string) => reads.filter((read) => read === path).length;
   return {
@@ -143,6 +143,19 @@ test("a status read that fails keeps the result and its state, says it could not
   eneo.set(finished("delivered"));
   await expect(h1(page)).toHaveText("Resultatet är skickat", { timeout: 15_000 });
   await expect(stale).toHaveCount(0);
+});
+
+test("a cancelled run whose sending Eneo has not yet given up reads no status after its detail, and stays the cancelled run", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  // Eneo leaves the sending's row of a run cancelled while its result went out; the run has no result of its own.
+  const eneo = await sentRun(page, { status: "cancelled", delivery: { state: "sending", next_delivery_at: null } }, { status: "cancelled", result: null });
+  await run(page, RUN);
+  await expect(h1(page)).toHaveText("Körningen avbröts");
+  const read = eneo.statusReads();
+  // Past the sending's first pause of 2 s, and the next.
+  await page.waitForTimeout(5_000);
+  expect(eneo.statusReads(), "a run with no result sent is not followed").toBe(read);
+  await expect(h1(page)).toHaveText("Körningen avbröts");
 });
 
 for (const gone of [404, 410]) {

@@ -546,6 +546,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
         corrections: finished.corrections,
         delivery: last.run.result_delivery ?? null,
       });
+      // Only a result that went to the receiver is followed: a cancelled run can leave a sending's row under way in
+      // Eneo, with no result of its own and a view that says nothing of it.
+      if (finished.run.result?.kind !== "outbound_http") return;
       await followDelivery(flowId, runId, last.run, {
         signal,
         onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
