@@ -290,7 +290,7 @@ test("a page names its user while it is open, and nobody once it is gone", () =>
 });
 
 test("every request to Eneo names the page's user, and the module's own requests do not", async (t) => {
-  const { calls } = signedInPage(t, []);
+  const { calls } = signedInPage(t, [() => ok({ id: "run-1", flow_id: "flow-1", status: "running" })]);
   await getRunStatus("flow-1", "run-1");
   await startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
   await logout();
