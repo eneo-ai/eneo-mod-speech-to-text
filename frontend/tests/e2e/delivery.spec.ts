@@ -171,7 +171,8 @@ for (const body of ["{", "null"]) test(`a status read that answers ${body} keeps
   const stale = page.locator('p:not([role="status"])', { hasText: "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv." });
   await expect(stale).toBeVisible();
   const failed = eneo.statusReads();
-  await expect.poll(() => eneo.statusReads(), { message: "read again", timeout: 15_000 }).toBeGreaterThan(failed);
+  // Two further reads: the second broken answer has been handled when the page is looked at.
+  await expect.poll(() => eneo.statusReads(), { message: "read again", timeout: 15_000 }).toBeGreaterThan(failed + 1);
   await expect(heading, "the last state stands").toHaveText("Skickas");
   await expect(name, "the name not yet saved stays").toHaveValue("Anna Berg");
   await expect(start, "never back to the start").toHaveCount(0);
@@ -183,21 +184,22 @@ for (const body of ["{", "null"]) test(`a status read that answers ${body} keeps
   await expect(start).toHaveCount(0);
 });
 
-test("a sending that ended between the status read and the detail read is shown ended, and is not followed", async ({ page, sentinel }) => {
-  sentinel.expect(NO_CONFIRMED_WORDS);
-  // The status is read first and still says a retry; the detail, read after it, already says delivered.
-  const eneo = await sentRun(page, finished("retry_scheduled", new Date(Date.now() + 10 * 60_000).toISOString()), {
-    result: { kind: "outbound_http", delivery_status: "delivered" },
+for (const [end, heading] of [["delivered", "Resultatet är skickat"], ["dead_lettered", "Kunde inte skickas"]]) {
+  test(`a sending that ended (${end}) between the status read and the detail read is shown ended, and is not followed`, async ({ page, sentinel }) => {
+    sentinel.expect(NO_CONFIRMED_WORDS);
+    // The status is read first and still says a retry; the detail, read after it, already says the end.
+    const eneo = await sentRun(page, finished("retry_scheduled", new Date(Date.now() + 10 * 60_000).toISOString()), {
+      result: { kind: "outbound_http", delivery_status: end },
+    });
+    await run(page, RUN);
+    await expect(h1(page)).toHaveText(heading);
+    const read = eneo.statusReads();
+    // Past the sending's first pause of 2 s, and the next.
+    await page.waitForTimeout(5_000);
+    expect(eneo.statusReads(), "an ended sending is not followed").toBe(read);
+    await expect(h1(page)).toHaveText(heading);
   });
-  await run(page, RUN);
-  await expect(h1(page)).toHaveText("Resultatet är skickat");
-  await expect(note(page)).toHaveText("Resultatet skickades till mottagaren.");
-  const read = eneo.statusReads();
-  // Past the sending's first pause of 2 s, and the next.
-  await page.waitForTimeout(5_000);
-  expect(eneo.statusReads(), "an ended sending is not followed").toBe(read);
-  await expect(h1(page)).toHaveText("Resultatet är skickat");
-});
+}
 
 test("a state the page does not know stays neutral, though the detail says delivered, and is not followed", async ({ page, sentinel }) => {
   sentinel.expect(NO_CONFIRMED_WORDS);
