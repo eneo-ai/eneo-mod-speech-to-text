@@ -27,7 +27,7 @@ Formulärets värden skickas som `input_payload_json`. Ett formulärfält kan i 
 
 Webbläsaren anropar alltid modulens `/api/eneo/...`; vilka rutter som släpps igenom står i [API-referens](api-referens.md) och reglerna i [Backend](backend.md#tillåtelselistan-för-eneo-anrop).
 
-En körning vars resultat går till flödets mottagare (`result.kind` är `outbound_http`) blir klar innan mottagaren har bekräftat resultatet. Appen följer då utskicket med `GET …/runs/{runId}/status/` (`result_delivery`, `frontend/lib/follow-run.ts`) tills det är `delivered` eller `dead_lettered`, och läser inte körningens detaljer igen.
+En körning vars resultat går till flödets mottagare (`result.kind` är `outbound_http`) kan bli klar innan mottagaren har bekräftat resultatet. Appen läser då `GET …/runs/{runId}/status/` (`result_delivery`, `frontend/lib/follow-run.ts`) så länge utskicket är `sending` eller `retry_scheduled`, och läser inte körningens detaljer igen.
 
 ## Granskning och talarmappning
 
