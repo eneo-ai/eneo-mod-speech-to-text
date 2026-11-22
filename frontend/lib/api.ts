@@ -429,7 +429,9 @@ export type FlowRunResult =
   | { kind: "file_backed_text"; preview: string; file: ResultFile }
   | { kind: "structured"; value: unknown; output_contract: Json | null }
   | { kind: "artifact"; files: ResultFile[] }
-  | { kind: "outbound_http"; delivery_status: "delivered" };
+  // A finished run's result can still be on its way: `pending` until the receiver confirms it, `dead_lettered` when Eneo
+  // gave up. An older Eneo always says `delivered`.
+  | { kind: "outbound_http"; delivery_status: "pending" | "delivered" | "dead_lettered" };
 
 /**
  * Körningens typade slutfel. Förgrena på `code`; `message` är teknisk detalj
@@ -939,12 +941,27 @@ export interface FlowRunSummary {
   run_label?: string | null;
   /** The day the run is about (a meeting's, "2026-10-01"), from the flow's form field that dates runs. */
   run_date?: string | null;
+  /**
+   * Where the run's result stands on its way to the flow's receiver; null when the run sends nothing (yet), and absent
+   * on an older Eneo. A finished run stops asking to be followed while this can still change.
+   */
+  result_delivery?: ResultDelivery | null;
   [k: string]: unknown;
 }
 
-export async function getRunStatus(flowId: string, runId: string) {
+/** The part of Eneo's sending of a result that the page reads; branch on `state`, never on the attempts. */
+export interface ResultDelivery {
+  /** `sending` (not tried yet, being tried, or due now), `retry_scheduled` (a try failed), or the end: `delivered`, `dead_lettered`. */
+  state: "sending" | "retry_scheduled" | "delivered" | "dead_lettered";
+  /** When the next try is planned, while it is `retry_scheduled`. */
+  next_delivery_at?: string | null;
+}
+
+/** `signal` calls off the read, also one that waits for a new login to be sent again. */
+export async function getRunStatus(flowId: string, runId: string, signal?: AbortSignal) {
   return request<FlowRunSummary>(
     `/api/eneo/flows/${flowId}/runs/${runId}/status/`,
+    { signal },
   );
 }
 

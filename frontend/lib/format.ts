@@ -51,6 +51,13 @@ export function formatDeadline(value: string | Date, now: Date = new Date()): st
   return `${date.getDate()} ${MONTHS[date.getMonth()]}${year} ${time}`;
 }
 
+/** The time of day a moment falls on, in the browser's time zone: "14:05"; empty for an invalid date. */
+export function formatTimeOfDay(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
 /** A moment whole, the same whatever day it is now: "8 okt 2026 10:04"; empty for an invalid date. */
 export function formatDateTime(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);

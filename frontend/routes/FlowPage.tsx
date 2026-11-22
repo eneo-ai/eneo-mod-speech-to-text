@@ -37,6 +37,7 @@ import {
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
   type FlowRunSummary,
+  type ResultDelivery,
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
@@ -46,7 +47,7 @@ import { friendlyError, reviewPauseEnded } from "@/lib/errors";
 import { CONTINUE_QUERY_PARAM, RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
-import { followRun, readActivePause, readFinishedRun, VISIBLE_POLL_MS, type SavedCorrections } from "@/lib/follow-run";
+import { followDelivery, followRun, readActivePause, readFinishedRun, VISIBLE_POLL_MS, type SavedCorrections } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { filesIn, recordingStore } from "@/lib/recording-store";
 import { asksBeforeClosing, leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
@@ -107,6 +108,8 @@ type RunState =
       graph: FlowGraph | null;
       /** The saved transcript corrections, as read with the run (readFinishedRun). */
       corrections: SavedCorrections;
+      /** Where a result sent to the receiver stands: from the status the run finished with, then from followDelivery. */
+      delivery?: ResultDelivery | null;
     };
 
 // The run's id is kept in the address (?run=), so a reload or a shared link resumes the same run.
@@ -483,7 +486,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   /**
    * Follows the run by its status and its run-locked graph until it is done or waits for review. The step results (an
-   * audit-logged read) and the detail are read once, when the run is done.
+   * audit-logged read) and the detail are read once, when the run is done. A result still on its way to the receiver is
+   * then followed by the status alone (followDelivery), the result shown meanwhile; its errors end here as the run's do.
    */
   async function follow(runId: string) {
     // The run's text is formatted when it is first drawn (components/flow/Markdown).
@@ -534,7 +538,21 @@ function FlowDetail({ flowId }: { flowId: string }) {
         return;
       }
       if (signal.aborted) return;
-      setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph, corrections: finished.corrections });
+      setRun({
+        kind: "done",
+        run: finished.run,
+        steps: finished.steps,
+        graph: last.graph,
+        corrections: finished.corrections,
+        delivery: last.run.result_delivery ?? null,
+      });
+      await followDelivery(flowId, runId, last.run, {
+        signal,
+        onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
+        onStatus: ({ result_delivery }) =>
+          !signal.aborted &&
+          setRun((prev) => (prev.kind === "done" && prev.run.id === runId ? { ...prev, delivery: result_delivery ?? null } : prev)),
+      });
     } catch (err) {
       if (signal.aborted) return;
       setPollTrouble(false);
@@ -889,6 +907,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
                 files={files}
                 showTranscript={transcribed}
                 contract={contract}
+                delivery={run.delivery}
+                deliveryStale={pollTrouble}
                 audio={inputStep?.input_format?.toLowerCase() === "audio"}
                 onNewRecording={onRunAgain}
                 onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}

@@ -22,6 +22,7 @@ import {
 } from "./api";
 import { onlineStatus, type OnlineStatus } from "./online-status";
 import { runOutcome } from "./run-progress";
+import { deliveryUnderWay } from "./run-result";
 import { isSpeakerMappingCheckpoint } from "./speaker-mapping";
 import { carriesTranscript } from "./speaker-review";
 import { withRetry } from "./submit-run";
@@ -164,6 +165,68 @@ export async function followRun(
     await pause(page.hidden ? HIDDEN_POLL_MS : VISIBLE_POLL_MS, signal, page);
   }
   return null;
+}
+
+/**
+ * How long to wait before reading a sending again, by how long it has stood in the same state: often at first, when a
+ * receiver usually answers, then more rarely (Eneo's advice to its clients). Never by the planned retry time: a time
+ * that has passed must not make a read without a wait.
+ */
+const deliveryPace = (unchangedMs: number) => (unchangedMs < 30_000 ? 2_000 : unchangedMs < 120_000 ? 5_000 : 15_000);
+
+interface DeliveryOptions {
+  signal: AbortSignal;
+  /** Heard with a status read whose sending changed (its state or its planned retry), never with one that did not. */
+  onStatus: (status: FlowRunSummary) => void;
+  /** As followRun's: from the first failed read (true) until a read goes through again (false). */
+  onTrouble?: (failing: boolean) => void;
+  page?: PageVisibility;
+  online?: OnlineStatus;
+  deps?: { getStatus: typeof getRunStatus };
+}
+
+/**
+ * Follows a finished run's result on its way to the receiver, from the status the run finished with, reading the status
+ * alone (not audit-logged, unlike the detail, which would say nothing more): while the sending is under way, until it is
+ * delivered, given up, or in a state the module does not know. A read that fails and can be tried again is tried again
+ * with withRetry's backoff and reported as trouble; any other error ends it, thrown, as followRun's do. The signal calls
+ * off the read under way too, also one that waits for a new login.
+ */
+export async function followDelivery(
+  flowId: string,
+  runId: string,
+  first: FlowRunSummary,
+  { signal, onStatus, onTrouble, page = documentVisibility(), online = onlineStatus, deps = { getStatus: getRunStatus } }: DeliveryOptions,
+): Promise<void> {
+  let delivery = first.result_delivery;
+  let since = Date.now();
+  let failing = false;
+  const inTrouble = (now: boolean) => {
+    if (now !== failing) onTrouble?.((failing = now));
+  };
+  while (deliveryUnderWay(delivery) && !signal.aborted) {
+    await pause(page.hidden ? HIDDEN_POLL_MS : deliveryPace(Date.now() - since), signal, page);
+    if (signal.aborted) return;
+    const status = await withRetry(
+      async () => {
+        try {
+          const read = await deps.getStatus(flowId, runId, signal);
+          inTrouble(false);
+          return read;
+        } catch (error) {
+          if (!signal.aborted) inTrouble(true);
+          throw error;
+        }
+      },
+      { online, signal },
+    );
+    if (signal.aborted) return;
+    const next = status.result_delivery;
+    if (next?.state === delivery?.state && (next?.next_delivery_at ?? null) === (delivery?.next_delivery_at ?? null)) continue;
+    delivery = next;
+    since = Date.now();
+    onStatus(status);
+  }
 }
 
 function pause(ms: number, signal: AbortSignal, page: PageVisibility): Promise<void> {

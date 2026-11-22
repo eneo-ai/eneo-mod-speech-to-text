@@ -1785,7 +1785,13 @@ test("an uncertain word says how to put it right where the result allows it", as
 async function namingRun(
   t: TestContext,
   onSave: (body: Record<string, unknown>) => Promise<Response>,
-  { narrow = false, text = false, saved, read = Promise.resolve() }: { narrow?: boolean; text?: boolean; saved?: unknown[]; read?: Promise<void> } = {},
+  {
+    narrow = false,
+    text = false,
+    receiver,
+    saved,
+    read = Promise.resolve(),
+  }: { narrow?: boolean; text?: boolean; receiver?: string; saved?: unknown[]; read?: Promise<void> } = {},
 ) {
   const { createElement } = await import("react");
   const { RunResult } = await import("../components/flow/RunResult");
@@ -1823,13 +1829,18 @@ async function namingRun(
     flowName: "Nämndmöte till rapport",
     run: {
       id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z",
-      result: text ? { kind: "inline_text", text: "Mötet godkände budgeten." } : { kind: "artifact", files: [{ file_id: "file-1" }] },
+      result: receiver
+        ? { kind: "outbound_http", delivery_status: "pending" }
+        : text
+          ? { kind: "inline_text", text: "Mötet godkände budgeten." }
+          : { kind: "artifact", files: [{ file_id: "file-1" }] },
     } as never,
+    delivery: receiver ? ({ state: receiver } as never) : undefined,
     contract: text ? ({ flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text", delivery: "payload" } } as never) : null,
     savedCorrections: saved as never,
     steps: [],
     stepResults: [transcribe] as never,
-    files: text ? [] : [pdf],
+    files: text || receiver ? [] : [pdf],
     onNewRecording: () => undefined,
     onRegenerated: () => undefined,
   });
@@ -1980,6 +1991,60 @@ test("on a flow that makes text, the naming tells the transcript's copy and down
     namingDescription(),
     "Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Texten får namnen när du skapar den igen.",
   );
+});
+
+test("on a result sent to a receiver, the naming says the names change the transcript and never what goes to the receiver, whatever the sending's state", async (t) => {
+  for (const state of ["sending", "retry_scheduled", "delivered", "dead_lettered"]) {
+    await t.test(state, async (each) => {
+      const { open } = await namingRun(each, async () => Response.json({}), { receiver: state });
+      const view = await open();
+      assert.equal(button(view.container, "Skapa dokumentet igen"), null, "nothing here to make again");
+      await view.act(async () => button(view.container, "Namnge talare")!.click());
+      assert.equal(
+        namingDescription(),
+        "Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Namnen ändrar bara transkriberingen, inte resultatet som går till mottagaren.",
+      );
+      await cleanup();
+    });
+  }
+});
+
+test("a change of the sending's state is said once in the page's status region, the focus stays, and a read that changes nothing says nothing", async () => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const page = (state: string, next_delivery_at: string | null = null) =>
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "outbound_http", delivery_status: "pending" } } as never,
+      delivery: { state, next_delivery_at } as never,
+      steps: [],
+      stepResults: [],
+      files: [],
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    });
+  const view = await mount(await asPerson(page("sending")));
+  const heading = view.container.querySelector("h1")!;
+  // The page's own region; the design system's buttons hold regions of their own.
+  const status = () => [...view.container.querySelectorAll('p[role="status"]')].map((region) => region.textContent).join("|");
+  assert.equal(document.activeElement, heading, "the page's heading has the focus, as on any result");
+  assert.equal(status(), "", "the first state is read with the heading, not announced");
+  const at = new Date(2026, 10, 22, 14, 5).toISOString();
+  await view.act(async () => view.rerender(await asPerson(page("retry_scheduled", at))));
+  assert.equal(heading.textContent, "Nytt försök kl. 14:05");
+  assert.equal(status(), "Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök kl. 14:05.");
+  assert.equal(document.activeElement, heading, "the focus stays where it was");
+  // The same state read again: the region keeps its words, so nothing new is said.
+  const region = view.container.querySelector('p[role="status"]')!;
+  const changes: MutationRecord[] = [];
+  new window.MutationObserver((records) => changes.push(...records)).observe(region, { subtree: true, childList: true, characterData: true });
+  await view.act(async () => view.rerender(await asPerson(page("retry_scheduled", at))));
+  assert.equal(changes.length, 0);
+  await view.act(async () => view.rerender(await asPerson(page("delivered"))));
+  assert.equal(status(), "Resultatet skickades till mottagaren.");
+  assert.equal(heading.textContent, "Resultatet är skickat");
 });
 
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {

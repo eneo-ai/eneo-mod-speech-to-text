@@ -21,7 +21,7 @@ import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
 import type { TranscriptContext } from "./transcript-context";
 import { EMPTY_CORRECTIONS } from "./transcript-corrections";
-import { listOwnRuns, type FlowGraph, type FlowRunStep, type LiveFallbackReason } from "./api";
+import { listOwnRuns, type FlowGraph, type FlowRunStep, type LiveFallbackReason, type ResultDelivery } from "./api";
 import { goingLiveFallbackNotice } from "./run-result";
 import { inStaticRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
@@ -339,7 +339,7 @@ test("the result names its time like a person, keeps the steps behind plain word
 const resultOf = (
   run: Record<string, unknown>,
   files: ResultFileView[] = [],
-  extra: { onStartAgain?: () => void; stepResults?: FlowRunStep[] } = {},
+  extra: { onStartAgain?: () => void; stepResults?: FlowRunStep[]; delivery?: ResultDelivery | null; deliveryStale?: boolean } = {},
 ) =>
   markup(
     createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
@@ -379,21 +379,75 @@ test("a result with something to show, or that was sent on, or whose files canno
   const text_ = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], { onStartAgain: () => undefined });
   assert.match(text_, /<h1[^>]*>Texten är klar<\/h1>/);
   assert.doesNotMatch(text(text_), /Starta en ny körning|Resultatet är tomt/);
-  assert.match(resultOf({ created_at: created, result: { kind: "outbound_http" } }, [], { onStartAgain: () => undefined }), /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  const sent = resultOf({ created_at: created, result: { kind: "outbound_http", delivery_status: "pending" } }, [], { onStartAgain: () => undefined, delivery: { state: "sending" } });
+  assert.match(sent, /<h1[^>]*>Skickas<\/h1>/);
+  assert.doesNotMatch(text(sent), /Starta en ny körning|Resultatet är tomt/);
   const purged = { ...report, available: false, previewable: false, meta: "Filen har tagits bort." };
   const document_ = resultOf({ created_at: created, result: { kind: "artifact", files: [] } }, [purged], { onStartAgain: () => undefined });
   assert.match(document_, /<h1[^>]*>Dokumentet är klart<\/h1>/);
   assert.match(text(document_), /Filen har tagits bort\./, "the file is there, with why it cannot be had");
 });
 
-test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {
-  const sent = resultOf({ created_at: created, result: { kind: "outbound_http" } });
-  assert.match(sent, /<h1[^>]*>Resultatet är skickat<\/h1>/);
-  assert.doesNotMatch(sent, /aria-label="Dokumentet"/, "nothing to show but the note that it was sent");
-  assert.match(text(sent), /Skapad (i dag|i går|\d+ \w+) 16:02/, "finished_at is missing: the start is the time");
+const sentOn = (delivery_status: string, delivery?: ResultDelivery | null, extra: { deliveryStale?: boolean } = {}) =>
+  resultOf({ created_at: created, result: { kind: "outbound_http", delivery_status } }, [], { delivery, ...extra });
+/** The heading's tile: the green check that says a result is there, or none. */
+const tile = (html: string) => /data-icon-tile="([^"]+)"/.exec(html)?.[1] ?? null;
+/** The status of the note on the sending (the banner's). */
+const noteStatus = (html: string) => /astryx-banner-frame.*?data-status="(\w+)"/s.exec(html)?.[1] ?? null;
 
-  const undated = resultOf({ result: { kind: "outbound_http" } });
-  assert.doesNotMatch(text(undated), /Skapad/, "no time at all: none said");
+test("a run whose result goes to a receiver says where the sending stands, in Eneo's words, with no document", () => {
+  const states = [
+    ["sending", "Skickas", "Körningen är klar och resultatet är på väg till mottagaren.", "info"],
+    ["retry_scheduled", "Nytt försök", "Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök.", "warning"],
+    ["delivered", "Resultatet är skickat", "Resultatet skickades till mottagaren.", "success"],
+    ["dead_lettered", "Kunde inte skickas", "Eneo fick ingen bekräftelse från mottagaren. Inga fler försök är planerade.", "error"],
+  ] as const;
+  for (const [state, heading, note, status] of states) {
+    const html = sentOn("pending", { state });
+    assert.match(html, new RegExp(`<h1[^>]*>${heading}</h1>`), state);
+    assert.match(text(html), new RegExp(escaped(note)), state);
+    assert.equal(noteStatus(html), status, state);
+    // The design system makes a warning or an error an alert: the note is there when the page opens and is not
+    // announced; a change is said once, by the page's own status region.
+    assert.doesNotMatch(html, /role="alert"/, state);
+    assert.match(html, /<div (?=[^>]*role="note")[^>]*astryx-banner-frame/, state);
+    assert.deepEqual(statuses(html), [], `${state}: nothing is announced on the first draw`);
+    assert.equal((html.match(/<p[^>]*role="status"/g) ?? []).length, 1, `${state}: one status region of the page's, waiting for a change`);
+    assert.equal(tile(html), state === "delivered" ? "green" : null, `${state}: only a delivered result has the check`);
+    assert.doesNotMatch(html, /aria-label="Dokumentet"/, "nothing to show but the note");
+  }
+});
+
+test("an older Eneo's result, with no status row and always delivered, reads as today: sent, with the check", () => {
+  const html = sentOn("delivered", undefined);
+  assert.match(html, /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  assert.match(text(html), /Resultatet skickades till mottagaren\./);
+  assert.equal(tile(html), "green");
+  assert.match(text(html), /Skapad (i dag|i går|\d+ \w+) 16:02/, "finished_at is missing: the start is the time");
+  assert.doesNotMatch(text(resultOf({ result: { kind: "outbound_http", delivery_status: "delivered" } })), /Skapad/, "no time at all: none said");
+});
+
+test("a state the module does not know is neutral beside a detail that says delivered: never sent, never the check", () => {
+  const html = sentOn("delivered", { state: "parked" as never });
+  assert.match(html, /<h1[^>]*>Körningen är klar<\/h1>/);
+  assert.match(text(html), /Resultatet går till mottagaren som är inställd i flödet\./);
+  assert.doesNotMatch(text(html), /skickat|skickades/i);
+  assert.equal(tile(html), null);
+});
+
+test("a plain result keeps its check and says nothing of a sending, also with a status row that is null", () => {
+  const html = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], { delivery: null });
+  assert.match(html, /<h1[^>]*>Texten är klar<\/h1>/);
+  assert.equal(tile(html), "green");
+  assert.doesNotMatch(text(html), /mottagaren|skickas/i);
+});
+
+test("a sending whose state could not be read again keeps its last state, and says it could not be updated", () => {
+  const html = sentOn("pending", { state: "sending" }, { deliveryStale: true });
+  assert.match(html, /<h1[^>]*>Skickas<\/h1>/);
+  assert.match(text(html), /Körningen är klar och resultatet är på väg till mottagaren\. Läget kunde inte uppdateras just nu\. Sidan försöker igen av sig själv\./);
+  assert.doesNotMatch(text(html), /kunde inte skickas/i, "a failed read is not a failed sending");
+  assert.doesNotMatch(sentOn("pending", { state: "sending" }), /kunde inte uppdateras/);
 });
 
 /** The transcription step's result, as Eneo's steps endpoint gives it. */
@@ -980,7 +1034,7 @@ test("under the result's tabs the transcript's copy and download end the speaker
       },
       onReload: () => undefined,
       headingHidden: true,
-      naming: { draftKey: { ownerId: "user-1", name: "names:run-1" }, thing: "dokumentet", delivered: false, hasDocument: true, participants: [] },
+      naming: { draftKey: { ownerId: "user-1", name: "names:run-1" }, thing: "dokumentet", toReceiver: false, hasDocument: true, participants: [] },
     }),
   );
   assert.deepEqual(
