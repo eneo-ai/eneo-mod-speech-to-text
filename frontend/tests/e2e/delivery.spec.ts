@@ -19,7 +19,10 @@ const DETAIL = `/api/eneo/flows/${FLOW}/runs/${RUN}/`;
 /** The reads a finished run is drawn from once: its detail (audit-logged), its steps and its run-pinned graph. */
 const DRAWN_FROM = new Set([DETAIL, `${DETAIL}steps/`, `/api/eneo/flows/${FLOW}/graph/`]);
 
-type Answer = { status: string; delivery?: Record<string, unknown> | null } | { fail: number; headers?: Record<string, string> };
+type Answer =
+  | { status: string; delivery?: Record<string, unknown> | null }
+  | { fail: number; headers?: Record<string, string> }
+  | { raw: string };
 
 /**
  * Eneo for the finished `done` run, its result sent to a receiver: the status answers what `answer` holds when it is
@@ -36,6 +39,7 @@ async function sentRun(page: Page, first: Answer, detail: Record<string, unknown
   await page.route((url) => url.pathname === STATUS, async (route) => {
     const answer = state.answer;
     if ("fail" in answer) return route.fulfill({ status: answer.fail, headers: answer.headers, json: { detail: "fel" } });
+    if ("raw" in answer) return route.fulfill({ status: 200, contentType: "application/json", body: answer.raw });
     await route.fulfill({
       json: { id: RUN, flow_id: FLOW, status: answer.status, flow_version: 1, revision: 1, created_at: "2026-09-24T09:00:00Z", result_delivery: answer.delivery ?? null },
     });
@@ -147,6 +151,35 @@ test("a status read that fails keeps the result and its state, says it could not
   await expect(stale).toHaveCount(0);
   await expect(h1(page), "the focus stays through the recovery").toBeFocused();
   await expect(page.getByRole("heading", { name: "Transkribering" }), "and the result with it").toBeVisible();
+});
+
+test("a status read that fails for good keeps the result and a name not yet saved, says it could not be updated, and goes on when Eneo answers", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  const eneo = await sentRun(page, finished("sending"));
+  await run(page, RUN);
+  await expect(h1(page)).toHaveText("Skickas");
+  await page.getByRole("button", { name: "Namnge talare" }).click();
+  const name = page.getByRole("dialog", { name: "Namnge talarna" }).getByRole("combobox", { name: "Vem är Talare 1?" });
+  await name.fill("Anna Berg");
+
+  // 200 and JSON by its type, but no whole document: an answer that is not tried again by itself. Held until the page
+  // has been seen through it, past a further read. The naming dialog is modal, so what lies behind it is found by CSS.
+  eneo.set({ raw: "{" });
+  const heading = page.locator("h1");
+  const start = page.getByText("Hur vill du lägga till ljudet?");
+  const stale = page.locator('p:not([role="status"])', { hasText: "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv." });
+  await expect(stale).toBeVisible();
+  const failed = eneo.statusReads();
+  await expect.poll(() => eneo.statusReads(), { message: "read again at the follow's pace" }).toBeGreaterThan(failed);
+  await expect(heading, "the last state stands").toHaveText("Skickas");
+  await expect(name, "the name not yet saved stays").toHaveValue("Anna Berg");
+  await expect(start, "never back to the start").toHaveCount(0);
+
+  eneo.set(finished("delivered"));
+  await expect(heading).toHaveText("Resultatet är skickat", { timeout: 15_000 });
+  await expect(stale).toHaveCount(0);
+  await expect(name).toHaveValue("Anna Berg");
+  await expect(start).toHaveCount(0);
 });
 
 test("a cancelled run whose sending Eneo has not yet given up reads no status after its detail, and stays the cancelled run", async ({ page, sentinel }) => {

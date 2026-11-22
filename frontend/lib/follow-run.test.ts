@@ -629,18 +629,55 @@ test("a status read that fails and can be tried again is said as trouble, tried 
 
 test("a run that is gone, or a read that is refused, ends the following with its error", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
-  for (const status of [404, 410, 403]) {
+  // 401 is also the module's own end of the session (sessionEnded), which asks for a new login as before.
+  for (const status of [404, 410, 401, 403]) {
     const { deps } = deliveryReads([new ApiError(status, "nej", null)]);
-    const done = followDelivery("flow-1", "run-1", sending("sending"), {
-      signal: new AbortController().signal,
+    const controller = new AbortController();
+    let outcome: unknown = "pending";
+    void followDelivery("flow-1", "run-1", sending("sending"), {
+      signal: controller.signal,
       onStatus: () => undefined,
       page: fakePage(false),
       online: createOnlineStatus(),
       deps,
-    });
-    const settled = done.then(() => "resolved", (error: ApiError) => error.status);
-    await pass(t, 2_000);
-    assert.equal(await settled, status);
+    }).then(() => void (outcome = "resolved"), (error: ApiError) => void (outcome = error.status));
+    try {
+      await pass(t, 2_000);
+      assert.equal(outcome, status);
+    } finally {
+      controller.abort();
+    }
+  }
+});
+
+test("a status read that fails for good is read again at the follow's pace, never sooner, and the sending is followed on to delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const failures = [new ApiError(400, "Bad Request", null), new ApiError(200, "Servern svarade med ogiltig JSON.", null, "invalid_json_response")];
+  for (const failure of failures) {
+    const { reads, deps } = deliveryReads([...Array<Error>(16).fill(failure), "delivered"]);
+    const start = Date.now();
+    const controller = new AbortController();
+    const trouble: boolean[] = [];
+    const heard: unknown[] = [];
+    let outcome = "pending";
+    void followDelivery("flow-1", "run-1", sending("sending"), {
+      signal: controller.signal,
+      onStatus: (status) => heard.push(status.result_delivery?.state),
+      onTrouble: (failing) => trouble.push(failing),
+      page: fakePage(false),
+      online: createOnlineStatus(),
+      deps,
+    }).then(() => void (outcome = "resolved"), () => void (outcome = "rejected"));
+    try {
+      await pass(t, 45_000);
+      const every = (from: number, to: number) => Array.from({ length: (to - from) / 2_000 + 1 }, (_, i) => from + i * 2_000);
+      assert.equal(outcome, "resolved", `${failure.code ?? failure.status}: followed on, not failed`);
+      assert.deepEqual(reads.map((read) => read.at - start), [...every(2_000, 30_000), 35_000, 40_000], String(failure.status));
+      assert.deepEqual(trouble, [true, false], String(failure.status));
+      assert.deepEqual(heard, ["delivered"], String(failure.status));
+    } finally {
+      controller.abort();
+    }
   }
 });
 

@@ -7,6 +7,7 @@
  */
 
 import {
+  ApiError,
   getActiveReviewCheckpoint,
   getRun,
   getRunGraph,
@@ -186,12 +187,17 @@ interface DeliveryOptions {
   deps?: { getStatus: typeof getRunStatus };
 }
 
+/** The answers that end the sending's follow: the run is gone, or this person may not read it (any more). */
+const ENDS_DELIVERY_FOLLOW = new Set([401, 403, 404, 410]);
+
 /**
  * Follows a finished run's result on its way to the receiver, from the status the run finished with, reading the status
  * alone (not audit-logged, unlike the detail, which would say nothing more): while the sending is under way, until it is
  * delivered, given up, or in a state the module does not know. A read that fails and can be tried again is tried again
- * with withRetry's backoff and reported as trouble; any other error ends it, thrown, as followRun's do. The signal calls
- * off the read under way too, also one that waits for a new login.
+ * with withRetry's backoff and reported as trouble. Any other failure is also reported as trouble and read again at the
+ * follow's own pace, so the result on the page stays: only a run that is gone (404, 410) or a read that is refused (401,
+ * the module's own end of the session too, and 403) ends it, thrown, as followRun's do. The signal calls off the read
+ * under way too, also one that waits for a new login.
  */
 export async function followDelivery(
   flowId: string,
@@ -208,19 +214,26 @@ export async function followDelivery(
   while (deliveryUnderWay(delivery) && !signal.aborted) {
     await pause(page.hidden ? HIDDEN_POLL_MS : deliveryPace(Date.now() - since), signal, page);
     if (signal.aborted) return;
-    const status = await withRetry(
-      async () => {
-        try {
-          const read = await deps.getStatus(flowId, runId, signal);
-          inTrouble(false);
-          return read;
-        } catch (error) {
-          if (!signal.aborted) inTrouble(true);
-          throw error;
-        }
-      },
-      { online, signal },
-    );
+    let status: FlowRunSummary;
+    try {
+      status = await withRetry(
+        async () => {
+          try {
+            const read = await deps.getStatus(flowId, runId, signal);
+            inTrouble(false);
+            return read;
+          } catch (error) {
+            if (!signal.aborted) inTrouble(true);
+            throw error;
+          }
+        },
+        { online, signal },
+      );
+    } catch (error) {
+      if (signal.aborted || (error instanceof ApiError && ENDS_DELIVERY_FOLLOW.has(error.status))) throw error;
+      // Said as trouble already (above); the next read is the pace's, never sooner.
+      continue;
+    }
     if (signal.aborted) return;
     const next = status.result_delivery;
     if (next?.state === delivery?.state && (next?.next_delivery_at ?? null) === (delivery?.next_delivery_at ?? null)) continue;
