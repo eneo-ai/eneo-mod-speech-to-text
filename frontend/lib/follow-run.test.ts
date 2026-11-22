@@ -558,10 +558,19 @@ test("a state that is no longer under way, or one the module does not know, ends
   }
 });
 
-test("a finished run whose result is not on its way is not followed", async () => {
+test("a finished run whose result is not on its way is not followed", async (t) => {
+  // On the fake clock, and not awaited: a follow that went on would fail here, not hang the run of the tests.
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   for (const first of [sending("delivered"), sending("dead_lettered"), sending(null), run("completed")]) {
     const { reads, deps } = deliveryReads(["sending"]);
-    await followDelivery("flow-1", "run-1", first, { signal: new AbortController().signal, onStatus: () => undefined, page: fakePage(false), online: createOnlineStatus(), deps });
+    const controller = new AbortController();
+    let ended = false;
+    void followDelivery("flow-1", "run-1", first, { signal: controller.signal, onStatus: () => undefined, page: fakePage(false), online: createOnlineStatus(), deps })
+      .catch(() => undefined)
+      .then(() => void (ended = true));
+    await pass(t, 10_000);
+    controller.abort();
+    assert.equal(ended, true, `${JSON.stringify(first)}: ended at once`);
     assert.equal(reads.length, 0, JSON.stringify(first));
   }
 });

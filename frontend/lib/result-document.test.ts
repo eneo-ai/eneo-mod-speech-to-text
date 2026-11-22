@@ -209,7 +209,7 @@ test("the document's one filled action is its file's download; without a file it
   assert.ok(name, "the file's name is a link to the file");
   assert.equal(name.target, "_blank", "in a new tab");
   const opening = [...withFile.container.querySelectorAll(`a[href="${inline}"]`)].filter((el) => !el.closest("dialog"));
-  assert.deepEqual(opening, [name], "no Öppna PDF above the document that does the same");
+  assert.equal(opening.length === 1 && opening[0] === name, true, "no Öppna PDF above the document that does the same");
   assert.equal(nameOf(name), `Öppna ${pdf.name} i en ny flik`);
   assert.equal(name.textContent, pdf.name, "the words it shows are the file's name, in its accessible name");
   const row = name.closest("[data-file-row]")!;
