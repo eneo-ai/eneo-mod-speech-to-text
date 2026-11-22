@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, type FlowGraph, type FlowRunSummary } from "./api";
+import { ApiError, getRunStatus, type FlowGraph, type FlowRunSummary } from "./api";
 import { CORRECTIONS_WAIT_MS, HIDDEN_POLL_MS, VISIBLE_POLL_MS, followDelivery, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
 import { createOnlineStatus } from "./online-status";
 import { deliveryView } from "./run-result";
@@ -478,6 +478,48 @@ test("Eneo's own order, a sending with a time, a retry, the sending again with t
   const shown = deliveryView({ kind: "outbound_http", delivery_status: "pending" }, { state: "sending", next_delivery_at: at(38_000) });
   assert.equal(shown?.heading, "Skickas");
   assert.equal(shown?.note, "Körningen är klar och resultatet är på väg till mottagaren.", "a sending says no time");
+});
+
+test("a status whose body breaks off while it is read is tried again, and the sending is followed on to delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const json = { "content-type": "application/json" };
+  let asked = 0;
+  globalThis.fetch = (async () => {
+    asked += 1;
+    // The answer's head arrives, and its body breaks off on the way (Node says "terminated"; the words are not relied on).
+    if (asked === 1) return new Response(new ReadableStream({ start: (body) => body.error(new TypeError("cut")) }), { status: 200, headers: json });
+    return new Response(JSON.stringify(sending("delivered")), { status: 200, headers: json });
+  }) as typeof fetch;
+  const trouble: boolean[] = [];
+  const heard: (string | undefined)[] = [];
+  let ended = "";
+  void followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: new AbortController().signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    onTrouble: (failing) => trouble.push(failing),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+  }).then(
+    () => void (ended = "done"),
+    (error: { code?: string }) => void (ended = `failed: ${error?.code ?? "?"}`),
+  );
+  await pass(t, 6_000);
+  assert.equal(ended, "done");
+  assert.deepEqual(heard, ["delivered"]);
+  assert.deepEqual(trouble, [true, false], "said as a read that could not be made, then as made");
+});
+
+test("a status that is a whole document of broken JSON is the answer's own error, as before", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  globalThis.fetch = (async () => new Response("{ inte json", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  const code = await getRunStatus("flow-1", "run-1").then(
+    () => "read",
+    (error: { code?: string }) => String(error?.code),
+  );
+  assert.equal(code, "invalid_json_response");
 });
 
 test("a hidden page reads the sending rarely and catches up as soon as it is shown", async (t) => {

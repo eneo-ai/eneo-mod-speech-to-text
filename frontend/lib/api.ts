@@ -192,8 +192,11 @@ async function readResponse<T>(res: Response): Promise<T> {
   if (ctype.includes("application/json")) {
     try {
       return (await res.json()) as T;
-    } catch {
-      // As the upload client does: a body that is not the JSON it claims is the request's own error.
+    } catch (error) {
+      // As the upload client does: a whole body that is not the JSON it claims is the request's own error. A body that
+      // broke off on the way (a TypeError) is not: it leaves as the network failure it is, which withRetry tries again.
+      // The module's answer did arrive (reportReachable above), so the connection is not reported as lost.
+      if (!(error instanceof SyntaxError)) throw error;
       throw new ApiError(res.status, "Servern svarade med ogiltig JSON.", null, "invalid_json_response");
     }
   }
