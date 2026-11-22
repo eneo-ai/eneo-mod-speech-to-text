@@ -141,7 +141,8 @@ export async function followRun(
     const [run, latest] = await withRetry(
       async () => {
         try {
-          const read = await Promise.all([deps.getStatus(flowId, runId), deps.getGraph(flowId, runId).catch(() => null)]);
+          // The signal calls off the status read too, also one that waits for a new login: none is sent for a run left.
+          const read = await Promise.all([deps.getStatus(flowId, runId, signal), deps.getGraph(flowId, runId).catch(() => null)]);
           inTrouble(false);
           return read;
         } catch (error) {

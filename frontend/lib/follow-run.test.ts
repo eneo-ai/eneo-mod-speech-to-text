@@ -140,6 +140,28 @@ test("a run that waits for review ends the follow so the review can open", async
   assert.equal(result?.run.status, "awaiting_review");
 });
 
+test("leaving a run while its status read waits (for a new login, say) calls the read off: nothing is read for it after", async () => {
+  const controller = new AbortController();
+  const asked: (AbortSignal | undefined)[] = [];
+  const following = followRun("flow-1", "run-1", {
+    signal: controller.signal,
+    onSnapshot: () => assert.fail("nothing is shown after leaving"),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: {
+      getStatus: (_flowId: string, _runId: string, signal?: AbortSignal) => {
+        asked.push(signal);
+        return new Promise<FlowRunSummary>((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      },
+      getGraph: async () => graph(null),
+    },
+  });
+  await until(() => asked.length === 1);
+  assert.equal(asked[0], controller.signal, "the read is the follow's to call off");
+  controller.abort();
+  await assert.rejects(following);
+});
+
 test("a hidden page polls rarely and catches up as soon as it is shown again", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const page = fakePage(true);
