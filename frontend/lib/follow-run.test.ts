@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, type FlowGraph, type FlowRunSummary } from "./api";
-import { CORRECTIONS_WAIT_MS, HIDDEN_POLL_MS, VISIBLE_POLL_MS, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
+import { ApiError, getRunStatus, type FlowGraph, type FlowRunSummary } from "./api";
+import { CORRECTIONS_WAIT_MS, HIDDEN_POLL_MS, VISIBLE_POLL_MS, followDelivery, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
 import { createOnlineStatus } from "./online-status";
+import { deliveryView } from "./run-result";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 async function until(condition: () => boolean) {
@@ -138,6 +139,28 @@ test("a run that waits for review ends the follow so the review can open", async
     deps,
   });
   assert.equal(result?.run.status, "awaiting_review");
+});
+
+test("leaving a run while its status read waits (for a new login, say) calls the read off: nothing is read for it after", async () => {
+  const controller = new AbortController();
+  const asked: (AbortSignal | undefined)[] = [];
+  const following = followRun("flow-1", "run-1", {
+    signal: controller.signal,
+    onSnapshot: () => assert.fail("nothing is shown after leaving"),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: {
+      getStatus: (_flowId: string, _runId: string, signal?: AbortSignal) => {
+        asked.push(signal);
+        return new Promise<FlowRunSummary>((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      },
+      getGraph: async () => graph(null),
+    },
+  });
+  await until(() => asked.length === 1);
+  assert.equal(asked[0], controller.signal, "the read is the follow's to call off");
+  controller.abort();
+  await assert.rejects(following);
 });
 
 test("a hidden page polls rarely and catches up as soon as it is shown again", async (t) => {
@@ -316,6 +339,445 @@ test("reads that keep failing stop being retried once the page tears the follow 
   t.mock.timers.tick(120_000);
   await settle();
   assert.equal(reads, 1, "no read after the teardown");
+});
+
+const sending = (state: string | null, next_delivery_at: string | null = null): FlowRunSummary => ({
+  ...run("completed"),
+  result_delivery: state === null ? null : { state: state as never, next_delivery_at },
+});
+
+/** Eneo's status for a finished run whose sending goes through `states`, the last one for ever; what each read was asked. */
+function deliveryReads(states: (string | null | Error)[]) {
+  const reads: { at: number; signal: AbortSignal | undefined }[] = [];
+  return {
+    reads,
+    deps: {
+      getStatus: async (_flowId: string, _runId: string, signal?: AbortSignal) => {
+        reads.push({ at: Date.now(), signal });
+        const next = states[Math.min(reads.length - 1, states.length - 1)];
+        if (next instanceof Error) throw next;
+        return sending(next);
+      },
+    },
+  };
+}
+
+/** Lets the fake clock run `ms`, a second at a time, so each read and pause in between happens when it is due. */
+async function pass(t: { mock: { timers: { tick(ms: number): void } } }, ms: number) {
+  for (let left = ms; left > 0; left -= 1_000) {
+    t.mock.timers.tick(Math.min(1_000, left));
+    for (let i = 0; i < 20; i += 1) await settle();
+  }
+}
+
+test("a finished run whose result is on its way is followed by its status alone until the result is delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const { reads, deps } = deliveryReads(["sending", "sending", "delivered"]);
+  const heard: (string | null | undefined)[] = [];
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: controller.signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps,
+  });
+
+  await settle();
+  assert.equal(reads.length, 0, "the first status is the one the run finished with: nothing is read at once");
+  await pass(t, 6_000);
+  await done;
+  assert.deepEqual(reads.map((read) => read.at), [2_000, 4_000, 6_000]);
+  assert.deepEqual(heard, ["delivered"], "only a change is told");
+  assert.ok(reads.every((read) => read.signal === controller.signal), "each read can be called off");
+  await pass(t, 60_000);
+  assert.equal(reads.length, 3, "nothing is read once it is delivered");
+});
+
+test("the status is read every 2 s for half a minute, every 5 s up to two minutes, then every 15 s, while the state stays the same", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const { reads, deps } = deliveryReads(["sending"]);
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: controller.signal,
+    onStatus: () => undefined,
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps,
+  });
+  await pass(t, 150_000);
+  controller.abort();
+  await done;
+  const every = (from: number, to: number, step: number) => Array.from({ length: (to - from) / step + 1 }, (_, i) => from + i * step);
+  assert.deepEqual(reads.map((read) => read.at), [...every(2_000, 30_000, 2_000), ...every(35_000, 120_000, 5_000), 135_000, 150_000]);
+});
+
+test("a new state starts the pace again from 2 s", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  // Sending for a minute (reads at 2..30 s every 2 s, then 35..60 s every 5 s: 21 reads), then a retry is planned.
+  const { reads, deps } = deliveryReads([...Array<string>(20).fill("sending"), "retry_scheduled"]);
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: controller.signal,
+    onStatus: () => undefined,
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps,
+  });
+  await pass(t, 63_000);
+  controller.abort();
+  await done;
+  assert.deepEqual(reads.slice(-3).map((read) => read.at), [55_000, 60_000, 62_000], "2 s after the change");
+});
+
+test("a retry time that has passed is no reason to read at once: the next read is still a pace away", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10 * 60_000 });
+  const passed = new Date(0).toISOString();
+  const { reads, deps } = deliveryReads(["retry_scheduled"]);
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", { ...run("completed"), result_delivery: { state: "retry_scheduled", next_delivery_at: passed } }, {
+    signal: controller.signal,
+    onStatus: () => undefined,
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: { getStatus: async (flowId: string, runId: string, signal?: AbortSignal) => ({ ...(await deps.getStatus(flowId, runId, signal)), result_delivery: { state: "retry_scheduled", next_delivery_at: passed } }) },
+  });
+  await pass(t, 1_000);
+  assert.equal(reads.length, 0);
+  await pass(t, 3_000);
+  assert.equal(reads.length, 2, "one read per 2 s, not a loop");
+  controller.abort();
+  await done;
+});
+
+test("Eneo's own order, a sending with a time, a retry, the sending again with the retry's time passed, then delivered, is followed at its pace and the sending says no time", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const at = (ms: number) => new Date(ms).toISOString();
+  // A sending carries a time from the start; at 8 s a retry is planned for 38 s; from 40 s it is sending again with that
+  // time, passed, for 26 s; at 66 s it is delivered.
+  const eneoAt = (now: number) =>
+    now < 8_000 ? sending("sending", at(0)) : now < 40_000 ? sending("retry_scheduled", at(38_000)) : now < 66_000 ? sending("sending", at(38_000)) : sending("delivered");
+  const reads: number[] = [];
+  const heard: (string | undefined)[] = [];
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", sending("sending", at(0)), {
+    signal: controller.signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: { getStatus: async () => (reads.push(Date.now()), eneoAt(Date.now())) },
+  });
+  await pass(t, 70_000);
+  await done;
+  assert.deepEqual(heard, ["retry_scheduled", "sending", "delivered"]);
+  const every = (from: number, to: number) => Array.from({ length: (to - from) / 2_000 + 1 }, (_, i) => from + i * 2_000);
+  // The retry stood half a minute (8 to 38 s), so the next read waited 5 s; each change starts the 2 s pace again.
+  assert.deepEqual(reads, [...every(2_000, 38_000), 43_000, ...every(45_000, 67_000)], "at its pace, and never at once for a time passed");
+  await pass(t, 60_000);
+  assert.equal(reads.length, 32, "nothing is read once it is delivered");
+  const shown = deliveryView({ kind: "outbound_http", delivery_status: "pending" }, { state: "sending", next_delivery_at: at(38_000) });
+  assert.equal(shown?.heading, "Skickas");
+  assert.equal(shown?.note, "Körningen är klar och resultatet är på väg till mottagaren.", "a sending says no time");
+});
+
+test("a status whose body breaks off while it is read is tried again, and the sending is followed on to delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const json = { "content-type": "application/json" };
+  let asked = 0;
+  globalThis.fetch = (async () => {
+    asked += 1;
+    // The answer's head arrives, and its body breaks off on the way (Node says "terminated"; the words are not relied on).
+    if (asked === 1) return new Response(new ReadableStream({ start: (body) => body.error(new TypeError("cut")) }), { status: 200, headers: json });
+    return new Response(JSON.stringify(sending("delivered")), { status: 200, headers: json });
+  }) as typeof fetch;
+  const trouble: boolean[] = [];
+  const heard: (string | undefined)[] = [];
+  let ended = "";
+  void followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: new AbortController().signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    onTrouble: (failing) => trouble.push(failing),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+  }).then(
+    () => void (ended = "done"),
+    (error: { code?: string }) => void (ended = `failed: ${error?.code ?? "?"}`),
+  );
+  await pass(t, 6_000);
+  assert.equal(ended, "done");
+  assert.deepEqual(heard, ["delivered"]);
+  assert.deepEqual(trouble, [true, false], "said as a read that could not be made, then as made");
+});
+
+test("a status that is a whole document of broken JSON is the answer's own error, as before", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  globalThis.fetch = (async () => new Response("{ inte json", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  const code = await getRunStatus("flow-1", "run-1").then(
+    () => "read",
+    (error: { code?: string }) => String(error?.code),
+  );
+  assert.equal(code, "invalid_json_response");
+});
+
+test("a status answer that parses but is no status is a server error, tried again, and a real status goes through", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  for (const body of ["null", "{}", '"klart"', "[]"]) {
+    globalThis.fetch = (async () => new Response(body, { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    const got = await getRunStatus("flow-1", "run-1").then(
+      () => "read",
+      (error: { status?: number; code?: string }) => `${error?.status} ${error?.code}`,
+    );
+    assert.equal(got, "502 invalid_json_response", body);
+  }
+  globalThis.fetch = (async () => new Response(JSON.stringify(sending("delivered")), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  const status = await getRunStatus("flow-1", "run-1");
+  assert.equal(status.result_delivery?.state, "delivered");
+});
+
+/**
+ * getRunStatus's answer when Eneo answers `body`: the status's own `status`, or the error's status and code. The test's
+ * own `fetch` is put back once, when it ends.
+ */
+function statusReader(t: import("node:test").TestContext) {
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  return (flowId: string, runId: string, body: unknown) => {
+    globalThis.fetch = (async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    return getRunStatus(flowId, runId).then(
+      (status) => status.status,
+      (error: { status?: number; code?: string }) => `${error?.status} ${error?.code}`,
+    );
+  };
+}
+
+test("a status that does not name the run and the flow it was asked for is a server error, tried again", async (t) => {
+  const statusAnswered = statusReader(t);
+  const asked = { id: "run-1", flow_id: "flow-1", status: "completed" };
+  for (const [what, body] of [
+    ["no id", { flow_id: "flow-1", status: "completed" }],
+    ["no flow_id", { id: "run-1", status: "completed" }],
+    ["another run's id", { ...asked, id: "run-2" }],
+    ["another flow's id", { ...asked, flow_id: "flow-2" }],
+    ["an id that is no string", { ...asked, id: 1 }],
+    ["an id spelled like the asked one, but another", { ...asked, id: "run1" }],
+  ] as const) {
+    assert.equal(await statusAnswered("flow-1", "run-1", body), "502 invalid_json_response", what);
+  }
+  assert.equal(await statusAnswered("flow-1", "run-1", asked), "completed", "the run that was asked for");
+});
+
+test("a status is the asked run's in any spelling Eneo reads its id in, and Eneo answers the id in its own", async (t) => {
+  const statusAnswered = statusReader(t);
+  const run = "7e6e01f7-5322-41a6-881f-ce336baba569";
+  const flow = "000dd5fc-6a9e-4a42-918b-0c183f171a78";
+  const answer = { id: run, flow_id: flow, status: "completed" };
+  const spellings = (id: string) => [id.toUpperCase(), id.replaceAll("-", ""), `{${id}}`, `urn:uuid:${id}`];
+  for (const asked of spellings(run)) assert.equal(await statusAnswered(flow, asked, answer), "completed", asked);
+  for (const asked of spellings(flow)) assert.equal(await statusAnswered(asked, run, answer), "completed", asked);
+  const other = `${run.slice(0, -1)}a`;
+  assert.equal(await statusAnswered(flow, other.toUpperCase(), answer), "502 invalid_json_response", "another run, in capitals");
+  assert.equal(await statusAnswered(`{${flow.slice(0, -1)}0}`, run, answer), "502 invalid_json_response", "another flow, in braces");
+});
+
+test("a status that spells the asked run's or flow's id other than Eneo does is a server error, tried again", async (t) => {
+  const statusAnswered = statusReader(t);
+  const run = "7e6e01f7-5322-41a6-881f-ce336baba569";
+  const flow = "000dd5fc-6a9e-4a42-918b-0c183f171a78";
+  const answer = { id: run, flow_id: flow, status: "completed" };
+  const misspellings = (id: string) => [`${id.slice(0, 9)}{}${id.slice(9)}`, id.toUpperCase(), id.replaceAll("-", "")];
+  const got: Record<string, string> = {};
+  for (const id of misspellings(run)) got[`id ${id}`] = await statusAnswered(flow, run, { ...answer, id });
+  for (const flow_id of misspellings(flow)) got[`flow_id ${flow_id}`] = await statusAnswered(flow, run, { ...answer, flow_id });
+  assert.deepEqual(got, Object.fromEntries(Object.keys(got).map((what) => [what, "502 invalid_json_response"])));
+});
+
+test("a hidden page reads the sending rarely and catches up as soon as it is shown", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const page = fakePage(true);
+  const { reads, deps } = deliveryReads(["sending"]);
+  const controller = new AbortController();
+  const done = followDelivery("flow-1", "run-1", sending("sending"), { signal: controller.signal, onStatus: () => undefined, page, online: createOnlineStatus(), deps });
+  await pass(t, HIDDEN_POLL_MS - 1_000);
+  assert.equal(reads.length, 0, "hidden: not at the visible pace");
+  await pass(t, 1_000);
+  assert.equal(reads.length, 1);
+  page.show();
+  await until(() => reads.length === 2);
+  controller.abort();
+  await done;
+});
+
+test("a state that is no longer under way, or one the module does not know, ends the following", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  for (const end of ["dead_lettered", "unknown", null]) {
+    const { reads, deps } = deliveryReads(["retry_scheduled", end]);
+    const heard: unknown[] = [];
+    const done = followDelivery("flow-1", "run-1", sending("sending"), {
+      signal: new AbortController().signal,
+      onStatus: (status) => heard.push(status.result_delivery?.state ?? null),
+      page: fakePage(false),
+      online: createOnlineStatus(),
+      deps,
+    });
+    await pass(t, 4_000);
+    await done;
+    await pass(t, 60_000);
+    assert.equal(reads.length, 2, String(end));
+    assert.deepEqual(heard, ["retry_scheduled", end === null ? null : end], String(end));
+  }
+});
+
+test("a finished run whose result is not on its way is not followed", async (t) => {
+  // On the fake clock, and not awaited: a follow that went on would fail here, not hang the run of the tests.
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  for (const first of [sending("delivered"), sending("dead_lettered"), sending(null), run("completed")]) {
+    const { reads, deps } = deliveryReads(["sending"]);
+    const controller = new AbortController();
+    // Ended, not failed: a follow that fails sends the person to the start (FlowPage's catch).
+    let outcome = "pending";
+    void followDelivery("flow-1", "run-1", first, { signal: controller.signal, onStatus: () => undefined, page: fakePage(false), online: createOnlineStatus(), deps })
+      .then(() => void (outcome = "resolved"), () => void (outcome = "rejected"));
+    try {
+      await pass(t, 10_000);
+      assert.equal(outcome, "resolved", `${JSON.stringify(first)}: ended at once`);
+      assert.equal(reads.length, 0, JSON.stringify(first));
+    } finally {
+      controller.abort();
+    }
+  }
+});
+
+test("leaving the run calls off the read under way and reads nothing more for it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const controller = new AbortController();
+  let reads = 0;
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: controller.signal,
+    onStatus: () => assert.fail("nothing is told after leaving"),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: {
+      // A read that waits (for a new login, say) until it is called off.
+      getStatus: (_flowId: string, _runId: string, signal?: AbortSignal) => {
+        reads += 1;
+        return new Promise<FlowRunSummary>((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      },
+    },
+  });
+  await pass(t, 2_000);
+  assert.equal(reads, 1);
+  controller.abort();
+  // The read called off ends the following with its abort, which the page does not show.
+  await done.catch(() => undefined);
+  await pass(t, 60_000);
+  assert.equal(reads, 1);
+});
+
+test("a status read that fails and can be tried again is said as trouble, tried again, and the trouble goes when a read goes through", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const { reads, deps } = deliveryReads(["sending", new ApiError(503, "Service Unavailable", null), new TypeError("Failed to fetch"), "delivered"]);
+  const trouble: boolean[] = [];
+  const heard: unknown[] = [];
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: new AbortController().signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    onTrouble: (failing) => trouble.push(failing),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps,
+  });
+  await pass(t, 4_000);
+  assert.deepEqual(trouble, [true], "said from the first failed read");
+  assert.deepEqual(heard, [], "a failed read says nothing of the sending");
+  await pass(t, 10_000);
+  await done;
+  assert.equal(reads.length, 4);
+  assert.deepEqual(trouble, [true, false]);
+  assert.deepEqual(heard, ["delivered"]);
+});
+
+test("a run that is gone, or a read that is refused, ends the following with its error", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  for (const status of [404, 410, 403]) {
+    const { deps } = deliveryReads([new ApiError(status, "nej", null)]);
+    const controller = new AbortController();
+    let outcome: unknown = "pending";
+    void followDelivery("flow-1", "run-1", sending("sending"), {
+      signal: controller.signal,
+      onStatus: () => undefined,
+      page: fakePage(false),
+      online: createOnlineStatus(),
+      deps,
+    }).then(() => void (outcome = "resolved"), (error: ApiError) => void (outcome = error.status));
+    try {
+      await pass(t, 2_000);
+      assert.equal(outcome, status);
+    } finally {
+      controller.abort();
+    }
+  }
+});
+
+test("a read refused as the login's (401) is said as trouble, read again at the follow's pace, and the sending is followed on to delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  // The module's end of the session, also when someone else signed in (409 user_changed): the next read waits in
+  // request() for the page's own user, so the result stays on the page.
+  const { reads, deps } = deliveryReads([new ApiError(401, "Sessionen har upphört.", null), "delivered"]);
+  const trouble: boolean[] = [];
+  const heard: unknown[] = [];
+  let outcome = "pending";
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: new AbortController().signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    onTrouble: (failing) => trouble.push(failing),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps,
+  }).then(
+    () => void (outcome = "resolved"),
+    (error: ApiError) => void (outcome = `rejected ${error?.status}`),
+  );
+  await pass(t, 30_000);
+  await done;
+  assert.equal(outcome, "resolved");
+  assert.equal(reads.length, 2);
+  assert.deepEqual(trouble, [true, false]);
+  assert.deepEqual(heard, ["delivered"]);
+});
+
+test("a status read that fails for good is read again at the follow's pace, never sooner, and the sending is followed on to delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const failures = [new ApiError(400, "Bad Request", null), new ApiError(200, "Servern svarade med ogiltig JSON.", null, "invalid_json_response")];
+  for (const failure of failures) {
+    const { reads, deps } = deliveryReads([...Array<Error>(16).fill(failure), "delivered"]);
+    const start = Date.now();
+    const controller = new AbortController();
+    const trouble: boolean[] = [];
+    const heard: unknown[] = [];
+    let outcome = "pending";
+    void followDelivery("flow-1", "run-1", sending("sending"), {
+      signal: controller.signal,
+      onStatus: (status) => heard.push(status.result_delivery?.state),
+      onTrouble: (failing) => trouble.push(failing),
+      page: fakePage(false),
+      online: createOnlineStatus(),
+      deps,
+    }).then(() => void (outcome = "resolved"), () => void (outcome = "rejected"));
+    try {
+      await pass(t, 45_000);
+      const every = (from: number, to: number) => Array.from({ length: (to - from) / 2_000 + 1 }, (_, i) => from + i * 2_000);
+      assert.equal(outcome, "resolved", `${failure.code ?? failure.status}: followed on, not failed`);
+      assert.deepEqual(reads.map((read) => read.at - start), [...every(2_000, 30_000), 35_000, 40_000], String(failure.status));
+      assert.deepEqual(trouble, [true, false], String(failure.status));
+      assert.deepEqual(heard, ["delivered"], String(failure.status));
+    } finally {
+      controller.abort();
+    }
+  }
 });
 
 test("a run whose status cannot be read is reported as in trouble from the first failed read until a read goes through", async (t) => {

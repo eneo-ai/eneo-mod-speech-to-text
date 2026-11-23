@@ -9,9 +9,10 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useMediaQuery } from "@astryxdesign/core/hooks";
-import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
+import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type ResultDelivery, type RunContract } from "@/lib/api";
 import { savedSets, type SavedCorrections } from "@/lib/follow-run";
 import { browserStorage } from "@/lib/browser-storage";
 import { useDock } from "@/lib/dock";
@@ -24,7 +25,7 @@ import type { Playback } from "@/lib/playback";
 import { rememberPosition } from "@/lib/playback-position";
 import { fileText, runFileName, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import { ofContractVersion, type StepView } from "@/lib/run-progress";
-import { liveFallbackNotice, outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
+import { deliveryView, liveFallbackNotice, outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { ResultDocument } from "./ResultDocument";
 import { IconTile } from "@/components/IconTile";
 import { useAuthenticatedUser } from "@/components/AuthGate";
@@ -42,6 +43,11 @@ import { usePhaseHeading } from "./usePhaseHeading";
 import { LeaveContext } from "./useLeaveQuestion";
 
 type View = "document" | "transcript";
+
+/** A sending whose state could not be read just now: the follow tries again by itself. */
+const STALE = "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv.";
+/** The banner's colour for each state of a sending: on its way, waiting for a retry, confirmed, given up. */
+const SENDING_STATUS = { sending: "info", retry_scheduled: "warning", delivered: "success", dead_lettered: "error" } as const;
 const PANELS: Record<View, { tab: string; panel: string }> = {
   document: { tab: "result-tab-document", panel: "result-panel-document" },
   transcript: { tab: "result-tab-transcript", panel: "result-panel-transcript" },
@@ -87,6 +93,8 @@ export function RunResult({
   onRegenerated,
   onStartAgain,
   contract = null,
+  delivery,
+  deliveryStale = false,
 }: {
   flowId: string;
   flowName: string;
@@ -107,14 +115,29 @@ export function RunResult({
   onStartAgain?: () => void;
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
+  /** Where a result sent to the receiver stands, from the run's latest status read (followDelivery). */
+  delivery?: ResultDelivery | null;
+  /** The latest status read failed and is tried again: the sending's state shown may be old. */
+  deliveryStale?: boolean;
 }) {
   const { leaveFirst } = useContext(LeaveContext);
-  const delivered = run.result?.kind === "outbound_http";
+  // A result sent to the receiver is not shown here, so there is nothing to make again or to call empty; what became of
+  // the sending is said instead, and only a confirmed sending has the check that says the result is there.
+  const sent = deliveryView(run.result, delivery);
+  const toReceiver = sent !== null;
+  // What the head's region says, once each: a change of the sending's state, never the state the page opened with (the
+  // heading has the focus and says it) and never again for a read that changed nothing; and a state that cannot be read
+  // just now, once for each time, with nothing said when it can again and the state is the same.
+  const stale = Boolean(sent && deliveryStale);
+  const [said, setSaid] = useState({ note: sent?.note, stale, text: "" });
+  if (sent && (sent.note !== said.note || stale !== said.stale)) {
+    setSaid({ note: sent.note, stale, text: stale ? STALE : sent.note !== said.note ? sent.note : "" });
+  }
   const words = outputWords(runOutput(run, contract));
   const { text: shown, note } = runResultView(run.result);
   // Blank text is no text, and a run with no file either has nothing to show: the page says that, not that it is ready.
   const text = shown?.trim() ? shown : null;
-  const empty = !delivered && !text && files.length === 0;
+  const empty = !toReceiver && !text && files.length === 0;
   const fallback = liveFallbackNotice(stepResults);
   const heading = usePhaseHeading(empty ? `Resultatet är tomt · ${flowName}` : `Klart · ${flowName}`);
   const finished = run.finished_at ?? run.created_at;
@@ -129,7 +152,7 @@ export function RunResult({
   const hasDocument = Boolean(text || files.length);
   const offer =
     // Whether the document is older than the saved corrections does not depend on the latest save.
-    showTranscript && !delivered
+    showTranscript && !toReceiver
       ? regenerationOffer({
           flowId,
           run,
@@ -141,7 +164,7 @@ export function RunResult({
       : null;
   // Known from the run's own read, before the transcript is: the notice has its place from the first draw, so the
   // document under it does not move when the transcript arrives. It can act once the transcript is read.
-  const olderThanCorrections = showTranscript && !delivered && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
+  const olderThanCorrections = showTranscript && !toReceiver && hasDocument && correctionsNewerThanDocument(run, stepResults, savedSets(savedCorrections));
   const regenerates = Boolean(offer || olderThanCorrections);
   // What the newer corrections change, said from the first draw: by the run's own read until the transcript is read.
   const newer = transcript.pending ? savedTranscriptCorrections(stepResults, savedSets(savedCorrections)) : editing.corrections;
@@ -156,7 +179,7 @@ export function RunResult({
   // The people the run was started with, offered as names: from the field Eneo says holds them, on the contract's version.
   const participantsField = contract && ofContractVersion(run, contract) ? contract.transcription?.max_speakers?.participants_field : null;
   const participants = participantsField ? participantsOf(details[participantsField]) : [];
-  const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, delivered, hasDocument, participants } : undefined;
+  const naming = run.status.toLowerCase() === "completed" ? { draftKey: namesDraft, thing: words.thing, toReceiver, hasDocument, participants } : undefined;
   const detailsLine = contract && ofContractVersion(run, contract) && detailRows(fields, details).length > 0 ? detailsSummary(fields, details) : null;
   // Under 16 rem of the root's text (the reader's large text, a phone's zoom) two lines hold a word or two of them: there
   // they are whole.
@@ -236,9 +259,9 @@ export function RunResult({
   // The heading says the state in words; from 640 px its tile stands beside it, on a phone the heading has the line.
   const title = (
     <HStack gap={3} vAlign="center">
-      {!empty && !metaStacked && <IconTile icon={CheckCircle2} hue="green" />}
+      {!empty && !metaStacked && (!sent || sent.state === "delivered") && <IconTile icon={CheckCircle2} hue="green" />}
       <Heading level={1} ref={heading} tabIndex={-1}>
-        {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
+        {sent ? sent.heading : empty ? "Resultatet är tomt" : words.ready}
       </Heading>
     </HStack>
   );
@@ -281,11 +304,30 @@ export function RunResult({
           {detailsLine}
         </Text>
       )}
+      {/* In the head, which no tab hides: that the sending's state cannot be read just now, in sight while it lasts, and
+          the region that says each change, there from the start and empty until then. */}
+      {stale && (
+        <Text as="p" color="secondary">
+          {STALE}
+        </Text>
+      )}
+      {sent && (
+        <VisuallyHidden as="p" role="status">
+          {said.text}
+        </VisuallyHidden>
+      )}
     </VStack>
   );
   const documentColumn = (
     <>
       {note && <Text as="p">{note}</Text>}
+      {sent && (
+        <>
+          {/* There when the page opens, so it is a note and not announced (the design system would make a warning or an
+              error an alert); a change is said by the head's region. */}
+          <Banner status={sent.state ? SENDING_STATUS[sent.state] : "info"} role="note" collapsible={false} title={sent.note} />
+        </>
+      )}
       {empty && (
         <VStack gap={3}>
           <Text as="p">Körningen blev klar, men flödet gav inget att visa.</Text>

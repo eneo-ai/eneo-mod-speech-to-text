@@ -9,6 +9,8 @@ import type { ResultFileView } from "./run-files";
 
 installDom();
 afterEach(cleanup);
+// A node is compared with `===`, and the answer with true: a failing assertion prints its value through every getter,
+// which for a node of the test document never ends.
 
 /** What a page is rendered in: the design system's providers, so its own words are Swedish ("Stäng"). */
 async function inProviders(element: ReactElement) {
@@ -169,7 +171,7 @@ test("an address the page will not follow is shown as its words, not as a link t
   });
   const article = view.container.querySelector("article")!;
   assert.deepEqual([...article.querySelectorAll("a")].map((a) => a.getAttribute("href")), ["https://sundsvall.se"], "the safe link only; no href=\"\"");
-  assert.equal(article.querySelector("img"), null, "no image with an empty source, which asks for the page itself");
+  assert.equal(article.querySelector("img") === null, true, "no image with an empty source, which asks for the page itself");
   for (const words of ["klicka här", "kommunen", "en bild"]) assert.match(article.textContent ?? "", new RegExp(words), "every word of it is still there");
 });
 
@@ -178,7 +180,7 @@ test("a footnote, which the design system's Markdown does not draw, stays as the
   const article = view.container.querySelector("article")!;
   assert.match(article.textContent ?? "", /Beslutet togs\.\[\^1\]/, "the marker, where it was written");
   assert.match(article.textContent ?? "", /\[\^1\]: Enligt protokollet\./, "and the note it points to, whole");
-  assert.equal(article.querySelector("a, section"), null, "no link to nothing, and no section the page does not name");
+  assert.equal(article.querySelector("a, section") === null, true, "no link to nothing, and no section the page does not name");
 });
 
 test("a bare address is a link, without the full stop that ends its sentence", async () => {
@@ -207,7 +209,7 @@ test("the document's one filled action is its file's download; without a file it
   assert.ok(name, "the file's name is a link to the file");
   assert.equal(name.target, "_blank", "in a new tab");
   const opening = [...withFile.container.querySelectorAll(`a[href="${inline}"]`)].filter((el) => !el.closest("dialog"));
-  assert.deepEqual(opening, [name], "no Öppna PDF above the document that does the same");
+  assert.equal(opening.length === 1 && opening[0] === name, true, "no Öppna PDF above the document that does the same");
   assert.equal(nameOf(name), `Öppna ${pdf.name} i en ny flik`);
   assert.equal(name.textContent, pdf.name, "the words it shows are the file's name, in its accessible name");
   const row = name.closest("[data-file-row]")!;
@@ -387,8 +389,8 @@ test("a file the browser says it can share and then refuses (a Word file on Andr
   await read(alone);
   assert.equal(shared.length, 1, "the file was offered");
   assert.deepEqual(alertsOf(alone.container), ["Webbläsaren kan inte dela Word-filen.Ladda ner den och dela den från enheten."]);
-  assert.equal(button(alone.container, "Dela"), null, "no Dela that cannot work");
-  assert.equal(document.activeElement, alone.container.querySelector("a[download]"), "the focus is on Ladda ner");
+  assert.equal(button(alone.container, "Dela") === null, true, "no Dela that cannot work");
+  assert.equal(document.activeElement === alone.container.querySelector("a[download]"), true, "the focus is on Ladda ner");
   await alone.unmount();
 
   // With text: Dela stays, and its next press shares the text (a share needs a press of its own).
@@ -426,7 +428,7 @@ test("a file the browser says it can share and then refuses (a Word file on Andr
   await read(page);
   await page.act(async () => button(page.container, "Dela")!.click());
   await read(page);
-  assert.equal(button(page.container, "Dela"), null);
+  assert.equal(button(page.container, "Dela") === null, true);
   await page.act(async () => page.rerender(draw(pdf)));
   await read(page);
   assert.deepEqual(alertsOf(page.container), [], "nothing said of the PDF");
@@ -481,7 +483,7 @@ test("the PDF opens on its title, with its actions and Stäng before the viewer,
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
   const open = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-haspopup") === "dialog")!;
-  assert.equal(document.querySelector("iframe"), null, "closed: no PDF is fetched");
+  assert.equal(document.querySelector("iframe") === null, true, "closed: no PDF is fetched");
   await view.act(async () => open.click());
   const dialog = document.querySelector<HTMLElement>("dialog[open]")!;
   assert.ok(dialog, "an open dialog");
@@ -494,9 +496,9 @@ test("the PDF opens on its title, with its actions and Stäng before the viewer,
 
   // Stäng closes it, the viewer goes with it, and focus is back on what opened it.
   await view.act(async () => button(dialog, "Stäng")!.click());
-  assert.equal(document.querySelector("dialog[open]"), null);
-  assert.equal(document.querySelector("iframe"), null, "closed again: nothing fetched");
-  assert.equal(document.activeElement, open, "focus is back on the trigger");
+  assert.equal(document.querySelector("dialog[open]") === null, true);
+  assert.equal(document.querySelector("iframe") === null, true, "closed again: nothing fetched");
+  assert.equal(document.activeElement === open, true, "focus is back on the trigger");
 });
 
 test("the PDF preview is closed while the login has ended, and is back with its viewer when it is", async (t) => {
@@ -517,11 +519,11 @@ test("the PDF preview is closed while the login has ended, and is back with its 
 
   // A native dialog is no part of what the cover makes inert: the page closes it, and keeps its viewer to come back to.
   await view.act(async () => loginState.observe(status(false)));
-  assert.equal(document.querySelector("dialog[open]"), null, "nothing of it shown while signed out");
-  assert.equal(document.querySelector("iframe"), viewer, "the viewer is kept, not fetched again");
+  assert.equal(document.querySelector("dialog[open]") === null, true, "nothing of it shown while signed out");
+  assert.equal(document.querySelector("iframe") === viewer, true, "the viewer is kept, not fetched again");
   await view.act(async () => loginState.observe(status(true)));
   assert.ok(document.querySelector("dialog[open]"), "back after the new login");
-  assert.equal(document.querySelector("iframe"), viewer);
+  assert.equal(document.querySelector("iframe") === viewer, true);
 });
 
 test("the PDF preview stays open, with its viewer, when the window crosses the breakpoint, and focus stays in it", async (t) => {
@@ -538,18 +540,18 @@ test("the PDF preview stays open, with its viewer, when the window crosses the b
 
   // The page is made narrow while the dialog is open: it is the same dialog and the same viewer, not a reload.
   await view.act(async () => resize(390));
-  assert.equal(document.querySelector("dialog[open]"), dialog, "still open, the same element");
-  assert.equal(dialog.querySelector("iframe"), viewer, "the viewer is not fetched again");
+  assert.equal(document.querySelector("dialog[open]") === dialog, true, "still open, the same element");
+  assert.equal(dialog.querySelector("iframe") === viewer, true, "the viewer is not fetched again");
   assert.ok(dialog.contains(document.activeElement), "focus has not dropped to the page");
   await view.act(async () => resize(1280));
-  assert.equal(document.querySelector("dialog[open]"), dialog);
-  assert.equal(dialog.querySelector("iframe"), viewer);
+  assert.equal(document.querySelector("dialog[open]") === dialog, true);
+  assert.equal(dialog.querySelector("iframe") === viewer, true);
 
   // Closed on the narrow page, focus is given to what opens the preview there.
   await view.act(async () => resize(390));
   await view.act(async () => button(dialog, "Stäng")!.click());
-  assert.equal(document.querySelector("dialog[open]"), null);
-  assert.equal(document.activeElement, view.container.querySelector('a[target="_blank"]'), "the link that opens it in a tab has focus");
+  assert.equal(document.querySelector("dialog[open]") === null, true);
+  assert.equal(document.activeElement === view.container.querySelector('a[target="_blank"]'), true, "the link that opens it in a tab has focus");
 });
 
 test("a document that is only its file keeps its PDF preview open, with its viewer, across a laptop's width, and focus in it", async (t) => {
@@ -565,15 +567,15 @@ test("a document that is only its file keeps its PDF preview open, with its view
 
   for (const width of [390, 1280, 390]) {
     await view.act(async () => resize(width));
-    assert.equal(document.querySelector("dialog[open]"), dialog, `${width} px: still open, the same element`);
-    assert.equal(dialog.querySelector("iframe"), viewer, `${width} px: the viewer is not fetched again`);
+    assert.equal(document.querySelector("dialog[open]") === dialog, true, `${width} px: still open, the same element`);
+    assert.equal(dialog.querySelector("iframe") === viewer, true, `${width} px: the viewer is not fetched again`);
     assert.ok(dialog.contains(document.activeElement), `${width} px: focus has not dropped to the page`);
   }
 
   // Closed on the narrow page, focus is given to what opens the file there: its name.
   await view.act(async () => button(dialog, "Stäng")!.click());
-  assert.equal(document.querySelector("dialog[open]"), null);
-  assert.equal(document.activeElement, view.container.querySelector('[data-file-row] a[target="_blank"]'), "the file's name has focus");
+  assert.equal(document.querySelector("dialog[open]") === null, true);
+  assert.equal(document.activeElement === view.container.querySelector('[data-file-row] a[target="_blank"]'), true, "the file's name has focus");
 });
 
 /** The browser's ResizeObserver as far as a test needs it: `resized()` calls every observer still observing, as a resize does. */
@@ -684,7 +686,7 @@ test("narrower than a laptop, Dokument and Transkribering are tabs that keep eac
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
   assert.equal(tab("Dokument").getAttribute("aria-selected"), "true", "the document first");
-  assert.equal(tab("Dokument").querySelector('[role="img"]'), null, "nothing to make again, so no sign on the tab");
+  assert.equal(tab("Dokument").querySelector('[role="img"]') === null, true, "nothing to make again, so no sign on the tab");
   const panels = [...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
   assert.equal(panels.length, 2, "both views stay mounted");
   // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
@@ -1077,7 +1079,7 @@ test("a document that is only its file shows the file's text under the file, as 
   await view.unmount();
 
   const none = await document_({ text: null, file: pdf, preview: null });
-  assert.equal(previewOf(none.container), null, "no reliable text: no empty box");
+  assert.equal(previewOf(none.container) === null, true, "no reliable text: no empty box");
 });
 
 test("a long file text shows its first part until Visa hela texten, a disclosure that says what it opens", async () => {
@@ -1291,7 +1293,7 @@ test("a part Eneo no longer has keeps none of the others from being saved, and i
   await view.act(async () => button(view.container, "Spara 3 ljudfiler (zip)")!.click());
   assert.deepEqual((await savedZip(started)).map(([name]) => name), ["Möte-del-1.webm", "Möte-del-3.webm"], "the parts Eneo has");
   assert.match(view.container.textContent ?? "", /Del 2 av 3 finns inte kvar hos Eneo\.Filen innehåller de andra delarna\./);
-  assert.equal(button(view.container, "Försök igen"), null, "a new try brings no part back");
+  assert.equal(button(view.container, "Försök igen") === null, true, "a new try brings no part back");
 
   started.length = 0;
   gone = () => true;
@@ -1517,8 +1519,8 @@ test("a PDF that Eneo no longer has is not opened: no raw answer in the viewer, 
   await view.act(async () => open.click());
   assert.equal(asked.length, 1);
   assert.equal(asked[0].range, null, "the availability check also supports older Eneo document routes");
-  assert.equal(document.querySelector("dialog[open]"), null, "no dialog");
-  assert.equal(document.querySelector("iframe"), null, "no viewer to show the module's answer in");
+  assert.equal(document.querySelector("dialog[open]") === null, true, "no dialog");
+  assert.equal(document.querySelector("iframe") === null, true, "no viewer to show the module's answer in");
   assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
   assert.doesNotMatch(document.body.textContent ?? "", /File not found/, "Eneo's words are not shown");
 
@@ -1785,7 +1787,13 @@ test("an uncertain word says how to put it right where the result allows it", as
 async function namingRun(
   t: TestContext,
   onSave: (body: Record<string, unknown>) => Promise<Response>,
-  { narrow = false, text = false, saved, read = Promise.resolve() }: { narrow?: boolean; text?: boolean; saved?: unknown[]; read?: Promise<void> } = {},
+  {
+    narrow = false,
+    text = false,
+    receiver,
+    saved,
+    read = Promise.resolve(),
+  }: { narrow?: boolean; text?: boolean; receiver?: string; saved?: unknown[]; read?: Promise<void> } = {},
 ) {
   const { createElement } = await import("react");
   const { RunResult } = await import("../components/flow/RunResult");
@@ -1823,13 +1831,18 @@ async function namingRun(
     flowName: "Nämndmöte till rapport",
     run: {
       id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z",
-      result: text ? { kind: "inline_text", text: "Mötet godkände budgeten." } : { kind: "artifact", files: [{ file_id: "file-1" }] },
+      result: receiver
+        ? { kind: "outbound_http", delivery_status: "pending" }
+        : text
+          ? { kind: "inline_text", text: "Mötet godkände budgeten." }
+          : { kind: "artifact", files: [{ file_id: "file-1" }] },
     } as never,
+    delivery: receiver ? ({ state: receiver } as never) : undefined,
     contract: text ? ({ flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text", delivery: "payload" } } as never) : null,
     savedCorrections: saved as never,
     steps: [],
     stepResults: [transcribe] as never,
-    files: text ? [] : [pdf],
+    files: text || receiver ? [] : [pdf],
     onNewRecording: () => undefined,
     onRegenerated: () => undefined,
   });
@@ -1838,7 +1851,7 @@ async function namingRun(
     await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     return view;
   };
-  return { open, sent, hash };
+  return { open, sent, hash, page };
 }
 
 /** The name field of a speaker in the open naming dialog, as a screen reader names it. */
@@ -1864,7 +1877,7 @@ test("names given after the run go with the corrections, show at once in the tra
     Response.json({ ...body, flow_run_id: "run-1", step_id: "step-1", revision: 1, stale: false, updated_at: "2026-09-24T10:00:00Z" }),
   );
   const view = await open();
-  assert.equal(view.container.querySelector('[role="note"]'), null, "nothing newer than the document yet");
+  assert.equal(view.container.querySelector('[role="note"]') === null, true, "nothing newer than the document yet");
   await view.act(async () => button(view.container, "Namnge talare")!.click());
   assert.equal(
     namingDescription(),
@@ -1936,7 +1949,7 @@ test("Spara namnen sends nothing for the names Eneo has, sends refused names aga
   assert.deepEqual(sent.map((body) => body.speaker_names), [{ SPEAKER_00: "Anna Berg" }, { SPEAKER_00: "Anna Berg" }], "sent again");
   assert.ok(!document.querySelector("dialog[open]"), "saved: the dialog closes");
   assert.equal(hasNamesDraft({ ownerId: "user-1", name: "names:run-1" }), false, "and lets the typed names go");
-  assert.equal(button(view.container, "Försök spara igen"), null, "nothing is left unsaved");
+  assert.equal(button(view.container, "Försök spara igen") === null, true, "nothing is left unsaved");
   assert.ok(button(view.container, "Anna Berg, ändra talare"));
 });
 
@@ -1980,6 +1993,107 @@ test("on a flow that makes text, the naming tells the transcript's copy and down
     namingDescription(),
     "Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Texten får namnen när du skapar den igen.",
   );
+});
+
+test("on a result sent to a receiver, the naming says the names change the transcript and never what goes to the receiver, whatever the sending's state", async (t) => {
+  for (const state of ["sending", "retry_scheduled", "delivered", "dead_lettered"]) {
+    await t.test(state, async (each) => {
+      const { open } = await namingRun(each, async () => Response.json({}), { receiver: state });
+      const view = await open();
+      assert.equal(button(view.container, "Skapa dokumentet igen") === null, true, "nothing here to make again");
+      await view.act(async () => button(view.container, "Namnge talare")!.click());
+      assert.equal(
+        namingDescription(),
+        "Lyssna på ett exempel och skriv vem som talar. Namnen syns direkt i transkriberingen, även när du kopierar den eller laddar ner den som text. Namnen ändrar bara transkriberingen, inte resultatet som går till mottagaren.",
+      );
+      await cleanup();
+    });
+  }
+});
+
+test("a change of the sending's state is said once in the page's status region, the focus stays, and a read that changes nothing says nothing", async () => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const page = (state: string, next_delivery_at: string | null = null) =>
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "outbound_http", delivery_status: "pending" } } as never,
+      delivery: { state, next_delivery_at } as never,
+      steps: [],
+      stepResults: [],
+      files: [],
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    });
+  const view = await mount(await asPerson(page("sending")));
+  const heading = view.container.querySelector("h1")!;
+  // The page's own region; the design system's buttons hold regions of their own.
+  const status = () => [...view.container.querySelectorAll('p[role="status"]')].map((region) => region.textContent).join("|");
+  assert.equal(document.activeElement === heading, true, "the page's heading has the focus, as on any result");
+  assert.equal(status(), "", "the first state is read with the heading, not announced");
+  const at = new Date(2026, 10, 22, 14, 5).toISOString();
+  await view.act(async () => view.rerender(await asPerson(page("retry_scheduled", at))));
+  assert.equal(heading.textContent, "Nytt försök kl. 14:05");
+  assert.equal(status(), "Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök kl. 14:05.");
+  assert.equal(document.activeElement === heading, true, "the focus stays where it was");
+  // The same state read again: the region keeps its words, so nothing new is said.
+  const region = view.container.querySelector('p[role="status"]')!;
+  const changes: MutationRecord[] = [];
+  new window.MutationObserver((records) => changes.push(...records)).observe(region, { subtree: true, childList: true, characterData: true });
+  await view.act(async () => view.rerender(await asPerson(page("retry_scheduled", at))));
+  assert.equal(changes.length, 0);
+  await view.act(async () => view.rerender(await asPerson(page("delivered"))));
+  assert.equal(status(), "Resultatet skickades till mottagaren.");
+  assert.equal(heading.textContent, "Resultatet är skickat");
+});
+
+test("on a narrow page with the transcript's tab chosen, a change of the sending's state is still said", async (t) => {
+  const { cloneElement } = await import("react");
+  const { page } = await namingRun(t, async () => Response.json({}), { receiver: "sending", narrow: true });
+  // One signed-in person throughout, as the page keeps them.
+  const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const view = await mount(await asPerson(page, person));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
+  await view.act(async () => tab("Transkribering").click());
+  assert.equal(tab("Transkribering").getAttribute("aria-selected"), "true");
+  await view.act(async () => view.rerender(await asPerson(cloneElement(page, { delivery: { state: "delivered" } } as never), person)));
+  const region = view.container.querySelector('p[role="status"]:not(:empty)');
+  assert.equal(region?.textContent, "Resultatet skickades till mottagaren.");
+  assert.equal(Boolean(region?.closest("[hidden]")), false, "outside the panel the chosen tab hides");
+});
+
+test("on a narrow page with the transcript's tab chosen, a sending whose state cannot be read shows it in sight, says it once, and stops when it can", async (t) => {
+  const { cloneElement } = await import("react");
+  const { page } = await namingRun(t, async () => Response.json({}), { receiver: "sending", narrow: true });
+  const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const draw = async (stale: boolean) => asPerson(cloneElement(page, { delivery: { state: "sending" }, deliveryStale: stale } as never), person);
+  const view = await mount(await draw(false));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
+  await view.act(async () => tab("Transkribering").click());
+  const focused = document.activeElement;
+  const STALE = "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv.";
+  // The page's own region, in the head with the heading; the transcript has regions of its own.
+  const region = () => [...view.container.querySelectorAll('p[role="status"]')].find((p) => p.parentElement?.querySelector("h1"));
+  const lines = () => [...view.container.querySelectorAll("p")].filter((p) => p.getAttribute("role") !== "status" && p.textContent === STALE);
+  assert.equal(region()?.textContent, "", "nothing said while the state is read");
+
+  await view.act(async () => view.rerender(await draw(true)));
+  assert.equal(lines().length, 1, "the line is there");
+  assert.equal(lines().some((line) => line.closest("[hidden]")), false, "in sight, outside the panel the chosen tab hides");
+  assert.equal(region()?.textContent, STALE, "said");
+  const changes: MutationRecord[] = [];
+  new window.MutationObserver((records) => changes.push(...records)).observe(region()!, { subtree: true, childList: true, characterData: true });
+  await view.act(async () => view.rerender(await draw(true)));
+  assert.equal(changes.length, 0, "a second failed read says nothing more");
+
+  await view.act(async () => view.rerender(await draw(false)));
+  assert.equal(lines().length, 0, "gone once the state is read");
+  assert.equal(region()?.textContent, "", "and the same state is not said again");
+  assert.equal(document.activeElement === focused, true, "the focus stays where it was");
 });
 
 test("names typed and not saved come back after a reload, in the open dialog, on the transcript's tab of a narrow page", async (t) => {

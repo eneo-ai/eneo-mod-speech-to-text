@@ -552,7 +552,8 @@ class DevProfileTests(Stack):
             ("/api/branding", lambda body: body["organization"]["name"] == "Eneo"),
             ("/api/eneo/flows/", lambda body: FLOW in {item["id"] for item in body["items"]}),
             (f"/api/eneo/flows/{FLOW}/published/", lambda body: body["id"] == FLOW),
-            (f"/api/eneo/flows/{FLOW}/runs/{DONE}/status/", lambda body: body["status"] == "completed"),
+            # The page reads a status only when it names the run and the flow it asked for.
+            (f"/api/eneo/flows/{FLOW}/runs/{DONE}/status/", lambda body: (body["id"], body["flow_id"], body["status"]) == (DONE, FLOW, "completed")),
         ):
             with self.subTest(path=path):
                 status, _, body, _ = call(self.stub, "GET", path)

@@ -109,10 +109,10 @@ export function RunTranscriptView({
   onReload: () => void;
   /**
    * The run is finished, so its speakers can be named: where names typed and not saved are kept, and what the run made
-   * (`thing`, as outputWords says it), whether it was sent on, whether it has a document to make again, and the people
-   * it was started with.
+   * (`thing`, as outputWords says it), whether it goes to the flow's receiver instead of being shown here, whether it has
+   * a document to make again, and the people it was started with.
    */
-  naming?: { draftKey: { ownerId: string; name: string }; thing: string; delivered: boolean; hasDocument: boolean; participants: readonly string[] };
+  naming?: { draftKey: { ownerId: string; name: string }; thing: string; toReceiver: boolean; hasDocument: boolean; participants: readonly string[] };
   /** The signed-in person, whose choices this browser keeps for the transcript's player (its letter keys). */
   ownerId?: string;
 }) {
@@ -224,11 +224,11 @@ export function RunTranscriptView({
 /**
  * What naming after the run changes, said in its dialog: the transcript, its copy and its download at once (said by
  * their actions, never "texten", which a flow that makes text calls its result); the document only when it is made
- * again, and one already sent on not at all.
+ * again, and what goes to the receiver not at all, wherever its sending stands.
  */
-function namingDescription({ thing, delivered, hasDocument }: { thing: string; delivered: boolean; hasDocument: boolean }): string {
-  const later = delivered
-    ? " Dokumentet som redan har skickats ändras inte."
+function namingDescription({ thing, toReceiver, hasDocument }: { thing: string; toReceiver: boolean; hasDocument: boolean }): string {
+  const later = toReceiver
+    ? " Namnen ändrar bara transkriberingen, inte resultatet som går till mottagaren."
     : hasDocument
       ? ` ${thing[0].toUpperCase() + thing.slice(1)} får namnen när du skapar ${thing === "texten" ? "den" : "det"} igen.`
       : "";

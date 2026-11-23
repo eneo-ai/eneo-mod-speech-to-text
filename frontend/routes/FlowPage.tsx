@@ -37,6 +37,7 @@ import {
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
   type FlowRunSummary,
+  type ResultDelivery,
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
@@ -46,7 +47,7 @@ import { friendlyError, reviewPauseEnded } from "@/lib/errors";
 import { CONTINUE_QUERY_PARAM, RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
-import { followRun, readActivePause, readFinishedRun, VISIBLE_POLL_MS, type SavedCorrections } from "@/lib/follow-run";
+import { followDelivery, followRun, readActivePause, readFinishedRun, VISIBLE_POLL_MS, type SavedCorrections } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { filesIn, recordingStore } from "@/lib/recording-store";
 import { asksBeforeClosing, leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
@@ -60,7 +61,7 @@ import {
   runSteps,
   runLabelsSpeakers,
 } from "@/lib/run-progress";
-import { goingLiveFallbackNotice, runErrorView } from "@/lib/run-result";
+import { deliveryUnderWay, goingLiveFallbackNotice, runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
   startAgain,
@@ -107,6 +108,8 @@ type RunState =
       graph: FlowGraph | null;
       /** The saved transcript corrections, as read with the run (readFinishedRun). */
       corrections: SavedCorrections;
+      /** Where a result sent to the receiver stands: from the status the run finished with, then from followDelivery. */
+      delivery?: ResultDelivery | null;
     };
 
 // The run's id is kept in the address (?run=), so a reload or a shared link resumes the same run.
@@ -483,7 +486,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   /**
    * Follows the run by its status and its run-locked graph until it is done or waits for review. The step results (an
-   * audit-logged read) and the detail are read once, when the run is done.
+   * audit-logged read) and the detail are read once, when the run is done. A result still on its way to the receiver is
+   * then followed by the status alone (followDelivery), the result shown meanwhile; only a run gone or refused (403, 404,
+   * 410) ends that follow here as the run's errors do, and an ended login leaves the result where it is.
    */
   async function follow(runId: string) {
     // The run's text is formatted when it is first drawn (components/flow/Markdown).
@@ -534,7 +539,33 @@ function FlowDetail({ flowId }: { flowId: string }) {
         return;
       }
       if (signal.aborted) return;
-      setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph, corrections: finished.corrections });
+      // The detail is read after the status, from the same sending: an end it says (delivered, given up) is the newer
+      // word than a known state under way in the status, which is dropped so the detail's word is shown (deliveryView
+      // falls back to it). A state the page does not know stays the status's, neutral.
+      const result = finished.run.result;
+      const ended =
+        result?.kind === "outbound_http" &&
+        deliveryUnderWay(last.run.result_delivery) &&
+        (result.delivery_status === "delivered" || result.delivery_status === "dead_lettered");
+      setRun({
+        kind: "done",
+        run: finished.run,
+        steps: finished.steps,
+        graph: last.graph,
+        corrections: finished.corrections,
+        delivery: ended ? null : (last.run.result_delivery ?? null),
+      });
+      // Only a result on its way to the receiver is followed: a cancelled run can leave a sending's row under way in
+      // Eneo, with no result of its own and a view that says nothing of it.
+      if (result?.kind !== "outbound_http" || ended) return;
+      await followDelivery(flowId, runId, last.run, {
+        signal,
+        onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
+        // The run by Eneo's own id, as the detail has it: the address may spell it otherwise (capitals, no hyphens).
+        onStatus: ({ result_delivery }) =>
+          !signal.aborted &&
+          setRun((prev) => (prev.kind === "done" && prev.run.id === last.run.id ? { ...prev, delivery: result_delivery ?? null } : prev)),
+      });
     } catch (err) {
       if (signal.aborted) return;
       setPollTrouble(false);
@@ -889,6 +920,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
                 files={files}
                 showTranscript={transcribed}
                 contract={contract}
+                delivery={run.delivery}
+                deliveryStale={pollTrouble}
                 audio={inputStep?.input_format?.toLowerCase() === "audio"}
                 onNewRecording={onRunAgain}
                 onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}

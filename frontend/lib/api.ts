@@ -192,8 +192,11 @@ async function readResponse<T>(res: Response): Promise<T> {
   if (ctype.includes("application/json")) {
     try {
       return (await res.json()) as T;
-    } catch {
-      // As the upload client does: a body that is not the JSON it claims is the request's own error.
+    } catch (error) {
+      // As the upload client does: a whole body that is not the JSON it claims is the request's own error. A body that
+      // broke off on the way (a TypeError) is not: it leaves as the network failure it is, which withRetry tries again.
+      // The module's answer did arrive (reportReachable above), so the connection is not reported as lost.
+      if (!(error instanceof SyntaxError)) throw error;
       throw new ApiError(res.status, "Servern svarade med ogiltig JSON.", null, "invalid_json_response");
     }
   }
@@ -429,7 +432,9 @@ export type FlowRunResult =
   | { kind: "file_backed_text"; preview: string; file: ResultFile }
   | { kind: "structured"; value: unknown; output_contract: Json | null }
   | { kind: "artifact"; files: ResultFile[] }
-  | { kind: "outbound_http"; delivery_status: "delivered" };
+  // A finished run's result can still be on its way: `pending` until the receiver confirms it, `dead_lettered` when Eneo
+  // gave up. An older Eneo always says `delivered`.
+  | { kind: "outbound_http"; delivery_status: "pending" | "delivered" | "dead_lettered" };
 
 /**
  * Körningens typade slutfel. Förgrena på `code`; `message` är teknisk detalj
@@ -939,13 +944,44 @@ export interface FlowRunSummary {
   run_label?: string | null;
   /** The day the run is about (a meeting's, "2026-10-01"), from the flow's form field that dates runs. */
   run_date?: string | null;
+  /**
+   * Where the run's result stands on its way to the flow's receiver; null when the run sends nothing (yet), and absent
+   * on an older Eneo. A finished run stops asking to be followed while this can still change.
+   */
+  result_delivery?: ResultDelivery | null;
   [k: string]: unknown;
 }
 
-export async function getRunStatus(flowId: string, runId: string) {
-  return request<FlowRunSummary>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/status/`,
-  );
+/** The part of Eneo's sending of a result that the page reads; branch on `state`, never on the attempts. */
+export interface ResultDelivery {
+  /** `sending` (not tried yet, being tried, or due now), `retry_scheduled` (a try failed), or the end: `delivered`, `dead_lettered`. */
+  state: "sending" | "retry_scheduled" | "delivered" | "dead_lettered";
+  /** When the next try is planned, while it is `retry_scheduled`. */
+  next_delivery_at?: string | null;
+}
+
+/**
+ * An asked id as Eneo spells it back: a UUID in a spelling an address may give it (capitals, no hyphens, `{…}`,
+ * `urn:uuid:`) in lower case as 8-4-4-4-12; any other id as it is.
+ */
+function eneoId(id: string): string {
+  const digits = id.toLowerCase().replace(/^urn:uuid:|[{}-]/g, "");
+  return /^[0-9a-f]{32}$/.test(digits) ? digits.replace(/^(.{8})(.{4})(.{4})(.{4})/, "$1-$2-$3-$4-") : id;
+}
+
+/**
+ * `signal` calls off the read, also one that waits for a new login to be sent again. An answer that is no status of
+ * the run asked for (no object with `id`, `flow_id` and `status` as strings: `null`, `{}`, a string, a 204; the ids of
+ * another run or flow; or the asked ones spelled other than Eneo spells them) is the server's error, which the follows
+ * try again: the page reads the run on by the answer's own id.
+ */
+export async function getRunStatus(flowId: string, runId: string, signal?: AbortSignal): Promise<FlowRunSummary> {
+  const status = await request<unknown>(`/api/eneo/flows/${flowId}/runs/${runId}/status/`, { signal });
+  const read = status && typeof status === "object" && !Array.isArray(status) ? (status as Record<string, unknown>) : null;
+  if (!read || typeof read.status !== "string" || read.id !== eneoId(runId) || read.flow_id !== eneoId(flowId)) {
+    throw new ApiError(502, "Servern svarade med en ogiltig körningsstatus.", null, "invalid_json_response");
+  }
+  return read as FlowRunSummary;
 }
 
 export async function getRun(flowId: string, runId: string) {

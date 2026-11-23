@@ -7,6 +7,7 @@
  */
 
 import {
+  ApiError,
   getActiveReviewCheckpoint,
   getRun,
   getRunGraph,
@@ -22,6 +23,7 @@ import {
 } from "./api";
 import { onlineStatus, type OnlineStatus } from "./online-status";
 import { runOutcome } from "./run-progress";
+import { deliveryUnderWay } from "./run-result";
 import { isSpeakerMappingCheckpoint } from "./speaker-mapping";
 import { carriesTranscript } from "./speaker-review";
 import { withRetry } from "./submit-run";
@@ -140,7 +142,8 @@ export async function followRun(
     const [run, latest] = await withRetry(
       async () => {
         try {
-          const read = await Promise.all([deps.getStatus(flowId, runId), deps.getGraph(flowId, runId).catch(() => null)]);
+          // The signal calls off the status read too, also one that waits for a new login: none is sent for a run left.
+          const read = await Promise.all([deps.getStatus(flowId, runId, signal), deps.getGraph(flowId, runId).catch(() => null)]);
           inTrouble(false);
           return read;
         } catch (error) {
@@ -164,6 +167,84 @@ export async function followRun(
     await pause(page.hidden ? HIDDEN_POLL_MS : VISIBLE_POLL_MS, signal, page);
   }
   return null;
+}
+
+/**
+ * How long to wait before reading a sending again, by how long it has stood in the same state: often at first, when a
+ * receiver usually answers, then more rarely (Eneo's advice to its clients). Never by the planned retry time: a time
+ * that has passed must not make a read without a wait.
+ */
+const deliveryPace = (unchangedMs: number) => (unchangedMs < 30_000 ? 2_000 : unchangedMs < 120_000 ? 5_000 : 15_000);
+
+interface DeliveryOptions {
+  signal: AbortSignal;
+  /** Heard with a status read whose sending changed (its state or its planned retry), never with one that did not. */
+  onStatus: (status: FlowRunSummary) => void;
+  /** As followRun's: from the first failed read (true) until a read goes through again (false). */
+  onTrouble?: (failing: boolean) => void;
+  page?: PageVisibility;
+  online?: OnlineStatus;
+  deps?: { getStatus: typeof getRunStatus };
+}
+
+/**
+ * The answers that end the sending's follow: the run is gone, or this person may not read it (any more). Not 401: an
+ * ended login, or someone else's (409 user_changed), is request()'s, whose next read waits for the page's own user.
+ */
+const ENDS_DELIVERY_FOLLOW = new Set([403, 404, 410]);
+
+/**
+ * Follows a finished run's result on its way to the receiver, from the status the run finished with, reading the status
+ * alone (not audit-logged, unlike the detail, which would say nothing more): while the sending is under way, until it is
+ * delivered, given up, or in a state the module does not know. A read that fails and can be tried again is tried again
+ * with withRetry's backoff and reported as trouble. Any other failure is also reported as trouble and read again at the
+ * follow's own pace, so the result on the page stays: only a run that is gone (404, 410) or a read that is refused (403)
+ * ends it, thrown, as followRun's do. A 401 is trouble too: after the module's end of the session (also when someone
+ * else signed in) the next read waits for the page's own user, and Eneo's own 401 is read again at the follow's pace.
+ * The signal calls off the read under way too, also one that waits for a new login.
+ */
+export async function followDelivery(
+  flowId: string,
+  runId: string,
+  first: FlowRunSummary,
+  { signal, onStatus, onTrouble, page = documentVisibility(), online = onlineStatus, deps = { getStatus: getRunStatus } }: DeliveryOptions,
+): Promise<void> {
+  let delivery = first.result_delivery;
+  let since = Date.now();
+  let failing = false;
+  const inTrouble = (now: boolean) => {
+    if (now !== failing) onTrouble?.((failing = now));
+  };
+  while (deliveryUnderWay(delivery) && !signal.aborted) {
+    await pause(page.hidden ? HIDDEN_POLL_MS : deliveryPace(Date.now() - since), signal, page);
+    if (signal.aborted) return;
+    let status: FlowRunSummary;
+    try {
+      status = await withRetry(
+        async () => {
+          try {
+            const read = await deps.getStatus(flowId, runId, signal);
+            inTrouble(false);
+            return read;
+          } catch (error) {
+            if (!signal.aborted) inTrouble(true);
+            throw error;
+          }
+        },
+        { online, signal },
+      );
+    } catch (error) {
+      if (signal.aborted || (error instanceof ApiError && ENDS_DELIVERY_FOLLOW.has(error.status))) throw error;
+      // Said as trouble already (above); the next read is the pace's, never sooner.
+      continue;
+    }
+    if (signal.aborted) return;
+    const next = status.result_delivery;
+    if (next?.state === delivery?.state && (next?.next_delivery_at ?? null) === (delivery?.next_delivery_at ?? null)) continue;
+    delivery = next;
+    since = Date.now();
+    onStatus(status);
+  }
 }
 
 function pause(ms: number, signal: AbortSignal, page: PageVisibility): Promise<void> {

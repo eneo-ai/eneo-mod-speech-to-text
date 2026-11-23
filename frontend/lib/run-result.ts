@@ -1,7 +1,7 @@
-import type { FlowGraph, FlowRunError, FlowRunResult, FlowRunStep, LiveFallbackReason, RunContract, RunContractStepInput } from "./api";
+import type { FlowGraph, FlowRunError, FlowRunResult, FlowRunStep, LiveFallbackReason, ResultDelivery, RunContract, RunContractStepInput } from "./api";
 import { REVIEW_EXPIRED, REVIEW_REJECTED } from "./errors";
 import { makesText } from "./flow-output";
-import { formatDuration } from "./format";
+import { formatDuration, formatTimeOfDay } from "./format";
 import { ofContractVersion } from "./run-progress";
 
 interface RunResultView {
@@ -35,16 +35,55 @@ export function runResultView(
             : "```json\n" + JSON.stringify(result.value, null, 2) + "\n```",
         note: null,
       };
-    case "outbound_http":
-      return {
-        text: null,
-        note: "Resultatet skickades vidare till mottagaren som är inställd i flödet.",
-      };
     default:
-      // En artefakt är dokumentets egen fil (resultFileIds), inte text att visa.
+      // En artefakt är dokumentets egen fil (resultFileIds), inte text att visa. Ett resultat till en mottagare har
+      // ingen text här; var utskicket står säger deliveryView.
       return { text: null, note: null };
   }
 }
+
+type DeliveryState = ResultDelivery["state"];
+
+type DetailStatus = Extract<FlowRunResult, { kind: "outbound_http" }>["delivery_status"];
+
+/**
+ * The detail's own word, read only where the status has no state: an older Eneo, or a status row without one. A word
+ * from a newer Eneo is outside the type and finds nothing here, so it stays neutral.
+ */
+const FROM_DETAIL: Record<DetailStatus, DeliveryState> = { pending: "sending", delivered: "delivered", dead_lettered: "dead_lettered" };
+
+/**
+ * Where a result sent to the flow's receiver stands, as the page says it: the heading and Eneo's own sentence (its
+ * web's words). The status's `state` decides, the detail's `delivery_status` only when the status has none; a value the
+ * module does not know is neutral (`state` null), never "sent". Null for a result that is not sent to a receiver.
+ */
+export function deliveryView(
+  result: FlowRunResult | null | undefined,
+  delivery: ResultDelivery | null | undefined,
+): { state: DeliveryState | null; heading: string; note: string } | null {
+  if (result?.kind !== "outbound_http") return null;
+  const state = delivery?.state != null ? delivery.state : (FROM_DETAIL[result.delivery_status] ?? null);
+  switch (state) {
+    case "sending":
+      return { state, heading: "Skickas", note: "Körningen är klar och resultatet är på väg till mottagaren." };
+    case "retry_scheduled": {
+      // A time that cannot be read is left out, not guessed.
+      const time = delivery?.next_delivery_at ? formatTimeOfDay(delivery.next_delivery_at) : "";
+      const retry = time ? `Nytt försök kl. ${time}` : "Nytt försök";
+      return { state, heading: retry, note: `Mottagaren har inte bekräftat att resultatet kom fram. ${retry}.` };
+    }
+    case "delivered":
+      return { state, heading: "Resultatet är skickat", note: "Resultatet skickades till mottagaren." };
+    case "dead_lettered":
+      return { state, heading: "Kunde inte skickas", note: "Eneo fick ingen bekräftelse från mottagaren. Inga fler försök är planerade." };
+    default:
+      return { state: null, heading: "Körningen är klar", note: "Resultatet går till mottagaren som är inställd i flödet." };
+  }
+}
+
+/** The result is still on its way, and may change without the run changing (Eneo's own rule): it is worth reading again. */
+export const deliveryUnderWay = (delivery: ResultDelivery | null | undefined): boolean =>
+  delivery?.state === "sending" || delivery?.state === "retry_scheduled";
 
 /** What a run makes: text (JSON shown as text), a document, or null where neither can be said. */
 type RunOutput = "text" | "document" | null;

@@ -27,9 +27,11 @@ Formulärets värden skickas som `input_payload_json`. Ett formulärfält kan i 
 
 Webbläsaren anropar alltid modulens `/api/eneo/...`; vilka rutter som släpps igenom står i [API-referens](api-referens.md) och reglerna i [Backend](backend.md#tillåtelselistan-för-eneo-anrop).
 
+En körning vars resultat går till flödets mottagare (`result.kind` är `outbound_http`) kan bli klar innan mottagaren har bekräftat resultatet. Appen läser då `GET …/runs/{runId}/status/` (`result_delivery`, `frontend/lib/follow-run.ts`) så länge utskicket är `sending` eller `retry_scheduled`, och läser inte körningens detaljer igen.
+
 ## Granskning och talarmappning
 
-Ett publicerat flöde kan ha steg med `review_policy` som pausar körningen i status `awaiting_review`. Appen följer körningen (`GET …/runs/{runId}/`, `frontend/lib/follow-run.ts`) och hämtar då den aktiva checkpointen. Talarmappning är en sådan checkpoint (`review_mode = "edit"`, stegtypen `output_mode = "speaker_mapping"`): användaren väljer en deltagare per talare i "Namnge talarna", och "Spara namnen" skickar mappningen som stegets output (`edited_value` är alltid stegets output i sig, aldrig payload-kuvertet). Sidans "Godkänn och fortsätt" anropar sedan `approve` och `resume` (med `Idempotency-Key`) och appen fortsätter följa körningen. Granskningen är ett byggalternativ och av i en publicerad image ([Drift](operations.md#miljövariabler)).
+Ett publicerat flöde kan ha steg med `review_policy` som pausar körningen i status `awaiting_review`. Appen följer körningen (`GET …/runs/{runId}/status/`, `frontend/lib/follow-run.ts`) och hämtar då den aktiva checkpointen. Talarmappning är en sådan checkpoint (`review_mode = "edit"`, stegtypen `output_mode = "speaker_mapping"`): användaren väljer en deltagare per talare i "Namnge talarna", och "Spara namnen" skickar mappningen som stegets output (`edited_value` är alltid stegets output i sig, aldrig payload-kuvertet). Sidans "Godkänn och fortsätt" anropar sedan `approve` och `resume` (med `Idempotency-Key`) och appen fortsätter följa körningen. Granskningen är ett byggalternativ och av i en publicerad image ([Drift](operations.md#miljövariabler)).
 
 Anropen mot Eneo (alla via [tillåtelselistan](backend.md#tillåtelselistan-för-eneo-anrop)):
 

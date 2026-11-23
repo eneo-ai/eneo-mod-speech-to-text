@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowRunError, ResultFile } from "./api";
-import { runErrorView, runOutput, runResultView } from "./run-result";
+import { deliveryUnderWay, deliveryView, runErrorView, runOutput, runResultView } from "./run-result";
 
 const transcriptFile = (availability: string): ResultFile => ({
   file_id: "file-1",
@@ -65,18 +65,82 @@ test("a structured value renders as text when it is a string, otherwise as JSON"
   );
 });
 
-test("artifacts have no text, outbound delivery says where the result went", () => {
+test("artifacts and a result sent to a receiver have no text to show here", () => {
   assert.deepEqual(
     runResultView({ kind: "artifact", files: [transcriptFile("available")] }),
     { text: null, note: null },
   );
-  const delivered = runResultView({
-    kind: "outbound_http",
-    delivery_status: "delivered",
-  });
-  assert.equal(delivered.text, null);
-  assert.match(delivered.note ?? "", /skickades vidare/);
+  // What became of the sending is deliveryView's to say.
+  assert.deepEqual(runResultView({ kind: "outbound_http", delivery_status: "pending" }), { text: null, note: null });
   assert.deepEqual(runResultView(null), { text: null, note: null });
+});
+
+const sent = (delivery_status: "pending" | "delivered" | "dead_lettered") => ({ kind: "outbound_http" as const, delivery_status });
+/** A moment today at 14:05 in the browser's own time zone, as Eneo writes it (UTC). */
+const fivepast2 = new Date(2026, 10, 22, 14, 5).toISOString();
+
+test("each state of the sending says Eneo's own words, read from the status", () => {
+  const view = (state: string, next_delivery_at: string | null = null) =>
+    deliveryView(sent("pending"), { state: state as never, next_delivery_at });
+  assert.deepEqual(view("sending"), {
+    state: "sending",
+    heading: "Skickas",
+    note: "Körningen är klar och resultatet är på väg till mottagaren.",
+  });
+  assert.deepEqual(view("retry_scheduled", fivepast2), {
+    state: "retry_scheduled",
+    heading: "Nytt försök kl. 14:05",
+    note: "Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök kl. 14:05.",
+  });
+  assert.deepEqual(view("delivered"), { state: "delivered", heading: "Resultatet är skickat", note: "Resultatet skickades till mottagaren." });
+  assert.deepEqual(view("dead_lettered"), {
+    state: "dead_lettered",
+    heading: "Kunde inte skickas",
+    note: "Eneo fick ingen bekräftelse från mottagaren. Inga fler försök är planerade.",
+  });
+});
+
+test("a retry time that cannot be read is not shown", () => {
+  for (const time of [null, "", "inte en tid"]) {
+    const view = deliveryView(sent("pending"), { state: "retry_scheduled", next_delivery_at: time });
+    assert.equal(view?.heading, "Nytt försök", String(time));
+    assert.equal(view?.note, "Mottagaren har inte bekräftat att resultatet kom fram. Nytt försök.", String(time));
+  }
+});
+
+test("the status's state decides; the detail's delivery_status only when the status has none", () => {
+  assert.equal(deliveryView(sent("pending"), { state: "delivered" })?.state, "delivered", "the status is the newer read");
+  assert.equal(deliveryView(sent("pending"), null)?.state, "sending");
+  assert.equal(deliveryView(sent("dead_lettered"), undefined)?.state, "dead_lettered");
+  assert.equal(deliveryView(sent("delivered"), {} as never)?.state, "delivered", "a status row without a state");
+});
+
+test("an older Eneo, with no status row and always delivered, says the result was sent", () => {
+  assert.deepEqual(deliveryView(sent("delivered"), undefined), {
+    state: "delivered",
+    heading: "Resultatet är skickat",
+    note: "Resultatet skickades till mottagaren.",
+  });
+});
+
+test("a state or delivery_status the module does not know is neutral, never 'skickat'", () => {
+  const neutral = { state: null, heading: "Körningen är klar", note: "Resultatet går till mottagaren som är inställd i flödet." };
+  assert.deepEqual(deliveryView(sent("delivered"), { state: "queued_elsewhere" as never }), neutral, "also beside a detail that says delivered");
+  assert.deepEqual(deliveryView({ kind: "outbound_http", delivery_status: "lost" as never }, null), neutral);
+});
+
+test("a result that is not sent to a receiver has no sending to show", () => {
+  assert.equal(deliveryView({ kind: "inline_text", text: "Klart" }, null), null);
+  assert.equal(deliveryView({ kind: "inline_text", text: "Klart" }, { state: "sending" }), null);
+  assert.equal(deliveryView(null, undefined), null);
+});
+
+test("the sending is under way only while it is sending or waits for its next try", () => {
+  assert.equal(deliveryUnderWay({ state: "sending" }), true);
+  assert.equal(deliveryUnderWay({ state: "retry_scheduled", next_delivery_at: fivepast2 }), true);
+  for (const delivery of [{ state: "delivered" }, { state: "dead_lettered" }, { state: "unknown" }, null, undefined]) {
+    assert.equal(deliveryUnderWay(delivery as never), false, JSON.stringify(delivery));
+  }
 });
 
 test("a run error is described by its code, never by its message", () => {
