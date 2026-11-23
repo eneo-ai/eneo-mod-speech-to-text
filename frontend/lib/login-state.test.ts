@@ -396,9 +396,9 @@ test("a late 401 to a request sent on the old cookie does not cover the page tha
 
   assert.equal(page.calls.length, 4, "both reads go again, with the new login");
   page.answer(2, ok(running));
-  page.answer(3, ok(running));
+  page.answer(3, ok({ ...running, id: "run-2" }));
   assert.equal((await first).id, "run-1");
-  assert.equal((await second).id, "run-1");
+  assert.equal((await second).id, "run-2");
   assert.equal(loginState.signedOut, false);
 });
 

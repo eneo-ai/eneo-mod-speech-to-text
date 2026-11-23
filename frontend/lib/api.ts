@@ -961,15 +961,29 @@ export interface ResultDelivery {
 }
 
 /**
- * `signal` calls off the read, also one that waits for a new login to be sent again. An answer that is no status (no
- * object with a `status`: `null`, `{}`, a string, a 204) is the server's error, which the follows try again.
+ * An id as Eneo reads it from a path: a UUID in any spelling Eneo takes (capitals, no hyphens, `{…}`, `urn:uuid:`) as
+ * its 32 digits, so the same run is the same id however its address spells it; any other id as it is.
+ */
+function idKey(id: string): string {
+  const digits = id.toLowerCase().replace(/^urn:uuid:|[{}-]/g, "");
+  return /^[0-9a-f]{32}$/.test(digits) ? digits : id;
+}
+
+const sameId = (answered: unknown, asked: string) => typeof answered === "string" && idKey(answered) === idKey(asked);
+
+/**
+ * `signal` calls off the read, also one that waits for a new login to be sent again. An answer that is no status of
+ * the run asked for (no object with `id`, `flow_id` and `status` as strings, or the ids of another run or flow: `null`,
+ * `{}`, a string, a 204) is the server's error, which the follows try again: the page reads the run on by the answer's
+ * own id.
  */
 export async function getRunStatus(flowId: string, runId: string, signal?: AbortSignal): Promise<FlowRunSummary> {
   const status = await request<unknown>(`/api/eneo/flows/${flowId}/runs/${runId}/status/`, { signal });
-  if (!status || typeof status !== "object" || Array.isArray(status) || typeof (status as { status?: unknown }).status !== "string") {
+  const read = status && typeof status === "object" && !Array.isArray(status) ? (status as Record<string, unknown>) : null;
+  if (!read || typeof read.status !== "string" || !sameId(read.id, runId) || !sameId(read.flow_id, flowId)) {
     throw new ApiError(502, "Servern svarade med en ogiltig körningsstatus.", null, "invalid_json_response");
   }
-  return status as FlowRunSummary;
+  return read as FlowRunSummary;
 }
 
 export async function getRun(flowId: string, runId: string) {
