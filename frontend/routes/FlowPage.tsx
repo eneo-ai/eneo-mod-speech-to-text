@@ -560,9 +560,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
       await followDelivery(flowId, runId, last.run, {
         signal,
         onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
+        // The run by Eneo's own id, as the detail has it: the address may spell it otherwise (capitals, no hyphens).
         onStatus: ({ result_delivery }) =>
           !signal.aborted &&
-          setRun((prev) => (prev.kind === "done" && prev.run.id === runId ? { ...prev, delivery: result_delivery ?? null } : prev)),
+          setRun((prev) => (prev.kind === "done" && prev.run.id === last.run.id ? { ...prev, delivery: result_delivery ?? null } : prev)),
       });
     } catch (err) {
       if (signal.aborted) return;

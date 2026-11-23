@@ -27,16 +27,17 @@ type Answer =
 /**
  * Eneo for the finished `done` run, its result sent to a receiver: the status answers what `answer` holds when it is
  * asked, and the detail is the stub's with an `outbound_http` result, or with `detail` over it. Every read the page makes
- * of the run is counted.
+ * of the run is counted. The run's id may be asked for in capitals, as Eneo reads it; it answers with its own spelling.
  */
 async function sentRun(page: Page, first: Answer, detail: Record<string, unknown> = { result: { kind: "outbound_http", delivery_status: "pending" } }) {
   const state = { answer: first };
   const reads: string[] = [];
   page.on("request", (request: Request) => {
     const url = new URL(request.url());
-    if (url.pathname.includes(`/runs/${RUN}/`) || url.searchParams.get("run_id") === RUN) reads.push(url.pathname);
+    const path = url.pathname.toLowerCase();
+    if (path.includes(`/runs/${RUN}/`) || url.searchParams.get("run_id")?.toLowerCase() === RUN) reads.push(path);
   });
-  await page.route((url) => url.pathname === STATUS, async (route) => {
+  await page.route((url) => url.pathname.toLowerCase() === STATUS, async (route) => {
     const answer = state.answer;
     if ("fail" in answer) return route.fulfill({ status: answer.fail, headers: answer.headers, json: { detail: "fel" } });
     if ("raw" in answer) return route.fulfill({ status: 200, contentType: "application/json", body: answer.raw });
@@ -182,6 +183,19 @@ for (const body of ["{", "null"]) test(`a status read that answers ${body} keeps
   await expect(stale).toHaveCount(0);
   await expect(name).toHaveValue("Anna Berg");
   await expect(start).toHaveCount(0);
+});
+
+test("a run opened by its id in capitals follows its sending to the end, as Eneo reads the id and answers its own spelling", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
+  const eneo = await sentRun(page, finished("sending"));
+  await run(page, RUN.toUpperCase());
+  await expect(h1(page), "the run opened").toHaveText("Skickas");
+  const shown = eneo.statusReads();
+  await expect.poll(eneo.statusReads, { message: "the sending is followed" }).toBeGreaterThan(shown);
+
+  eneo.set(finished("delivered"));
+  await expect(h1(page)).toHaveText("Resultatet är skickat");
+  await expect(note(page)).toHaveText("Resultatet skickades till mottagaren.");
 });
 
 for (const [end, heading] of [["delivered", "Resultatet är skickat"], ["dead_lettered", "Kunde inte skickas"]]) {
