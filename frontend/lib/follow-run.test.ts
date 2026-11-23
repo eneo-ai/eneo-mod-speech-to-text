@@ -538,18 +538,24 @@ test("a status answer that parses but is no status is a server error, tried agai
   assert.equal(status.result_delivery?.state, "delivered");
 });
 
-/** getRunStatus's answer when Eneo answers `body`: the status's own `status`, or the error's status and code. */
-async function statusAnswered(t: import("node:test").TestContext, flowId: string, runId: string, body: unknown) {
+/**
+ * getRunStatus's answer when Eneo answers `body`: the status's own `status`, or the error's status and code. The test's
+ * own `fetch` is put back once, when it ends.
+ */
+function statusReader(t: import("node:test").TestContext) {
   const original = globalThis.fetch;
   t.after(() => void (globalThis.fetch = original));
-  globalThis.fetch = (async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
-  return getRunStatus(flowId, runId).then(
-    (status) => status.status,
-    (error: { status?: number; code?: string }) => `${error?.status} ${error?.code}`,
-  );
+  return (flowId: string, runId: string, body: unknown) => {
+    globalThis.fetch = (async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    return getRunStatus(flowId, runId).then(
+      (status) => status.status,
+      (error: { status?: number; code?: string }) => `${error?.status} ${error?.code}`,
+    );
+  };
 }
 
 test("a status that does not name the run and the flow it was asked for is a server error, tried again", async (t) => {
+  const statusAnswered = statusReader(t);
   const asked = { id: "run-1", flow_id: "flow-1", status: "completed" };
   for (const [what, body] of [
     ["no id", { flow_id: "flow-1", status: "completed" }],
@@ -559,21 +565,22 @@ test("a status that does not name the run and the flow it was asked for is a ser
     ["an id that is no string", { ...asked, id: 1 }],
     ["an id spelled like the asked one, but another", { ...asked, id: "run1" }],
   ] as const) {
-    assert.equal(await statusAnswered(t, "flow-1", "run-1", body), "502 invalid_json_response", what);
+    assert.equal(await statusAnswered("flow-1", "run-1", body), "502 invalid_json_response", what);
   }
-  assert.equal(await statusAnswered(t, "flow-1", "run-1", asked), "completed", "the run that was asked for");
+  assert.equal(await statusAnswered("flow-1", "run-1", asked), "completed", "the run that was asked for");
 });
 
 test("a status is the asked run's in any spelling Eneo reads its id in, and Eneo answers the id in its own", async (t) => {
+  const statusAnswered = statusReader(t);
   const run = "7e6e01f7-5322-41a6-881f-ce336baba569";
   const flow = "000dd5fc-6a9e-4a42-918b-0c183f171a78";
   const answer = { id: run, flow_id: flow, status: "completed" };
   const spellings = (id: string) => [id.toUpperCase(), id.replaceAll("-", ""), `{${id}}`, `urn:uuid:${id}`];
-  for (const asked of spellings(run)) assert.equal(await statusAnswered(t, flow, asked, answer), "completed", asked);
-  for (const asked of spellings(flow)) assert.equal(await statusAnswered(t, asked, run, answer), "completed", asked);
+  for (const asked of spellings(run)) assert.equal(await statusAnswered(flow, asked, answer), "completed", asked);
+  for (const asked of spellings(flow)) assert.equal(await statusAnswered(asked, run, answer), "completed", asked);
   const other = `${run.slice(0, -1)}a`;
-  assert.equal(await statusAnswered(t, flow, other.toUpperCase(), answer), "502 invalid_json_response", "another run, in capitals");
-  assert.equal(await statusAnswered(t, `{${flow.slice(0, -1)}0}`, run, answer), "502 invalid_json_response", "another flow, in braces");
+  assert.equal(await statusAnswered(flow, other.toUpperCase(), answer), "502 invalid_json_response", "another run, in capitals");
+  assert.equal(await statusAnswered(`{${flow.slice(0, -1)}0}`, run, answer), "502 invalid_json_response", "another flow, in braces");
 });
 
 test("a hidden page reads the sending rarely and catches up as soon as it is shown", async (t) => {
