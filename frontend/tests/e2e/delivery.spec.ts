@@ -328,7 +328,7 @@ test("someone else signing in while the result is on its way covers the page; th
   // is theirs when the page asks.
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, user: { id: "user-2", email: "sara.holm@sundsvall.se", username: "Sara Holm" }, session_ends_in: 3600 },
+      json: { authenticated: true, user: { id: "user-2", email: "sara.holm@example.org", username: "Sara Holm" }, session_ends_in: 3600 },
     }),
   );
   eneo.set({ fail: 409, body: { detail: "user_changed" } });
