@@ -187,17 +187,21 @@ interface DeliveryOptions {
   deps?: { getStatus: typeof getRunStatus };
 }
 
-/** The answers that end the sending's follow: the run is gone, or this person may not read it (any more). */
-const ENDS_DELIVERY_FOLLOW = new Set([401, 403, 404, 410]);
+/**
+ * The answers that end the sending's follow: the run is gone, or this person may not read it (any more). Not 401: an
+ * ended login, or someone else's (409 user_changed), is request()'s, whose next read waits for the page's own user.
+ */
+const ENDS_DELIVERY_FOLLOW = new Set([403, 404, 410]);
 
 /**
  * Follows a finished run's result on its way to the receiver, from the status the run finished with, reading the status
  * alone (not audit-logged, unlike the detail, which would say nothing more): while the sending is under way, until it is
  * delivered, given up, or in a state the module does not know. A read that fails and can be tried again is tried again
  * with withRetry's backoff and reported as trouble. Any other failure is also reported as trouble and read again at the
- * follow's own pace, so the result on the page stays: only a run that is gone (404, 410) or a read that is refused (401,
- * the module's own end of the session too, and 403) ends it, thrown, as followRun's do. The signal calls off the read
- * under way too, also one that waits for a new login.
+ * follow's own pace, so the result on the page stays: only a run that is gone (404, 410) or a read that is refused (403)
+ * ends it, thrown, as followRun's do. A 401 is trouble too: after the module's end of the session (also when someone
+ * else signed in) the next read waits for the page's own user, and Eneo's own 401 is read again at the follow's pace.
+ * The signal calls off the read under way too, also one that waits for a new login.
  */
 export async function followDelivery(
   flowId: string,

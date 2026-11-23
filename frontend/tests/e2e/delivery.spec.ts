@@ -21,7 +21,7 @@ const DRAWN_FROM = new Set([DETAIL, `${DETAIL}steps/`, `/api/eneo/flows/${FLOW}/
 
 type Answer =
   | { status: string; delivery?: Record<string, unknown> | null }
-  | { fail: number; headers?: Record<string, string> }
+  | { fail: number; headers?: Record<string, string>; body?: Record<string, unknown> }
   | { raw: string };
 
 /**
@@ -39,7 +39,7 @@ async function sentRun(page: Page, first: Answer, detail: Record<string, unknown
   });
   await page.route((url) => url.pathname.toLowerCase() === STATUS, async (route) => {
     const answer = state.answer;
-    if ("fail" in answer) return route.fulfill({ status: answer.fail, headers: answer.headers, json: { detail: "fel" } });
+    if ("fail" in answer) return route.fulfill({ status: answer.fail, headers: answer.headers, json: answer.body ?? { detail: "fel" } });
     if ("raw" in answer) return route.fulfill({ status: 200, contentType: "application/json", body: answer.raw });
     await route.fulfill({
       json: { id: RUN, flow_id: FLOW, status: answer.status, flow_version: 1, revision: 1, created_at: "2026-09-24T09:00:00Z", result_delivery: answer.delivery ?? null },
@@ -316,4 +316,43 @@ test("Back while the login has ended: the read that waits for the new login is c
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   await page.waitForTimeout(5_000);
   expect(eneo.statusReads(), "no read for the run left, not even the one that waited").toBe(left);
+});
+
+test("someone else signing in while the result is on its way covers the page; the same person back finds the result and its sending, followed to the end", async ({ page, sentinel }) => {
+  sentinel.expect(NO_CONFIRMED_WORDS, { console: /status of 409.*\/status\//, optional: true });
+  const eneo = await sentRun(page, finished("sending"));
+  await run(page, RUN);
+  await expect(h1(page)).toHaveText("Skickas");
+
+  // Someone else signs in in another tab: the module answers the page's next read 409 user_changed, and the session
+  // is theirs when the page asks.
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: { authenticated: true, user: { id: "user-2", email: "sara.holm@sundsvall.se", username: "Sara Holm" }, session_ends_in: 3600 },
+    }),
+  );
+  eneo.set({ fail: 409, body: { detail: "user_changed" } });
+  const dialog = page.getByRole("alertdialog", { name: "Du behöver logga in igen" });
+  await expect(dialog).toContainText("Du är inloggad som Sara Holm. Logga in som Erik Lund för att fortsätta.");
+  // Nothing leaves the page while it is covered: the next read waits for the page's own user.
+  const covered = eneo.statusReads();
+  await page.waitForTimeout(5_000);
+  expect(eneo.statusReads(), "no status read while the page is covered").toBe(covered);
+
+  // The same person signs in again (the session answers as theirs, and the page asks when it becomes visible).
+  eneo.set(finished("sending"));
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(dialog).toBeHidden();
+  await expect.poll(eneo.statusReads, { message: "the read that waited goes out" }).toBeGreaterThan(covered);
+  await expect(h1(page), "the result is still there").toHaveText("Skickas");
+  await expect(note(page), "and its sending").toHaveText("Körningen är klar och resultatet är på väg till mottagaren.");
+  await expect(page.getByRole("heading", { name: "Transkribering" })).toBeVisible();
+  const stale = page.locator('p:not([role="status"])', { hasText: "Läget kunde inte uppdateras just nu. Sidan försöker igen av sig själv." });
+  await expect(stale, "the trouble is gone").toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }), "never back to the start").toHaveCount(0);
+
+  eneo.set(finished("delivered"));
+  await expect(h1(page)).toHaveText("Resultatet är skickat");
+  await expect(note(page)).toHaveText("Resultatet skickades till mottagaren.");
 });

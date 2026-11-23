@@ -487,7 +487,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   /**
    * Follows the run by its status and its run-locked graph until it is done or waits for review. The step results (an
    * audit-logged read) and the detail are read once, when the run is done. A result still on its way to the receiver is
-   * then followed by the status alone (followDelivery), the result shown meanwhile; its errors end here as the run's do.
+   * then followed by the status alone (followDelivery), the result shown meanwhile; only a run gone or refused (403, 404,
+   * 410) ends that follow here as the run's errors do, and an ended login leaves the result where it is.
    */
   async function follow(runId: string) {
     // The run's text is formatted when it is first drawn (components/flow/Markdown).

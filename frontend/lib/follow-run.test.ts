@@ -702,8 +702,7 @@ test("a status read that fails and can be tried again is said as trouble, tried 
 
 test("a run that is gone, or a read that is refused, ends the following with its error", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
-  // 401 is also the module's own end of the session (sessionEnded), which asks for a new login as before.
-  for (const status of [404, 410, 401, 403]) {
+  for (const status of [404, 410, 403]) {
     const { deps } = deliveryReads([new ApiError(status, "nej", null)]);
     const controller = new AbortController();
     let outcome: unknown = "pending";
@@ -721,6 +720,33 @@ test("a run that is gone, or a read that is refused, ends the following with its
       controller.abort();
     }
   }
+});
+
+test("a read refused as the login's (401) is said as trouble, read again at the follow's pace, and the sending is followed on to delivered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  // The module's end of the session, also when someone else signed in (409 user_changed): the next read waits in
+  // request() for the page's own user, so the result stays on the page.
+  const { reads, deps } = deliveryReads([new ApiError(401, "Sessionen har upphört.", null), "delivered"]);
+  const trouble: boolean[] = [];
+  const heard: unknown[] = [];
+  let outcome = "pending";
+  const done = followDelivery("flow-1", "run-1", sending("sending"), {
+    signal: new AbortController().signal,
+    onStatus: (status) => heard.push(status.result_delivery?.state),
+    onTrouble: (failing) => trouble.push(failing),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps,
+  }).then(
+    () => void (outcome = "resolved"),
+    (error: ApiError) => void (outcome = `rejected ${error?.status}`),
+  );
+  await pass(t, 30_000);
+  await done;
+  assert.equal(outcome, "resolved");
+  assert.equal(reads.length, 2);
+  assert.deepEqual(trouble, [true, false]);
+  assert.deepEqual(heard, ["delivered"]);
 });
 
 test("a status read that fails for good is read again at the follow's pace, never sooner, and the sending is followed on to delivered", async (t) => {
