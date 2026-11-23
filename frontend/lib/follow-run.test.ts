@@ -583,6 +583,18 @@ test("a status is the asked run's in any spelling Eneo reads its id in, and Eneo
   assert.equal(await statusAnswered(`{${flow.slice(0, -1)}0}`, run, answer), "502 invalid_json_response", "another flow, in braces");
 });
 
+test("a status that spells the asked run's or flow's id other than Eneo does is a server error, tried again", async (t) => {
+  const statusAnswered = statusReader(t);
+  const run = "7e6e01f7-5322-41a6-881f-ce336baba569";
+  const flow = "000dd5fc-6a9e-4a42-918b-0c183f171a78";
+  const answer = { id: run, flow_id: flow, status: "completed" };
+  const misspellings = (id: string) => [`${id.slice(0, 9)}{}${id.slice(9)}`, id.toUpperCase(), id.replaceAll("-", "")];
+  const got: Record<string, string> = {};
+  for (const id of misspellings(run)) got[`id ${id}`] = await statusAnswered(flow, run, { ...answer, id });
+  for (const flow_id of misspellings(flow)) got[`flow_id ${flow_id}`] = await statusAnswered(flow, run, { ...answer, flow_id });
+  assert.deepEqual(got, Object.fromEntries(Object.keys(got).map((what) => [what, "502 invalid_json_response"])));
+});
+
 test("a hidden page reads the sending rarely and catches up as soon as it is shown", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   const page = fakePage(true);

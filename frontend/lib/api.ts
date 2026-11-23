@@ -961,26 +961,24 @@ export interface ResultDelivery {
 }
 
 /**
- * An id as Eneo reads it from a path: a UUID in any spelling Eneo takes (capitals, no hyphens, `{…}`, `urn:uuid:`) as
- * its 32 digits, so the same run is the same id however its address spells it; any other id as it is.
+ * An asked id as Eneo spells it back: a UUID in a spelling an address may give it (capitals, no hyphens, `{…}`,
+ * `urn:uuid:`) in lower case as 8-4-4-4-12; any other id as it is.
  */
-function idKey(id: string): string {
+function eneoId(id: string): string {
   const digits = id.toLowerCase().replace(/^urn:uuid:|[{}-]/g, "");
-  return /^[0-9a-f]{32}$/.test(digits) ? digits : id;
+  return /^[0-9a-f]{32}$/.test(digits) ? digits.replace(/^(.{8})(.{4})(.{4})(.{4})/, "$1-$2-$3-$4-") : id;
 }
-
-const sameId = (answered: unknown, asked: string) => typeof answered === "string" && idKey(answered) === idKey(asked);
 
 /**
  * `signal` calls off the read, also one that waits for a new login to be sent again. An answer that is no status of
- * the run asked for (no object with `id`, `flow_id` and `status` as strings, or the ids of another run or flow: `null`,
- * `{}`, a string, a 204) is the server's error, which the follows try again: the page reads the run on by the answer's
- * own id.
+ * the run asked for (no object with `id`, `flow_id` and `status` as strings: `null`, `{}`, a string, a 204; the ids of
+ * another run or flow; or the asked ones spelled other than Eneo spells them) is the server's error, which the follows
+ * try again: the page reads the run on by the answer's own id.
  */
 export async function getRunStatus(flowId: string, runId: string, signal?: AbortSignal): Promise<FlowRunSummary> {
   const status = await request<unknown>(`/api/eneo/flows/${flowId}/runs/${runId}/status/`, { signal });
   const read = status && typeof status === "object" && !Array.isArray(status) ? (status as Record<string, unknown>) : null;
-  if (!read || typeof read.status !== "string" || !sameId(read.id, runId) || !sameId(read.flow_id, flowId)) {
+  if (!read || typeof read.status !== "string" || read.id !== eneoId(runId) || read.flow_id !== eneoId(flowId)) {
     throw new ApiError(502, "Servern svarade med en ogiltig körningsstatus.", null, "invalid_json_response");
   }
   return read as FlowRunSummary;
