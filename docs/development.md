@@ -119,6 +119,10 @@ npm run dev:stub
 
 Det startar stubben och appen på `http://127.0.0.1:3401` (andra portar: `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run dev:stub`). Vissa lägen går inte att nå med en vanlig adress eftersom de behöver Playwrights nätverksavlyssning eller klocka: öppna ett namngivet läge ur `frontend/tests/e2e/screens.ts` i en webbläsare med fönster med `npm run state -- "<läge>"`.
 
+## Låt en agent inspektera React
+
+Starta utvecklingsservern med `REACT_DEVTOOLS_MCP=1` (`REACT_DEVTOOLS_MCP=1 npm run dev` eller `REACT_DEVTOOLS_MCP=1 npm run dev:stub` från `frontend/`). Då laddar sidan `react-devtools-cdt-mcp` före React, och en agent som använder Chrome DevTools MCP med `--categoryExperimentalThirdParty=true` kan läsa komponentträdet, props, hooks och renderingstider. Det gör varje rendering långsammare, så det finns bara på utvecklingsservern och bara med variabeln: bygget och gaten får det aldrig. Ägare: `reactDevtoolsMcp` i `frontend/vite.config.mts`.
+
 ## Dokumentationen
 
 Sidorna i `docs/` är källan till dokumentationssajten i `docs-site/` (Astro Starlight med det färdiga MD3-temat, ett eget paket som aldrig når imagen). Från `docs-site/`: `npm ci`, sedan `npm run dev` (på `http://localhost:4321/eneo-mod-speech-to-text/`). För verifiering: `npm test`, `npm run build` (misslyckas på en död länk), `npm run typecheck` och `npm run check` (webbläsarkontroll av den byggda sajten; första gången `npx playwright install chromium`). Bygget skapar de innehållstyper som typkontrollen behöver. Sidorna är vanlig Markdown med sin rubrik och utan frontmatter, så att de läses likadant på GitHub. Byggsteget skapar titelmetadata och sajtens länkar i en genererad kopia; redigera alltid originalen i `docs/`. Sidomenyn och temats inställningar står i `docs-site/astro.config.mjs`. API-anropens sidor byggs från `docs/api/openapi.json`; deras svenska gränssnittsetiketter läggs till i bygget, så använd `npm run preview` för att granska dem. Mer om sajten och dess gestaltning: `docs-site/DESIGN.md`.

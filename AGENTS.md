@@ -65,6 +65,26 @@ Ports: the gate and `npm run dev:stub` use 3401 (app) and 8401 (stub); `npm run 
 worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STUB_PORT`; `npm run dev` listens on 3002. Never
 `pkill -f`; stop only what you started, by PID or port.
 
+## Inspecting React in the running app
+
+Use this to debug a wrong render, stale state, a prop that does not arrive or a slow interaction. It is not proof of a fix;
+a test or a gate is.
+
+1. Start the dev server with the inspector, from `frontend/`: `REACT_DEVTOOLS_MCP=1 npm run dev:stub` (no Eneo needed,
+   http://127.0.0.1:3401) or `REACT_DEVTOOLS_MCP=1 npm run dev` (http://localhost:3002). The variable is the only switch:
+   a build and the gate never load it, and it never goes in `main.tsx` or a committed script.
+2. Use the Chrome DevTools MCP server started with `--categoryExperimentalThirdParty=true`. Open the page with
+   `new_page`; the tool group `react` appears (`list_3p_developer_tools` if it does not).
+3. Find a component with `react_find_components` or `react_get_component_by_dom_element` (from a `take_snapshot` uid),
+   then read it with `react_get_component_by_uid` (props, hooks) and `react_get_owner_stack` or
+   `react_get_component_source`. For renders: `react_start_profiling`, do the interaction, `react_stop_profiling`,
+   then `react_get_trace_overview` and `react_get_commit_report`.
+4. Component uids (`r5`) do not survive a reload; look them up again. No tools: the variable was not set, or the MCP server
+   lacks the flag. An empty tree: the page loaded before the inspector.
+
+Owner: `reactDevtoolsMcp` in `frontend/vite.config.mts`; the human guide is "Låt en agent inspektera React" in
+`docs/development.md`.
+
 ## Where things live
 
 | Path | What |
