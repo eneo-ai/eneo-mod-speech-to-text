@@ -602,6 +602,7 @@ test("an upload that stalls on a weak link waits as for the network, however oft
   }
   assert.equal((await sending).id, "run-1");
   assert.equal(uploads, stalls.length + 1);
+  assert.equal(waits.length, stalls.length, "a wait for each stall");
   assert.ok(waits.every((wait) => wait.retryNow), "each wait is the network's: Försök igen and Avbryt");
 
   // A server that took the whole file and never answered is still a server that fails: four end the upload.
