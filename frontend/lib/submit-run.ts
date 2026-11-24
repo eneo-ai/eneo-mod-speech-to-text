@@ -78,8 +78,15 @@ function isRetryable(error: unknown): boolean {
 // small multipart uploads send the file again. Polling and run requests can wait longer.
 const UPLOAD_SERVER_ERROR_TRIES = 4;
 
+/**
+ * An upload that never began, or stopped moving before its last byte (`api.ts`), waits as a lost connection does: on a
+ * weak link `navigator.onLine` stays true, and progress between stalls is no server failing. One that sent every byte
+ * and heard nothing (server_not_responding) counts.
+ */
+const STALLS = new Set(["not_started", "stalled"]);
+
 const serverError = (error: unknown) =>
-  error instanceof ApiError && (error.status === 408 || error.status >= 500);
+  error instanceof ApiError && (error.status === 408 || error.status >= 500) && !STALLS.has(error.code ?? "");
 
 /**
  * The module has no free upload place: it works, and is full. A place can rightly stay taken for up to an hour (the

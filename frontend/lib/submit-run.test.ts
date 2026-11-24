@@ -75,7 +75,7 @@ const params = (overrides: Partial<SubmitParams> = {}): SubmitParams => ({
 
 test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 60 s", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  // Three server errors here: the fourth ends the send (see the next test).
+  // Two server errors here (a stall is the link's, not one): a fourth would end the send (see the next test).
   const failures = [
     uploadNetworkError(),
     apiError(408, "stalled"),
@@ -576,6 +576,50 @@ test("an upload a server keeps failing stops after four tries and starts no run;
   }
   assert.equal((await run).id, "run-1");
   assert.equal(new Set(keys).size, 1, "one run request, repeated under its key");
+});
+
+test("an upload that stalls on a weak link waits as for the network, however often, and goes once the link carries it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  // The upload never began, or stopped moving: the link, not the server. Progress between stalls changes nothing.
+  const stalls = ["not_started", "stalled", "stalled", "not_started", "stalled"].map((code) => apiError(408, code));
+  let uploads = 0;
+  const waits: RetryWait[] = [];
+  const sending = submitRun(
+    params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }], onWait: (wait) => void (wait && waits.push(wait)) }),
+    {
+      upload: async () => {
+        const stall = stalls[uploads];
+        uploads += 1;
+        if (stall) throw stall;
+        return { id: "file-1" };
+      },
+      startRun: async () => queuedRun,
+    },
+  );
+  for (let i = 1; i <= stalls.length; i += 1) {
+    await until(() => uploads === i);
+    t.mock.timers.tick(60_000);
+  }
+  assert.equal((await sending).id, "run-1");
+  assert.equal(uploads, stalls.length + 1);
+  assert.ok(waits.every((wait) => wait.retryNow), "each wait is the network's: Försök igen and Avbryt");
+
+  // A server that took the whole file and never answered is still a server that fails: four end the upload.
+  let answered = 0;
+  const silent = submitRun(params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }] }), {
+    upload: async () => {
+      answered += 1;
+      throw apiError(408, "server_not_responding");
+    },
+    startRun: async () => queuedRun,
+  });
+  const failed = assert.rejects(silent, { code: "server_not_responding" });
+  for (let i = 1; i < 4; i += 1) {
+    await until(() => answered === i);
+    t.mock.timers.tick(60_000);
+  }
+  await failed;
+  assert.equal(answered, 4);
 });
 
 test("a run request Eneo keeps refusing is retried by itself ten times, then waits for the person, under the same key", async (t) => {
