@@ -165,7 +165,7 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | `1800` | Tid för att skicka en mottagen uppladdning vidare till Eneo. |
 | `UPLOAD_RECEIVE_TIMEOUT_SECONDS` | `1800` | Tid för hela mottagningen, inklusive uppehållen mellan delarna i en återupptagbar uppladdning. |
 | `UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS` | `30` | Längsta väntan utan nya byte från webbläsaren. |
-| `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` | `300` | Längsta uppehåll mellan anrop till en återupptagbar uppladdning. |
+| `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` | `300` | Längsta tid utan att en del kommer fram i en återupptagbar uppladdning. Ett anrop förlänger den inte. |
 | `MAX_CONCURRENT_UPLOADS` | `1` | Samtidiga uppladdningar. Heltal 1–96, högst `MAX_CONCURRENT_HEAVY_IO`. |
 | `MAX_CONCURRENT_HEAVY_IO` | `64` | Gemensamt tak för uppladdningar, filhämtningar och livetext. Heltal 1–96, så att minst fyra av HTTP-poolens 100 anslutningar blir kvar för korta anrop. |
 | `MAX_BODY_BYTES` | `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. |
@@ -249,7 +249,7 @@ Modulen tar emot en uppladdning hel innan den skickar den vidare. Containern är
 
 - Återupptagbara uppladdningar skrivs direkt till en temporärfil, och multipart-filer större än 1 MB också.
 - `UPLOAD_RECEIVE_TIMEOUT_SECONDS` räknas från starten och omfattar avbrotten mellan delarna. En avbruten del skrivs om.
-- En övergiven fil städas efter `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` utan anrop, eller när totaltiden går ut. Ett anrop förlänger uppehållstiden men aldrig totaltiden.
+- En uppladdning som inte kommer framåt städas, och dess plats blir ledig, när `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` har gått sedan den skapades eller en del senast kom fram. Ett anrop förlänger inte den tiden. En del som avbryts eller står still ger en gång samma tid till, räknad från avbrottet, så att det som redan är mottaget finns kvar. Totaltiden förlängs aldrig.
 - En färdig uppladdning lämnar bara en liten kvittens, i högst 30 minuter. Högst 256 finns samtidigt; den äldsta färdiga tas bort när plats behövs, aldrig en aktiv fil.
 - Startar processen om försvinner positionerna och kvittenserna. Saknas svaret från Eneo kan Eneo redan ha filen. Appen startar då inget flöde utan kräver ett uttryckligt nytt försök, och en ny uppladdning kan lämna den tidigare filen utan körning.
 - En uppladdning som börjar när platserna är tagna får 503 `uploads_busy` med `Retry-After: 2` innan något lagras. Multipart-rutten svarar så när `MAX_CONCURRENT_UPLOADS` eller `MAX_CONCURRENT_HEAVY_IO` är nått, den återupptagbara rutten (PUT) när `MAX_CONCURRENT_UPLOADS` är nått. PUT bär ingen del av filen, så appen frågar igen tills en plats blir ledig eller personen avbryter. På multipart-rutten bär varje försök hela filen, så appen försöker högst fyra gånger, som vid andra serverfel.
