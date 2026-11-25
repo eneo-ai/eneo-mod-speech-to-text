@@ -3,6 +3,7 @@
 import asyncio
 import errno
 import io
+import time
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -308,15 +309,113 @@ class ResumableTests(Case):
         self.assertEqual((await self.client.get(self.path)).status_code, 404)
         await self.create()
 
-    async def test_status_refreshes_idle_deadline_but_not_total_lifetime(self):
-        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .4), \
-             patch.object(main.settings, "upload_receive_timeout_seconds", .65):
+    async def test_a_part_renews_the_idle_window_but_not_the_total_lifetime(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .5), \
+             patch.object(main.settings, "upload_receive_timeout_seconds", .9):
             await self.create()
-        for _ in range(2):
-            await asyncio.sleep(.25)
+        await asyncio.sleep(.3)
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        await asyncio.sleep(.3)
+        self.assertEqual((await self.client.get(self.path)).status_code, 200, "the part renewed the window")
+        self.assertEqual((await self.part(self.data[6:], 6)).status_code, 200)
+        await asyncio.sleep(.4)
+        self.assertEqual((await self.client.get(self.path)).status_code, 404, "the total lifetime is over")
+
+    async def quiet_part(self, offset):
+        """A part whose sender goes quiet after its first byte."""
+        async def quiet():
+            yield b"s"
+            await asyncio.sleep(1)
+
+        with patch.object(main.settings, "upload_receive_idle_timeout_seconds", .05):
+            answer = await self.client.patch(self.path, content=quiet(), headers={
+                "Upload-Offset": str(offset), "Content-Type": "application/octet-stream", "Content-Length": "6"})
+        self.assertEqual(answer.json().get("error"), "upload_receive_idle", answer.text)
+
+    async def dropped_part(self):
+        """A part whose connection is lost after its first byte."""
+        writing = asyncio.Event()
+
+        async def dropped():
+            yield b"s"
+            writing.set()
+            await asyncio.Event().wait()
+
+        sending = asyncio.create_task(self.client.patch(self.path, content=dropped(), headers={
+            "Upload-Offset": "0", "Content-Type": "application/octet-stream", "Content-Length": "6"}))
+        await asyncio.wait_for(writing.wait(), 1)
+        sending.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await sending
+
+    async def place_freed_one_window_after(self, stall=None):
+        """The upload is made with an idle window of .6 s, stalls (`stall`: a part that does not arrive; None: no part
+        at all) and is looked up again for half that window, counted from its first stall or its making. Another sender
+        is refused the only place inside the window and gets it once the window has passed."""
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        if stall:
+            await stall()
+        since, other = time.monotonic(), f"/api/uploads/{FLOW}/{STEP}/{uuid4()}"
+        self.assertEqual((await self.client.put(other, json=self.metadata)).status_code, 503, "the place is held")
+        while time.monotonic() - since < .3:
+            if stall:
+                await stall()
+            await self.create()
             self.assertEqual((await self.client.get(self.path)).status_code, 200)
+            await asyncio.sleep(.05)
+        await asyncio.sleep(since + .85 - time.monotonic())
+        taken = await self.client.put(other, json=self.metadata)
+        self.assertEqual(taken.status_code, 200, "no lookup since the first stall kept the place")
+
+    async def test_a_part_that_stalls_again_and_again_frees_the_place_one_window_after_the_first_stall(self):
+        await self.place_freed_one_window_after(lambda: self.quiet_part(0))
+
+    async def test_a_part_that_arrives_after_a_stall_starts_a_whole_new_window(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        await self.quiet_part(0)
+        stalled = time.monotonic()
         await asyncio.sleep(.25)
-        self.assertEqual((await self.client.get(self.path)).status_code, 404)
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        await asyncio.sleep(stalled + .7 - time.monotonic())
+        self.assertEqual((await self.client.get(self.path)).json()["offset"], 6, "the window runs from the part")
+        await self.quiet_part(6)
+        stalled = time.monotonic()
+        await asyncio.sleep(.3)
+        self.assertEqual((await self.client.get(self.path)).status_code, 200, "a stall after the part gets its own window")
+        await asyncio.sleep(stalled + .8 - time.monotonic())
+        self.assertEqual((await self.client.get(self.path)).status_code, 404, "which no lookup extends")
+
+    async def test_a_part_that_outlasts_the_window_and_then_stalls_keeps_what_was_received_for_one_window(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .25):
+            await self.create()
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+
+        async def slow_then_quiet():
+            for _ in range(5):
+                yield b"s"
+                await asyncio.sleep(.08)
+            await asyncio.sleep(1)
+
+        with patch.object(main.settings, "upload_receive_idle_timeout_seconds", .2):
+            answer = await self.client.patch(self.path, content=slow_then_quiet(), headers={
+                "Upload-Offset": "6", "Content-Type": "application/octet-stream", "Content-Length": "6"})
+        self.assertEqual(answer.json().get("error"), "upload_receive_idle", answer.text)
+        status = await self.client.get(self.path)
+        self.assertEqual(status.status_code, 200, "the part used up the window itself: one more from its end")
+        self.assertEqual(status.json()["offset"], 6, "with what was received before it")
+        await asyncio.sleep(.45)
+        self.assertEqual((await self.client.get(self.path)).status_code, 404, "one window only")
+
+    async def test_lookups_alone_or_lost_connections_free_the_place_after_one_window(self):
+        for stall in (None, self.dropped_part):
+            with self.subTest(stall=stall and stall.__name__):
+                self.path = f"/api/uploads/{FLOW}/{STEP}/{uuid4()}"
+                try:
+                    await self.place_freed_one_window_after(stall)
+                finally:
+                    await main.app.state.uploads.close()  # every upload of this round, and the place with them
 
     async def test_old_receipts_do_not_block_new_uploads_or_evict_active_files(self):
         main.app.state.upload_slots = anyio.CapacityLimiter(2)

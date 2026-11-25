@@ -209,8 +209,9 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Uppladdning", "Börja eller återuppta en stor fil",
         "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek "
         "kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. "
-        "Resursen försvinner efter UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS utan anrop från ägaren, "
-        "efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen.",
+        "Resursen försvinner när UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS har gått sedan den skapades eller en del senast kom "
+        "fram, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen. Ett anrop förlänger inte tiden; "
+        "en del som avbryts ger en gång samma tid till, räknad från avbrottet.",
         session=True, origin=True, user="required", too_large="max_body_bytes",
         body={"required": True, "content": json_of({"$ref": "#/components/schemas/UploadMetadata"})},
         success={"200": reply("Uppladdningens bekräftade position.", json_of({"$ref": "#/components/schemas/UploadStatus"})),

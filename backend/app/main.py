@@ -673,6 +673,7 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                 # In the file, not only in its buffer, before the offset counts it: a full disk refuses it here.
                 await anyio.to_thread.run_sync(entry.file.file.flush)
             except BaseException as error:
+                entry.part_failed()
                 with anyio.CancelScope(shield=True):
                     if not await anyio.to_thread.run_sync(_rewind, entry.file.file, entry.offset):
                         # What the spool holds is not known: its receipt goes, and the next PUT makes the upload again.
@@ -686,7 +687,7 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                     return _spool_full()
                 raise
             entry.offset += received
-            entry.touch()
+            entry.progressed()
             return entry.status()
 
 

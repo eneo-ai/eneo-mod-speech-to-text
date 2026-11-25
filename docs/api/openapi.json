@@ -49,7 +49,7 @@
         ],
         "summary": "Börja eller återuppta en stor fil",
         "operationId": "put_api_uploads_flow_id_step_id_upload_id",
-        "description": "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. Resursen försvinner efter UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS utan anrop från ägaren, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen.",
+        "description": "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. Resursen försvinner när UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS har gått sedan den skapades eller en del senast kom fram, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen. Ett anrop förlänger inte tiden; en del som avbryts ger en gång samma tid till, räknad från avbrottet.",
         "parameters": [
           {
             "name": "flow_id",
