@@ -72,8 +72,8 @@ class IncomingUpload:
     grace: bool = True
 
     def progressed(self) -> None:
-        """A part arrived: the idle window runs from now. Only this and the upload's making renew it, never a lookup,
-        so an upload that does not move on lets its place go one window after it last did."""
+        """A part arrived: the idle window runs from now. This, the upload's making and the module's own refusals below
+        renew it, never a lookup, so an upload that does not move on lets its place go one window after it last did."""
         self.idle_until = time.monotonic() + self.idle_seconds
         self.grace = True
 
@@ -83,6 +83,12 @@ class IncomingUpload:
         if self.grace:
             self.idle_until = time.monotonic() + self.idle_seconds
             self.grace = False
+
+    def asked_to_wait(self) -> None:
+        """The module refused for now what it takes later (a part while heavy work is full, or the whole file's
+        completion before its forward began): the sender waits because the module asked, so what was received keeps
+        one window from that answer, at every refusal. The total lifetime still ends it."""
+        self.idle_until = time.monotonic() + self.idle_seconds
 
     def expired(self) -> bool:
         deadline = min(self.expires_at, self.idle_until) if self.state == "receiving" else self.expires_at

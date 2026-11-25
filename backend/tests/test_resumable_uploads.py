@@ -5,7 +5,7 @@ import errno
 import io
 import time
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import anyio
 import httpx
@@ -416,6 +416,172 @@ class ResumableTests(Case):
                     await self.place_freed_one_window_after(stall)
                 finally:
                     await main.app.state.uploads.close()  # every upload of this round, and the place with them
+
+    def receipt(self, path=None):
+        """The store's entry behind `path`, this test's own upload when None."""
+        return main.app.state.uploads._entries[UUID((path or self.path).rsplit("/", 1)[1])]
+
+    async def heavy_place_taken(self):
+        """Another upload's forward holds the only place for heavy work until `release_forward` is set: its task."""
+        self.addCleanup(setattr, main.app.state, "heavy_io_slots", main.app.state.heavy_io_slots)
+        main.app.state.heavy_io_slots = anyio.CapacityLimiter(1)
+        main.app.state.upload_slots = anyio.CapacityLimiter(2)  # a place for the other upload too
+        other = f"/api/uploads/{FLOW}/{STEP}/{uuid4()}"
+        self.assertEqual((await self.client.put(other, json=self.metadata)).status_code, 200)
+        sent = await self.client.patch(other, content=self.data.upper(),
+            headers={"Upload-Offset": "0", "Content-Type": "application/octet-stream"})
+        self.assertEqual(sent.status_code, 200, sent.text)
+        self.assertEqual((await self.client.post(other + "/complete")).json()["state"], "forwarding")
+        await asyncio.wait_for(self.forward_started.wait(), 1)
+        return self.receipt(other).task
+
+    async def forwarded_once(self, others=()):
+        """This test's upload is completed now, and Eneo got each file once: the other uploads' first."""
+        self.release_forward.set()
+        self.assertEqual((await self.client.post(self.path + "/complete")).json()["state"], "forwarding")
+        await asyncio.wait_for(asyncio.shield(self.receipt().task), 1)
+        self.assertEqual((await self.client.get(self.path)).json()["file_id"], "eneo-file")
+        self.assertEqual([content for _, content, _ in self.forwarded], [*others, self.data])
+
+    async def test_a_whole_file_whose_completion_waits_for_a_heavy_place_keeps_a_window_from_that_answer(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        self.assertEqual((await self.part(self.data, 0)).status_code, 200)
+        received = time.monotonic()
+        other = await self.heavy_place_taken()
+        await asyncio.sleep(received + .45 - time.monotonic())
+        busy = await self.client.post(self.path + "/complete")
+        self.assertEqual((busy.status_code, busy.json()["detail"]), (503, "Heavy operation capacity reached"))
+        await asyncio.sleep(received + .75 - time.monotonic())
+        self.release_forward.set()
+        await asyncio.wait_for(asyncio.shield(other), 1)
+        status = await self.client.get(self.path)
+        self.assertEqual(status.status_code, 200, "the window runs from the module's answer, not from the last part")
+        self.assertEqual(status.json()["offset"], len(self.data))
+        await self.forwarded_once([self.data.upper()])
+
+    async def test_a_whole_file_whose_completion_waits_for_another_keeps_a_window_from_that_answer(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        self.assertEqual((await self.part(self.data, 0)).status_code, 200)
+        received, contract, reading = time.monotonic(), self.eneo.request, asyncio.Event()
+
+        async def hanging(**kwargs):
+            reading.set()
+            await asyncio.Event().wait()
+
+        self.eneo.request = hanging
+        await asyncio.sleep(received + .3 - time.monotonic())
+        first = asyncio.create_task(self.client.post(self.path + "/complete"))
+        await asyncio.wait_for(reading.wait(), 1)
+        await asyncio.sleep(received + .45 - time.monotonic())
+        second = await self.client.post(self.path + "/complete")
+        self.assertEqual((second.status_code, second.json()["detail"]), (503, "Another upload operation is running"))
+        # The first goes away inside its contract read: no answer of the module's, so no window of its own.
+        first.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await first
+        self.eneo.request = contract
+        await asyncio.sleep(received + .75 - time.monotonic())
+        self.assertEqual((await self.client.get(self.path)).status_code, 200, "the window runs from the answer to the second")
+        await self.forwarded_once()
+
+    async def test_a_whole_file_whose_completion_finds_no_run_contract_keeps_a_window_from_that_answer(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        self.assertEqual((await self.part(self.data, 0)).status_code, 200)
+        received = time.monotonic()
+        await asyncio.sleep(.45)
+        self.contract_status = 503
+        self.assertEqual((await self.client.post(self.path + "/complete")).status_code, 502)
+        self.contract_status = 200
+        await asyncio.sleep(received + .75 - time.monotonic())
+        self.assertEqual((await self.client.get(self.path)).status_code, 200, "the window runs from the module's answer")
+        await self.forwarded_once()
+
+    async def test_completions_the_module_asks_to_wait_again_and_again_never_outlast_the_total_lifetime(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .4), \
+             patch.object(main.settings, "upload_receive_timeout_seconds", .9):
+            await self.create()
+        made = time.monotonic()
+        self.assertEqual((await self.part(self.data, 0)).status_code, 200)
+        other = await self.heavy_place_taken()
+        try:
+            while time.monotonic() - made < .7:
+                busy = await self.client.post(self.path + "/complete")
+                self.assertEqual(busy.status_code, 503, "the whole file is kept while the module asks it to wait")
+                await asyncio.sleep(.1)
+            self.assertEqual((await self.client.get(self.path)).status_code, 200, "past the window from the last part")
+            await asyncio.sleep(made + .95 - time.monotonic())
+            self.assertEqual((await self.client.post(self.path + "/complete")).status_code, 404, "the total lifetime is over")
+        finally:
+            self.release_forward.set()
+            await asyncio.wait_for(asyncio.shield(other), 1)
+
+    async def test_a_whole_file_nobody_completes_lets_its_place_go_one_window_after_its_last_part(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        self.assertEqual((await self.part(self.data, 0)).status_code, 200)
+        since, other = time.monotonic(), f"/api/uploads/{FLOW}/{STEP}/{uuid4()}"
+        self.assertEqual((await self.client.put(other, json=self.metadata)).status_code, 503, "the place is held")
+        while time.monotonic() - since < .3:
+            await self.create()
+            self.assertEqual((await self.client.get(self.path)).json()["offset"], len(self.data))
+            await asyncio.sleep(.05)
+        await asyncio.sleep(since + .75 - time.monotonic())
+        self.assertEqual((await self.client.put(other, json=self.metadata)).status_code, 200, "no lookup kept the place")
+
+    async def test_a_completion_asked_before_the_file_is_whole_gives_no_window(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        received = time.monotonic()
+        await asyncio.sleep(.45)
+        self.assertEqual((await self.client.post(self.path + "/complete")).status_code, 409)
+        await asyncio.sleep(received + .75 - time.monotonic())
+        self.assertEqual((await self.client.get(self.path)).status_code, 404, "the file waits for its parts, not for the module")
+
+    async def test_a_part_that_waits_for_a_heavy_place_keeps_what_was_received_a_window_from_that_answer(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        self.assertEqual((await self.part(self.data[:6], 0)).status_code, 200)
+        received = time.monotonic()
+        other = await self.heavy_place_taken()
+        await asyncio.sleep(received + .45 - time.monotonic())
+        busy = await self.part(self.data[6:], 6)
+        self.assertEqual((busy.status_code, busy.json()["detail"]), (503, "Heavy operation capacity reached"))
+        await asyncio.sleep(received + .75 - time.monotonic())
+        self.release_forward.set()
+        await asyncio.wait_for(asyncio.shield(other), 1)
+        status = await self.client.get(self.path)
+        self.assertEqual(status.status_code, 200, "the window runs from the module's answer, not from the last part")
+        self.assertEqual(status.json()["offset"], 6)
+        self.assertEqual((await self.part(self.data[6:], 6)).status_code, 200)
+        await self.forwarded_once([self.data.upper()])
+
+    async def test_a_part_refused_while_its_own_earlier_part_still_runs_gets_no_window(self):
+        with patch.object(main.settings, "upload_resume_idle_timeout_seconds", .6):
+            await self.create()
+        await self.quiet_part(0)  # the one window more after a failed part: spent
+        stalled, writing = time.monotonic(), asyncio.Event()
+
+        async def hanging():
+            yield b"s"
+            writing.set()
+            await asyncio.Event().wait()
+
+        earlier = asyncio.create_task(self.client.patch(self.path, content=hanging(), headers={
+            "Upload-Offset": "0", "Content-Type": "application/octet-stream", "Content-Length": "6"}))
+        await asyncio.wait_for(writing.wait(), 1)
+        await asyncio.sleep(stalled + .45 - time.monotonic())
+        busy = await self.part(self.data[:6], 0)
+        self.assertEqual((busy.status_code, busy.json()["detail"]), (503, "Another upload operation is running"))
+        earlier.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await earlier
+        await asyncio.sleep(stalled + .75 - time.monotonic())
+        self.assertEqual((await self.client.get(self.path)).status_code, 404,
+            "the earlier part held the place while it ran; the refusal of the next adds no window")
 
     async def test_old_receipts_do_not_block_new_uploads_or_evict_active_files(self):
         main.app.state.upload_slots = anyio.CapacityLimiter(2)

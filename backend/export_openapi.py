@@ -209,9 +209,13 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Uppladdning", "Börja eller återuppta en stor fil",
         "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek "
         "kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. "
-        "Resursen försvinner när UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS har gått sedan den skapades eller en del senast kom "
-        "fram, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen. Ett anrop förlänger inte tiden; "
-        "en del som avbryts ger en gång samma tid till, räknad från avbrottet.",
+        "Resursen försvinner när UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS har gått mellan delarnas anrop, räknat från skapandet "
+        "eller den senaste delen som kom fram, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen. "
+        "En del som pågår behåller resursen tills den slutar. Ett uppslag förlänger inte tiden. En del som avbryts ger en "
+        "gång samma tid till, räknad från avbrottet. När modulen ber om väntan börjar tiden om från svaret: 503 på en del "
+        "för att tung I/O är full, och 503 eller 502 på slutförandet av en hel fil innan vidarebefordran har börjat. Det "
+        "gäller också 401 när Eneo avslutar inloggningen medan slutförandet läser körningskontraktet. En session som "
+        "redan har tagit slut ger ingen ny tid. Totaltiden förlängs aldrig.",
         session=True, origin=True, user="required", too_large="max_body_bytes",
         body={"required": True, "content": json_of({"$ref": "#/components/schemas/UploadMetadata"})},
         success={"200": reply("Uppladdningens bekräftade position.", json_of({"$ref": "#/components/schemas/UploadStatus"})),

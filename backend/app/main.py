@@ -657,6 +657,7 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
             raise HTTPException(409, "Upload offset or state differs; read its status")
         with capacity_slot(app.state.heavy_io_slots) as admitted:
             if not admitted:
+                entry.asked_to_wait()
                 raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
             received = 0
             try:
@@ -705,41 +706,49 @@ def _rewind(file: BinaryIO, offset: int) -> bool:
 @app.post("/api/uploads/{flow_id}/{step_id}/{upload_id}/complete", dependencies=_SESSION_ORIGIN_AND_USER)
 async def complete_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> UploadStatus:
     entry = await _incoming(request, flow_id, step_id, upload_id)
-    with entry.exclusive():
-        if entry.state != "receiving":
-            return entry.status()
-        if entry.offset != entry.metadata.size:
-            raise HTTPException(409, "The file is not complete")
-        try:
-            await _check_upload_contract(request, flow_id, step_id, entry.metadata)
-        except HTTPException as error:
-            if error.status_code in {413, 422}:
-                await app.state.uploads.remove(upload_id, entry)
-            raise
-        slots = contextlib.ExitStack()
-        if not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
-            slots.close()
-            raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
-
-        entry.slots.callback(slots.close)
-
-        async def forward() -> tuple[str | None, UploadFailure | None]:
-            response = await _proxy_multipart_upload(_upstream_url(f"flows/{flow_id}/steps/{step_id}/runtime-files/"),
-                entry.file, request, _requested_upload_timeout_seconds(request))
+    try:
+        with entry.exclusive():
+            if entry.state != "receiving":
+                return entry.status()
+            if entry.offset != entry.metadata.size:
+                raise HTTPException(409, "The file is not complete")
             try:
-                result = json.loads(response.body)
-            except (ValueError, TypeError):
-                result = {}
-            file_id = result.get("id") if isinstance(result, dict) else None
-            if 200 <= response.status_code < 300 and isinstance(file_id, str) and 0 < len(file_id) <= 128:
-                return file_id, None
-            detail = result.get("detail") if isinstance(result, dict) else None
-            return None, UploadFailure(status=response.status_code if response.status_code >= 400 else 502,
-                detail=detail[:2048] if isinstance(detail, str) else "Eneo could not confirm the uploaded file.",
-                code=str(result.get("code", result.get("error", "")))[:128] if isinstance(result, dict) else None)
+                await _check_upload_contract(request, flow_id, step_id, entry.metadata)
+            except HTTPException as error:
+                if error.status_code in {413, 422}:
+                    await app.state.uploads.remove(upload_id, entry)
+                raise
+            slots = contextlib.ExitStack()
+            if not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
+                slots.close()
+                raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
 
-        entry.start(forward)
-        return entry.status()
+            entry.slots.callback(slots.close)
+
+            async def forward() -> tuple[str | None, UploadFailure | None]:
+                response = await _proxy_multipart_upload(_upstream_url(f"flows/{flow_id}/steps/{step_id}/runtime-files/"),
+                    entry.file, request, _requested_upload_timeout_seconds(request))
+                try:
+                    result = json.loads(response.body)
+                except (ValueError, TypeError):
+                    result = {}
+                file_id = result.get("id") if isinstance(result, dict) else None
+                if 200 <= response.status_code < 300 and isinstance(file_id, str) and 0 < len(file_id) <= 128:
+                    return file_id, None
+                detail = result.get("detail") if isinstance(result, dict) else None
+                return None, UploadFailure(status=response.status_code if response.status_code >= 400 else 502,
+                    detail=detail[:2048] if isinstance(detail, str) else "Eneo could not confirm the uploaded file.",
+                    code=str(result.get("code", result.get("error", "")))[:128] if isinstance(result, dict) else None)
+
+            entry.start(forward)
+            return entry.status()
+    except HTTPException:
+        # The module's answer before the forward began: for a whole file it asks to wait (another completion holds
+        # the file, heavy work is full, the run contract was not read, the session ended there), so what was received
+        # keeps a window from it. A file that is not whole waits for its parts; one refused for good (413, 422) is gone.
+        if entry.state == "receiving" and entry.offset == entry.metadata.size:
+            entry.asked_to_wait()
+        raise
 
 
 @app.delete("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER, status_code=204)
