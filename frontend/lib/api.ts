@@ -1111,50 +1111,68 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
       }
     }
   };
+  // Makes the resource, or says where it stands: the module answers this id only for the same file's metadata.
+  const make = async () => {
+    const made = await request<UploadStatus>(path, { method: "PUT", signal: opts.signal,
+      body: JSON.stringify({ filename, content_type: file.type || "application/octet-stream", size: file.size }) });
+    await opts.onHandle?.({ ...handle });
+    return made;
+  };
+  // Asked to complete before this call: Eneo may hold the file, so a missing receipt is never made anew by itself.
+  const askedBefore = handle.completionRequested;
+  let madeAgain = false;
   try {
-    let status: UploadStatus;
-    if (handle.completionRequested) {
-      // After completing, a missing receipt may mean Eneo already stored the file. Never recreate it automatically.
-      status = await request<UploadStatus>(path, { signal: opts.signal });
-    } else {
-      // Makes the resource, or says where it stands: the module answers this id only for the same file's metadata.
-      status = await request<UploadStatus>(path, { method: "PUT", signal: opts.signal,
-        body: JSON.stringify({ filename, content_type: file.type || "application/octet-stream", size: file.size }) });
-      await opts.onHandle?.({ ...handle });
-    }
-    while (status.state === "receiving" && status.offset < file.size) {
-      if (!Number.isSafeInteger(status.offset) || status.offset < 0 || !Number.isSafeInteger(status.chunk_size) || status.chunk_size <= 0) {
-        throw new ApiError(502, "Servern svarade med en ogiltig uppladdningsposition.", null, "invalid_json_response");
-      }
-      const offset = status.offset;
-      opts.onProgress?.({ loaded: offset, total: file.size, percent: Math.round(offset / file.size * 100) });
-      const part = file.slice(offset, offset + Math.min(UPLOAD_PART_BYTES, status.chunk_size));
+    let status = askedBefore ? await request<UploadStatus>(path, { signal: opts.signal }) : await make();
+    for (;;) {
       try {
-        status = await requestUploadWithProgress<UploadStatus>(path, part, { ...opts, offset, fileSizeBytes: part.size,
-          onProgress: ({ loaded }) => opts.onProgress?.({ loaded: offset + loaded, total: file.size,
-            percent: Math.round((offset + loaded) / file.size * 100) }) });
-        if (status.offset !== offset + part.size) {
-          throw new ApiError(502, "Servern bekräftade inte den skickade delen.", null, "invalid_json_response");
+        while (status.state === "receiving" && status.offset < file.size) {
+          if (!Number.isSafeInteger(status.offset) || status.offset < 0 || !Number.isSafeInteger(status.chunk_size) || status.chunk_size <= 0) {
+            throw new ApiError(502, "Servern svarade med en ogiltig uppladdningsposition.", null, "invalid_json_response");
+          }
+          const offset = status.offset;
+          opts.onProgress?.({ loaded: offset, total: file.size, percent: Math.round(offset / file.size * 100) });
+          const part = file.slice(offset, offset + Math.min(UPLOAD_PART_BYTES, status.chunk_size));
+          try {
+            status = await requestUploadWithProgress<UploadStatus>(path, part, { ...opts, offset, fileSizeBytes: part.size,
+              onProgress: ({ loaded }) => opts.onProgress?.({ loaded: offset + loaded, total: file.size,
+                percent: Math.round((offset + loaded) / file.size * 100) }) });
+            if (status.offset !== offset + part.size) {
+              throw new ApiError(502, "Servern bekräftade inte den skickade delen.", null, "invalid_json_response");
+            }
+          } catch (error) {
+            if (!(error instanceof ApiError) || error.status !== 409) throw error;
+            // A lost acknowledgement may have committed the part; the server's offset is authoritative.
+            status = await request<UploadStatus>(path, { signal: opts.signal });
+            if (status.offset === offset) throw error;
+          }
         }
+        opts.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+        if (status.state === "receiving") {
+          handle.completionRequested = true;
+          // Kept before it is asked: from here on only the module's receipt can say whether Eneo holds the file.
+          await opts.onHandle?.({ ...handle });
+          try {
+            // Sent once: request() repeats only a read or a request with an Idempotency-Key (replayable).
+            status = await request<UploadStatus>(`${path}/complete`, { method: "POST", signal: opts.signal,
+              headers: { "X-Upload-Timeout-Seconds": String(Math.ceil(resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) / 1000)) } });
+          } catch (error) {
+            // A definitive contract rejection removes the resource without forwarding it to Eneo.
+            if (error instanceof ApiError && [413, 422].includes(error.status)) await drop();
+            throw error;
+          }
+        }
+        break;
       } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 409) throw error;
-        // A lost acknowledgement may have committed the part; the server's offset is authoritative.
-        status = await request<UploadStatus>(path, { signal: opts.signal });
-        if (status.offset === offset) throw error;
-      }
-    }
-    opts.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
-    if (status.state === "receiving") {
-      handle.completionRequested = true;
-      // Kept before it is asked: from here on only the module's receipt can say whether Eneo holds the file.
-      await opts.onHandle?.({ ...handle });
-      try {
-        status = await request<UploadStatus>(`${path}/complete`, { method: "POST", signal: opts.signal,
-          headers: { "X-Upload-Timeout-Seconds": String(Math.ceil(resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) / 1000)) } });
-      } catch (error) {
-        // A definitive contract rejection removes the resource without forwarding it to Eneo.
-        if (error instanceof ApiError && [413, 422].includes(error.status)) await drop();
-        throw error;
+        // Until this call's completion is taken, a 404 means the module let the receipt go (its idle window, or a
+        // restart) and forwarded nothing: a part, a status read and the completion each look the receipt up before
+        // anything goes on to Eneo (backend/app/main.py). Made again once a call; a second loss ends it below.
+        if (askedBefore || madeAgain || !(error instanceof ApiError) || error.status !== 404) throw error;
+        madeAgain = true;
+        if (handle.completionRequested) {
+          handle.completionRequested = false;
+          await opts.onHandle?.({ ...handle });
+        }
+        status = await make();
       }
     }
     const pollUntil = Date.now() + resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) + REQUEST_TIMEOUT_MS;
@@ -1177,7 +1195,7 @@ async function uploadInParts(flowId: string, stepId: string, file: Blob, filenam
       "Det gick inte att bekräfta att Eneo tog emot filen. Inget flöde har startats. Försök igen när du vill.",
       failure, "upload_forward_failed");
   } catch (error) {
-    if (!(handle.completionRequested && error instanceof ApiError && error.status === 404)) throw error;
+    if (!((handle.completionRequested || madeAgain) && error instanceof ApiError && error.status === 404)) throw error;
     await drop();
     throw new ApiError(502, "Uppladdningens kvittens finns inte kvar. Inget flöde har startats. Försök igen när du vill.",
       null, "upload_forward_failed");

@@ -1790,7 +1790,8 @@ const roomy: RunContract = {
  * XMLHttpRequest (PATCH), for the pages of a signed-in user whose timers run only when a test moves them. The resources
  * outlive a page, as the module's do: a part is committed when the test answers it (`commit`); with `diesOnComplete`
  * Eneo stores the file, but the page is gone before the answer reaches it; with `refuses` Eneo does not take the file,
- * and answers that status.
+ * and answers that status; `notMade` holds what the next PUTs are answered instead of a resource, in turn (503: the
+ * module is full; 404: an id the module keeps for someone else).
  */
 function moduleUploads(t: TestContext) {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
@@ -1813,6 +1814,7 @@ function moduleUploads(t: TestContext) {
     stored: [] as string[],
     diesOnComplete: false,
     refuses: null as number | null,
+    notMade: [] as (503 | 404)[],
     commit(xhr: FakeXhr) {
       const resource = resources.get(idOf(xhr.path))!;
       assert.equal(xhr.headers["Upload-Offset"], String(resource.offset));
@@ -1824,6 +1826,9 @@ function moduleUploads(t: TestContext) {
     const method = init.method ?? "GET";
     const id = idOf(url);
     module.asked.push(`${method} ${id}`);
+    const refusal = method === "PUT" ? module.notMade.shift() : undefined;
+    if (refusal === 503) return busyAnswer();
+    if (refusal === 404) return Response.json({ detail: "Upload not found or expired" }, { status: 404 });
     let resource = resources.get(id);
     if (method === "PUT" && !resource) resources.set(id, (resource = { offset: 0, state: "receiving", file_id: null, failure: null }));
     if (!resource) return Response.json({ detail: "Upload not found or expired" }, { status: 404 });
@@ -2012,6 +2017,152 @@ test("a part Eneo did not take forgets its kept upload: the next send, the perso
   await sent(3);
   assert.equal((await waits).id, "run-1");
   assert.equal(ids().size, 4);
+});
+
+const lost = { detail: "Upload not found or expired" };
+
+test("a part whose upload the module let go of between two requests goes up anew by itself, and the flow starts", async (t) => {
+  const module = moduleUploads(t);
+  const { tab, recording } = await largeRecordingOnDevice();
+  const run = submitRecording(tab, recording.id, params({ contract: roomy }), { upload: uploadStepRuntimeFile, startRun: async () => queuedRun });
+  await until(() => FakeXhr.made.length === 1);
+  module.resources.clear(); // its idle window ran out between the PUT and the part
+  FakeXhr.made[0].answer(404, lost);
+  await until(() => FakeXhr.made.length === 2);
+  module.commit(FakeXhr.made[1]); // from the first byte: commit checks the offset
+  await until(() => FakeXhr.made.length === 3);
+  module.commit(FakeXhr.made[2]);
+  assert.equal((await run).id, "run-1");
+  const [id] = module.stored;
+  assert.deepEqual(module.asked, [`PUT ${id}`, `PUT ${id}`, `POST ${id}`], "the same upload made again, and completed once");
+});
+
+test("a first completion the module answers 404 forgets that it was asked, and the upload goes up anew by itself, through a wait for a place", async (t) => {
+  const module = moduleUploads(t);
+  const { tab, recording } = await largeRecordingOnDevice();
+  let waiting = false;
+  const run = submitRecording(tab, recording.id, params({ contract: roomy, onWait: (wait) => (waiting = wait !== null) }), {
+    upload: uploadStepRuntimeFile,
+    startRun: async () => queuedRun,
+  });
+  await until(() => FakeXhr.made.length === 1);
+  module.commit(FakeXhr.made[0]);
+  await until(() => FakeXhr.made.length === 2);
+  module.commit(FakeXhr.made[1]);
+  module.resources.clear(); // every byte arrived; the receipt went before the completion reached the module
+  module.notMade.push(503); // and the module is full when the page makes the upload again
+  await until(() => waiting);
+  const id = module.asked[0].split(" ")[1];
+  assert.deepEqual(module.asked, [`PUT ${id}`, `POST ${id}`, `PUT ${id}`]);
+  assert.equal((await tab.get(recording.id))?.parts[0].upload?.completionRequested, false, "kept as not asked, through a reload too");
+  t.mock.timers.tick(30_000);
+  await until(() => FakeXhr.made.length === 3);
+  module.commit(FakeXhr.made[2]);
+  await until(() => FakeXhr.made.length === 4);
+  module.commit(FakeXhr.made[3]);
+  assert.equal((await run).id, "run-1");
+  assert.deepEqual(module.asked, [`PUT ${id}`, `POST ${id}`, `PUT ${id}`, `PUT ${id}`, `POST ${id}`]);
+  assert.equal(module.stored.length, 1, "Eneo got the file once");
+});
+
+test("a status read after a refused part that finds the upload gone makes it again by itself", async (t) => {
+  const module = moduleUploads(t);
+  const { tab, recording } = await largeRecordingOnDevice();
+  const run = submitRecording(tab, recording.id, params({ contract: roomy }), { upload: uploadStepRuntimeFile, startRun: async () => queuedRun });
+  await until(() => FakeXhr.made.length === 1);
+  module.resources.clear();
+  FakeXhr.made[0].answer(409, { detail: "Upload offset or state differs; read its status" });
+  await until(() => FakeXhr.made.length === 2);
+  module.commit(FakeXhr.made[1]);
+  await until(() => FakeXhr.made.length === 3);
+  module.commit(FakeXhr.made[2]);
+  assert.equal((await run).id, "run-1");
+  const [id] = module.stored;
+  assert.deepEqual(module.asked, [`PUT ${id}`, `GET ${id}`, `PUT ${id}`, `POST ${id}`]);
+});
+
+test("an upload asked to complete before this try is never made again by itself, also when its receipt goes after it was read", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const file = inParts();
+  const methods: string[] = [];
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    const method = init.method ?? "GET";
+    methods.push(method);
+    if (method === "POST" && !methods.includes("GET")) return Response.json({ detail: "Heavy operation capacity reached" }, { status: 503 });
+    if (method === "POST") return Response.json(lost, { status: 404 });
+    return Response.json({ offset: file.size, chunk_size: PART, state: "receiving", file_id: null, failure: null });
+  });
+  const outcome = submitRun(params({ contract: roomFor(file.size), files: [{ blob: file, filename: "a.webm" }] }), {
+    upload: uploadStepRuntimeFile,
+    startRun: async () => queuedRun,
+  }).then(() => "started", (error: unknown) => error);
+  for (let i = 0; i < 20 && methods.length < 4; i += 1) {
+    t.mock.timers.tick(1_000);
+    await settle();
+  }
+  const error = await outcome;
+  assert.ok(error instanceof ApiError && error.code === "upload_forward_failed", String(error));
+  assert.deepEqual(methods, ["PUT", "POST", "GET", "POST"], "the next try reads the receipt, and asks again only to complete it");
+});
+
+test("a completion whose answer may have reached Eneo, or a receipt lost once the forward began, never makes the upload again by itself", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  for (const answer of ["504", "no answer", "forwarding"] as const) {
+    const file = inParts();
+    const methods: string[] = [];
+    let gone = false;
+    t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+      const method = init.method ?? "GET";
+      methods.push(method);
+      if (gone) return Response.json(lost, { status: 404 });
+      if (method !== "POST") return Response.json({ offset: file.size, chunk_size: PART, state: "receiving", file_id: null, failure: null });
+      gone = true; // the receipt goes once the completion has reached the module
+      if (answer === "504") return Response.json({ detail: "Gateway Timeout" }, { status: 504 });
+      if (answer === "forwarding") return Response.json({ offset: file.size, chunk_size: PART, state: "forwarding", file_id: null, failure: null });
+      const signal = init.signal as AbortSignal; // no answer: the page's own time limit ends the wait
+      return new Promise<Response>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+    });
+    const outcome = submitRun(params({ contract: roomFor(file.size), files: [{ blob: file, filename: "a.webm" }] }), {
+      upload: uploadStepRuntimeFile,
+      startRun: async () => queuedRun,
+    }).then(() => "started", (error: unknown) => error);
+    // Time goes on until the receipt is read again: after the next try's wait, or as the forward is followed.
+    for (let i = 0; i < 200 && methods.length < 3; i += 1) {
+      t.mock.timers.tick(1_000);
+      await settle();
+    }
+    const error = await outcome;
+    assert.ok(error instanceof ApiError && error.code === "upload_forward_failed", `${answer}: ${String(error)}`);
+    assert.deepEqual(methods, ["PUT", "POST", "GET"], `${answer}: read, never made again`);
+  }
+});
+
+test("an upload is made again once in a try: a 404 on that PUT, or the receipt lost again, ends the send with Försök igen", async (t) => {
+  const module = moduleUploads(t);
+  for (const again of ["its PUT", "its part"] as const) {
+    FakeXhr.made = [];
+    module.asked.length = 0;
+    const { tab, recording } = await largeRecordingOnDevice();
+    const outcome = submitRecording(tab, recording.id, params({ contract: roomy }), { upload: uploadStepRuntimeFile, startRun: async () => queuedRun })
+      .then(() => "started", (error: unknown) => error);
+    await until(() => FakeXhr.made.length === 1);
+    module.resources.clear();
+    if (again === "its PUT") module.notMade.push(404);
+    FakeXhr.made[0].answer(404, lost);
+    if (again === "its part") {
+      await until(() => FakeXhr.made.length === 2);
+      module.resources.clear();
+      FakeXhr.made[1].answer(404, lost);
+    }
+    const error = await outcome;
+    assert.ok(error instanceof ApiError && error.code === "upload_forward_failed", `${again}: ${String(error)}`);
+    assert.equal(errorAdvice(error).retry, true, "Försök igen");
+    const id = module.asked[0].split(" ")[1];
+    assert.deepEqual(module.asked, [`PUT ${id}`, `PUT ${id}`], `${again}: made again once, never a third time`);
+    assert.equal(FakeXhr.made.length, again === "its part" ? 2 : 1);
+    assert.equal((await tab.get(recording.id))?.parts[0].upload ?? null, null, "the next send makes a new upload");
+  }
+  assert.equal(module.stored.length, 0);
 });
 
 test("an upload kept for another size or another step is not continued: the part goes up anew, and the other gets no byte", async (t) => {
