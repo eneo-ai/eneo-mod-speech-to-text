@@ -623,6 +623,97 @@ test("an upload that stalls on a weak link waits as for the network, however oft
   assert.equal(answered, 4);
 });
 
+// The module's own answers when no byte of an upload arrived for its quiet time, and when its receipt ran out of time.
+const quiet = { error: "upload_receive_idle", detail: "No bytes of the upload arrived within the idle timeout." };
+const pastDeadline = { error: "upload_receive_timeout", detail: "The upload body did not arrive before its deadline." };
+
+test("a whole file the module hears nothing of for its quiet time waits as for the network; one past the receipt's deadline counts", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  const send = (waits: RetryWait[]) => submitRun(
+    params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }], onWait: (wait) => void (wait && waits.push(wait)) }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+
+  FakeXhr.made = [];
+  const waits: RetryWait[] = [];
+  const sending = send(waits);
+  for (let i = 0; i < 5; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    FakeXhr.made[i].answer(408, quiet);
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(60_000);
+  }
+  await until(() => FakeXhr.made.length === 6);
+  FakeXhr.made[5].answer(201, { id: "file-1" });
+  assert.equal((await sending).id, "run-1", "five quiet answers, more than the four a failing server gets, and the flow starts");
+  assert.ok(waits.every((wait) => wait.retryNow), "each wait is the network's");
+
+  FakeXhr.made = [];
+  const counted: RetryWait[] = [];
+  const failed = assert.rejects(send(counted), { status: 408, code: "upload_receive_timeout" });
+  for (let i = 0; i < 4; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    FakeXhr.made[i].answer(408, pastDeadline);
+    if (i < 3) {
+      await until(() => counted.length === i + 1);
+      t.mock.timers.tick(60_000);
+    }
+  }
+  await failed;
+  assert.equal(FakeXhr.made.length, 4, "the fourth answer past the deadline ends the send");
+});
+
+test("a file in parts whose part the module hears nothing of waits as for the network; a part past the upload's deadline counts", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  const size = inParts().size;
+  const status = (offset: number, state = "receiving", fileId: string | null = null) =>
+    ({ offset, chunk_size: 4 * 1024 * 1024, state, file_id: fileId, failure: null });
+  // The module makes the upload at its start, and hands the whole file to Eneo when asked; the parts go by XHR.
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) =>
+    Response.json(init.method === "POST" ? status(size, "complete", "file-a") : status(0)));
+  const taken = (xhr: FakeXhr) => xhr.answer(200, status(Number(xhr.headers["Upload-Offset"]) + (xhr.body as Blob).size));
+  const send = (waits: RetryWait[]) => submitRun(
+    params({ contract: roomFor(size), files: [{ blob: inParts(), filename: "a.webm" }], onWait: (wait) => void (wait && waits.push(wait)) }),
+    { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+  );
+
+  FakeXhr.made = [];
+  const waits: RetryWait[] = [];
+  const sending = send(waits);
+  for (let i = 0; i < 5; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    assert.equal(FakeXhr.made[i].method, "PATCH");
+    FakeXhr.made[i].answer(408, quiet);
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(60_000);
+  }
+  for (let i = 5; i < 7; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    taken(FakeXhr.made[i]);
+  }
+  assert.equal((await sending).id, "run-1", "five quiet answers to its first part, and the flow starts");
+
+  FakeXhr.made = [];
+  const counted: RetryWait[] = [];
+  const failed = assert.rejects(send(counted), (error) => error instanceof ApiError && error.status === 408 && error.code === undefined);
+  for (let i = 0; i < 4; i += 1) {
+    await until(() => FakeXhr.made.length === i + 1);
+    FakeXhr.made[i].answer(408, { detail: "The upload part timed out" });
+    if (i < 3) {
+      await until(() => counted.length === i + 1);
+      t.mock.timers.tick(60_000);
+    }
+  }
+  await failed;
+  assert.equal(FakeXhr.made.length, 4, "the fourth part past the deadline ends the send");
+});
+
 test("a run request Eneo keeps refusing is retried by itself ten times, then waits for the person, under the same key", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const keys: string[] = [];

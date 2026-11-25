@@ -88,7 +88,9 @@ class UploadAdmissionTests(Case):
                 ):
                     response = await self.post(UPLOAD, SlowUpload(3), headers=MULTIPART)
                 self.assertEqual(response.status_code, 408)
-                self.assertEqual(response.json()["error"], "upload_receive_timeout")
+                # A sender that went quiet is told from a receipt past its deadline: the page waits out the one, counts the other.
+                self.assertEqual(response.json()["error"], "upload_receive_idle" if mode == "idle" else "upload_receive_timeout")
+                self.assertEqual(response.headers["connection"], "close")
                 self.assertTrue(opened)
                 self.assertTrue(all(file.closed for file in opened))
                 self.assertEqual(self.eneo.calls, [])

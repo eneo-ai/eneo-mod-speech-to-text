@@ -426,11 +426,18 @@
             }
           },
           "408": {
-            "description": "Delens mottagning eller uppladdningens totaltid har gått ut.",
+            "description": "Ingen byte av delen kom inom UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS (error är upload_receive_idle, som på multipart-rutten), eller uppladdningens totaltid har gått ut (bara detail).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
                 }
               }
             }
@@ -1281,7 +1288,7 @@
             }
           },
           "408": {
-            "description": "Uppladdningen hann inte tas emot inom tidsgränsen. error är upload_receive_timeout. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen byte kom inom UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS, eller uppladdningen hann inte tas emot inom UPLOAD_RECEIVE_TIMEOUT_SECONDS. error är upload_receive_idle eller upload_receive_timeout. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -4512,6 +4519,7 @@
             "enum": [
               "module_storage_full",
               "streams_busy",
+              "upload_receive_idle",
               "upload_receive_timeout",
               "uploads_busy",
               "upstream_invalid",

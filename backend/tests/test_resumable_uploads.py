@@ -141,12 +141,27 @@ class ResumableTests(Case):
             answer = await self.client.patch(self.path, content=interrupted(), headers={
                 "Upload-Offset": "6", "Content-Type": "application/octet-stream", "Content-Length": "6"})
         self.assertEqual(answer.status_code, 408, answer.text)
+        self.assertEqual(answer.json()["error"], "upload_receive_idle", "a quiet sender, as the multipart route names it")
+        self.assertEqual(answer.headers["connection"], "close")
         self.assertEqual((await self.client.get(self.path)).json()["offset"], 6)
         self.assertEqual((await self.part(self.data[6:], 6)).status_code, 200)
         self.release_forward.set()
         await self.client.post(self.path + "/complete")
         await asyncio.wait_for(self.forward_started.wait(), 1)
         self.assertEqual(self.forwarded[0][1], self.data)
+
+    async def test_a_part_still_arriving_at_the_uploads_deadline_is_a_408_without_the_quiet_senders_code(self):
+        with patch.object(main.settings, "upload_receive_timeout_seconds", .2):
+            await self.create()
+
+        async def slow():
+            yield b"s"
+            await asyncio.sleep(1)
+
+        answer = await self.client.patch(self.path, content=slow(), headers={
+            "Upload-Offset": "0", "Content-Type": "application/octet-stream", "Content-Length": "6"})
+        self.assertEqual(answer.status_code, 408, answer.text)
+        self.assertEqual(answer.json(), {"detail": "The upload part timed out"}, "the page counts this one")
 
     async def test_a_full_spool_is_a_507_the_offset_stays_and_the_part_can_be_sent_again(self):
         import errno

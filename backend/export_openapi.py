@@ -185,7 +185,7 @@ UPLOAD_TIMEOUT = header(
 )
 RANGE = header("Range", "Ett byteintervall, som `bytes=0-1023`. Skickas vidare till Eneo; svaret är då `206`.")
 PROXY_ERRORS = ("upstream_unreachable", "upstream_too_large", "upstream_redirect")
-UPLOAD_ERRORS = (*PROXY_ERRORS, "upstream_upload_timeout", "upload_receive_timeout", "uploads_busy")
+UPLOAD_ERRORS = (*PROXY_ERRORS, "upstream_upload_timeout", "upload_receive_idle", "upload_receive_timeout", "uploads_busy")
 STREAM_ERRORS = ("upstream_unreachable", "upstream_redirect", "upstream_invalid", "streams_busy")
 # The disk the module keeps a resumable upload's parts on while they arrive is full (507).
 SPOOL_ERRORS = ("module_storage_full",)
@@ -235,7 +235,9 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         success={"200": reply("Den nya bekräftade positionen.", json_of({"$ref": "#/components/schemas/UploadStatus"})),
                  "400": reply("Delen är ofullständig.", json_of(ERROR)),
                  "404": reply("Uppladdningen saknas eller tillhör någon annan.", json_of(ERROR)),
-                 "408": reply("Delens mottagning eller uppladdningens totaltid har gått ut.", json_of(ERROR)),
+                 "408": reply("Ingen byte av delen kom inom UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS (`error` är `upload_receive_idle`, "
+                              "som på multipart-rutten), eller uppladdningens totaltid har gått ut (bara `detail`).",
+                              json_of({"anyOf": [{"$ref": "#/components/schemas/BffError"}, ERROR]})),
                  "409": reply("Positionen eller tillståndet skiljer sig. Läs status innan nästa del.", json_of(ERROR)),
                  "411": reply("Content-Length saknas.", json_of(ERROR)),
                  "415": reply("Innehållstypen måste vara application/octet-stream.", json_of(ERROR)),
@@ -495,12 +497,14 @@ def refusals(op: Op) -> dict[str, Any]:
             "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat.",
             json_of({"$ref": "#/components/schemas/TooLarge"}),
         )
-    error_status = {"upload_receive_timeout": "408", "uploads_busy": "503", "streams_busy": "503", "upstream_upload_timeout": "504"}
+    error_status = {"upload_receive_idle": "408", "upload_receive_timeout": "408", "uploads_busy": "503",
+                    "streams_busy": "503", "upstream_upload_timeout": "504"}
     for status in ("408", "502", "503", "504"):
         codes = [code for code in op.errors if error_status.get(code, "502") == status]
         if codes:
             reason = {
-                "408": "Uppladdningen hann inte tas emot inom tidsgränsen.",
+                "408": "Ingen byte kom inom UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS, eller uppladdningen hann inte tas emot "
+                       "inom UPLOAD_RECEIVE_TIMEOUT_SECONDS.",
                 "503": "Kapaciteten är upptagen. Försök igen efter två sekunder.",
             }.get(status, "Modulen når inte Eneo, eller kan inte använda svaret.")
             responses[status] = reply(

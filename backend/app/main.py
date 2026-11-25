@@ -282,6 +282,18 @@ def _uploads_busy() -> JSONResponse:
     )
 
 
+def _upload_receive_idle() -> JSONResponse:
+    """No byte of an upload arrived for UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS, as on a weak link, before the receipt's own
+    deadline: the same answer on the multipart route and for a part, so the browser waits it out as a lost connection
+    instead of counting a failing server (frontend/lib/submit-run.ts). The rest of the body is never read, so the
+    connection closes."""
+    return JSONResponse(
+        status_code=408,
+        content={"error": "upload_receive_idle", "detail": "No bytes of the upload arrived within the idle timeout."},
+        headers={"Connection": "close"},
+    )
+
+
 def _upstream_unreachable() -> JSONResponse:
     return JSONResponse(
         status_code=502,
@@ -374,6 +386,25 @@ def _has_control_character(value: str | None) -> bool:
     return value is not None and any(character < " " or character == "\x7f" for character in value)
 
 
+class _QuietSender(Exception):
+    """No byte of an upload's body arrived within ``upload_receive_idle_timeout_seconds``."""
+
+
+async def _next_chunk(body: AsyncIterator[bytes]) -> bytes | None:
+    """The body's next chunk, None at its end, or ``_QuietSender`` when none arrives within the idle timeout.
+
+    The quiet wait is told apart here, where it ends: the deadline of the whole receipt around it reaches this scope as a
+    cancellation, and stays that deadline's ``TimeoutError``.
+    """
+    try:
+        with anyio.fail_after(settings.upload_receive_idle_timeout_seconds):
+            return await anext(body)
+    except StopAsyncIteration:
+        return None
+    except TimeoutError:
+        raise _QuietSender from None
+
+
 # The dedicated upload route bypasses the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
@@ -388,12 +419,7 @@ class _UploadParser(MultiPartParser):
 
     async def _complete_stream(self, stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
         iterator = aiter(stream)
-        while True:
-            try:
-                with anyio.fail_after(settings.upload_receive_idle_timeout_seconds):
-                    chunk = await anext(iterator)
-            except StopAsyncIteration:
-                break
+        while (chunk := await _next_chunk(iterator)) is not None:
             yield chunk
         # python-multipart's finalize() does not validate EOF. Raising while Starlette is still parsing makes its
         # error cleanup close every allocated file, including a part that never reached FormData.
@@ -448,6 +474,8 @@ async def _forward_upload(request: Request, path: str) -> Response:
             return _uploads_busy()
         try:
             return await _receive_upload(request, upstream_url)
+        except _QuietSender:
+            return _upload_receive_idle()
         except HTTPException as error:
             if error.status_code == 408:
                 return JSONResponse(status_code=408, content=error.detail, headers=error.headers)
@@ -635,12 +663,7 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                 remaining = max(0, entry.expires_at - time.monotonic())
                 with anyio.fail_after(remaining):
                     iterator = aiter(request.stream())
-                    while True:
-                        try:
-                            with anyio.fail_after(settings.upload_receive_idle_timeout_seconds):
-                                chunk = await anext(iterator)
-                        except StopAsyncIteration:
-                            break
+                    while (chunk := await _next_chunk(iterator)) is not None:
                         received += len(chunk)
                         if received > length:
                             raise HTTPException(413, "The part exceeds its declared length")
@@ -654,6 +677,8 @@ async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Re
                     if not await anyio.to_thread.run_sync(_rewind, entry.file.file, entry.offset):
                         # What the spool holds is not known: its receipt goes, and the next PUT makes the upload again.
                         await app.state.uploads.remove(upload_id, entry)
+                if isinstance(error, _QuietSender):
+                    return _upload_receive_idle()
                 if isinstance(error, TimeoutError):
                     raise HTTPException(408, "The upload part timed out") from None
                 if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT):

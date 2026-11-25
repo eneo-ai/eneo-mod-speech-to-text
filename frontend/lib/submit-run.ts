@@ -80,10 +80,11 @@ const UPLOAD_SERVER_ERROR_TRIES = 4;
 
 /**
  * An upload that never began, or stopped moving before its last byte (`api.ts`), waits as a lost connection does: on a
- * weak link `navigator.onLine` stays true, and progress between stalls is no server failing. One that sent every byte
- * and heard nothing (server_not_responding) counts.
+ * weak link `navigator.onLine` stays true, and progress between stalls is no server failing. The module's word for the
+ * same, when it heard no byte for its quiet time first (upload_receive_idle), is waited out alike. One that sent every
+ * byte and heard nothing (server_not_responding), or that the module's receipt ran out of time for, counts.
  */
-const STALLS = new Set(["not_started", "stalled"]);
+const STALLS = new Set(["not_started", "stalled", "upload_receive_idle"]);
 
 const serverError = (error: unknown) =>
   error instanceof ApiError && (error.status === 408 || error.status >= 500) && !STALLS.has(error.code ?? "");
