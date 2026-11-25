@@ -49,7 +49,7 @@
         ],
         "summary": "Börja eller återuppta en stor fil",
         "operationId": "put_api_uploads_flow_id_step_id_upload_id",
-        "description": "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. Resursen försvinner efter UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS utan anrop från ägaren, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen.",
+        "description": "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. Resursen försvinner när UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS har gått mellan delarnas anrop, räknat från skapandet eller den senaste delen som kom fram, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen. En del som pågår behåller resursen tills den slutar. Ett uppslag förlänger inte tiden. En del som avbryts ger en gång samma tid till, räknad från avbrottet. När modulen ber om väntan börjar tiden om från svaret: 503 på en del för att tung I/O är full, och 503 eller 502 på slutförandet av en hel fil innan vidarebefordran har börjat. Det gäller också 401 när Eneo avslutar inloggningen medan slutförandet läser körningskontraktet. En session som redan har tagit slut ger ingen ny tid. Totaltiden förlängs aldrig.",
         "parameters": [
           {
             "name": "flow_id",
@@ -426,11 +426,18 @@
             }
           },
           "408": {
-            "description": "Delens mottagning eller uppladdningens totaltid har gått ut.",
+            "description": "Ingen byte av delen kom inom UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS (error är upload_receive_idle, som på multipart-rutten), eller uppladdningens totaltid har gått ut (bara detail).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
                 }
               }
             }
@@ -1281,7 +1288,7 @@
             }
           },
           "408": {
-            "description": "Uppladdningen hann inte tas emot inom tidsgränsen. error är upload_receive_timeout. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Ingen byte kom inom UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS, eller uppladdningen hann inte tas emot inom UPLOAD_RECEIVE_TIMEOUT_SECONDS. error är upload_receive_idle eller upload_receive_timeout. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -4512,6 +4519,7 @@
             "enum": [
               "module_storage_full",
               "streams_busy",
+              "upload_receive_idle",
               "upload_receive_timeout",
               "uploads_busy",
               "upstream_invalid",

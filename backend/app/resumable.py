@@ -69,8 +69,25 @@ class IncomingUpload:
     failure: UploadFailure | None = None
     lock: anyio.Lock = field(default_factory=anyio.Lock)
     task: asyncio.Task[None] | None = None
+    grace: bool = True
 
-    def touch(self) -> None:
+    def progressed(self) -> None:
+        """A part arrived: the idle window runs from now. This, the upload's making and the module's own refusals below
+        renew it, never a lookup, so an upload that does not move on lets its place go one window after it last did."""
+        self.idle_until = time.monotonic() + self.idle_seconds
+        self.grace = True
+
+    def part_failed(self) -> None:
+        """A part ended without arriving. Its own time may have used up the window, so what was received gets one window
+        from here: once, until a part arrives again."""
+        if self.grace:
+            self.idle_until = time.monotonic() + self.idle_seconds
+            self.grace = False
+
+    def asked_to_wait(self) -> None:
+        """The module refused for now what it takes later (a part while heavy work is full, or the whole file's
+        completion before its forward began): the sender waits because the module asked, so what was received keeps
+        one window from that answer, at every refusal. The total lifetime still ends it."""
         self.idle_until = time.monotonic() + self.idle_seconds
 
     def expired(self) -> bool:
@@ -162,7 +179,6 @@ class UploadStore:
             raise HTTPException(404, "Upload not found or expired")
         if metadata is not None and metadata != entry.metadata:
             raise HTTPException(409, "Upload metadata differs")
-        entry.touch()
         return entry
 
     def get(self, upload_id: UUID, owner: tuple[str, str], flow_id: UUID, step_id: UUID) -> IncomingUpload:
